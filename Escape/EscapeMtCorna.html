@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escape from Mt. Corna</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+  :root {
+    --green:   #33ff66;
+    --green2:  #66ffaa;
+    --yellow:  #ffff66;
+    --red:     #ff4444;
+    --blue:    #6699ff;
+    --dim:     #1a4a2a;
+    --bg:      #060d08;
+    --urgent:  #ff9900;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 16px;
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  #screen {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px 24px 100px;
+  }
+
+  #header {
+    border-bottom: 1px solid var(--dim);
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  #title {
+    font-family: 'VT323', monospace;
+    font-size: 2.2rem;
+    color: var(--green2);
+    letter-spacing: 2px;
+    text-shadow: 0 0 12px rgba(102,255,170,0.5);
+  }
+
+  #status-bar { display: none; }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  #output {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    min-height: 400px;
+    padding-bottom: 20px;
+  }
+
+  .room-name {
+    color: var(--yellow);
+    font-family: 'VT323', monospace;
+    font-size: 1.4rem;
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .desc   { color: var(--green); }
+  .sys    { color: var(--blue); }
+  .warn   { color: var(--urgent); }
+  .err    { color: var(--red); }
+  .good   { color: var(--green2); }
+  .divider { color: var(--green2); text-align: center; display: block; letter-spacing: 1px; }
+  .echo   { color: #448855; }
+  .time-msg { color: var(--urgent); font-size: 13px; font-style: italic; }
+  .death  { color: var(--red); font-family: 'VT323', monospace; font-size: 1.3rem; }
+  .win    { color: var(--green2); font-family: 'VT323', monospace; font-size: 1.3rem; }
+  .title-splash {
+    color: var(--green2);
+    font-family: 'VT323', monospace;
+    font-size: 1.6rem;
+    letter-spacing: 3px;
+    text-align: center;
+    display: block;
+    text-shadow: 0 0 18px rgba(102,255,170,0.6);
+  }
+  .title-sub {
+    color: var(--green);
+    font-size: 13px;
+    text-align: center;
+    display: block;
+    letter-spacing: 1px;
+    opacity: 0.8;
+  }
+
+  #inputarea {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #060d08;
+    border-top: 1px solid var(--dim);
+    padding: 12px 24px 16px;
+    display: flex;
+    align-items: center;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  /* Fix: make inputarea truly centered */
+  #inputwrap {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--dim);
+    padding: 12px 24px 16px;
+    z-index: 100;
+  }
+
+  #inputinner {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #inv-display {
+    font-size: 12px;
+    color: #447755;
+    max-width: 800px;
+    margin: 0 auto 6px;
+  }
+
+  #prompt { color: var(--green2); user-select: none; }
+  #cmd {
+    background: transparent;
+    border: none;
+    color: var(--green);
+    font-family: inherit;
+    font-size: inherit;
+    flex: 1;
+    outline: none;
+    caret-color: var(--green2);
+  }
+  #cmd:disabled { opacity: 0.4; }
+</style>
+</head>
+<body>
+<div id="screen">
+  <div id="header">
+    <div id="title">ESCAPE FROM MT. CORNA</div>
+  </div>
+  <div id="output"></div>
+</div>
+
+<div id="inputwrap">
+  <div id="inv-display">Inventory: empty &nbsp;|&nbsp; Carrying: 0/2</div>
+  <div id="inputinner">
+    <span id="prompt">&gt;</span>
+    <input id="cmd" type="text" autocomplete="off" spellcheck="false" autofocus>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  TIME SYSTEM
+//  Timer starts only after answering the phone.
+//  Player has TURN_LIMIT turns before the Iranians attack.
+// ============================================================
+const TURN_LIMIT  = 60;   // total turns after the warning call
+
+let gameActive   = true;
+let timerStarted = false;
+let turnCount    = 0;     // counts only after timer starts
+
+function tickTime(turns) {
+  if (!timerStarted || !gameActive) return;
+  turnCount += turns;
+  if (turnCount >= TURN_LIMIT) {
+    triggerDeath();
+  }
+}
+
+function turnsRemaining() { return TURN_LIMIT - turnCount; }
+
+function urgencyNote() {
+  if (!timerStarted) return "";
+  const r = turnsRemaining();
+  if (r > 50) return "\n[The mountain is quiet. For now.]";
+  if (r > 45) return "\n[Somewhere down the road, an engine idles. You tell yourself it's nothing.]";
+  if (r > 38) return "\n[The wind has died. The silence feels deliberate.]";
+  if (r > 30) return "\n[You check your watch. Dawn is closer than you'd like.]";
+  if (r > 22) return "\n[Your mouth is dry. Move faster.]";
+  if (r > 15) return "\n[Headlights. Far below. Moving up the mountain road.]";
+  if (r > 8)  return "\n[The headlights are close. You can hear the engine now.]";
+  if (r > 3)  return "\n[THEY ARE AT THE GATE. GO. NOW.]";
+  return               "\n[You are out of time.]";
+}
+
+function triggerDeath() {
+  gameActive = false;
+  print(""); 
+  print("A distant rumble. Then another. Headlights sweep across the hillside.", "death");
+  print("You never made it out.", "death");
+  print("The first explosion takes the 150-foot tower. The dishes rain down in silence.", "death");
+  print("The second takes the main building.", "death");
+  print("", "");
+  print("█▀▀ ▄▀█ █▀▄▀█ █▀▀   █▀█ █░█ █▀▀ █▀█", "death");
+  print("█▄█ █▀█ █░▀░█ ██▄   █▄█ ▀▄▀ ██▄ █▀▄", "death");
+  print("", "");
+  print("Type RESTART to play again.", "err");
+}
+
+// ============================================================
+//  GAME STATE
+// ============================================================
+const state = {
+  phoneRinging:       true,   // the initial distant ringing
+  warningReceived:    false,   // player answered the phone
+  ifAmpFried:         false,   // set when warning received
+  radioFixed:         false,
+  phoneWorking:       false,   // phone works → ring → answer → get gate code
+  phoneBroken:        false,   // set after trying to call back
+  phoneHit:           false,   // hit with hammer
+  phoneRinging2:      false,   // supervisor calling back
+  gateCodeReceived:   false,
+  microwaveOpened:    false,
+  microwaveTrolled:   false,   // player has opened and closed it at least once
+  combinationFound:   false,
+  radioShackUnlocked: false,
+  tvWatching:         false,
+  dartsPlaying:       false,
+};
+
+const COMBINATION = "1980";
+const GATE_CODE   = "7734";   // upside-down it spells HELL — your call to change it
+
+// ============================================================
+//  INVENTORY  (max 2 items)
+// ============================================================
+const inventory = [];
+const INV_MAX = 2;
+
+function canCarry() { return inventory.length < INV_MAX; }
+
+function addToInventory(item) {
+  if (!canCarry()) return false;
+  inventory.push(item);
+  updateInvDisplay();
+  return true;
+}
+
+function removeFromInventory(item) {
+  const i = inventory.indexOf(item);
+  if (i === -1) return false;
+  inventory.splice(i, 1);
+  updateInvDisplay();
+  return true;
+}
+
+function updateInvDisplay() {
+  const items = inventory.length ? inventory.join(", ") : "empty";
+  document.getElementById("inv-display").textContent =
+    `Inventory: ${items}  |  Carrying: ${inventory.length}/${INV_MAX}`;
+}
+
+// ============================================================
+//  ITEM LONG DESCRIPTIONS
+// ============================================================
+const itemDescs = {
+  paper:    "A scrap of paper, still faintly warm. Scrawled on it in ballpoint: " + COMBINATION + ".",
+  toolbag:  "A heavy canvas tool bag, bristling with screwdrivers, pliers, and cable strippers.",
+  ifamp:    "The replacement IF amplifier — a metal module about the size of a paperback book, wrapped in an anti-static bag.",
+  hammer:   "A 16oz claw hammer. Heavy. Solid. Definitive.",
+};
+
+// ============================================================
+//  ROOMS
+// ============================================================
+const rooms = {
+
+  DriveWay: {
+    name: "DRIVEWAY — BOTTOM GATE",
+    items: [],
+    describe() {
+      let t = `The evening air hangs damp and heavy around you, carrying the cold metallic tang of the mountain. A single street light looms high overhead, its sodium glow humming with a faint electrical buzz — the only sound besides your own breathing. Long, wavering shadows stretch across the cracked asphalt.
+
+You stand just inside the chainlink gate. It has clicked shut behind you — locked. The fence stretches off in both directions, swallowed by the dark, enclosing the compound of the Mt. Corna microwave radio station. There is no one else here. There should be someone here.
+
+The driveway climbs the hill to the north.`;
+      if (state.phoneRinging) {
+        t += `\n\nSomewhere up the hill, a telephone is ringing. Faint. Steady. Patient.`;
+      }
+      t += urgencyNote();
+      return t;
+    },
+    exits: { north: "MainHill", up: "MainHill" },
+  },
+
+  MainHill: {
+    name: "MAIN HILL — COMPOUND CENTER",
+    items: [],
+    describe() {
+      let t = `The driveway crests the hill and opens onto a flat gravel apron. The compound spreads around you in the mountain dark.
+
+To the EAST, the main building squats low and concrete — the radio shack. Above its roofline, a 150-foot steel tower climbs into the night sky, a pair of microwave dish antennas aimed silently at the horizon like the ears of some enormous animal.
+
+To the NORTH, the tool shed hunkers behind its corrugated metal wall.
+
+To the WEST, a thin line of light bleeds under the recreation center door.
+
+The driveway falls away to the SOUTH.`;
+      if (state.phoneRinging) {
+        t += `\n\nThe ringing is unmistakably clearer up here. It's coming from inside the radio shack to the east.`;
+      }
+      if (state.ifAmpFried && !state.radioFixed) {
+        t += `\n\nA faint smell of burnt electronics drifts from the radio shack.`;
+      }
+      t += urgencyNote();
+      return t;
+    },
+    exits: { east: "RadioShackEntry", north: "ToolShed", west: "RecRoom", south: "DriveWay", down: "DriveWay" },
+  },
+
+  RadioShackEntry: {
+    name: "RADIO SHACK — ENTRY",
+    items: [],
+    describe() {
+      let t = `You stand before the radio shack's main entry — a solid steel door set into the concrete block wall. A cipher lock is mounted at shoulder height, its keypad dulled by years of fingers.`;
+      if (state.phoneRinging) {
+        t += `\n\nThe phone is very loud here, ringing just on the other side of the steel door. It rings with the urgency of something that cannot wait.`;
+      }
+      if (state.radioShackUnlocked) {
+        t += `\n\nThe door stands open. The gleaming hallway stretches east.`;
+      } else {
+        t += `\n\nThe cipher lock awaits a four-digit combination.`;
+      }
+      t += urgencyNote();
+      return t;
+    },
+    exits: { east: "RadioShackHall", west: "MainHill" },
+    locked: { east: () => state.radioShackUnlocked },
+  },
+
+  RadioShackHall: {
+    name: "RADIO SHACK — HALLWAY",
+    items: [],
+    describe() {
+      let t = `A long interior corridor runs the length of the building. The linoleum floor is freshly waxed — so polished it throws back the overhead fluorescents in a mirror sheen. You proudly remember the detachment commander stopping here, looking down, nodding slowly: "I've never seen this hallway that shiny before."
+
+Doors branch off to either side. The radio room lies to the NORTH. The exit is back WEST.`;
+      if (state.phoneRinging) {
+        t += `\n\nThe telephone is here on the hallway desk, ringing insistently.`;
+      }
+      if (state.ifAmpFried && !state.radioFixed) {
+        t += `\n\nA thin haze drifts from under the radio room door to the north. The air carries the sharp smell of burnt components.`;
+      }
+      t += urgencyNote();
+      return t;
+    },
+    exits: { north: "RadioRoom", west: "RadioShackEntry" },
+  },
+
+  RadioRoom: {
+    name: "RADIO ROOM",
+    items: [],
+    describe() {
+      let t = `Banks of radio and telemetry equipment line the walls — receivers, frequency counters, patch panels. Most of it hums quietly. One rack, however, does not.`;
+      if (!state.warningReceived) {
+        t += `\n\nThrough the open door you can hear the telephone ringing out in the hallway.`;
+      } else if (state.ifAmpFried && !state.radioFixed) {
+        t += `\n\nA curl of smoke rises from the IF amplifier slot in the main receiver rack. The module has clearly failed — the equipment behind it is dark and silent. A gap in the rack marks where a replacement module needs to go.`;
+      } else if (state.radioFixed) {
+        t += `\n\nThe replacement IF amplifier is seated in the rack, LEDs glowing green. The equipment hums back to life.`;
+        if (state.gateCodeReceived) {
+          t += `\n\nThe gate code — ${GATE_CODE} — is your way out.`;
+        }
+      }
+      t += urgencyNote();
+      return t;
+    },
+    exits: { south: "RadioShackHall" },
+  },
+
+  ToolShed: {
+    name: "TOOL SHED",
+    items: ["toolbag", "ifamp", "hammer"],
+    describe() {
+      let t = `The tool shed smells of machine oil, solder, and old cardboard. Workbenches line the walls, tools hung on pegboards above them. Metal shelving in the back holds spare parts, cable spools, and crates of station supplies.`;
+      if (this.items.includes("toolbag"))  t += `\n\nA heavy canvas tool bag sits on the workbench.`;
+      if (this.items.includes("ifamp"))    t += `\n\nOn the shelf, an anti-static bag holds a replacement IF amplifier module.`;
+      if (this.items.includes("hammer"))   t += `\n\nA claw hammer hangs on the pegboard.`;
+      if (state.phoneRinging) {
+        t += `\n\nFrom somewhere to the south, a phone rings faintly in the distance.`;
+      }
+      t += urgencyNote();
+      return t;
+    },
+    exits: { south: "MainHill" },
+  },
+
+  RecRoom: {
+    name: "RECREATION CENTER — BREAKROOM",
+    items: ["paper"],
+    describe() {
+      let t = `The breakroom is warmly lit compared to the rest of the compound. A battered couch faces a TV and VCR in the corner. A dartboard hangs on the far wall, ringed by holes that testify to many slow duty nights. On the counter sits a microwave oven.`;
+      if (!state.microwaveOpened) {
+        t += `\n\nThe microwave door is closed. A faint glow shows behind the glass.`;
+      } else if (this.items.includes("paper")) {
+        t += `\n\nThe microwave stands open. A scrap of paper sits inside.`;
+      } else {
+        t += `\n\nThe microwave stands open and empty.`;
+      }
+      if (state.phoneRinging) {
+        t += `\n\nEven here you can just make out the phone ringing somewhere outside to the east.`;
+      }
+      t += urgencyNote();
+      return t;
+    },
+    exits: { east: "MainHill" },
+  },
+
+};
+
+// ============================================================
+//  OUTPUT
+// ============================================================
+const outEl = document.getElementById("output");
+
+function print(text, cls) {
+  const span = document.createElement("span");
+  if (cls) span.className = cls;
+  span.textContent = (text || "") + "\n";
+  outEl.appendChild(span);
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+function nl() { print(""); }
+
+function showRoom(key) {
+  nl();
+  const room = rooms[key];
+  print(room.name, "room-name");
+  print(room.describe(), "desc");
+}
+
+// ============================================================
+//  CURRENT ROOM
+// ============================================================
+let current = "DriveWay";
+
+// ============================================================
+//  MOVEMENT
+// ============================================================
+const dirAliases = {
+  north:"north", n:"north", south:"south", s:"south",
+  east:"east",  e:"east",  west:"west",  w:"west",
+  up:"up", u:"up", down:"down", d:"down",
+};
+
+function move(dir) {
+  const room = rooms[current];
+  const dest = room.exits[dir];
+  if (!dest) { print("You can't go that way.", "err"); return; }
+  if (room.locked && room.locked[dir] && !room.locked[dir]()) {
+    print("The cipher lock holds the door shut. You need the combination.", "err");
+    return;
+  }
+  current = dest;
+  tickTime(1);
+  showRoom(current);
+}
+
+// ============================================================
+//  COMMAND HANDLERS
+// ============================================================
+function handle(raw) {
+  if (!raw.trim()) return;
+
+  const trimmed = raw.trim().toLowerCase();
+
+  // Handle restart/quit/start over regardless of game state
+  if (trimmed === "restart" || trimmed === "quit" || trimmed === "quit game" ||
+      trimmed === "start over" || trimmed === "new game") {
+    location.reload();
+    return;
+  }
+
+  if (!gameActive) {
+    print("The game is over. Type RESTART to play again.", "err");
+    return;
+  }
+
+  print("> " + raw, "echo");
+
+  const words = trimmed.split(/\s+/);
+  const verb  = words[0];
+  const rest  = words.slice(1).join(" ");
+  const obj   = words[1] || "";
+
+  // MOVEMENT
+  if (dirAliases[verb]) { move(dirAliases[verb]); return; }
+  if (verb === "go" && dirAliases[obj]) { move(dirAliases[obj]); return; }
+
+  // LOOK
+  if (verb === "look" || verb === "l") {
+    tickTime(1);
+    showRoom(current);
+    return;
+  }
+
+  // INVENTORY
+  if (verb === "inventory" || verb === "inv" || verb === "i") {
+    if (inventory.length === 0) print("You are carrying nothing.");
+    else print("Carrying: " + inventory.join(", ") + ".");
+    return;
+  }
+
+  // EXAMINE
+  if (verb === "examine" || verb === "x" || verb === "look at") {
+    tickTime(1);
+    if (inventory.includes(rest)) { print(itemDescs[rest] || "Nothing special.", "desc"); return; }
+    if (rest === "tower" || rest === "dishes" || rest === "antenna") {
+      print("A 150-foot lattice-steel tower climbs into the dark sky above the radio shack roofline. Two large microwave dish antennas are mounted near the top, aimed east and west along the ridge. The whole structure creaks faintly in the mountain wind.", "desc");
+      return;
+    }
+    if (rest === "cipher lock" || rest === "lock" || rest === "keypad") {
+      print("A standard four-digit cipher lock. You'll need the combination.", "desc"); return;
+    }
+    if (rest === "radio" || rest === "rack" || rest === "equipment") {
+      if (current !== "RadioRoom") { print("You don't see that here.", "err"); return; }
+      if (!state.warningReceived) { print("Banks of telemetry and radio equipment, all nominal. The phone is ringing.", "desc"); return; }
+      if (state.radioFixed) { print("The replacement IF amplifier sits snugly in the rack. Indicator LEDs glow green down the line.", "desc"); return; }
+      print("The IF amplifier slot is empty and scorched. You need the replacement module and tools to fix it.", "desc");
+      return;
+    }
+    if (rest === "phone" || rest === "telephone") {
+      if (current !== "RadioShackHall") { print("There's no phone here.", "err"); return; }
+      if (!state.phoneBroken) print("The hallway desk phone — a standard military-issue handset. It was ringing. Now it waits.", "desc");
+      else if (!state.phoneHit) print("Dead. You lift the handset — silence. No dial tone. Nothing. The line is dead.", "desc");
+      else print("The phone has a fresh dent in it. It stares at you blankly.", "desc");
+      return;
+    }
+    if (rest === "dartboard" || rest === "darts") { print("A regulation-size bristle dartboard, ringed by dozens of old impact marks. Three darts are clustered near the bullseye from someone's last game.", "desc"); return; }
+    if (rest === "tv" || rest === "television") { print("A 19-inch Sony Trinitron. A VHS tape is visible in the VCR slot.", "desc"); return; }
+    if (rest === "microwave") { print("A standard consumer microwave bolted to the counter. Someone left it plugged in.", "desc"); return; }
+    print("You don't see anything remarkable about that.", "err");
+    return;
+  }
+
+  // CLOSE
+  if (verb === "close" || verb === "shut") {
+    if (rest === "microwave") {
+      if (current !== "RecRoom") { print("There's no microwave here.", "err"); return; }
+      if (!state.microwaveOpened) { print("The microwave is already closed.", "err"); return; }
+      state.microwaveOpened = false;
+      state.microwaveTrolled = true;
+      tickTime(1);
+      print("You're wasting time opening and shutting the microwave door! The Iranians are coming!", "warn");
+      return;
+    }
+    print("You can't close that.", "err");
+    return;
+  }
+
+  // OPEN
+  if (verb === "open") {
+    if (rest === "microwave") {
+      if (current !== "RecRoom") { print("There's no microwave here.", "err"); return; }
+      if (state.microwaveOpened) {
+        if (state.microwaveTrolled) {
+          tickTime(1);
+          print("You're wasting time opening and shutting the microwave door! The Iranians are coming!", "warn");
+        } else {
+          print("The microwave is already open.", "err");
+        }
+        return;
+      }
+      state.microwaveOpened = true;
+      tickTime(1);
+      if (state.microwaveTrolled) {
+        print("You're wasting time opening and shutting the microwave door! The Iranians are coming!", "warn");
+      } else {
+        print("You open the microwave. A slip of paper sits inside on the turntable.", "good");
+      }
+      return;
+    }
+    print("You can't open that.", "err");
+    return;
+  }
+
+  // TAKE / GET
+  if (verb === "take" || verb === "get" || verb === "pick") {
+    const rawItem = (verb === "pick" && obj === "up") ? words[2] : rest;
+    // Resolve common aliases to canonical item keys
+    const itemAliases = {
+      "amp": "ifamp", "amplifier": "ifamp", "if amp": "ifamp",
+      "if amplifier": "ifamp", "ifamp": "ifamp", "module": "ifamp",
+      "anti-static bag": "ifamp", "antistatic bag": "ifamp", "replacement": "ifamp",
+      "tool bag": "toolbag", "bag": "toolbag", "tools": "toolbag",
+      "canvas bag": "toolbag", "toolbag": "toolbag",
+      "hammer": "hammer", "claw hammer": "hammer",
+      "paper": "paper", "note": "paper", "slip": "paper", "scrap": "paper",
+    };
+    const item = itemAliases[rawItem] || rawItem;
+    const room = rooms[current];
+
+    if (!room.items.includes(item)) {
+      print("You don't see that here.", "err"); return;
+    }
+    if (item === "paper" && !state.microwaveOpened) {
+      print("The microwave is closed. Open it first.", "err"); return;
+    }
+    if (!canCarry()) {
+      print(`Your hands are full — you're already carrying ${inventory.join(" and ")}. Drop something first.`, "warn");
+      return;
+    }
+    room.items.splice(room.items.indexOf(item), 1);
+    addToInventory(item);
+    if (item === "paper") state.combinationFound = true;
+    tickTime(1);
+    print(`Taken. (${itemDescs[item]})`, "good");
+    return;
+  }
+
+  // DROP
+  if (verb === "drop") {
+    const dropAliases = {
+      "amp": "ifamp", "amplifier": "ifamp", "if amp": "ifamp",
+      "if amplifier": "ifamp", "ifamp": "ifamp", "module": "ifamp",
+      "anti-static bag": "ifamp", "antistatic bag": "ifamp", "replacement": "ifamp",
+      "tool bag": "toolbag", "bag": "toolbag", "tools": "toolbag",
+      "canvas bag": "toolbag", "toolbag": "toolbag",
+      "hammer": "hammer", "claw hammer": "hammer",
+      "paper": "paper", "note": "paper", "slip": "paper", "scrap": "paper",
+    };
+    const dropItem = dropAliases[rest] || rest;
+    if (!inventory.includes(dropItem)) { print("You're not carrying that.", "err"); return; }
+    removeFromInventory(dropItem);
+    rooms[current].items.push(dropItem);
+    tickTime(1);
+    print(`You set down the ${dropItem}.`, "good");
+    return;
+  }
+
+  // READ
+  if (verb === "read") {
+    if (rest === "paper" && inventory.includes("paper")) {
+      print(itemDescs.paper, "desc"); return;
+    }
+    print("You have nothing like that to read.", "err");
+    return;
+  }
+
+  // ENTER (cipher lock or gate code)
+  if (verb === "enter" || verb === "type" || verb === "dial") {
+    // Strip keyword prefixes so "enter code 1980", "enter combination 1980", "enter 1980" all work
+    const codeKeywords = ["code", "combo", "combination", "number", "digits"];
+    let codeInput = rest;
+    for (const kw of codeKeywords) {
+      if (codeInput.startsWith(kw + " ")) { codeInput = codeInput.slice(kw.length + 1).trim(); break; }
+      if (codeInput === kw) { codeInput = ""; break; }
+    }
+
+    // GATE at DriveWay
+    if (current === "DriveWay") {
+      if (!codeInput) { print("Enter what code? Type: ENTER <digits>", "err"); return; }
+      if (!state.gateCodeReceived) { print("You don't know the gate code.", "err"); return; }
+      if (codeInput === GATE_CODE) { triggerWin(); return; }
+      print("Wrong code. The gate stays locked.", "err");
+      tickTime(1);
+      return;
+    }
+
+    // CIPHER LOCK at RadioShackEntry
+    if (current === "RadioShackEntry") {
+      if (state.radioShackUnlocked) { print("The door is already open.", "err"); return; }
+      if (!state.combinationFound) { print("You don't know the combination.", "err"); return; }
+      if (!codeInput) { print("Enter what combination? Type: ENTER <digits>", "err"); return; }
+      if (codeInput === COMBINATION) {
+        state.radioShackUnlocked = true;
+        tickTime(1);
+        print("The cipher lock clicks with a satisfying clunk. The steel door swings open.", "good");
+      } else {
+        tickTime(1);
+        print("The lock buzzes. Wrong combination.", "err");
+      }
+      return;
+    }
+
+    print("There's nothing here to enter a code into.", "err");
+    return;
+  }
+
+  // ANSWER PHONE
+  if (verb === "answer") {
+    if (current !== "RadioShackHall") {
+      print("There's no phone here to answer.", "err"); return;
+    }
+
+    // First call — the warning
+    if (state.phoneRinging && !state.warningReceived) {
+      state.phoneRinging    = false;
+      state.warningReceived = true;
+      timerStarted          = true;
+      turnCount             = 0;
+      nl();
+      print("You lift the receiver. The ringing stops.", "good");
+      nl();
+      print('The voice is clipped, urgent — Staff Sergeant Casta\u00f1eda:', "sys");
+      nl();
+      print('"Listen. No time. Intel says an Iranian special unit is moving on the site — they\'ll be there before dawn. Get out. Now. The gate code is—"', "desc");
+      nl();
+      print("A sharp CRACK. A hiss of static. The line cuts dead.", "warn");
+      nl();
+      print("Silence.", "desc");
+      nl();
+      print("Then — from somewhere beyond the door to the north — a muffled pop. A sharp chemical smell bleeds under the radio room door.", "warn");
+      nl();
+      print("Something in the radio room just died.", "warn");
+      nl();
+      state.ifAmpFried = true;
+      print("[The clock is running. You have until dawn to fix the radio, get the gate code, and escape. Every action costs time.]", "time-msg");
+      return;
+    }
+
+    // Second call — supervisor calling back (after hitting phone)
+    if (state.phoneRinging2) {
+      state.phoneRinging2    = false;
+      state.gateCodeReceived = true;
+      timerStarted && tickTime(1);
+      nl();
+      print("You snatch up the receiver.", "good");
+      nl();
+      print('"It\'s Casta\u00f1eda. The line dropped. The gate code is ' + GATE_CODE + ' — repeat, ' + GATE_CODE + '. Get out of there. GO."', "desc");
+      nl();
+      print("The line goes dead again. But this time you have what you need.", "good");
+      nl();
+      return;
+    }
+
+    if (state.phoneBroken) {
+      print("You pick up the handset. Dead silence. The line is still out.", "err"); return;
+    }
+
+    print("The phone isn't ringing.", "err");
+    return;
+  }
+
+  // CALL / USE PHONE
+  if ((verb === "call" || verb === "use") && (obj === "phone" || obj === "telephone")) {
+    if (current !== "RadioShackHall") { print("There's no phone here.", "err"); return; }
+    if (!state.warningReceived) { print("The phone is ringing. Answer it.", "err"); return; }
+    if (state.phoneBroken) { print("No dial tone. The line is dead — just silence when you lift the handset.", "err"); return; }
+    if (state.radioFixed && !state.gateCodeReceived) {
+      state.phoneBroken = true;
+      tickTime(1);
+      print("You lift the handset to call Casta\u00f1eda back. Dead. No dial tone — nothing. The line is completely out.", "err");
+      nl();
+      print("You rattle the cradle. You blow into the mouthpiece out of desperate habit. Nothing.", "err");
+      return;
+    }
+    print("No dial tone. The line is dead.", "err");
+    return;
+  }
+
+  // FIX / REPAIR / INSTALL
+  if ((verb === "fix" || verb === "repair" || verb === "install")) {
+    if (current !== "RadioRoom") { print("There's nothing here that needs fixing.", "err"); return; }
+    if (!state.warningReceived) { print("The equipment all seems fine. For now.", "err"); return; }
+    if (state.radioFixed) { print("The radio is already repaired.", "err"); return; }
+    if (!inventory.includes("ifamp") || !inventory.includes("toolbag")) {
+      const missing = [];
+      if (!inventory.includes("toolbag")) missing.push("tool bag");
+      if (!inventory.includes("ifamp"))   missing.push("replacement IF amplifier");
+      print("You need " + missing.join(" and ") + " to fix this.", "err");
+      return;
+    }
+    tickTime(3);
+    state.radioFixed = true;
+    removeFromInventory("ifamp");
+    nl();
+    print("You pull out the scorched IF amplifier module and slot in the replacement. Four screws, a cable harness, a quick alignment check.", "good");
+    print("The rack powers back up. LEDs glow green down the line. The equipment hums.", "good");
+    nl();
+    // Move player to hallway to try the phone
+    current = "RadioShackHall";
+    state.phoneBroken = true;
+    print("You step back out into the hallway and grab the phone to call Casta\u00f1eda back.", "warn");
+    nl();
+    print("Dead. No dial tone. Nothing.", "err");
+    nl();
+    print("You rattle the cradle. You blow in the mouthpiece. You slam the handset down.", "warn");
+    nl();
+    print("[The gate code. He was about to say the gate code. And now the phone is dead.]", "time-msg");
+    return;
+  }
+
+  // HIT <thing> WITH HAMMER
+  if (verb === "hit" || verb === "strike" || verb === "smash" || verb === "bang" || verb === "whack") {
+    const target = rest.replace(/^with\s+\S+\s*/,"").replace(/\s+with\s+\S+$/,"").trim();
+    if (target.includes("phone") || target.includes("telephone") || target === "it") {
+      if (current !== "RadioShackHall") { print("There's no phone here.", "err"); return; }
+      if (!state.phoneBroken) { print("The phone is working fine. No need to assault it.", "err"); return; }
+      if (!inventory.includes("hammer")) { print("With what? Your fist isn't going to fix a dead telephone line.", "err"); return; }
+      if (state.phoneHit) { print("You've already introduced it to the hammer.", "err"); return; }
+      tickTime(2);
+      state.phoneHit = true;
+      nl();
+      print("You wind up and give the phone a sharp CRACK on the side of the housing.", "warn");
+      nl();
+      print("A beat of silence.", "desc");
+      print("Then — improbably, magnificently — it rings.", "good");
+      nl();
+      print("The phone is ringing.", "good");
+      state.phoneRinging2 = true;
+      return;
+    }
+    print("Hitting that doesn't seem productive.", "err");
+    return;
+  }
+
+  // UNLOCK GATE
+  if (verb === "unlock" && (rest.includes("gate") || rest.includes("lock"))) {
+    if (current !== "DriveWay") { print("The gate is not here.", "err"); return; }
+    print("It requires a special code that is never written down for security purposes.", "err");
+    return;
+  }
+
+  // OPEN GATE / ESCAPE
+  if ((verb === "open" && (rest === "gate" || rest === "lock" || rest === "door")) ||
+      (verb === "escape") || (verb === "leave") || (verb === "exit" && current === "DriveWay")) {
+    if (current !== "DriveWay") { print("The gate is not here.", "err"); return; }
+    if (!state.gateCodeReceived) {
+      if (rest === "gate" || verb === "open") {
+        print("It is locked with a very secure and ruggedized chain and combination lock.", "err");
+      } else {
+        print("The gate is locked. You're not going anywhere without the code.", "err");
+      }
+      return;
+    }
+    triggerWin();
+    return;
+  }
+
+  // WASTE TIME — DARTS
+  if (verb === "play" && (rest.includes("dart") || rest.includes("darts"))) {
+    if (current !== "RecRoom") { print("There's no dartboard here.", "err"); return; }
+    if (!state.warningReceived) { print("You must answer that phone — it sounds urgent!", "warn"); return; }
+    tickTime(4);
+    nl();
+    print("You pull the darts from the board and throw a few rounds. The repetition is almost calming.", "desc");
+    print("[You wasted 4 turns playing darts. The Iranians are coming by dawn.]", "time-msg");
+    return;
+  }
+
+  // WASTE TIME — TV
+  if ((verb === "watch" && (rest.includes("tv") || rest.includes("television"))) ||
+      (verb === "turn" && (rest.includes("tv") || rest.includes("television")))) {
+    if (current !== "RecRoom") { print("There's no TV here.", "err"); return; }
+    if (!state.warningReceived) { print("You must answer that phone — it sounds urgent!", "warn"); return; }
+    tickTime(2);
+    nl();
+    print("You switch on the TV. Static resolves into a grainy Italian chat show. Two men in suits argue about something football-related. You watch it for way too long.", "desc");
+    print("[You wasted 2 turns. The Iranians are coming by dawn.]", "time-msg");
+    return;
+  }
+
+  // WASTE TIME — VCR
+  if (verb === "watch" && (rest.includes("vcr") || rest.includes("tape") || rest.includes("letterman") || rest.includes("video"))) {
+    if (current !== "RecRoom") { print("There's no VCR here.", "err"); return; }
+    if (!state.warningReceived) { print("You must answer that phone — it sounds urgent!", "warn"); return; }
+    tickTime(4);
+    nl();
+    print("You slot the tape and sink into the couch. It's a David Letterman episode — courtesy of Air Force Morale, Welfare and Recreation. Dave drops something off a five-story building. You watch the whole segment.", "desc");
+    print("[You wasted 4 turns watching Letterman. The Iranians are coming by dawn.]", "time-msg");
+    return;
+  }
+
+  // HELP
+  if (verb === "help" || verb === "?") {
+    nl();
+    print("COMMANDS:", "sys");
+    print("  Movement:   NORTH / SOUTH / EAST / WEST (or N/S/E/W), UP, DOWN, GO <dir>", "sys");
+    print("  Look:       LOOK (or L)", "sys");
+    print("  Examine:    EXAMINE <thing> (or X <thing>)", "sys");
+    print("  Take:       TAKE <item>  |  DROP <item>", "sys");
+    print("  Inventory:  INVENTORY (or INV, I)", "sys");
+    print("  Open/Close: OPEN <thing>  |  CLOSE <thing>", "sys");
+    print("  Read:       READ <item>", "sys");
+    print("  Enter code: ENTER <digits>", "sys");
+    print("  Phone:      ANSWER PHONE  |  CALL PHONE", "sys");
+    print("  Fix:        FIX <thing>", "sys");
+    print("  Hit:        HIT <thing>", "sys");
+    print("  Quit:       QUIT  |  RESTART  |  START OVER", "sys");
+    return;
+  }
+
+  tickTime(1);
+  print("I don't understand that. Type HELP for a command list.", "err");
+}
+
+// ============================================================
+//  WIN CONDITION
+// ============================================================
+function checkWin() {
+  // placeholder — win is triggered directly by triggerWin()
+}
+
+function triggerWin() {
+  gameActive = false;
+  nl();
+  print("You punch in " + GATE_CODE + " on the gate keypad.", "good");
+  print("The lock disengages with a heavy clunk. The gate swings outward.", "good");
+  nl();
+  print("You walk through. You don't look back.", "desc");
+  nl();
+  print("Behind you, the 150-foot tower stands against the lightening sky.", "desc");
+  print("You are three miles down the mountain road when the first explosion lights the ridge.", "desc");
+  nl();
+  print("▀█▀ █░█ █▀█ █░█   █▀▀ █▀ █▀▀ ▄▀█ █▀█ █▀▀ █▀▄", "win");
+  print("░█░ █▀█ █▄█ █▄█   ██▄ ▄█ █▄▄ █▀█ █▀▀ ██▄ █▄▀", "win");
+  nl();
+  print(`Turns used: ${turnCount} of ${TURN_LIMIT}`, "sys");
+  print("Type RESTART to play again.", "sys");
+}
+
+// ============================================================
+//  INPUT WIRING
+// ============================================================
+const cmdEl = document.getElementById("cmd");
+cmdEl.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const v = cmdEl.value;
+    cmdEl.value = "";
+    handle(v);
+  }
+});
+
+// ============================================================
+//  START
+// ============================================================
+print("════════════════════════════════════════════════", "divider");
+print("ESCAPE FROM MT. CORNA  v2.2", "title-splash");
+print("Northern Italy, 1984  —  You are alone.", "title-sub");
+print("════════════════════════════════════════════════", "divider");
+nl();
+print("Type HELP for commands.", "sys");
+showRoom(current);
+</script>
+</body>
+</html>
+
