@@ -24,27 +24,52 @@
             margin: 15px 0;
         }
         .game-list a {
-            display: block;
-            padding: 15px;
-            background-color: #0066cc;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            text-align: center;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    background-color: #0066cc;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
         .game-list a:hover {
             background-color: #004999;
+        }
+        .game-list img {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            margin-bottom: 10px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
         }
     </style>
 </head>
 <body>
     <h1>Russ's Games</h1>
     <ul class="game-list">
-        <li><a href="./Escape/EscapeMtCorna.html">Escape from Mount Corna: A Text Adventure</a></li>
-        <li><a href="./NullSector/vertical_runner.html">Rusko's Run: A Space Shooter</a></li>
-        <li><a href="./NullSector2/ruskos_descent.html">Rusko's Planet: A Sci-Fi Adventure</a></li>
+        <li>
+            <a href="./Escape/EscapeMtCorna.html">
+                <img src="./images/EscapeMtCorna.png" alt="Escape from Mount Corna">
+                Escape from Mount Corna: A Text Adventure
+            </a>
+        </li>
+        <li>
+            <a href="./NullSector/vertical_runner.html">
+                <img src="./images/nullsector-screenshot.png" alt="Rusko's Run">
+                Rusko's Run: A Space Shooter
+            </a>
+        </li>
+        <li>
+            <a href="./NullSector2/ruskos_descent.html">
+                <img src="./images/ruskos-descent-screenshot.png" alt="Rusko's Planet">
+                Rusko's Planet: A Sci-Fi Adventure
+            </a>
+        </li>
     </ul>
 </body>
 </html>
