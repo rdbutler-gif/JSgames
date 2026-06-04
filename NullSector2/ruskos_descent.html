@@ -337,6 +337,121 @@ function deathExplosionSound(){
   }catch(e){}
 }
 
+// Gem pickup: bright ascending sparkle with twin harmonics
+function gemPickupSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    // primary rising bell tone: 2000→3200 Hz, extended decay to 500ms
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='sine';
+    osc.frequency.setValueAtTime(2000,t);
+    osc.frequency.exponentialRampToValueAtTime(3200,t+0.08);
+    osc.frequency.exponentialRampToValueAtTime(1800,t+0.25);
+    gain.gain.setValueAtTime(0.25,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.50);
+    osc.start(t); osc.stop(t+0.50);
+    // secondary harmonic shimmer: higher frequencies, extended decay
+    const osc2=audioCtx.createOscillator();
+    const gain2=audioCtx.createGain();
+    osc2.connect(gain2); gain2.connect(audioCtx.destination);
+    osc2.type='sine';
+    osc2.frequency.setValueAtTime(4100,t);
+    osc2.frequency.exponentialRampToValueAtTime(5200,t+0.08);
+    gain2.gain.setValueAtTime(0.12,t);
+    gain2.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+    osc2.start(t); osc2.stop(t+0.45);
+  }catch(e){}
+}
+
+// MiniBoss ring fire (14-bullet pattern): deep sawtooth boom, harsh attack
+function miniBossRingFireSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='sawtooth'; // harsh biting tone
+    osc.frequency.setValueAtTime(180,t);
+    osc.frequency.exponentialRampToValueAtTime(80,t+0.25);
+    gain.gain.setValueAtTime(0.45,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.50);
+    osc.start(t); osc.stop(t+0.50);
+  }catch(e){}
+}
+
+// MiniBoss 3-shot fire: different pitch square wave boom, distinct from ring
+function miniBoss3ShotFireSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='square'; // different waveform than ring for distinction
+    osc.frequency.setValueAtTime(240,t);
+    osc.frequency.exponentialRampToValueAtTime(100,t+0.28);
+    gain.gain.setValueAtTime(0.40,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.50);
+    osc.start(t); osc.stop(t+0.50);
+  }catch(e){}
+}
+
+// MiniBoss death: scaled-down three-layer explosion (less impressive than apex)
+function miniBossDeathSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    // layer 1 — reduced boom: 80→20 Hz over extended 1.5s (vs apex 2s)
+    const boom=audioCtx.createOscillator();
+    const boomGain=audioCtx.createGain();
+    boom.connect(boomGain); boomGain.connect(audioCtx.destination);
+    boom.type='sine';
+    boom.frequency.setValueAtTime(80,t);
+    boom.frequency.exponentialRampToValueAtTime(20,t+0.35);
+    boomGain.gain.setValueAtTime(0.45,t);
+    boomGain.gain.setValueAtTime(0.45,t+0.04);
+    boomGain.gain.exponentialRampToValueAtTime(0.001,t+1.5);
+    boom.start(t); boom.stop(t+1.5);
+    // layer 2 — mid rumble noise, extended duration to 1.5s
+    const bufLen2=Math.floor(audioCtx.sampleRate*1.6);
+    const buf2=audioCtx.createBuffer(1,bufLen2,audioCtx.sampleRate);
+    const d2=buf2.getChannelData(0);
+    for(let i=0;i<bufLen2;i++) d2[i]=(Math.random()*2-1);
+    const rumbleNoise=audioCtx.createBufferSource();
+    rumbleNoise.buffer=buf2;
+    const rumbleFilt=audioCtx.createBiquadFilter();
+    rumbleFilt.type='lowpass';
+    rumbleFilt.frequency.setValueAtTime(600,t);
+    rumbleFilt.frequency.exponentialRampToValueAtTime(60,t+1.4);
+    const rumbleGain=audioCtx.createGain();
+    rumbleNoise.connect(rumbleFilt); rumbleFilt.connect(rumbleGain);
+    rumbleGain.connect(audioCtx.destination);
+    rumbleGain.gain.setValueAtTime(0.35,t);
+    rumbleGain.gain.setValueAtTime(0.35,t+0.08);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001,t+1.4);
+    rumbleNoise.start(t); rumbleNoise.stop(t+1.6);
+    // layer 3 — crackle, extended to ~1s
+    const bufLen3=Math.floor(audioCtx.sampleRate*1.1);
+    const buf3=audioCtx.createBuffer(1,bufLen3,audioCtx.sampleRate);
+    const d3=buf3.getChannelData(0);
+    for(let i=0;i<bufLen3;i++) d3[i]=(Math.random()*2-1);
+    const crackle=audioCtx.createBufferSource();
+    crackle.buffer=buf3;
+    const crackleFilt=audioCtx.createBiquadFilter();
+    crackleFilt.type='bandpass'; crackleFilt.frequency.value=2400; crackleFilt.Q.value=0.6;
+    const crackleGain=audioCtx.createGain();
+    crackle.connect(crackleFilt); crackleFilt.connect(crackleGain);
+    crackleGain.connect(audioCtx.destination);
+    crackleGain.gain.setValueAtTime(0.16,t);
+    crackleGain.gain.exponentialRampToValueAtTime(0.001,t+1.0);
+    crackle.start(t); crackle.stop(t+1.1);
+  }catch(e){}
+}
+
 // Gamepad haptic rumble
 function rumble(duration,weak,strong){
   duration=duration||200; weak=weak||0.4; strong=strong||0.7;
@@ -721,12 +836,14 @@ function update(){
       mb.phase++;
       if(mb.phase%3===0){
         for(let i=0;i<14;i++){const a=i/14*6.283;
-          eBullets.push({x:mb.x,y:mb.y,vx:Math.cos(a)*3.2,vy:Math.sin(a)*3.2});}
+          eBullets.push({x:mb.x,y:mb.y,vx:Math.cos(a)*3.2,vy:Math.sin(a)*3.2,source:'miniboss'});}
+        miniBossRingFireSound();
         mb.fireT=90;
       } else {
         const a=Math.atan2(dy,dx),sp=4;
         [-0.25,0,0.25].forEach(o=>eBullets.push({x:mb.x,y:mb.y,
-          vx:Math.cos(a+o)*sp,vy:Math.sin(a+o)*sp}));
+          vx:Math.cos(a+o)*sp,vy:Math.sin(a+o)*sp,source:'miniboss'}));
+        miniBoss3ShotFireSound();
         mb.fireT=50;
       }
     }
@@ -845,6 +962,7 @@ function update(){
       score+=500;
       burst(g.x,g.y,g.col,20,4);
       burst(g.x,g.y,'#fff',8,6);
+      gemPickupSound();
       banner={text:'GEM COLLECTED  '+gemsCollected+'/'+totalGems,t:90};
       if(gemsCollected>=totalGems){ banner={text:'ALL GEMS FOUND! +2000',t:160}; score+=2000; }
       gems.splice(j,1);
@@ -889,7 +1007,7 @@ function update(){
       if(Math.hypot(b.x-mb.x,b.y-mb.y)<mb.r){
         mb.hp-=b.dmg; bullets.splice(j,1); burst(b.x,b.y,'#ffb000',3,2);
         if(mb.hp<=0){
-          mb.alive=false; bigBoom(mb.x,mb.y); screenShake=20;
+          mb.alive=false; bigBoom(mb.x,mb.y); miniBossDeathSound(); screenShake=20;
           score+=2000; burst(mb.x,mb.y,'#ff2d6f',40,5);
           banner={text:'HIVE NODE DESTROYED',t:130};
           // drop 2 powerups on mini-boss kill (was 4)
@@ -1152,9 +1270,16 @@ function draw(){
   ctx.shadowBlur=0;
 
   // enemy bullets
-  ctx.fillStyle='#ff2d6f'; ctx.shadowBlur=8; ctx.shadowColor='#ff2d6f';
   eBullets.forEach(b=>{ const sx=b.x-cam.x, sy=b.y-cam.y;
-    ctx.beginPath();ctx.arc(sx,sy,4,0,6.3);ctx.fill(); });
+    if(b.source==='miniboss'){
+      // mini-boss bullets: bright cyan with strong glow
+      ctx.fillStyle='#00ffff'; ctx.shadowBlur=12; ctx.shadowColor='#00ffff';
+    } else {
+      // regular enemy bullets: pink
+      ctx.fillStyle='#ff2d6f'; ctx.shadowBlur=8; ctx.shadowColor='#ff2d6f';
+    }
+    ctx.beginPath();ctx.arc(sx,sy,4,0,6.3);ctx.fill();
+  });
   ctx.shadowBlur=0;
 
   // enemies — dormant shown dim, awake shown vivid
