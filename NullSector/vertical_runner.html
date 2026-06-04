@@ -120,6 +120,7 @@
     <div class="sub" id="finalScore">SCORE 000000</div>
     <div class="hs-title">&#9656; HIGH SCORES &#9656;</div>
     <div class="hs" id="hsTable"></div>
+    <div style="font-size:14px;color:var(--neon-dim);margin-top:12px;">scores stored locally only</div>
     <div class="blink" id="overPrompt">PRESS START</div>
   </div>
 
@@ -141,16 +142,16 @@ const W = cv.width, H = cv.height;
 const HS_KEY = 'ruskosrun_highscores_v1';
 // Default seed table — also what a fresh EXPORT .dat will contain.
 const DEFAULT_SCORES = [
-  {ini:'RUS', sc:8000},
-  {ini:'ELV', sc:6500},
-  {ini:'NIC', sc:5000},
-  {ini:'C64', sc:4000},
-  {ini:'AFV', sc:3200},
-  {ini:'SUB', sc:2500},
-  {ini:'TI9', sc:1800},
-  {ini:'VIC', sc:1200},
-  {ini:'ACT', sc:700},
-  {ini:'PHD', sc:300},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},
 ];
 let highScores = loadScores();
 
