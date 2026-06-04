@@ -967,22 +967,39 @@ entryPanel.addEventListener('touchstart', e=>{
 
 entryPanel.addEventListener('touchmove', e=>{
   if(state!=='entry' || !entryTouchActive) return;
+  e.preventDefault();
   
   const currentY = e.touches[0].clientY;
   const delta = entryTouchStartY - currentY;
   
   // Every 50px of drag = one letter change
-  const newScrollAmount = Math.floor(delta / 50);
+  const newScrollAmount = Math.floor(Math.abs(delta) / 50);
   
-  if(newScrollAmount !== entryScrollAmount){
-    const change = newScrollAmount - entryScrollAmount;
-    cycleLetter(change > 0 ? 1 : -1);
+  if(newScrollAmount > entryScrollAmount){
+    const direction = delta > 0 ? 1 : -1; // up = positive = 1, down = negative = -1
+    cycleLetter(direction);
     entryScrollAmount = newScrollAmount;
   }
-}, {passive:true});
+}, {passive:false});
 
 entryPanel.addEventListener('touchend', e=>{
   if(state!=='entry') return;
+  
+  // Check if this was a tap (minimal movement)
+  if(entryScrollAmount === 0){
+    // This was a tap, not a drag - select the initial at that position
+    const touch = e.changedTouches[0];
+    const rect = cv.getBoundingClientRect();
+    const x = (touch.clientX - rect.left) * (W / rect.width);
+    
+    // Divide canvas into 3 columns for the 3 initials
+    if(x < W/3) entryPos = 0;
+    else if(x < 2*W/3) entryPos = 1;
+    else entryPos = 2;
+    
+    drawEntry();
+  }
+  
   entryTouchActive = false;
   entryScrollAmount = 0;
 }, {passive:true});
