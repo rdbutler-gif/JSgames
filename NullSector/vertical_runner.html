@@ -953,12 +953,21 @@ let entryScrollTimer = null;
 let entryScrollDirection = 0; // 1 = up, -1 = down, 0 = none
 let entryWasScrolling = false;
 
+function stopEntryScroll(){
+  if(entryScrollTimer){
+    clearInterval(entryScrollTimer);
+    entryScrollTimer = null;
+  }
+  entryScrollDirection = 0;
+}
+
 entryPanel.addEventListener('touchstart', e=>{
   if(state!=='entry') return;
   entryTouchStartY = e.touches[0].clientY;
   entryTouchActive = true;
   entryScrollDirection = 0;
   entryWasScrolling = false;
+  stopEntryScroll(); // clear any lingering scroll
   
   // Double-tap detection (only if not scrolling)
   const now = Date.now();
@@ -978,22 +987,17 @@ entryPanel.addEventListener('touchmove', e=>{
   if(Math.abs(delta) > 10 && entryScrollDirection === 0){
     entryScrollDirection = delta > 0 ? 1 : -1; // 1=up, -1=down
     entryWasScrolling = true;
-    // Start continuous scrolling
+    // Start continuous scrolling (3 per second = 333ms interval)
     entryScrollTimer = setInterval(()=>{
       cycleLetter(entryScrollDirection);
-    }, 80); // scroll every 80ms = ~12 letters per second
+    }, 333);
   }
 }, {passive:false});
 
 entryPanel.addEventListener('touchend', e=>{
   if(state!=='entry') return;
   entryTouchActive = false;
-  // Stop scrolling
-  if(entryScrollTimer){
-    clearInterval(entryScrollTimer);
-    entryScrollTimer = null;
-  }
-  entryScrollDirection = 0;
+  stopEntryScroll();
 }, {passive:true});
 
 // export / import wiring
