@@ -236,69 +236,75 @@ addEventListener('keydown', e=>{
 });
 addEventListener('keyup', e=>{ keys[e.code]=false; });
 
-// ---- TOUCH INPUT ----
+// ---- TOUCH & MOUSE INPUT ----
 let touchActive = false;
+let mouseDown = false;
 let touchPos = {x:0, y:0};
 let touchStartPos = {x:0, y:0};
 let touchStartTime = 0;
-let touchIndicator = {x:0, y:0, active:false, life:0};
 const TOUCH_TAP_THRESHOLD = 20;  // pixel distance for tap detection
 const TOUCH_TAP_TIME = 250;      // milliseconds for tap detection
 
-function getTouchCanvasPos(touch){
+function getInputPos(e){
   const rect = cv.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
   return {
-    x: (touch.clientX - rect.left) * (W / rect.width),
-    y: (touch.clientY - rect.top) * (H / rect.height)
+    x: (clientX - rect.left) * (W / rect.width),
+    y: (clientY - rect.top) * (H / rect.height)
   };
 }
 
-addEventListener('touchstart', e=>{
+// TOUCH EVENTS
+cv.addEventListener('touchstart', e=>{
   if(state==='entry' || state==='title' || state==='over' || state==='paused') return;
   e.preventDefault();
-  const touch = e.touches[0];
-  touchStartPos = getTouchCanvasPos(touch);
+  touchStartPos = getInputPos(e);
   touchPos = {...touchStartPos};
   touchStartTime = Date.now();
   touchActive = true;
 }, {passive:false});
 
-addEventListener('touchmove', e=>{
+cv.addEventListener('touchmove', e=>{
   if(!touchActive || state!=='play') return;
   e.preventDefault();
-  touchPos = getTouchCanvasPos(e.touches[0]);
+  touchPos = getInputPos(e);
 }, {passive:false});
 
-addEventListener('touchend', e=>{
+cv.addEventListener('touchend', e=>{
   if(!touchActive) return;
   e.preventDefault();
   touchActive = false;
-  const elapsed = Date.now() - touchStartTime;
-  const dist = Math.hypot(touchPos.x - touchStartPos.x, touchPos.y - touchStartPos.y);
-  // Tap: quick release with minimal movement
-  if(elapsed < TOUCH_TAP_TIME && dist < TOUCH_TAP_THRESHOLD){
-    touchIndicator = {x:touchStartPos.x, y:touchStartPos.y, active:true, life:20};
-    // Fire weapon (trigger both bullets like spacebar)
-    if(shotCooldown===0){
-      if(powerState.spread>0){
-        bullets.push({x:player.x,   y:player.y-18, vx:0,    vy:-9});
-        bullets.push({x:player.x-6, y:player.y-16, vx:-2.6, vy:-8.4});
-        bullets.push({x:player.x+6, y:player.y-16, vx:2.6,  vy:-8.4});
-        bullets.push({x:player.x-10,y:player.y-12, vx:-4.6, vy:-7.4});
-        bullets.push({x:player.x+10,y:player.y-12, vx:4.6,  vy:-7.4});
-        shotCooldown=8;
-      } else {
-        bullets.push({x:player.x-7,y:player.y-18,vx:0,vy:-9});
-        bullets.push({x:player.x+7,y:player.y-18,vx:0,vy:-9});
-        shotCooldown=7;
-      }
-    }
-  }
-  // On menus: tap anywhere to advance
-  else if(state==='title' || state==='over' || state==='paused'){
+  // Click on menus: advance
+  if(state==='title' || state==='over' || state==='paused'){
     menuAdvance();
   }
 }, {passive:false});
+
+// MOUSE EVENTS
+cv.addEventListener('mousedown', e=>{
+  if(state==='entry' || state==='title' || state==='over' || state==='paused') return;
+  e.preventDefault();
+  touchStartPos = getInputPos(e);
+  touchPos = {...touchStartPos};
+  touchStartTime = Date.now();
+  mouseDown = true;
+});
+
+cv.addEventListener('mousemove', e=>{
+  if(!mouseDown && !touchActive) return;
+  touchPos = getInputPos(e);
+});
+
+cv.addEventListener('mouseup', e=>{
+  if(!mouseDown) return;
+  e.preventDefault();
+  mouseDown = false;
+  // Click on menus: advance
+  if(state==='title' || state==='over' || state==='paused'){
+    menuAdvance();
+  }
+});
 
 let padIndex = null;
 addEventListener('gamepadconnected', e=>{
@@ -463,8 +469,8 @@ function update(){
   if(keys['KeyS']||keys['ArrowDown']) dy+=1;
   dx+=pad.x; dy+=pad.y;
   
-  // touch movement: move toward touch point at ship speed
-  if(touchActive && state==='play'){
+  // touch/mouse movement: move toward touch point at ship speed
+  if((touchActive || mouseDown) && state==='play'){
     const tdx = touchPos.x - player.x;
     const tdy = touchPos.y - player.y;
     const tdist = Math.hypot(tdx, tdy);
@@ -489,7 +495,7 @@ function update(){
 
   // firing
   if(shotCooldown>0) shotCooldown--;
-  const firing = keys['Space']||pad.fire;
+  const firing = keys['Space']||pad.fire||(touchActive || mouseDown);
   if(firing && shotCooldown===0){
     if(powerState.spread>0){
       bullets.push({x:player.x,   y:player.y-18, vx:0,    vy:-9});
@@ -598,10 +604,6 @@ function update(){
   particles=particles.filter(p=>p.life>0);
 
   if(screenShake>0) screenShake*=0.85;
-
-  // touch indicator fade
-  if(touchIndicator.active) touchIndicator.life--;
-  if(touchIndicator.life<=0) touchIndicator.active=false;
 }
 function rect(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
 
@@ -771,8 +773,8 @@ function draw(){
     }
   }
 
-  // touch movement indicator
-  if(touchActive && state==='play'){
+  // touch/mouse movement indicator
+  if((touchActive || mouseDown) && state==='play'){
     ctx.strokeStyle='rgba(40,224,255,0.6)';
     ctx.lineWidth=2;
     ctx.setLineDash([4,4]);
@@ -786,18 +788,6 @@ function draw(){
     ctx.lineWidth=2;
     ctx.beginPath();
     ctx.arc(touchPos.x, touchPos.y, 8, 0, Math.PI*2);
-    ctx.stroke();
-  }
-
-  // tap indicator flash
-  if(touchIndicator.active){
-    const alpha = touchIndicator.life / 20;
-    ctx.fillStyle=`rgba(0,255,156,${alpha*0.8})`;
-    ctx.beginPath();
-    ctx.arc(touchIndicator.x, touchIndicator.y, 16, 0, Math.PI*2);
-    ctx.fill();
-    ctx.strokeStyle=`rgba(0,255,156,${alpha})`;
-    ctx.lineWidth=2;
     ctx.stroke();
   }
 
