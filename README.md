@@ -6,7 +6,7 @@ A collection of JavaScript games built with the help of coding AI.
 
 I'm a computer science enthusiast and lifelong coder. My gaming history started on Commodore 64 BASIC in Italy during the 1980s, where I founded NICE (Northern Italian Computer Enthusiasts) and wrote the original *Escape from Mount Corna* in C64 BASIC. Decades later, I've revisited these classics and built new games using modern web technologies.
 
-This repository is a mix of nostalgia, learning, and sharing—mostly for friends and family, but open to anyone curious about web-based games and retro computing.
+This repository is a mix of nostalgia, learning, and sharing—mostly for friends and family, but open to anyone curious about web-based games and retro computing. :)
 
 ## Games
 
@@ -18,12 +18,12 @@ The original concept from 1983, reimagined. Navigate the mountain, avoid obstacl
 ### Rusko's Run
 A vertical scrolling action game. Quick reflexes required. Simple mechanics, challenging gameplay.
 
-**Play:** [Null Sector](./NullSector/vertical_runner.html)
+**Play:** [Rusko's Run](./NullSector/vertical_runner.html)
 
 ### Rusko's Planet
 Another arcade-style challenge. Built to test both coding skills and game design intuition.
 
-**Play:** [Rusk's Descent](./NullSector2/ruskos_descent.html)
+**Play:** [Rusko's Planet](./NullSector2/ruskos_descent.html)
 
 ## Technical Notes
 
