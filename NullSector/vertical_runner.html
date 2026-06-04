@@ -111,7 +111,7 @@
     <h1 style="font-size:38px;">NEW HIGH SCORE</h1>
     <div class="sub" id="entryScore">SCORE 000000</div>
     <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
-    <div class="ehint" id="entryHint">↑↓ change letter &nbsp; ←→ move initial &nbsp; SPACE/ENTER/FIRE = save<br>MOBILE: TAP initial / SLIDE ↑↓ / DOUBLE-TAP save</div>
+    <div class="ehint" id="entryHint">↑↓ change letter &nbsp; ←→ move initial &nbsp; SPACE/ENTER/FIRE = save<br>MOBILE: TAP initial / HOLD SWIPE ↑↓ to scroll / DOUBLE-TAP save</div>
   </div>
 
   <!-- GAME OVER -->
@@ -948,15 +948,21 @@ function setupEntryInitialClicks(){
   });
 }
 
-// Touch handling for entry panel (slide to change character)
+// Touch handling for entry panel (swipe and hold to scroll)
+let entryScrollTimer = null;
+let entryScrollDirection = 0; // 1 = up, -1 = down, 0 = none
+let entryWasScrolling = false;
+
 entryPanel.addEventListener('touchstart', e=>{
   if(state!=='entry') return;
   entryTouchStartY = e.touches[0].clientY;
   entryTouchActive = true;
+  entryScrollDirection = 0;
+  entryWasScrolling = false;
   
-  // Double-tap detection
+  // Double-tap detection (only if not scrolling)
   const now = Date.now();
-  if(now - entryLastTapTime < 300){
+  if(now - entryLastTapTime < 300 && !entryScrollTimer){
     confirmEntry();
   }
   entryLastTapTime = now;
@@ -967,17 +973,27 @@ entryPanel.addEventListener('touchmove', e=>{
   e.preventDefault();
   const currentY = e.touches[0].clientY;
   const delta = entryTouchStartY - currentY;
-  // Slide threshold: 30px to trigger character change
-  if(Math.abs(delta) > 30){
-    if(delta > 0) cycleLetter(1);  // slide up
-    else cycleLetter(-1);           // slide down
-    entryTouchStartY = currentY;    // reset for next character
+  
+  // Detect direction with small threshold (10px)
+  if(Math.abs(delta) > 10 && entryScrollDirection === 0){
+    entryScrollDirection = delta > 0 ? 1 : -1; // 1=up, -1=down
+    entryWasScrolling = true;
+    // Start continuous scrolling
+    entryScrollTimer = setInterval(()=>{
+      cycleLetter(entryScrollDirection);
+    }, 80); // scroll every 80ms = ~12 letters per second
   }
 }, {passive:false});
 
 entryPanel.addEventListener('touchend', e=>{
   if(state!=='entry') return;
   entryTouchActive = false;
+  // Stop scrolling
+  if(entryScrollTimer){
+    clearInterval(entryScrollTimer);
+    entryScrollTimer = null;
+  }
+  entryScrollDirection = 0;
 }, {passive:true});
 
 // export / import wiring
