@@ -74,6 +74,8 @@
     margin:0 6px;letter-spacing:1px;min-width:48px;min-height:48px;}
   .entryBtn:hover{color:var(--neon);border-color:var(--neon);box-shadow:0 0 12px var(--neon);}
   .entryBtn:active{background:rgba(0,255,156,0.15);}
+  /* game over prompt */
+  #overPrompt{cursor:pointer;user-select:none;}
 </style>
 </head>
 <body>
@@ -109,7 +111,7 @@
     <h1 style="font-size:38px;">NEW HIGH SCORE</h1>
     <div class="sub" id="entryScore">SCORE 000000</div>
     <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
-    <div class="ehint" id="entryHint">TAP initial / SLIDE ↑↓ to change / DOUBLE-TAP to save</div>
+    <div class="ehint" id="entryHint">↑↓ change letter &nbsp; ←→ move initial &nbsp; SPACE/ENTER/FIRE = save<br>MOBILE: TAP initial / SLIDE ↑↓ / DOUBLE-TAP save</div>
   </div>
 
   <!-- GAME OVER -->
@@ -238,7 +240,7 @@ addEventListener('keydown', e=>{
   if(state==='entry'){ handleEntryKey(e); return; }
   keys[e.code]=true;
   if(e.code==='KeyP') togglePause();
-  if(e.code==='Enter'){ menuAdvance(); }
+  if(e.code==='Enter' || e.code==='Space'){ menuAdvance(); }
 });
 addEventListener('keyup', e=>{ keys[e.code]=false; });
 
@@ -905,6 +907,9 @@ function menuAdvance(){
 }
 
 document.getElementById('startBtn').onclick=()=>{ if(state==='title') startGame(); };
+
+// Game over screen - make PRESS START tappable
+document.getElementById('overPrompt').onclick=()=>{ if(state==='over') menuAdvance(); };
 
 // Entry screen touch controls
 let entryTouchStartY = 0, entryTouchActive = false, entryLastTapTime = 0;
