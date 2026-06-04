@@ -481,7 +481,8 @@ function grabPowerup(p){
 // ====================================================================
 // UPDATE
 // ====================================================================
-function update(){
+function update(dt){
+  const frameTime = dt * 60; // convert deltaTime to "frame equivalents" at 60fps baseline
   frame++;
   const pad = readPad();
 
@@ -507,20 +508,20 @@ function update(){
   const mag=Math.hypot(dx,dy);
   if(mag>1){ dx/=mag; dy/=mag; }
   player.speed = player.baseSpeed * (powerState.speed>0 ? 1.85 : 1);
-  player.x += dx*player.speed;
-  player.y += dy*player.speed;
+  player.x += dx*player.speed*dt;
+  player.y += dy*player.speed*dt;
   player.x=Math.max(player.w/2, Math.min(W-player.w/2, player.x));
   player.y=Math.max(player.h/2, Math.min(H-player.h/2, player.y));
-  if(player.inv>0) player.inv--;
+  if(player.inv>0) player.inv-=frameTime;
 
   // timed powerups
-  if(powerState.speed>0) powerState.speed--;
-  if(powerState.spread>0) powerState.spread--;
+  if(powerState.speed>0) powerState.speed-=frameTime;
+  if(powerState.spread>0) powerState.spread-=frameTime;
 
   // firing - autofire when moving or fire button pressed
-  if(shotCooldown>0) shotCooldown--;
+  if(shotCooldown>0) shotCooldown-=frameTime;
   const firing = keys['Space']||pad.fire || mag > 0;
-  if(firing && shotCooldown===0){
+  if(firing && shotCooldown<=0){
     if(powerState.spread>0){
       bullets.push({x:player.x,   y:player.y-18, vx:0,    vy:-9});
       bullets.push({x:player.x-6, y:player.y-16, vx:-2.6, vy:-8.4});
@@ -535,28 +536,28 @@ function update(){
     }
   }
 
-  bullets.forEach(b=>{ b.y+=b.vy; b.x+=(b.vx||0); });
+  bullets.forEach(b=>{ b.y+=b.vy*dt; b.x+=(b.vx||0)*dt; });
   bullets=bullets.filter(b=>b.y>-12 && b.x>-12 && b.x<W+12);
 
-  stars.forEach(s=>{ s.y+=s.v; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
+  stars.forEach(s=>{ s.y+=s.v*dt; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
 
   // wave progression
-  waveTimer++;
+  waveTimer+=frameTime;
   if(waveTimer> 60*22){ wave++; waveTimer=0; screenShake=8;
     waveBanner={text:'WAVE '+wave, t:100}; }
-  if(waveBanner.t>0) waveBanner.t--;
+  if(waveBanner.t>0) waveBanner.t-=frameTime;
 
   // spawn
-  spawnTimer++;
+  spawnTimer+=frameTime;
   const spawnRate = Math.max(26, 70 - wave*4);
   if(spawnTimer>=spawnRate){ spawnTimer=0; spawnEnemy(); if(Math.random()<0.5) spawnObstacle(); }
 
   // enemies
   enemies.forEach(e=>{
-    e.y+=e.vy; e.x+=e.vx;
+    e.y+=e.vy*dt; e.x+=e.vx*dt;
     if(e.type==='weaver'){ e.x = e.base + Math.sin(e.y*0.03)*e.amp; }
     if(e.x<e.w/2||e.x>W-e.w/2) e.vx*=-1;
-    e.fireT--;
+    e.fireT-=frameTime;
     if(e.fireT<=0 && e.y>0 && e.y<H-60){
       e.fireT = e.type==='tank'?40:90;
       const ang=Math.atan2(player.y-e.y, player.x-e.x);
@@ -570,13 +571,13 @@ function update(){
   });
   enemies=enemies.filter(e=>e.y<H+50);
 
-  obstacles.forEach(o=>{ o.y+=o.vy; o.rot+=o.vr; });
+  obstacles.forEach(o=>{ o.y+=o.vy*dt; o.rot+=o.vr*dt; });
   obstacles=obstacles.filter(o=>o.y<H+60);
 
-  eBullets.forEach(b=>{ b.x+=b.vx; b.y+=b.vy; });
+  eBullets.forEach(b=>{ b.x+=b.vx*dt; b.y+=b.vy*dt; });
   eBullets=eBullets.filter(b=>b.y>-10&&b.y<H+10&&b.x>-10&&b.x<W+10);
 
-  powerups.forEach(p=>{ p.y+=p.vy; p.bob+=0.15; });
+  powerups.forEach(p=>{ p.y+=p.vy*dt; p.bob+=0.15*frameTime; });
   powerups=powerups.filter(p=>p.y<H+30);
 
   // bullets vs enemies
@@ -624,10 +625,10 @@ function update(){
     if(b.x>pl.x&&b.x<pl.x+pl.w&&b.y>pl.y&&b.y<pl.y+pl.h){ eBullets.splice(j,1); hitPlayer(); }
   }
 
-  particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vx*=0.94; p.vy*=0.94; p.life--; });
+  particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=Math.pow(0.94,frameTime); p.vy*=Math.pow(0.94,frameTime); p.life-=frameTime; });
   particles=particles.filter(p=>p.life>0);
 
-  if(screenShake>0) screenShake*=0.85;
+  if(screenShake>0) screenShake*=Math.pow(0.85,frameTime);
 }
 function rect(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
 
@@ -641,22 +642,23 @@ function startDeath(){
   bigExplosion(player.x+12,player.y-4);
   screenShake=26;
 }
-function updateDeath(){
+function updateDeath(dt){
+  const frameTime = dt * 60; // convert deltaTime to "frame equivalents" at 60fps baseline
   frame++;
   // keep world drifting/exploding while we pause
-  stars.forEach(s=>{ s.y+=s.v; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
-  enemies.forEach(e=>{ e.y+=e.vy; e.x+=e.vx; });
-  obstacles.forEach(o=>{ o.y+=o.vy; o.rot+=o.vr; });
-  eBullets.forEach(b=>{ b.x+=b.vx; b.y+=b.vy; });
-  particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vx*=0.95; p.vy*=0.95; p.life--; });
+  stars.forEach(s=>{ s.y+=s.v*dt; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
+  enemies.forEach(e=>{ e.y+=e.vy*dt; e.x+=e.vx*dt; });
+  obstacles.forEach(o=>{ o.y+=o.vy*dt; o.rot+=o.vr*dt; });
+  eBullets.forEach(b=>{ b.x+=b.vx*dt; b.y+=b.vy*dt; });
+  particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=Math.pow(0.95,frameTime); p.vy*=Math.pow(0.95,frameTime); p.life-=frameTime; });
   particles=particles.filter(p=>p.life>0);
   // secondary pops
-  if(deathTimer%14===0 && deathTimer>30){
+  if(Math.floor(deathTimer/14) !== Math.floor((deathTimer-frameTime)/14) && deathTimer>30){
     burst(player.x+(Math.random()-0.5)*30, player.y+(Math.random()-0.5)*30, '#ffb000', 14, 4);
     screenShake=Math.max(screenShake,8);
   }
-  if(screenShake>0) screenShake*=0.9;
-  deathTimer--;
+  if(screenShake>0) screenShake*=Math.pow(0.9,frameTime);
+  deathTimer-=frameTime;
   if(deathTimer<=0) afterDeath();
 }
 function afterDeath(){
@@ -867,9 +869,15 @@ function drawTimer(label, t, max, col, y){
 // ====================================================================
 // LOOP
 // ====================================================================
+let lastFrameTime = Date.now();
+
 function loop(){
-  if(state==='play'){ update(); draw(); }
-  else if(state==='dying'){ updateDeath(); draw(); }
+  const now = Date.now();
+  const deltaTime = Math.min((now - lastFrameTime) / 1000, 0.05); // cap at 50ms (20fps minimum)
+  lastFrameTime = now;
+  
+  if(state==='play'){ update(deltaTime); draw(); }
+  else if(state==='dying'){ updateDeath(deltaTime); draw(); }
   requestAnimationFrame(loop);
 }
 
