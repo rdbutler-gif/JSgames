@@ -121,6 +121,7 @@
     <div class="hs-title">&#9656; HIGH SCORES &#9656;</div>
     <div class="hs" id="hsTable"></div>
     <div style="font-size:14px;color:var(--neon-dim);margin-top:12px;">scores stored locally only</div>
+    <button id="resetScoresBtn" class="btn" style="margin-top:12px;">RESET SCORES</button>
     <div class="blink" id="overPrompt">PRESS START</div>
   </div>
 
@@ -919,6 +920,18 @@ document.getElementById('startBtn').onclick=()=>{ if(state==='title') startGame(
 
 // Game over screen - make PRESS START tappable
 document.getElementById('overPrompt').onclick=()=>{ if(state==='over') menuAdvance(); };
+
+// Reset scores button
+document.getElementById('resetScoresBtn').onclick=()=>{
+  if(state==='over'){
+    if(confirm('Clear all high scores?')){
+      try{ localStorage.removeItem(HS_KEY); }catch(e){}
+      highScores = normalize(DEFAULT_SCORES.slice());
+      renderHSTable(-1);
+      refreshTitleTop();
+    }
+  }
+};
 
 // Entry screen touch controls
 let entryTouchStartY = 0, entryTouchActive = false, entryLastTapTime = 0;
