@@ -68,6 +68,12 @@
     color:var(--cyan);border:1px solid var(--neon-dim);padding:3px 10px;cursor:pointer;
     margin:0 4px;letter-spacing:1px;}
   .filebar button:hover{color:var(--neon);border-color:var(--neon);}
+  /* entry screen buttons */
+  .entryBtn{font-family:'VT323',monospace;font-size:28px;background:transparent;
+    color:var(--cyan);border:2px solid var(--neon-dim);padding:6px 12px;cursor:pointer;
+    margin:0 6px;letter-spacing:1px;min-width:48px;min-height:48px;}
+  .entryBtn:hover{color:var(--neon);border-color:var(--neon);box-shadow:0 0 12px var(--neon);}
+  .entryBtn:active{background:rgba(0,255,156,0.15);}
 </style>
 </head>
 <body>
@@ -102,8 +108,16 @@
   <div id="entry" class="panel hidden">
     <h1 style="font-size:38px;">NEW HIGH SCORE</h1>
     <div class="sub" id="entryScore">SCORE 000000</div>
+    <div style="margin: 16px 0;">
+      <button id="entryUpBtn" class="entryBtn">&#9650;</button>
+    </div>
     <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
-    <div class="ehint" id="entryHint">&#9650;&#9660; change letter &nbsp; &#9664;&#9658; move &nbsp; FIRE/ENTER = confirm</div>
+    <div style="margin: 16px 0; display: flex; gap: 20px; justify-content: center;">
+      <button id="entryLeftBtn" class="entryBtn">&#9664;</button>
+      <button id="entryDownBtn" class="entryBtn">&#9660;</button>
+      <button id="entryRightBtn" class="entryBtn">&#9658;</button>
+    </div>
+    <div class="ehint" id="entryHint">Tap arrows to change / SPACE/ENTER to confirm</div>
   </div>
 
   <!-- GAME OVER -->
@@ -310,42 +324,16 @@ cv.addEventListener('mouseup', e=>{
 cv.addEventListener('touchstart', e=>{
   if(state!=='entry') return;
   e.preventDefault();
-  const pos = getInputPos(e);
-  entryTouchStartY = pos.y;
-  entryTouchY = pos.y;
-  entryTouchActive = true;
-  // Detect which initial was touched (divide screen into 3 columns)
-  if(pos.x < W/3) entryPos = 0;
-  else if(pos.x < 2*W/3) entryPos = 1;
-  else entryPos = 2;
-  drawEntry();
 }, {passive:false});
 
 cv.addEventListener('touchmove', e=>{
-  if(state!=='entry' || !entryTouchActive) return;
+  if(state!=='entry') return;
   e.preventDefault();
-  const pos = getInputPos(e);
-  entryTouchY = pos.y;
-  // Detect vertical swipe to change character
-  const delta = entryTouchStartY - entryTouchY;
-  if(Math.abs(delta) > 15){ // swipe threshold
-    if(delta > 0){ cycleLetter(1); } // swipe up
-    else{ cycleLetter(-1); } // swipe down
-    entryTouchStartY = entryTouchY; // reset for continuous swipes
-  }
 }, {passive:false});
 
 cv.addEventListener('touchend', e=>{
   if(state!=='entry') return;
   e.preventDefault();
-  if(!entryTouchActive) return;
-  entryTouchActive = false;
-  const pos = getInputPos(e);
-  const delta = Math.abs(pos.y - entryTouchStartY);
-  // Tap to confirm (short touch on lower part of screen)
-  if(delta < 15 && pos.y > H * 0.6){
-    confirmEntry();
-  }
 }, {passive:false});
 
 let padIndex = null;
@@ -686,12 +674,10 @@ function afterDeath(){
 // INITIALS ENTRY
 // ====================================================================
 let entryInitials, entryPos, entryCooldown;
-let entryTouchY = 0, entryTouchStartY = 0, entryTouchActive = false;
 
 function startEntry(){
   state='entry';
   entryInitials=['A','A','A']; entryPos=0; entryCooldown=0;
-  entryTouchActive = false;
   document.getElementById('entryScore').textContent='SCORE '+String(score).padStart(6,'0');
   drawEntry();
   document.getElementById('entry').classList.remove('hidden');
@@ -927,6 +913,12 @@ function menuAdvance(){
 
 document.getElementById('startBtn').onclick=()=>{ if(state==='title') startGame(); };
 
+// Entry screen button handlers
+document.getElementById('entryUpBtn').onclick=()=>{ if(state==='entry') cycleLetter(1); };
+document.getElementById('entryDownBtn').onclick=()=>{ if(state==='entry') cycleLetter(-1); };
+document.getElementById('entryLeftBtn').onclick=()=>{ if(state==='entry') movePos(-1); };
+document.getElementById('entryRightBtn').onclick=()=>{ if(state==='entry') movePos(1); };
+
 // export / import wiring
 document.getElementById('exportBtn').onclick=exportDat;
 document.getElementById('importBtn').onclick=()=>document.getElementById('importFile').click();
@@ -960,8 +952,7 @@ if(isTouchDevice()){
     'TAP TITLE to start / pause';
   const entryHint = document.getElementById('entryHint');
   entryHint.innerHTML = 
-    'TAP initial to select &nbsp; SWIPE &#9650;&#9660; to change<br>'+
-    'A-Z + 0-9 &nbsp; TAP below to confirm';
+    'Tap &#9650;&#9660; to change letter (A-Z, 0-9) &nbsp; &#9664;&#9658; to move initial &nbsp; SPACE to confirm';
 }
 
 padMenuPoll();
