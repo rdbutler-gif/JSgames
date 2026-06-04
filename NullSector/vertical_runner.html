@@ -508,8 +508,8 @@ function update(dt){
   const mag=Math.hypot(dx,dy);
   if(mag>1){ dx/=mag; dy/=mag; }
   player.speed = player.baseSpeed * (powerState.speed>0 ? 1.85 : 1);
-  player.x += dx*player.speed*dt;
-  player.y += dy*player.speed*dt;
+  player.x += dx*player.speed*frameTime;
+  player.y += dy*player.speed*frameTime;
   player.x=Math.max(player.w/2, Math.min(W-player.w/2, player.x));
   player.y=Math.max(player.h/2, Math.min(H-player.h/2, player.y));
   if(player.inv>0) player.inv-=frameTime;
@@ -536,10 +536,10 @@ function update(dt){
     }
   }
 
-  bullets.forEach(b=>{ b.y+=b.vy*dt; b.x+=(b.vx||0)*dt; });
+  bullets.forEach(b=>{ b.y+=b.vy*frameTime; b.x+=(b.vx||0)*frameTime; });
   bullets=bullets.filter(b=>b.y>-12 && b.x>-12 && b.x<W+12);
 
-  stars.forEach(s=>{ s.y+=s.v*dt; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
+  stars.forEach(s=>{ s.y+=s.v*frameTime; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
 
   // wave progression
   waveTimer+=frameTime;
@@ -554,7 +554,7 @@ function update(dt){
 
   // enemies
   enemies.forEach(e=>{
-    e.y+=e.vy*dt; e.x+=e.vx*dt;
+    e.y+=e.vy*frameTime; e.x+=e.vx*frameTime;
     if(e.type==='weaver'){ e.x = e.base + Math.sin(e.y*0.03)*e.amp; }
     if(e.x<e.w/2||e.x>W-e.w/2) e.vx*=-1;
     e.fireT-=frameTime;
@@ -571,13 +571,13 @@ function update(dt){
   });
   enemies=enemies.filter(e=>e.y<H+50);
 
-  obstacles.forEach(o=>{ o.y+=o.vy*dt; o.rot+=o.vr*dt; });
+  obstacles.forEach(o=>{ o.y+=o.vy*frameTime; o.rot+=o.vr*frameTime; });
   obstacles=obstacles.filter(o=>o.y<H+60);
 
-  eBullets.forEach(b=>{ b.x+=b.vx*dt; b.y+=b.vy*dt; });
+  eBullets.forEach(b=>{ b.x+=b.vx*frameTime; b.y+=b.vy*frameTime; });
   eBullets=eBullets.filter(b=>b.y>-10&&b.y<H+10&&b.x>-10&&b.x<W+10);
 
-  powerups.forEach(p=>{ p.y+=p.vy*dt; p.bob+=0.15*frameTime; });
+  powerups.forEach(p=>{ p.y+=p.vy*frameTime; p.bob+=0.15*frameTime; });
   powerups=powerups.filter(p=>p.y<H+30);
 
   // bullets vs enemies
@@ -625,7 +625,7 @@ function update(dt){
     if(b.x>pl.x&&b.x<pl.x+pl.w&&b.y>pl.y&&b.y<pl.y+pl.h){ eBullets.splice(j,1); hitPlayer(); }
   }
 
-  particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=Math.pow(0.94,frameTime); p.vy*=Math.pow(0.94,frameTime); p.life-=frameTime; });
+  particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=Math.pow(0.94,frameTime); p.vy*=Math.pow(0.94,frameTime); p.life-=frameTime; });
   particles=particles.filter(p=>p.life>0);
 
   if(screenShake>0) screenShake*=Math.pow(0.85,frameTime);
@@ -646,11 +646,11 @@ function updateDeath(dt){
   const frameTime = dt * 60; // convert deltaTime to "frame equivalents" at 60fps baseline
   frame++;
   // keep world drifting/exploding while we pause
-  stars.forEach(s=>{ s.y+=s.v*dt; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
-  enemies.forEach(e=>{ e.y+=e.vy*dt; e.x+=e.vx*dt; });
-  obstacles.forEach(o=>{ o.y+=o.vy*dt; o.rot+=o.vr*dt; });
-  eBullets.forEach(b=>{ b.x+=b.vx*dt; b.y+=b.vy*dt; });
-  particles.forEach(p=>{ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=Math.pow(0.95,frameTime); p.vy*=Math.pow(0.95,frameTime); p.life-=frameTime; });
+  stars.forEach(s=>{ s.y+=s.v*frameTime; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
+  enemies.forEach(e=>{ e.y+=e.vy*frameTime; e.x+=e.vx*frameTime; });
+  obstacles.forEach(o=>{ o.y+=o.vy*frameTime; o.rot+=o.vr*frameTime; });
+  eBullets.forEach(b=>{ b.x+=b.vx*frameTime; b.y+=b.vy*frameTime; });
+  particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=Math.pow(0.95,frameTime); p.vy*=Math.pow(0.95,frameTime); p.life-=frameTime; });
   particles=particles.filter(p=>p.life>0);
   // secondary pops
   if(Math.floor(deathTimer/14) !== Math.floor((deathTimer-frameTime)/14) && deathTimer>30){
