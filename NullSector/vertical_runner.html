@@ -111,7 +111,7 @@
     <h1 style="font-size:38px;">NEW HIGH SCORE</h1>
     <div class="sub" id="entryScore">SCORE 000000</div>
     <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
-    <div class="ehint" id="entryHint">↑↓ change letter &nbsp; ←→ move initial &nbsp; SPACE/ENTER/FIRE = save<br>MOBILE: TAP initial / HOLD SWIPE ↑↓ to scroll / DOUBLE-TAP save</div>
+    <div class="ehint" id="entryHint">↑↓ change letter &nbsp; ←→ move initial &nbsp; SPACE/ENTER/FIRE = save<br>MOBILE: TAP initial / DRAG ↑↓ to scroll / DOUBLE-TAP save</div>
   </div>
 
   <!-- GAME OVER -->
@@ -948,29 +948,18 @@ function setupEntryInitialClicks(){
   });
 }
 
-// Touch handling for entry panel (swipe and hold to scroll)
-let entryScrollTimer = null;
-let entryScrollDirection = 0; // 1 = up, -1 = down, 0 = none
-let entryWasScrolling = false;
-
-function stopEntryScroll(){
-  if(entryScrollTimer){
-    clearInterval(entryScrollTimer);
-    entryScrollTimer = null;
-  }
-  entryScrollDirection = 0;
-  entryWasScrolling = false;
-}
+// Touch handling for entry panel (simple drag to scroll)
+let entryScrollAmount = 0; // track total distance scrolled
 
 entryPanel.addEventListener('touchstart', e=>{
   if(state!=='entry') return;
-  stopEntryScroll(); // clear any previous scroll
   entryTouchStartY = e.touches[0].clientY;
   entryTouchActive = true;
+  entryScrollAmount = 0;
   
-  // Double-tap detection (only if not scrolling)
+  // Double-tap detection
   const now = Date.now();
-  if(now - entryLastTapTime < 300 && !entryScrollTimer){
+  if(now - entryLastTapTime < 300){
     confirmEntry();
   }
   entryLastTapTime = now;
@@ -978,37 +967,24 @@ entryPanel.addEventListener('touchstart', e=>{
 
 entryPanel.addEventListener('touchmove', e=>{
   if(state!=='entry' || !entryTouchActive) return;
+  
   const currentY = e.touches[0].clientY;
   const delta = entryTouchStartY - currentY;
   
-  // Detect direction with small threshold (15px)
-  if(Math.abs(delta) > 15 && entryScrollDirection === 0){
-    e.preventDefault(); // only prevent default once we know it's a scroll
-    entryScrollDirection = delta > 0 ? 1 : -1; // 1=up, -1=down
-    entryWasScrolling = true;
-    // Start continuous scrolling (3 per second = 333ms interval)
-    if(!entryScrollTimer){
-      entryScrollTimer = setInterval(()=>{
-        if(state==='entry'){
-          cycleLetter(entryScrollDirection);
-        } else {
-          stopEntryScroll();
-        }
-      }, 333);
-    }
+  // Every 50px of drag = one letter change
+  const newScrollAmount = Math.floor(delta / 50);
+  
+  if(newScrollAmount !== entryScrollAmount){
+    const change = newScrollAmount - entryScrollAmount;
+    cycleLetter(change > 0 ? 1 : -1);
+    entryScrollAmount = newScrollAmount;
   }
 }, {passive:true});
 
 entryPanel.addEventListener('touchend', e=>{
   if(state!=='entry') return;
   entryTouchActive = false;
-  stopEntryScroll();
-}, {passive:true});
-
-entryPanel.addEventListener('touchcancel', e=>{
-  if(state!=='entry') return;
-  entryTouchActive = false;
-  stopEntryScroll();
+  entryScrollAmount = 0;
 }, {passive:true});
 
 // export / import wiring
