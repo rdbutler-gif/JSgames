@@ -108,16 +108,8 @@
   <div id="entry" class="panel hidden">
     <h1 style="font-size:38px;">NEW HIGH SCORE</h1>
     <div class="sub" id="entryScore">SCORE 000000</div>
-    <div style="margin: 16px 0;">
-      <button id="entryUpBtn" class="entryBtn">&#9650;</button>
-    </div>
     <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
-    <div style="margin: 16px 0; display: flex; gap: 20px; justify-content: center;">
-      <button id="entryLeftBtn" class="entryBtn">&#9664;</button>
-      <button id="entryDownBtn" class="entryBtn">&#9660;</button>
-      <button id="entryRightBtn" class="entryBtn">&#9658;</button>
-    </div>
-    <div class="ehint" id="entryHint">Tap arrows to change / SPACE/ENTER to confirm</div>
+    <div class="ehint" id="entryHint">TAP initial / SLIDE ↑↓ to change / DOUBLE-TAP to save</div>
   </div>
 
   <!-- GAME OVER -->
@@ -681,6 +673,7 @@ function startEntry(){
   document.getElementById('entryScore').textContent='SCORE '+String(score).padStart(6,'0');
   drawEntry();
   document.getElementById('entry').classList.remove('hidden');
+  setupEntryInitialClicks();
 }
 function drawEntry(){
   const el=document.getElementById('entryInitials');
@@ -913,11 +906,52 @@ function menuAdvance(){
 
 document.getElementById('startBtn').onclick=()=>{ if(state==='title') startGame(); };
 
-// Entry screen button handlers
-document.getElementById('entryUpBtn').onclick=()=>{ if(state==='entry') cycleLetter(1); };
-document.getElementById('entryDownBtn').onclick=()=>{ if(state==='entry') cycleLetter(-1); };
-document.getElementById('entryLeftBtn').onclick=()=>{ if(state==='entry') movePos(-1); };
-document.getElementById('entryRightBtn').onclick=()=>{ if(state==='entry') movePos(1); };
+// Entry screen touch controls
+let entryTouchStartY = 0, entryTouchActive = false, entryLastTapTime = 0;
+const entryPanel = document.getElementById('entry');
+
+// Make initials clickable to select them
+function setupEntryInitialClicks(){
+  const initials = document.getElementById('entryInitials').querySelectorAll('span');
+  initials.forEach((span, i)=>{
+    span.style.cursor = 'pointer';
+    span.onclick = ()=>{ 
+      if(state==='entry'){ entryPos = i; drawEntry(); }
+    };
+  });
+}
+
+// Touch handling for entry panel (slide to change character)
+entryPanel.addEventListener('touchstart', e=>{
+  if(state!=='entry') return;
+  entryTouchStartY = e.touches[0].clientY;
+  entryTouchActive = true;
+  
+  // Double-tap detection
+  const now = Date.now();
+  if(now - entryLastTapTime < 300){
+    confirmEntry();
+  }
+  entryLastTapTime = now;
+}, {passive:true});
+
+entryPanel.addEventListener('touchmove', e=>{
+  if(state!=='entry' || !entryTouchActive) return;
+  e.preventDefault();
+  const currentY = e.touches[0].clientY;
+  const delta = entryTouchStartY - currentY;
+  // Slide threshold: 30px to trigger character change
+  if(Math.abs(delta) > 30){
+    if(delta > 0) cycleLetter(1);  // slide up
+    else cycleLetter(-1);           // slide down
+    entryTouchStartY = currentY;    // reset for next character
+  }
+}, {passive:false});
+
+entryPanel.addEventListener('touchend', e=>{
+  if(state!=='entry') return;
+  entryTouchActive = false;
+}, {passive:true});
 
 // export / import wiring
 document.getElementById('exportBtn').onclick=exportDat;
@@ -950,9 +984,6 @@ if(isTouchDevice()){
     'DRAG to move (target direction)<br>'+
     'TAP to fire<br>'+
     'TAP TITLE to start / pause';
-  const entryHint = document.getElementById('entryHint');
-  entryHint.innerHTML = 
-    'Tap &#9650;&#9660; to change letter (A-Z, 0-9) &nbsp; &#9664;&#9658; to move initial &nbsp; SPACE to confirm';
 }
 
 padMenuPoll();
