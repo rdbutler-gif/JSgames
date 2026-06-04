@@ -493,9 +493,9 @@ function update(){
   if(powerState.speed>0) powerState.speed--;
   if(powerState.spread>0) powerState.spread--;
 
-  // firing
+  // firing - autofire when moving or fire button pressed
   if(shotCooldown>0) shotCooldown--;
-  const firing = keys['Space']||pad.fire||(touchActive || mouseDown);
+  const firing = keys['Space']||pad.fire || mag > 0;
   if(firing && shotCooldown===0){
     if(powerState.spread>0){
       bullets.push({x:player.x,   y:player.y-18, vx:0,    vy:-9});
