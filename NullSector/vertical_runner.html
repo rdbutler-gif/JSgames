@@ -306,6 +306,48 @@ cv.addEventListener('mouseup', e=>{
   }
 });
 
+// ENTRY SCREEN TOUCH EVENTS
+cv.addEventListener('touchstart', e=>{
+  if(state!=='entry') return;
+  e.preventDefault();
+  const pos = getInputPos(e);
+  entryTouchStartY = pos.y;
+  entryTouchY = pos.y;
+  entryTouchActive = true;
+  // Detect which initial was touched (divide screen into 3 columns)
+  if(pos.x < W/3) entryPos = 0;
+  else if(pos.x < 2*W/3) entryPos = 1;
+  else entryPos = 2;
+  drawEntry();
+}, {passive:false});
+
+cv.addEventListener('touchmove', e=>{
+  if(state!=='entry' || !entryTouchActive) return;
+  e.preventDefault();
+  const pos = getInputPos(e);
+  entryTouchY = pos.y;
+  // Detect vertical swipe to change character
+  const delta = entryTouchStartY - entryTouchY;
+  if(Math.abs(delta) > 15){ // swipe threshold
+    if(delta > 0){ cycleLetter(1); } // swipe up
+    else{ cycleLetter(-1); } // swipe down
+    entryTouchStartY = entryTouchY; // reset for continuous swipes
+  }
+}, {passive:false});
+
+cv.addEventListener('touchend', e=>{
+  if(state!=='entry') return;
+  e.preventDefault();
+  if(!entryTouchActive) return;
+  entryTouchActive = false;
+  const pos = getInputPos(e);
+  const delta = Math.abs(pos.y - entryTouchStartY);
+  // Tap to confirm (short touch on lower part of screen)
+  if(delta < 15 && pos.y > H * 0.6){
+    confirmEntry();
+  }
+}, {passive:false});
+
 let padIndex = null;
 addEventListener('gamepadconnected', e=>{
   padIndex = e.gamepad.index;
@@ -644,9 +686,12 @@ function afterDeath(){
 // INITIALS ENTRY
 // ====================================================================
 let entryInitials, entryPos, entryCooldown;
+let entryTouchY = 0, entryTouchStartY = 0, entryTouchActive = false;
+
 function startEntry(){
   state='entry';
   entryInitials=['A','A','A']; entryPos=0; entryCooldown=0;
+  entryTouchActive = false;
   document.getElementById('entryScore').textContent='SCORE '+String(score).padStart(6,'0');
   drawEntry();
   document.getElementById('entry').classList.remove('hidden');
@@ -657,9 +702,11 @@ function drawEntry(){
     i===entryPos?`<span class="cur">${c}</span>`:`<span>${c}</span>`).join('');
 }
 function cycleLetter(dir){
-  let code=entryInitials[entryPos].charCodeAt(0)-65;
-  code=(code+dir+26)%26;
-  entryInitials[entryPos]=String.fromCharCode(65+code);
+  // Character set: A-Z (0-25) + 0-9 (26-35) = 36 total
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = chars.indexOf(entryInitials[entryPos]);
+  code = (code + dir + 36) % 36;
+  entryInitials[entryPos] = chars[code];
   drawEntry();
 }
 function movePos(dir){
@@ -911,6 +958,10 @@ if(isTouchDevice()){
     'DRAG to move (target direction)<br>'+
     'TAP to fire<br>'+
     'TAP TITLE to start / pause';
+  const entryHint = document.getElementById('entryHint');
+  entryHint.innerHTML = 
+    'TAP initial to select &nbsp; SWIPE &#9650;&#9660; to change<br>'+
+    'A-Z + 0-9 &nbsp; TAP below to confirm';
 }
 
 padMenuPoll();
