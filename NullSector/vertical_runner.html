@@ -110,8 +110,17 @@
   <div id="entry" class="panel hidden">
     <h1 style="font-size:38px;">NEW HIGH SCORE</h1>
     <div class="sub" id="entryScore">SCORE 000000</div>
-    <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
-    <div class="ehint" id="entryHint">↑↓ change letter &nbsp; ←→ move initial &nbsp; SPACE/ENTER/FIRE = save<br>MOBILE: TAP initial / DRAG ↑↓ to scroll / DOUBLE-TAP save</div>
+    <div style="margin:20px 0;">
+      <button id="entryUpBtn" class="entryBtn" style="display:block;margin:0 auto 8px;">▲</button>
+      <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
+      <button id="entryDownBtn" class="entryBtn" style="display:block;margin:8px auto 0;">▼</button>
+    </div>
+    <div style="display:flex;gap:16px;justify-content:center;margin:16px 0;">
+      <button id="entryLeftBtn" class="entryBtn">◄</button>
+      <button id="entryAcceptBtn" class="btn">SAVE</button>
+      <button id="entryRightBtn" class="entryBtn">►</button>
+    </div>
+    <div class="ehint" id="entryHint">Use buttons to change letters and move initial / SPACE/ENTER = save</div>
   </div>
 
   <!-- GAME OVER -->
@@ -316,21 +325,18 @@ cv.addEventListener('mouseup', e=>{
   }
 });
 
-// ENTRY SCREEN TOUCH EVENTS
+// ENTRY SCREEN TOUCH EVENTS (minimal - just prevent default)
 cv.addEventListener('touchstart', e=>{
   if(state!=='entry') return;
-  e.preventDefault();
-}, {passive:false});
+}, {passive:true});
 
 cv.addEventListener('touchmove', e=>{
   if(state!=='entry') return;
-  e.preventDefault();
-}, {passive:false});
+}, {passive:true});
 
 cv.addEventListener('touchend', e=>{
   if(state!=='entry') return;
-  e.preventDefault();
-}, {passive:false});
+}, {passive:true});
 
 let padIndex = null;
 addEventListener('gamepadconnected', e=>{
@@ -948,61 +954,12 @@ function setupEntryInitialClicks(){
   });
 }
 
-// Touch handling for entry panel (simple drag to scroll)
-let entryScrollAmount = 0; // track total distance scrolled
-
-entryPanel.addEventListener('touchstart', e=>{
-  if(state!=='entry') return;
-  entryTouchStartY = e.touches[0].clientY;
-  entryTouchActive = true;
-  entryScrollAmount = 0;
-  
-  // Double-tap detection
-  const now = Date.now();
-  if(now - entryLastTapTime < 300){
-    confirmEntry();
-  }
-  entryLastTapTime = now;
-}, {passive:true});
-
-entryPanel.addEventListener('touchmove', e=>{
-  if(state!=='entry' || !entryTouchActive) return;
-  e.preventDefault();
-  
-  const currentY = e.touches[0].clientY;
-  const delta = entryTouchStartY - currentY;
-  
-  // Every 50px of drag = one letter change
-  const newScrollAmount = Math.floor(Math.abs(delta) / 50);
-  
-  if(newScrollAmount > entryScrollAmount){
-    const direction = delta > 0 ? 1 : -1; // up = positive = 1, down = negative = -1
-    cycleLetter(direction);
-    entryScrollAmount = newScrollAmount;
-  }
-}, {passive:false});
-
-entryPanel.addEventListener('touchend', e=>{
-  if(state!=='entry') return;
-  
-  // Check if this was a tap (minimal movement)
-  if(entryScrollAmount === 0){
-    // This was a tap, not a drag - select the initial at that position
-    const touch = e.changedTouches[0];
-    const rect = cv.getBoundingClientRect();
-    const x = (touch.clientX - rect.left) * (W / rect.width);
-    
-    // Divide canvas into 3 columns for the 3 initials
-    if(x < W/3) entryPos = 0;
-    else if(x < 2*W/3) entryPos = 1;
-    else entryPos = 2;
-    
-    drawEntry();
-  }
-  
-  entryTouchActive = false;
-  entryScrollAmount = 0;
-}, {passive:true});
+// ENTRY SCREEN BUTTON HANDLERS
+document.getElementById('entryUpBtn').onclick=()=>{ if(state==='entry') cycleLetter(1); };
+document.getElementById('entryDownBtn').onclick=()=>{ if(state==='entry') cycleLetter(-1); };
+document.getElementById('entryLeftBtn').onclick=()=>{ if(state==='entry') movePos(-1); };
+document.getElementById('entryRightBtn').onclick=()=>{ if(state==='entry') movePos(1); };
+document.getElementById('entryAcceptBtn').onclick=()=>{ if(state==='entry') confirmEntry(); };
 
 // export / import wiring
 document.getElementById('exportBtn').onclick=exportDat;
