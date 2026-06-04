@@ -959,15 +959,15 @@ function stopEntryScroll(){
     entryScrollTimer = null;
   }
   entryScrollDirection = 0;
+  entryWasScrolling = false;
 }
 
 entryPanel.addEventListener('touchstart', e=>{
   if(state!=='entry') return;
+  e.preventDefault();
+  stopEntryScroll(); // clear any previous scroll
   entryTouchStartY = e.touches[0].clientY;
   entryTouchActive = true;
-  entryScrollDirection = 0;
-  entryWasScrolling = false;
-  stopEntryScroll(); // clear any lingering scroll
   
   // Double-tap detection (only if not scrolling)
   const now = Date.now();
@@ -975,7 +975,7 @@ entryPanel.addEventListener('touchstart', e=>{
     confirmEntry();
   }
   entryLastTapTime = now;
-}, {passive:true});
+}, {passive:false});
 
 entryPanel.addEventListener('touchmove', e=>{
   if(state!=='entry' || !entryTouchActive) return;
@@ -988,17 +988,30 @@ entryPanel.addEventListener('touchmove', e=>{
     entryScrollDirection = delta > 0 ? 1 : -1; // 1=up, -1=down
     entryWasScrolling = true;
     // Start continuous scrolling (3 per second = 333ms interval)
-    entryScrollTimer = setInterval(()=>{
-      cycleLetter(entryScrollDirection);
-    }, 333);
+    if(!entryScrollTimer){
+      entryScrollTimer = setInterval(()=>{
+        if(state==='entry'){
+          cycleLetter(entryScrollDirection);
+        } else {
+          stopEntryScroll();
+        }
+      }, 333);
+    }
   }
 }, {passive:false});
 
 entryPanel.addEventListener('touchend', e=>{
   if(state!=='entry') return;
+  e.preventDefault();
   entryTouchActive = false;
   stopEntryScroll();
-}, {passive:true});
+}, {passive:false});
+
+entryPanel.addEventListener('touchcancel', e=>{
+  if(state!=='entry') return;
+  entryTouchActive = false;
+  stopEntryScroll();
+}, {passive:false});
 
 // export / import wiring
 document.getElementById('exportBtn').onclick=exportDat;
