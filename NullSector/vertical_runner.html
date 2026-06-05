@@ -343,6 +343,18 @@ function sndHighScoreEntry(){
 function sndDamage(){
   playSound(100, 0.08, 'sine', 0.4);
 }
+function sndScoreMultiplier(){
+  // Bright celebratory ascending tones
+  playSound(700, 0.12, 'sine', 0.35);
+  setTimeout(()=>playSound(900, 0.12, 'sine', 0.35), 60);
+  setTimeout(()=>playSound(1100, 0.18, 'sine', 0.4), 120);
+}
+function sndHealthRegain(){
+  // Soft healing shimmer with sparkle
+  playSound(600, 0.15, 'sine', 0.3);
+  setTimeout(()=>playSound(850, 0.15, 'sine', 0.32), 50);
+  setTimeout(()=>playSound(1050, 0.12, 'sine', 0.3), 110);
+}
 
 // Sound toggle
 document.getElementById('soundToggleBtn').onclick=()=>{
@@ -548,6 +560,7 @@ let score, wave, waveTimer, spawnTimer, shotCooldown, frame, screenShake;
 let waveBanner;   // {text, t}
 let deathTimer;   // counts down the explosion pause
 let powerState;   // active timed powerups
+let legendTimer;  // displays powerup legend at game start
 
 function reset(){
   player = {x:W/2, y:H-90, w:26, h:30, baseSpeed:4.2, speed:4.2, hp:5, maxhp:5, inv:0, alive:true};
@@ -555,7 +568,8 @@ function reset(){
   score=0; wave=1; waveTimer=0; spawnTimer=0; shotCooldown=0; frame=0; screenShake=0;
   waveBanner={text:'WAVE 1', t:90};
   deathTimer=0;
-  powerState={speed:0, spread:0};
+  powerState={speed:0, spread:0, scoreMultiplier:0, scoreMultiplierAmount:1};
+  legendTimer=180;  // show legend for 3 seconds at game start
   stars=[];
   for(let i=0;i<90;i++) stars.push({x:Math.random()*W,y:Math.random()*H,
     s:Math.random()*1.8+0.4, v:Math.random()*1.5+0.4});
@@ -585,10 +599,15 @@ function spawnObstacle(){
   obstacles.push({x:Math.random()*(W-w), y:-40, w:w, h:18+Math.random()*30,
     vy:1.4+wave*0.12, rot:Math.random()*Math.PI, vr:(Math.random()-0.5)*0.05});
 }
-// powerups: S=speed, W=spread, N=nuke
+// powerups: S=speed, W=spread, M=multiplier, H=health, N=nuke
 function spawnPowerup(x,y){
   const r=Math.random();
-  let kind = r<0.4?'S' : r<0.75?'W' : 'N';
+  let kind;
+  if(r < 0.33) kind = 'S';          // Speed 33%
+  else if(r < 0.63) kind = 'W';     // Spread 30%
+  else if(r < 0.78) kind = 'M';     // Multiplier 15%
+  else if(r < 0.92) kind = 'H';     // Health 14%
+  else kind = 'N';                  // Nuke 8%
   powerups.push({kind, x:x??(Math.random()*(W-40)+20), y:y??-20, vy:1.4, bob:0});
 }
 
@@ -612,7 +631,8 @@ function nuke(){
   // blast everything off screen
   screenShake=22;
   sndNukeExplosion();
-  enemies.forEach(e=>{ score+=Math.floor(e.score/2); bigExplosion(e.x,e.y); });
+  const multiplier = powerState.scoreMultiplierAmount > 1 ? powerState.scoreMultiplierAmount : 1;
+  enemies.forEach(e=>{ score+=Math.floor(e.score/2)*multiplier; bigExplosion(e.x,e.y); });
   obstacles.forEach(o=>burst(o.x+o.w/2,o.y+o.h/2,'#888',10,3));
   enemies=[]; obstacles=[]; eBullets=[];
   // shockwave ring particles
@@ -625,9 +645,24 @@ function nuke(){
 function grabPowerup(p){
   if(p.kind==='S'){ powerState.speed = 60*7; }
   else if(p.kind==='W'){ powerState.spread = 60*9; }
-  else if(p.kind==='N'){ nuke(); }
+  else if(p.kind==='M'){ 
+    powerState.scoreMultiplierAmount = (powerState.scoreMultiplierAmount || 1) + 1;
+    powerState.scoreMultiplier = 60*15;  // 15 seconds
+    sndScoreMultiplier();
+  }
+  else if(p.kind==='H'){ 
+    if(player.hp < player.maxhp){ 
+      player.hp++;
+      sndHealthRegain();
+    }
+  }
+  else if(p.kind==='N'){ 
+    nuke();
+    sndNukeExplosion();
+  }
   burst(p.x,p.y,'#fff',16,3);
-  sndPowerupGrab();
+  // Play standard powerup sound for S, W, and N (unless it's M or H which have their own)
+  if(p.kind==='S' || p.kind==='W' || p.kind==='N') sndPowerupGrab();
 }
 
 // ====================================================================
@@ -637,6 +672,15 @@ function update(dt){
   const frameTime = dt * 60; // convert deltaTime to "frame equivalents" at 60fps baseline
   frame++;
   const pad = readPad();
+
+  // hide legend if player moves (instantly) - catch all input methods
+  if(legendTimer>0 && (Math.abs(pad.x)>0.2 || Math.abs(pad.y)>0.2 || 
+     keys['KeyW'] || keys['KeyA'] || keys['KeyS'] || keys['KeyD'] || 
+     keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight'] || 
+     touchActive || mouseDown)){
+    legendTimer=0;
+  }
+  if(legendTimer>0) legendTimer--;
 
   // movement
   let dx=0, dy=0;
@@ -669,6 +713,8 @@ function update(dt){
   // timed powerups
   if(powerState.speed>0) powerState.speed-=frameTime;
   if(powerState.spread>0) powerState.spread-=frameTime;
+  if(powerState.scoreMultiplier>0) powerState.scoreMultiplier-=frameTime;
+  else if(powerState.scoreMultiplier<=0) powerState.scoreMultiplierAmount=1;  // reset multiplier when duration expires
 
   // firing - autofire when moving or fire button pressed
   if(shotCooldown>0) shotCooldown-=frameTime;
@@ -741,12 +787,14 @@ function update(dt){
       if(b.x>e.x-e.w/2&&b.x<e.x+e.w/2&&b.y>e.y-e.h/2&&b.y<e.y+e.h/2){
         e.hp--; bullets.splice(j,1); burst(b.x,b.y,'#28e0ff',4,2);
         if(e.hp<=0){
-          score+=e.score; burst(e.x,e.y,'#ff2d6f',18,3.5); screenShake=4;
+          const multiplier = powerState.scoreMultiplierAmount > 1 ? powerState.scoreMultiplierAmount : 1;
+          score += e.score * multiplier; 
+          burst(e.x,e.y,'#ff2d6f',18,3.5); screenShake=4;
           // Play explosion sound based on enemy type
           if(e.type==='drone') sndDroneExplode();
           else if(e.type==='weaver') sndWeaverExplode();
           else if(e.type==='tank') sndTankExplode();
-          if(Math.random()<0.12) spawnPowerup(e.x,e.y);  // 12% drop
+          if(Math.random()<0.30) spawnPowerup(e.x,e.y);  // 30% drop
           enemies.splice(i,1); break;
         }
       }
@@ -759,6 +807,17 @@ function update(dt){
       const b=bullets[j];
       if(b.x>o.x&&b.x<o.x+o.w&&b.y>o.y&&b.y<o.y+o.h){ bullets.splice(j,1); burst(b.x,b.y,'#555',3,1.5); }
     }
+  });
+
+  // enemy bullets vs obstacles (enemy bullets destroyed on contact)
+  eBullets = eBullets.filter(b=>{
+    for(let o of obstacles){
+      if(b.x>o.x&&b.x<o.x+o.w&&b.y>o.y&&b.y<o.y+o.h){
+        burst(b.x, b.y, '#ff2d6f', 2, 1.2);
+        return false;  // remove bullet
+      }
+    }
+    return true;  // keep bullet
   });
 
   // player vs powerups
@@ -902,7 +961,7 @@ function draw(){
 
   // powerups
   powerups.forEach(p=>{
-    const col = p.kind==='S'?'#28e0ff' : p.kind==='W'?'#00ff9c' : '#b06bff';
+    const col = p.kind==='S'?'#28e0ff' : p.kind==='W'?'#00ff9c' : p.kind==='M'?'#ffff00' : p.kind==='H'?'#ff66ff' : '#b06bff';
     const yy=p.y+Math.sin(p.bob)*2;
     ctx.save(); ctx.translate(p.x,yy);
     ctx.shadowBlur=14; ctx.shadowColor=col;
@@ -1003,6 +1062,10 @@ function draw(){
   let py=58;
   if(powerState.speed>0){ drawTimer('SPEED', powerState.speed, 60*7, '#28e0ff', py); py+=18; }
   if(powerState.spread>0){ drawTimer('SPREAD', powerState.spread, 60*9, '#00ff9c', py); py+=18; }
+  if(powerState.scoreMultiplier>0){ 
+    drawTimer('x'+powerState.scoreMultiplierAmount, powerState.scoreMultiplier, 60*15, '#ffff00', py); 
+    py+=18; 
+  }
 
   // ---- WAVE BANNER ----
   if(waveBanner.t>0){
@@ -1016,6 +1079,56 @@ function draw(){
     ctx.fillText(waveBanner.text, W/2, H/2);
     ctx.shadowBlur=0; ctx.restore();
     ctx.textBaseline='alphabetic';
+  }
+
+  // ---- POWERUP LEGEND ----
+  if(legendTimer>0){
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    ctx.fillRect(W/2-140, H/2-95, 280, 190);
+    ctx.strokeStyle='#00ff9c'; ctx.lineWidth=2;
+    ctx.strokeRect(W/2-140, H/2-95, 280, 190);
+    
+    ctx.font='bold 22px Orbitron, monospace'; ctx.fillStyle='#00ff9c';
+    ctx.textAlign='center'; ctx.fillText('POWERUPS', W/2, H/2-70);
+    
+    const legends = [
+      {label:'S', desc:'SPEED', color:'#28e0ff'},
+      {label:'W', desc:'SPREAD FIRE', color:'#00ff9c'},
+      {label:'M', desc:'2x SCORE', color:'#ffff00'},
+      {label:'H', desc:'HEALTH', color:'#ff66ff'},
+      {label:'N', desc:'NUKE', color:'#b06bff'}
+    ];
+    legends.forEach((leg, i)=>{
+      const y = H/2-48 + i*32;
+      const diamondX = W/2-105;
+      
+      // Draw diamond outline around letter
+      ctx.strokeStyle=leg.color;
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(diamondX-12, y);      // left
+      ctx.lineTo(diamondX, y-12);      // top
+      ctx.lineTo(diamondX+12, y);      // right
+      ctx.lineTo(diamondX, y+12);      // bottom
+      ctx.closePath();
+      ctx.stroke();
+      
+      // Letter inside diamond
+      ctx.fillStyle=leg.color;
+      ctx.font='bold 18px Orbitron, monospace';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(leg.label, diamondX, y);
+      
+      // Description
+      ctx.fillStyle='#ccc';
+      ctx.font='18px VT323, monospace';
+      ctx.textAlign='left'; ctx.textBaseline='middle';
+      ctx.fillText(leg.desc, W/2-40, y);
+    });
+    
+    ctx.restore();
   }
 }
 function drawTimer(label, t, max, col, y){
