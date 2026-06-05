@@ -99,6 +99,9 @@
     <button class="btn" id="startBtn">INSERT COIN &#9656; START</button>
     <div class="small" id="padHint" style="display:none;color:var(--amber);">&#9656; PRESS <b style="color:var(--neon)">X</b> ON CONTROLLER TO START</div>
     <div class="small" id="padStatus">controller: not detected</div>
+    <div class="filebar" style="margin-top:12px;">
+      sound: <button id="soundToggleBtn" style="font-family:'VT323',monospace;font-size:15px;background:transparent;color:var(--neon-dim);border:1px solid var(--neon-dim);padding:3px 10px;cursor:pointer;margin:0 4px;letter-spacing:1px;">OFF</button>
+    </div>
     <div class="filebar">
       high scores: <button id="exportBtn">EXPORT .dat</button>
       <button id="importBtn">IMPORT .dat</button>
@@ -242,8 +245,147 @@ function renderHSTable(highlightIdx=-1){
 }
 
 // ====================================================================
-// INPUT
+// SOUND SYSTEM
 // ====================================================================
+let soundEnabled = false;
+let audioContext = null;
+
+function initAudio(){
+  if(!audioContext){
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playSound(freq, duration, type='sine', volume=0.3){
+  if(!soundEnabled || !audioContext) return;
+  try{
+    const now = audioContext.currentTime;
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.frequency.value = freq;
+    osc.type = type;
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+    osc.start(now);
+    osc.stop(now + duration);
+  }catch(e){}
+}
+
+function playMultiTone(frequencies, duration, volume=0.3){
+  if(!soundEnabled || !audioContext) return;
+  try{
+    const now = audioContext.currentTime;
+    frequencies.forEach(freq=>{
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+      osc.start(now);
+      osc.stop(now + duration);
+    });
+  }catch(e){}
+}
+
+// Game sounds
+function sndPlayerFire(){ playSound(150, 0.05, 'sine', 0.2); }
+function sndDroneExplode(){
+  // Small drone explosion - high-ish frequencies
+  playSound(100, 1.0, 'sine', 0.25);
+  setTimeout(()=>playSound(140, 0.8, 'sine', 0.2), 8);
+}
+function sndWeaverExplode(){
+  // Medium weaver explosion - mid-range
+  playSound(80, 1.2, 'sine', 0.28);
+  setTimeout(()=>playSound(110, 1.0, 'sine', 0.22), 10);
+  setTimeout(()=>playSound(90, 0.9, 'sine', 0.15), 25);
+}
+function sndTankExplode(){
+  // Heavy tank explosion - lower frequencies, beefier
+  playSound(60, 1.4, 'sine', 0.32);
+  setTimeout(()=>playSound(100, 1.2, 'sine', 0.26), 12);
+  setTimeout(()=>playSound(75, 1.0, 'sine', 0.18), 30);
+  setTimeout(()=>playSound(120, 0.7, 'sine', 0.12), 50);
+}
+function sndNukeExplosion(){
+  // Loud, multi-layered nuke explosion with long decay
+  playSound(50, 2.5, 'sine', 0.75);
+  setTimeout(()=>playSound(80, 2.5, 'sine', 0.65), 15);
+  setTimeout(()=>playSound(120, 2.5, 'sine', 0.6), 30);
+  setTimeout(()=>playSound(100, 2.0, 'sine', 0.5), 50);
+}
+function sndPlayerExplosion(){
+  // Multi-layered explosion with 3 second decay
+  playSound(80, 3.0, 'sine', 0.6);
+  setTimeout(()=>playSound(120, 3.0, 'sine', 0.5), 10);
+  setTimeout(()=>playSound(60, 3.0, 'sine', 0.4), 20);
+  setTimeout(()=>playSound(100, 2.5, 'sine', 0.3), 30);
+}
+function sndPowerupGrab(){ 
+  playSound(300, 0.1, 'sine', 0.25);
+  setTimeout(()=>playSound(400, 0.1, 'sine', 0.25), 50);
+  setTimeout(()=>playSound(500, 0.15, 'sine', 0.3), 100);
+}
+function sndWaveStart(){ 
+  playSound(400, 0.1, 'sine', 0.35);
+  setTimeout(()=>playSound(500, 0.2, 'sine', 0.35), 100);
+}
+function sndHighScoreEntry(){
+  playSound(500, 0.1, 'sine', 0.3);
+  setTimeout(()=>playSound(600, 0.1, 'sine', 0.3), 80);
+  setTimeout(()=>playSound(700, 0.15, 'sine', 0.3), 160);
+}
+function sndDamage(){
+  playSound(100, 0.08, 'sine', 0.4);
+}
+
+// Sound toggle
+document.getElementById('soundToggleBtn').onclick=()=>{
+  if(!audioContext) initAudio();
+  soundEnabled = !soundEnabled;
+  const btn = document.getElementById('soundToggleBtn');
+  if(btn){
+    btn.textContent = soundEnabled ? 'ON' : 'OFF';
+    btn.style.color = soundEnabled ? 'var(--neon)' : 'var(--neon-dim)';
+  }
+  try{ localStorage.setItem('ruskosrun_sound', soundEnabled ? '1' : '0'); }catch(e){}
+};
+
+// Initialize sound preference - always runs on page load to ensure clean state
+function initSoundPreference(){
+  try{
+    // Load from localStorage, default to OFF
+    const saved = localStorage.getItem('ruskosrun_sound');
+    soundEnabled = (saved === '1');
+    
+    // Update button to match soundEnabled state
+    const btn = document.getElementById('soundToggleBtn');
+    if(btn){
+      btn.textContent = soundEnabled ? 'ON' : 'OFF';
+      btn.style.color = soundEnabled ? 'var(--neon)' : 'var(--neon-dim)';
+    }
+    
+    // Always save the state (ensures '0' is default on first load)
+    localStorage.setItem('ruskosrun_sound', soundEnabled ? '1' : '0');
+  }catch(e){
+    // Fallback: ensure safe defaults
+    soundEnabled = false;
+    const btn = document.getElementById('soundToggleBtn');
+    if(btn){
+      btn.textContent = 'OFF';
+      btn.style.color = 'var(--neon-dim)';
+    }
+  }
+}
+
+// Run initialization on page load
+initSoundPreference();
+
 const keys = {};
 addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
@@ -469,6 +611,7 @@ function bigExplosion(x,y){
 function nuke(){
   // blast everything off screen
   screenShake=22;
+  sndNukeExplosion();
   enemies.forEach(e=>{ score+=Math.floor(e.score/2); bigExplosion(e.x,e.y); });
   obstacles.forEach(o=>burst(o.x+o.w/2,o.y+o.h/2,'#888',10,3));
   enemies=[]; obstacles=[]; eBullets=[];
@@ -484,6 +627,7 @@ function grabPowerup(p){
   else if(p.kind==='W'){ powerState.spread = 60*9; }
   else if(p.kind==='N'){ nuke(); }
   burst(p.x,p.y,'#fff',16,3);
+  sndPowerupGrab();
 }
 
 // ====================================================================
@@ -507,7 +651,7 @@ function update(dt){
     const tdx = touchPos.x - player.x;
     const tdy = touchPos.y - player.y;
     const tdist = Math.hypot(tdx, tdy);
-    if(tdist > 2){
+    if(tdist > 8){ // deadzone: only move if target is more than 8px away
       dx += tdx / tdist;
       dy += tdy / tdist;
     }
@@ -530,6 +674,7 @@ function update(dt){
   if(shotCooldown>0) shotCooldown-=frameTime;
   const firing = keys['Space']||pad.fire || mag > 0;
   if(firing && shotCooldown<=0){
+    sndPlayerFire();
     if(powerState.spread>0){
       bullets.push({x:player.x,   y:player.y-18, vx:0,    vy:-9});
       bullets.push({x:player.x-6, y:player.y-16, vx:-2.6, vy:-8.4});
@@ -551,7 +696,7 @@ function update(dt){
 
   // wave progression
   waveTimer+=frameTime;
-  if(waveTimer> 60*22){ wave++; waveTimer=0; screenShake=8;
+  if(waveTimer> 60*22){ wave++; waveTimer=0; screenShake=8; sndWaveStart();
     waveBanner={text:'WAVE '+wave, t:100}; }
   if(waveBanner.t>0) waveBanner.t-=frameTime;
 
@@ -597,6 +742,10 @@ function update(dt){
         e.hp--; bullets.splice(j,1); burst(b.x,b.y,'#28e0ff',4,2);
         if(e.hp<=0){
           score+=e.score; burst(e.x,e.y,'#ff2d6f',18,3.5); screenShake=4;
+          // Play explosion sound based on enemy type
+          if(e.type==='drone') sndDroneExplode();
+          else if(e.type==='weaver') sndWeaverExplode();
+          else if(e.type==='tank') sndTankExplode();
           if(Math.random()<0.12) spawnPowerup(e.x,e.y);  // 12% drop
           enemies.splice(i,1); break;
         }
@@ -623,6 +772,7 @@ function update(dt){
   function hitPlayer(){
     if(player.inv>0||!player.alive) return;
     player.hp--;
+    sndDamage();
     if(player.hp<=0){ startDeath(); return; }
     player.inv=70; screenShake=10; burst(player.x,player.y,'#ffb000',16,3);
   }
@@ -645,6 +795,7 @@ function startDeath(){
   player.alive=false;
   state='dying';
   deathTimer=110;             // ~1.8s at 60fps
+  sndPlayerExplosion();
   bigExplosion(player.x,player.y);
   bigExplosion(player.x-10,player.y+6);
   bigExplosion(player.x+12,player.y-4);
@@ -686,6 +837,7 @@ function startEntry(){
   drawEntry();
   document.getElementById('entry').classList.remove('hidden');
   setupEntryInitialClicks();
+  sndHighScoreEntry();
 }
 function drawEntry(){
   const el=document.getElementById('entryInitials');
