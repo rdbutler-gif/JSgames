@@ -495,6 +495,65 @@ cv.addEventListener('mousedown',e=>{ if(e.button===0){ mouse.down=true; ensureAu
 cv.addEventListener('mouseup',  e=>{ if(e.button===0) mouse.down=false; });
 cv.addEventListener('contextmenu',e=>e.preventDefault()); // suppress right-click menu
 
+// ====================================================================
+// TOUCH INPUT (dual-stick: left=movement, right=aiming)
+// ====================================================================
+let touches={moveTouch:null,aimTouch:null};
+const TOUCH_DEADZONE=10, TOUCH_MAXDIST=90;
+
+function getTouchStickVector(touch,isAim){
+  if(!touch) return {x:0,y:0};
+  const rect=cv.getBoundingClientRect();
+  const tx=(touch.clientX-rect.left)*(VW/rect.width);
+  const ty=(touch.clientY-rect.top)*(VH/rect.height);
+  const dx=tx-touch.startX, dy=ty-touch.startY;
+  const d=Math.hypot(dx,dy);
+  if(d<TOUCH_DEADZONE) return {x:0,y:0};
+  const norm=Math.min(1,d/TOUCH_MAXDIST);
+  return {x:(dx/d)*norm, y:(dy/d)*norm};
+}
+
+cv.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const rect=cv.getBoundingClientRect();
+  for(let i=0;i<e.touches.length;i++){
+    const t=e.touches[i];
+    const tx=(t.clientX-rect.left)*(VW/rect.width);
+    if(tx<VW/2 && !touches.moveTouch){
+      touches.moveTouch={clientX:t.clientX,clientY:t.clientY,startX:tx,startY:(t.clientY-rect.top)*(VH/rect.height),id:t.identifier};
+    } else if(tx>=VW/2 && !touches.aimTouch){
+      touches.aimTouch={clientX:t.clientX,clientY:t.clientY,startX:tx,startY:(t.clientY-rect.top)*(VH/rect.height),id:t.identifier};
+    }
+  }
+  ensureAudio();
+},false);
+
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  for(let i=0;i<e.touches.length;i++){
+    const t=e.touches[i];
+    if(touches.moveTouch&&touches.moveTouch.id===t.identifier){
+      touches.moveTouch.clientX=t.clientX; touches.moveTouch.clientY=t.clientY;
+    }
+    if(touches.aimTouch&&touches.aimTouch.id===t.identifier){
+      touches.aimTouch.clientX=t.clientX; touches.aimTouch.clientY=t.clientY;
+    }
+  }
+},false);
+
+cv.addEventListener('touchend',e=>{
+  e.preventDefault();
+  for(let i=0;i<e.changedTouches.length;i++){
+    const t=e.changedTouches[i];
+    if(touches.moveTouch&&touches.moveTouch.id===t.identifier) touches.moveTouch=null;
+    if(touches.aimTouch&&touches.aimTouch.id===t.identifier) touches.aimTouch=null;
+  }
+},false);
+
+cv.addEventListener('touchcancel',e=>{
+  touches.moveTouch=null; touches.aimTouch=null;
+},false);
+
 let padIndex=null;
 addEventListener('gamepadconnected',e=>{
   padIndex=e.gamepad.index;
@@ -717,6 +776,9 @@ function update(){
   if(keys['KeyA']) mx-=1; if(keys['KeyD']) mx+=1;
   if(keys['KeyW']) my-=1; if(keys['KeyS']) my+=1;
   mx+=pad.mx; my+=pad.my;
+  // touch movement (left side)
+  const moveStick=getTouchStickVector(touches.moveTouch,false);
+  mx+=moveStick.x; my+=moveStick.y;
   const mm=Math.hypot(mx,my); if(mm>1){mx/=mm;my/=mm;}
   player.x+=mx*player.speed; player.y+=my*player.speed;
   // walk-cycle animation
@@ -730,6 +792,9 @@ function update(){
   if(keys['ArrowUp']) ay-=1; if(keys['ArrowDown']) ay+=1;
   let aiming = !!(ax||ay);
   if(pad.ax||pad.ay){ ax=pad.ax; ay=pad.ay; aiming=true; }
+  // touch aiming (right side)
+  const aimStick=getTouchStickVector(touches.aimTouch,true);
+  if(aimStick.x||aimStick.y){ ax=aimStick.x; ay=aimStick.y; aiming=true; }
   // mouse aim: direction from player screen-position to cursor
   if(mouse.down || aiming===false){
     const psx=player.x-cam.x, psy=player.y-cam.y;
