@@ -127,7 +127,7 @@
     <div class="sub" id="finalScore">SCORE 000000</div>
     <div class="hs-title">&#9656; HIGH SCORES &#9656;</div>
     <div class="hs" id="hsTable"></div>
-    <div class="blink" id="overPrompt">PRESS START</div>
+    <div class="blink" id="overPrompt" style="cursor:pointer;">PRESS START</div>
   </div>
 
   <!-- WIN -->
@@ -136,7 +136,7 @@
     <div class="sub" id="winScore">SCORE 000000</div>
     <div class="hs-title">&#9656; HIGH SCORES &#9656;</div>
     <div class="hs" id="hsTableWin"></div>
-    <div class="blink">PRESS START</div>
+    <div class="blink" id="winPrompt" style="cursor:pointer;">PRESS START</div>
   </div>
 
   <!-- PAUSED -->
@@ -1217,6 +1217,10 @@ document.getElementById('entryDownBtn').onclick=()=>{ if(state==='entry') cycleL
 document.getElementById('entryLeftBtn').onclick=()=>{ if(state==='entry') movePos(-1); };
 document.getElementById('entryRightBtn').onclick=()=>{ if(state==='entry') movePos(1); };
 document.getElementById('entryAcceptBtn').onclick=()=>{ if(state==='entry') confirmEntry(); };
+
+// PRESS START click handlers (game over and win screens)
+document.getElementById('overPrompt').onclick=()=>{ if(state==='over') menuAdvance(); };
+document.getElementById('winPrompt').onclick=()=>{ if(state==='win') menuAdvance(); };
 
 // ====================================================================
 // RENDER
