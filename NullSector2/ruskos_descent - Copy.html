@@ -934,8 +934,7 @@ function grabPow(kind,x,y){
 // UPDATE
 // ====================================================================
 let shotCooldown=0;
-function update(dt){
-  const frameTime=dt*60; // convert deltaTime to "frame equivalents" at 60fps baseline
+function update(){
   frame++;
   const pad=readPad();
 
@@ -948,11 +947,11 @@ function update(dt){
   const moveStick=getTouchStickVector(touches.moveTouch,false);
   mx+=moveStick.x; my+=moveStick.y;
   const mm=Math.hypot(mx,my); if(mm>1){mx/=mm;my/=mm;}
-  player.x+=mx*player.speed*frameTime; player.y+=my*player.speed*frameTime;
+  player.x+=mx*player.speed; player.y+=my*player.speed;
   // walk-cycle animation
   player.moving = mm>0.05;
-  if(player.moving){ player.walkPhase += 0.25*Math.min(1,mm)*frameTime; }
-  else { player.walkPhase += (0 - (player.walkPhase%6.283))*0.2*frameTime; } // ease legs to rest
+  if(player.moving){ player.walkPhase += 0.25*Math.min(1,mm); }
+  else { player.walkPhase += (0 - (player.walkPhase%6.283))*0.2; } // ease legs to rest
 
   // ---- aim ----
   let ax=0,ay=0;
@@ -997,25 +996,25 @@ function update(dt){
   });
   player.x=Math.max(player.r,Math.min(WORLD-player.r,player.x));
   player.y=Math.max(player.r,Math.min(WORLD-player.r,player.y));
-  if(player.inv>0) player.inv-=frameTime;
+  if(player.inv>0) player.inv--;
   
   // ---- shield handling ----
   if(player.shieldTime>0){
-    player.shieldTime-=frameTime;
+    player.shieldTime--;
     player.speed=player.baseSpeed*2; // 2x speed while shielded
-    player.inv=Math.max(player.inv,frameTime); // always invincible during shield
+    player.inv=Math.max(player.inv,1); // always invincible during shield
   } else {
     player.speed=player.baseSpeed; // normal speed when not shielded
   }
 
   // ---- camera follow ----
-  cam.x += ((player.x-VW/2)-cam.x)*0.12*frameTime;
-  cam.y += ((player.y-VH/2)-cam.y)*0.12*frameTime;
+  cam.x += ((player.x-VW/2)-cam.x)*0.12;
+  cam.y += ((player.y-VH/2)-cam.y)*0.12;
   cam.x=Math.max(0,Math.min(WORLD-VW,cam.x));
   cam.y=Math.max(0,Math.min(WORLD-VH,cam.y));
 
   // ---- firing ----
-  if(shotCooldown>0) shotCooldown-=frameTime;
+  if(shotCooldown>0) shotCooldown--;
   if(firing && shotCooldown<=0){
     const baseAng=Math.atan2(lastAim.y,lastAim.x);
     const n=player.spread, sp=10;
@@ -1027,7 +1026,7 @@ function update(dt){
     pewSound(); // one pew per volley regardless of spread count
     shotCooldown=player.fireRate;
   }
-  bullets.forEach(b=>{b.x+=b.vx*frameTime;b.y+=b.vy*frameTime;});
+  bullets.forEach(b=>{b.x+=b.vx;b.y+=b.vy;});
   bullets=bullets.filter(b=>b.x>cam.x-40&&b.x<cam.x+VW+40&&b.y>cam.y-40&&b.y<cam.y+VH+40
     && b.x>0&&b.x<WORLD&&b.y>0&&b.y<WORLD);
 
@@ -1045,12 +1044,12 @@ function update(dt){
 
     const dx=player.x-e.x, dy=player.y-e.y, d=Math.hypot(dx,dy)||1;
     if(e.type==='spitter'){
-      if(d>240){e.x+=dx/d*e.spd*frameTime;e.y+=dy/d*e.spd*frameTime;}
-      e.fireT-=frameTime;
+      if(d>240){e.x+=dx/d*e.spd;e.y+=dy/d*e.spd;}
+      e.fireT--;
       if(e.fireT<=0&&d<560){e.fireT=70;
         const a=Math.atan2(dy,dx),sp=3.4;
         eBullets.push({x:e.x,y:e.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp});}
-    } else {e.x+=dx/d*e.spd*frameTime;e.y+=dy/d*e.spd*frameTime;}
+    } else {e.x+=dx/d*e.spd;e.y+=dy/d*e.spd;}
   });
 
   // contagion: awake enemies wake nearby sleepers
@@ -1071,9 +1070,9 @@ function update(dt){
       const inView = mb.x>cam.x-80&&mb.x<cam.x+VW+80&&mb.y>cam.y-80&&mb.y<cam.y+VH+80;
       if(inView||d<500) mb.discovered=true;
     }
-    mb.wob+=0.05*frameTime;
-    if(d<550){mb.x+=dx/d*0.8*frameTime;mb.y+=dy/d*0.8*frameTime;}
-    mb.fireT-=frameTime;
+    mb.wob+=0.05;
+    if(d<550){mb.x+=dx/d*0.8;mb.y+=dy/d*0.8;}
+    mb.fireT--;
     if(mb.fireT<=0&&d<650){
       mb.phase++;
       if(mb.phase%3===0){
@@ -1094,12 +1093,12 @@ function update(dt){
   // ---- apex boss ----
   if(apexBoss&&apexBoss.alive){
     const dx=player.x-apexBoss.x, dy=player.y-apexBoss.y, d=Math.hypot(dx,dy)||1;
-    apexBoss.wob+=0.04*frameTime; apexBoss.spiralAngle=(apexBoss.spiralAngle||0)+0.07*frameTime;
-    if(d<700){apexBoss.x+=dx/d*1.1*frameTime;apexBoss.y+=dy/d*1.1*frameTime;}
+    apexBoss.wob+=0.04; apexBoss.spiralAngle=(apexBoss.spiralAngle||0)+0.07;
+    if(d<700){apexBoss.x+=dx/d*1.1;apexBoss.y+=dy/d*1.1;}
 
     // ray state machine: 'normal' | 'charging' | 'firing'
     if(!apexBoss.rayState) apexBoss.rayState='normal';
-    apexBoss.fireT-=frameTime;
+    apexBoss.fireT--;
 
     if(apexBoss.rayState==='normal'){
       if(apexBoss.fireT<=0){
@@ -1126,7 +1125,7 @@ function update(dt){
         }
       }
     } else if(apexBoss.rayState==='charging'){
-      apexBoss.rayChargeT-=frameTime;
+      apexBoss.rayChargeT--;
       if(apexBoss.rayChargeT<=0){
         // fire 4 damaging rays
         apexBoss.rayState='firing';
@@ -1139,9 +1138,9 @@ function update(dt){
         screenShake=18;
       }
     } else if(apexBoss.rayState==='firing'){
-      apexBoss.rayFireT-=frameTime;
+      apexBoss.rayFireT--;
       // update ray life
-      rayBeams.forEach(r=>r.life-=frameTime);
+      rayBeams.forEach(r=>r.life--);
       rayBeams=rayBeams.filter(r=>r.life>0);
       // ray vs player: continuous damage check
       rayBeams.forEach(ray=>{
@@ -1152,7 +1151,7 @@ function update(dt){
           const perp=Math.abs(px*ray.ay-py*ray.ax);
           if(perp<22){
             if(player.inv<=0&&player.alive){
-              player.hp=Math.max(0,player.hp-3*frameTime);
+              player.hp=Math.max(0,player.hp-3);
               if(player.hp<=0){ startDeath(); }
               else{ player.inv=60; screenShake=14; burst(player.x,player.y,'#ffb000',22,4);
                     damageSound(); rumble(400, 0.8, 1.0); }
@@ -1190,11 +1189,11 @@ function update(dt){
       fireT:120,phase:0,alive:true,wob:0,spiralAngle:0};
   }
 
-  eBullets.forEach(b=>{b.x+=b.vx*frameTime;b.y+=b.vy*frameTime;});
+  eBullets.forEach(b=>{b.x+=b.vx;b.y+=b.vy;});
   eBullets=eBullets.filter(b=>b.x>cam.x-40&&b.x<cam.x+VW+40&&b.y>cam.y-40&&b.y<cam.y+VH+40);
 
-  powerups.forEach(p=>{p.bob+=0.12*frameTime;});
-  gems.forEach(g=>{g.spin+=g.spinRate*frameTime; g.pulse+=0.06*frameTime;});
+  powerups.forEach(p=>{p.bob+=0.12;});
+  gems.forEach(g=>{g.spin+=g.spinRate; g.pulse+=0.06;});
 
   // ---- player vs gems — generous pickup radius covers gems inside obstacles ----
   for(let j=gems.length-1;j>=0;j--){
@@ -1296,27 +1295,26 @@ function update(dt){
   for(let j=eBullets.length-1;j>=0;j--){const b=eBullets[j];
     if(Math.hypot(b.x-player.x,b.y-player.y)<player.r+4){ eBullets.splice(j,1); hit(); } }
 
-  particles.forEach(p=>{p.x+=p.vx*frameTime;p.y+=p.vy*frameTime;p.vx*=Math.pow(0.94,frameTime);p.vy*=Math.pow(0.94,frameTime);p.life-=frameTime;});
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vx*=0.94;p.vy*=0.94;p.life--;});
   particles=particles.filter(p=>p.life>0);
-  if(banner.t>0) banner.t-=frameTime;
-  if(screenShake>0) screenShake*=Math.pow(0.85,frameTime);
+  if(banner.t>0) banner.t--;
+  if(screenShake>0) screenShake*=0.85;
 }
 
 function startDeath(){ player.alive=false; player.won=false; state='dying';
   deathTimer=100; bigBoom(player.x,player.y); screenShake=26;
   deathExplosionSound(); rumble(2500, 1.0, 1.0); }
-function updateDeath(dt){
-  const frameTime=dt*60;
+function updateDeath(){
   frame++;
   enemies.forEach(e=>{const dx=player.x-e.x,dy=player.y-e.y,d=Math.hypot(dx,dy)||1;e.x+=dx/d*e.spd*0.5;e.y+=dy/d*e.spd*0.5;});
-  eBullets.forEach(b=>{b.x+=b.vx*frameTime;b.y+=b.vy*frameTime;});
-  particles.forEach(p=>{p.x+=p.vx*frameTime;p.y+=p.vy*frameTime;p.vx*=Math.pow(0.95,frameTime);p.vy*=Math.pow(0.95,frameTime);p.life-=frameTime;});
+  eBullets.forEach(b=>{b.x+=b.vx;b.y+=b.vy;});
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vx*=0.95;p.vy*=0.95;p.life--;});
   particles=particles.filter(p=>p.life>0);
-  if((frame%14===0||deathTimer<(Math.floor(deathTimer)-1*frameTime))&&deathTimer>20&&!player.won){
+  if(deathTimer%14===0&&deathTimer>20&&!player.won){
     burst(player.x+(Math.random()-0.5)*30,player.y+(Math.random()-0.5)*30,'#ffb000',12,4); screenShake=Math.max(screenShake,8);}
-  if(banner.t>0) banner.t-=frameTime;
-  if(screenShake>0) screenShake*=Math.pow(0.9,frameTime);
-  deathTimer-=frameTime;
+  if(banner.t>0) banner.t--;
+  if(screenShake>0) screenShake*=0.9;
+  deathTimer--;
   if(deathTimer<=0) afterDeath();
 }
 function afterDeath(){
@@ -1839,16 +1837,9 @@ function draw(){
 // ====================================================================
 // LOOP & FLOW
 // ====================================================================
-// ====================================================================
-// GAME LOOP WITH DELTA TIME
-// ====================================================================
-let lastFrameTime=Date.now();
 function loop(){
-  const now=Date.now();
-  const deltaTime=Math.min((now-lastFrameTime)/1000,0.05); // cap at 50ms (20fps minimum)
-  lastFrameTime=now;
-  if(state==='play'){ update(deltaTime); draw(); }
-  else if(state==='dying'){ updateDeath(deltaTime); draw(); }
+  if(state==='play'){ update(); draw(); }
+  else if(state==='dying'){ updateDeath(); draw(); }
   requestAnimationFrame(loop);
 }
 function startGame(){ reset(); state='play';
