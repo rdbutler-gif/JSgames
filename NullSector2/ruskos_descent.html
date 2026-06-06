@@ -155,55 +155,128 @@ const WORLD = 3840;                            // 6x6 screens (640*6)
 // ====================================================================
 // HIGH SCORES (carried over from RUSKO'S RUN)
 // ====================================================================
+// Key used to store high scores in browser's local storage
 const HS_KEY = 'ruskosdescent_highscores_v1';
+
+// Default empty high scores table for new players to fill
 const DEFAULT_SCORES = [
-  {ini:'RUS', sc:12000},{ini:'ELV', sc:9000},{ini:'NIC', sc:7000},
-  {ini:'C64', sc:5500},{ini:'AFV', sc:4200},{ini:'SUB', sc:3300},
-  {ini:'TI9', sc:2400},{ini:'VIC', sc:1600},{ini:'ACT', sc:900},{ini:'PHD', sc:400},
+  {ini:'AAA', sc:0},{ini:'AAA', sc:0},{ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},{ini:'AAA', sc:0},{ini:'AAA', sc:0},
+  {ini:'AAA', sc:0},{ini:'AAA', sc:0},{ini:'AAA', sc:0},{ini:'AAA', sc:0},
 ];
+
+// Load high scores from browser storage, or use defaults if first time
 let highScores = loadScores();
+
+// Try to load saved high scores from localStorage; if not found, use DEFAULT_SCORES
 function loadScores(){
-  try{ const raw=localStorage.getItem(HS_KEY);
-    if(raw){const a=JSON.parse(raw); if(Array.isArray(a)&&a.length) return normalize(a);} }catch(e){}
+  try{
+    const raw=localStorage.getItem(HS_KEY);
+    if(raw){
+      const a=JSON.parse(raw);
+      if(Array.isArray(a)&&a.length) return normalize(a);
+    }
+  }catch(e){}
   return normalize(DEFAULT_SCORES.slice());
 }
+
+// Standardize high scores: uppercase initials (max 3 chars), valid score, sorted high→low, top 10 only
 function normalize(arr){
-  return arr.map(r=>({ini:String(r.ini||'AAA').toUpperCase().slice(0,3).padEnd(3,'A'),
-    sc:Math.max(0,parseInt(r.sc)||0)})).sort((a,b)=>b.sc-a.sc).slice(0,10);
+  return arr
+    .map(r=>({
+      ini:String(r.ini||'AAA').toUpperCase().slice(0,3).padEnd(3,'A'),
+      sc:Math.max(0,parseInt(r.sc)||0)
+    }))
+    .sort((a,b)=>b.sc-a.sc)  // Sort: highest score first
+    .slice(0,10);              // Keep only top 10
 }
-function saveScores(){ try{localStorage.setItem(HS_KEY,JSON.stringify(highScores));}catch(e){} }
-function qualifies(s){ return highScores.length<10 || s>highScores[highScores.length-1].sc; }
+
+// Save current high scores to browser's localStorage
+function saveScores(){ 
+  try{localStorage.setItem(HS_KEY,JSON.stringify(highScores));}catch(e){} 
+}
+
+// Check if a score qualifies for the high scores table
+function qualifies(s){ 
+  return highScores.length<10 || s>highScores[highScores.length-1].sc; 
+}
+
+// Add a new score to high scores table and save
+// Returns the index of the newly added score (used to highlight it)
 function insertScore(ini,s){
-  highScores.push({ini:ini.toUpperCase().slice(0,3).padEnd(3,'A'),sc:s});
-  highScores=normalize(highScores); saveScores();
+  highScores.push({
+    ini:ini.toUpperCase().slice(0,3).padEnd(3,'A'),
+    sc:s
+  });
+  highScores=normalize(highScores);
+  saveScores();
   return highScores.findIndex(r=>r.ini===ini.toUpperCase().slice(0,3).padEnd(3,'A')&&r.sc===s);
 }
+
+// Export high scores to a downloadable text file (.dat)
 function exportDat(){
   const lines=highScores.map(r=>`${r.ini},${r.sc}`).join('\n');
-  const blob=new Blob(["# RUSKO'S PLANET high scores — format: INITIALS,SCORE\n"+
-    "# Edit freely. Max 10 entries, sorted high to low.\n"+lines+"\n"],{type:'text/plain'});
-  const url=URL.createObjectURL(blob);const a=document.createElement('a');
-  a.href=url;a.download='ruskos_descent_scores.dat';a.click();URL.revokeObjectURL(url);
+  const blob=new Blob([
+    "# RUSKO'S PLANET high scores — format: INITIALS,SCORE\n"+
+    "# Edit freely. Max 10 entries, sorted high to low.\n"+
+    lines+"\n"
+  ],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='ruskos_descent_scores.dat';
+  a.click();
+  URL.revokeObjectURL(url);
 }
+
+// Import high scores from a user-selected file (.dat, .txt, or .json)
 function importDat(file){
   const r=new FileReader();
-  r.onload=()=>{const txt=r.result;let parsed=[];
-    try{const j=JSON.parse(txt); if(Array.isArray(j)) parsed=j.map(o=>({ini:o.ini,sc:o.sc}));}
-    catch(e){ txt.split(/\r?\n/).forEach(line=>{line=line.trim();
-      if(!line||line.startsWith('#'))return;const m=line.split(',');
-      if(m.length>=2) parsed.push({ini:m[0].trim(),sc:parseInt(m[1])});});}
-    if(parsed.length){highScores=normalize(parsed);saveScores();refreshTitleTop();renderHSTable();alert('High scores imported.');}
-    else alert('No valid entries found in that file.');};
+  r.onload=()=>{
+    const txt=r.result;
+    let parsed=[];
+    
+    // Try parsing as JSON first, fall back to comma-separated format
+    try{
+      const j=JSON.parse(txt);
+      if(Array.isArray(j)) parsed=j.map(o=>({ini:o.ini,sc:o.sc}));
+    }catch(e){
+      // Parse as comma-separated: INITIALS,SCORE
+      // Skip comment lines (starting with #) and empty lines
+      txt.split(/\r?\n/).forEach(line=>{
+        line=line.trim();
+        if(!line||line.startsWith('#')) return;
+        const m=line.split(',');
+        if(m.length>=2) parsed.push({ini:m[0].trim(),sc:parseInt(m[1])});
+      });
+    }
+    
+    if(parsed.length){
+      highScores=normalize(parsed);
+      saveScores();
+      refreshTitleTop();
+      renderHSTable();
+      alert('High scores imported.');
+    }else{
+      alert('No valid entries found in that file.');
+    }
+  };
   r.readAsText(file);
 }
+
+// Update the "TOP SCORE" display on the title screen
 function refreshTitleTop(){
   const t=highScores[0]||{ini:'AAA',sc:0};
   document.getElementById('titleTop').innerHTML=
     `TOP &nbsp;<span class="ini">${t.ini}</span>&nbsp; <span class="v">${String(t.sc).padStart(6,'0')}</span>`;
 }
+
+// Render the high scores table to HTML
+// highlightIdx: if set, highlights that row (used when player just scored)
+// id: which element to update ('hsTable' or 'hsTableWin')
 function renderHSTable(highlightIdx=-1,id='hsTable'){
   document.getElementById(id).innerHTML=highScores.map((r,i)=>{
-    const me=i===highlightIdx?' me':'';
+    const me=i===highlightIdx?' me':'';  // Add 'me' class if this is the player's new score
     return `<div class="row"><span class="rank${me}">${String(i+1).padStart(2,'0')}</span>`+
       `<span class="ini${me}">${r.ini}</span>`+
       `<span class="sc${me}">${String(r.sc).padStart(6,'0')}</span></div>`;
@@ -211,17 +284,27 @@ function renderHSTable(highlightIdx=-1,id='hsTable'){
 }
 
 // ====================================================================
-// AUDIO  (Web Audio API — no files, synthesized)
+// AUDIO  (Web Audio API — no files, all sounds synthesized)
 // ====================================================================
+// All sound effects are created using the Web Audio API, which generates
+// waveforms (sine, square, sawtooth) in real-time. No audio files to load!
+
 let audioCtx=null;
+
+// Initialize the audio context (required for Web Audio API)
+// Browsers require a user gesture (click, key, touch) to start audio
 function ensureAudio(){
   if(!audioCtx){
-    try{ audioCtx=new(window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+    try{ 
+      audioCtx=new(window.AudioContext||window.webkitAudioContext)(); 
+    }catch(e){}
   }
-  // resume if suspended (browsers suspend until user gesture)
+  // Resume audio if browser suspended it (some browsers pause audio until user interaction)
   if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume();
 }
-// Classic laser pew: frequency sweep 820→200 Hz over 400ms
+
+// PLAYER FIRING: Classic laser pew sound
+// High-pitched square wave that sweeps down from 820→200 Hz over 400ms
 function pewSound(){
   if(!audioCtx) return;
   try{
@@ -633,6 +716,48 @@ function rumble(duration,weak,strong){
   }catch(e){}
 }
 
+// Rock bullet impact: metallic tink — high pitched square wave with sharp attack
+function rockTinkSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    // metallic tink: square wave 1200→800 Hz, very fast envelope (tight percussive hit)
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='square';
+    osc.frequency.setValueAtTime(1200,t);
+    osc.frequency.exponentialRampToValueAtTime(800,t+0.06);
+    gain.gain.setValueAtTime(0.32,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.15); // quick decay
+    osc.start(t); osc.stop(t+0.15);
+  }catch(e){}
+}
+
+// Rock destruction: series of tinks with descending pitch (like shattering)
+function rockDestroyedSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    // three metallic tinks in quick succession, descending pitch
+    const frequencies=[1400,1100,850];
+    const delays=[0,0.08,0.14];
+    
+    for(let i=0;i<3;i++){
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.type='square';
+      const startTime=t+delays[i];
+      osc.frequency.setValueAtTime(frequencies[i],startTime);
+      osc.frequency.exponentialRampToValueAtTime(frequencies[i]*0.6,startTime+0.08);
+      gain.gain.setValueAtTime(0.35,startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,startTime+0.18);
+      osc.start(startTime); osc.stop(startTime+0.18);
+    }
+  }catch(e){}
+}
+
 // Wire ensureAudio to first user gesture so AudioContext can start
 document.addEventListener('click', ensureAudio, {once:false});
 document.addEventListener('keydown', ensureAudio, {once:false});
@@ -767,24 +892,55 @@ function readPad(){
 // ====================================================================
 // GAME STATE
 // ====================================================================
+// Current screen: 'title', 'play', 'dying', 'over', 'win', 'entry', 'paused'
 let state='title';
+
+// All game objects (declared here, initialized in reset())
 let player,bullets,enemies,eBullets,particles,rocks,solidObstacles,gems,powerups,miniBosses,apexBoss,bgDots,patches,craters;
+
+// Game variables
 let score,frame,screenShake,cam,deathTimer,banner;
 let lastAim;
 let finalWaveTriggered;
 let gemsCollected,totalGems,startTime,rayBeams;
 
+// Helper: generate a random position in the world with margin from edges
 function rngWorldPos(margin){
-  return {x:margin+Math.random()*(WORLD-2*margin), y:margin+Math.random()*(WORLD-2*margin)};
+  return {
+    x:margin+Math.random()*(WORLD-2*margin), 
+    y:margin+Math.random()*(WORLD-2*margin)
+  };
 }
 
+// Initialize/reset the game to starting state
 function reset(){
-  player={x:WORLD/2,y:WORLD/2,r:14,speed:3.4,baseSpeed:3.4,hp:5,maxhp:5,inv:0,alive:true,
-          fireRate:9,dmg:1,spread:1,walkPhase:0,moving:false,facing:1,shieldTime:0,shieldMax:300};
+  // Player object: position, speed, health, weapons
+  player={
+    x:WORLD/2,y:WORLD/2,              // Start at world center
+    r:14,                              // Collision radius
+    speed:3.4,baseSpeed:3.4,           // Current and base movement speed (baseSpeed is permanent upgrade level)
+    hp:5,maxhp:5,                      // Health: current/maximum
+    inv:0,                             // Invincibility frames (counts down each frame)
+    alive:true,
+    fireRate:9,                        // Frames between shots (lower = faster)
+    dmg:1,                             // Bullet damage
+    spread:1,                          // Number of bullets fired per shot (1, 2, or 3)
+    walkPhase:0,                       // Animation: leg position in walk cycle
+    moving:false,
+    facing:1,
+    shieldTime:0,                      // Shield countdown (0 = no shield)
+    shieldMax:300                      // Shield max duration in frames
+  };
+  
+  // Clear all game object arrays
   bullets=[];enemies=[];eBullets=[];particles=[];rocks=[];solidObstacles=[];gems=[];powerups=[];
-  miniBosses=[];apexBoss=null;finalWaveTriggered=false;
+  miniBosses=[];apexBoss=null;
+  finalWaveTriggered=false;
+  
+  // Reset game variables
   score=0;frame=0;screenShake=0;deathTimer=0;gemsCollected=0;
-  startTime=Date.now(); rayBeams=[];
+  startTime=Date.now();
+  rayBeams=[];
   cam={x:player.x-VW/2,y:player.y-VH/2};
   lastAim={x:0,y:-1};
   banner={text:'SECTOR XR-7',t:120};
@@ -931,11 +1087,20 @@ function grabPow(kind,x,y){
 }
 
 // ====================================================================
-// UPDATE
+// UPDATE - Main game logic (runs every frame)
 // ====================================================================
+// This function:
+// 1. Reads player input and updates position/aim
+// 2. Updates all enemies, bosses, bullets, particles
+// 3. Checks all collisions (bullets vs enemies, player vs hazards, etc.)
+// 4. Manages game state (scores, deaths, powerups)
+// Called once per frame with deltaTime parameter (for frame-rate independence)
+
 let shotCooldown=0;
 function update(dt){
-  const frameTime=dt*60; // convert deltaTime to "frame equivalents" at 60fps baseline
+  // Convert real time (seconds) to "frame equivalents" at 60fps baseline
+  // So all the 60fps-calibrated game logic doesn't need to change
+  const frameTime=dt*60;
   frame++;
   const pad=readPad();
 
@@ -1216,7 +1381,9 @@ function update(dt){
     for(let j=bullets.length-1;j>=0;j--){const b=bullets[j];
       if(b.x>o.x-o.w/2&&b.x<o.x+o.w/2&&b.y>o.y-o.h/2&&b.y<o.y+o.h/2){
         bullets.splice(j,1); o.hp-=b.dmg; burst(b.x,b.y,'#a85',4,2);
+        rockTinkSound(); // metallic tink when bullet hits rock
         if(o.hp<=0){ burst(o.x,o.y,'#9a7',16,3); score+=10;
+          rockDestroyedSound(); // descending tinks when rock is destroyed
           if(o.hides) powerups.push({kind:o.hides,x:o.x,y:o.y,bob:0});
           rocks.splice(i,1); break; }
       }
