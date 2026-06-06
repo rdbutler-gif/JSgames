@@ -467,6 +467,157 @@ function miniBossDeathSound(){
   }catch(e){}
 }
 
+// ===== POWERUP SOUNDS (unique for each type) =====
+// Fire Rate powerup: quick bright ascending
+function powerupWRSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='sine';
+    osc.frequency.setValueAtTime(1200,t);
+    osc.frequency.exponentialRampToValueAtTime(2400,t+0.12);
+    gain.gain.setValueAtTime(0.3,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+    osc.start(t); osc.stop(t+0.35);
+  }catch(e){}
+}
+
+// Spread powerup: expanding multi-tone
+function powerupWSSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    for(let i=0;i<3;i++){
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.type='sine';
+      const baseFreq=1600+(i*200);
+      osc.frequency.setValueAtTime(baseFreq,t);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq*1.4,t+0.15);
+      gain.gain.setValueAtTime(0.15,t);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+0.38);
+      osc.start(t); osc.stop(t+0.38);
+    }
+  }catch(e){}
+}
+
+// Health powerup: warm recovery tone
+function powerupHPSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='sine';
+    osc.frequency.setValueAtTime(800,t);
+    osc.frequency.exponentialRampToValueAtTime(1400,t+0.1);
+    osc.frequency.exponentialRampToValueAtTime(900,t+0.3);
+    gain.gain.setValueAtTime(0.25,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.40);
+    osc.start(t); osc.stop(t+0.40);
+  }catch(e){}
+}
+
+// Speed powerup: rushing acceleration tone
+function powerupSPSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='square';
+    osc.frequency.setValueAtTime(500,t);
+    osc.frequency.linearRampToValueAtTime(1800,t+0.25);
+    gain.gain.setValueAtTime(0.22,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+    osc.start(t); osc.stop(t+0.35);
+  }catch(e){}
+}
+
+// Medkit powerup: gentle healing chime
+function powerupMEDSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type='sine';
+    osc.frequency.setValueAtTime(1000,t);
+    osc.frequency.exponentialRampToValueAtTime(600,t+0.25);
+    gain.gain.setValueAtTime(0.2,t);
+    gain.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+    osc.start(t); osc.stop(t+0.45);
+  }catch(e){}
+}
+
+// Shield powerup: epic shimmering protection sound
+function powerupShieldSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    // primary rising tone
+    const osc1=audioCtx.createOscillator();
+    const gain1=audioCtx.createGain();
+    osc1.connect(gain1); gain1.connect(audioCtx.destination);
+    osc1.type='sine';
+    osc1.frequency.setValueAtTime(1500,t);
+    osc1.frequency.exponentialRampToValueAtTime(3000,t+0.15);
+    gain1.gain.setValueAtTime(0.3,t);
+    gain1.gain.exponentialRampToValueAtTime(0.001,t+0.50);
+    osc1.start(t); osc1.stop(t+0.50);
+    // secondary harmonic shimmer
+    const osc2=audioCtx.createOscillator();
+    const gain2=audioCtx.createGain();
+    osc2.connect(gain2); gain2.connect(audioCtx.destination);
+    osc2.type='sine';
+    osc2.frequency.setValueAtTime(2400,t);
+    osc2.frequency.exponentialRampToValueAtTime(4800,t+0.15);
+    gain2.gain.setValueAtTime(0.25,t);
+    gain2.gain.exponentialRampToValueAtTime(0.001,t+0.48);
+    osc2.start(t); osc2.stop(t+0.48);
+  }catch(e){}
+}
+
+// ===== ENEMY DEATH SOUNDS =====
+// Small enemy death: quick pop with decay
+function enemyDeathSound(){
+  if(!audioCtx) return;
+  try{
+    const t=audioCtx.currentTime;
+    // pitched pop: sawtooth 280→80 Hz
+    const osc=audioCtx.createOscillator();
+    const oscGain=audioCtx.createGain();
+    osc.connect(oscGain); oscGain.connect(audioCtx.destination);
+    osc.type='sawtooth';
+    osc.frequency.setValueAtTime(280,t);
+    osc.frequency.exponentialRampToValueAtTime(80,t+0.1);
+    oscGain.gain.setValueAtTime(0.25,t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001,t+0.75);
+    osc.start(t); osc.stop(t+0.75);
+    // noise crackle layer
+    const bufLen=Math.floor(audioCtx.sampleRate*0.5);
+    const buf=audioCtx.createBuffer(1,bufLen,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<bufLen;i++) d[i]=(Math.random()*2-1);
+    const noise=audioCtx.createBufferSource();
+    noise.buffer=buf;
+    const filter=audioCtx.createBiquadFilter();
+    filter.type='highpass'; filter.frequency.value=1500;
+    const ng=audioCtx.createGain();
+    noise.connect(filter); filter.connect(ng); ng.connect(audioCtx.destination);
+    ng.gain.setValueAtTime(0.15,t);
+    ng.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+    noise.start(t); noise.stop(t+0.5);
+  }catch(e){}
+}
+
 // Gamepad haptic rumble
 function rumble(duration,weak,strong){
   duration=duration||200; weak=weak||0.4; strong=strong||0.7;
@@ -629,7 +780,7 @@ function rngWorldPos(margin){
 
 function reset(){
   player={x:WORLD/2,y:WORLD/2,r:14,speed:3.4,baseSpeed:3.4,hp:5,maxhp:5,inv:0,alive:true,
-          fireRate:9,dmg:1,spread:1,walkPhase:0,moving:false,facing:1};
+          fireRate:9,dmg:1,spread:1,walkPhase:0,moving:false,facing:1,shieldTime:0,shieldMax:300};
   bullets=[];enemies=[];eBullets=[];particles=[];rocks=[];solidObstacles=[];gems=[];powerups=[];
   miniBosses=[];apexBoss=null;finalWaveTriggered=false;
   score=0;frame=0;screenShake=0;deathTimer=0;gemsCollected=0;
@@ -678,7 +829,7 @@ function reset(){
     if(Math.hypot(p.x-player.x,p.y-player.y)<200){i--;continue;}
     const w=34+Math.random()*46;
     rocks.push({x:p.x,y:p.y,w:w,h:w*(0.7+Math.random()*0.5),hp:4,
-      hides:Math.random()<0.25?randPow():null,rot:Math.random()*6.28}); // 25% chance (was 45%)
+      hides:Math.random()<0.50?randPow():null,rot:Math.random()*6.28}); // 50% chance (doubled)
   }
 
   // ===== ALIEN GEMS — 18 spread evenly via 3x3 zone grid, 2 per zone =====
@@ -747,8 +898,8 @@ function reset(){
   });
 }
 function randPow(){ const r=Math.random();
-  // WR=fire rate, WS=weapon spread, HP=max hp+heal, SP=suit speed, MED=pure heal
-  return r<0.28?(Math.random()<0.5?'WR':'WS') : r<0.56?(Math.random()<0.5?'HP':'SP') : 'MED';
+  // WR=fire rate, WS=weapon spread, HP=max hp+heal, SP=suit speed, MED=pure heal, SHIELD=invincible+fast
+  return r<0.28?(Math.random()<0.5?'WR':'WS') : r<0.56?(Math.random()<0.5?'HP':'SP') : r<0.84?'MED' : 'SHIELD';
 }
 
 function makeAlien(x,y,awake){
@@ -770,11 +921,12 @@ function bigBoom(x,y){ burst(x,y,'#ffb000',36,6);burst(x,y,'#ff2d6f',32,4.5);
   burst(x,y,'#9dff3c',22,3);burst(x,y,'#fff',14,7); }
 
 function grabPow(kind,x,y){
-  if(kind==='WR'){ player.fireRate=Math.max(4,player.fireRate-1); banner={text:'FIRE RATE UP',t:70}; }
-  else if(kind==='WS'){ player.spread=Math.min(3,player.spread+1); banner={text:'SPREAD UP',t:70}; }
-  else if(kind==='HP'){ player.maxhp=Math.min(9,player.maxhp+1); player.hp=Math.min(player.maxhp,player.hp+1); banner={text:'SUIT INTEGRITY UP',t:70}; }
-  else if(kind==='MED'){ player.hp=Math.min(player.maxhp,player.hp+2); banner={text:'MEDKIT +2 HP',t:70}; }
-  else if(kind==='SP'){ player.speed=player.baseSpeed=Math.min(5.5,player.baseSpeed+0.4); banner={text:'THRUSTERS UP',t:70}; }
+  if(kind==='WR'){ player.fireRate=Math.max(4,player.fireRate-1); banner={text:'FIRE RATE UP',t:70}; powerupWRSound(); }
+  else if(kind==='WS'){ player.spread=Math.min(3,player.spread+1); banner={text:'SPREAD UP',t:70}; powerupWSSound(); }
+  else if(kind==='HP'){ player.maxhp=Math.min(9,player.maxhp+1); player.hp=Math.min(player.maxhp,player.hp+1); banner={text:'SUIT INTEGRITY UP',t:70}; powerupHPSound(); }
+  else if(kind==='MED'){ player.hp=Math.min(player.maxhp,player.hp+2); banner={text:'MEDKIT +2 HP',t:70}; powerupMEDSound(); }
+  else if(kind==='SP'){ player.speed=player.baseSpeed=Math.min(5.5,player.baseSpeed+0.4); banner={text:'THRUSTERS UP',t:70}; powerupSPSound(); }
+  else if(kind==='SHIELD'){ player.shieldTime=300; player.shieldMax=300; banner={text:'SHIELD ACTIVATED',t:70}; powerupShieldSound(); score+=200; }
   burst(x,y,'#fff',12,3); score+=50;
 }
 
@@ -845,6 +997,15 @@ function update(){
   player.x=Math.max(player.r,Math.min(WORLD-player.r,player.x));
   player.y=Math.max(player.r,Math.min(WORLD-player.r,player.y));
   if(player.inv>0) player.inv--;
+  
+  // ---- shield handling ----
+  if(player.shieldTime>0){
+    player.shieldTime--;
+    player.speed=player.baseSpeed*2; // 2x speed while shielded
+    player.inv=Math.max(player.inv,1); // always invincible during shield
+  } else {
+    player.speed=player.baseSpeed; // normal speed when not shielded
+  }
 
   // ---- camera follow ----
   cam.x += ((player.x-VW/2)-cam.x)*0.12;
@@ -1074,8 +1235,8 @@ function update(){
       if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+3){
         e.hp-=b.dmg; bullets.splice(j,1); burst(b.x,b.y,'#9dff3c',4,2);
         enemyHitSound();
-        if(e.hp<=0){ score+=e.score; burst(e.x,e.y,'#ff2d6f',16,3.5);
-          if(Math.random()<0.08) powerups.push({kind:randPow(),x:e.x,y:e.y,bob:0}); // 8% drop
+        if(e.hp<=0){ score+=e.score; burst(e.x,e.y,'#ff2d6f',16,3.5); enemyDeathSound();
+          if(Math.random()<0.16) powerups.push({kind:randPow(),x:e.x,y:e.y,bob:0}); // 16% drop (doubled)
           enemies.splice(i,1); break; }
       }
     }
@@ -1572,6 +1733,20 @@ function draw(){
       ctx.restore();
 
       ctx.restore();
+
+      // ===== SHIELD GLOW (if active) =====
+      if(player.shieldTime>0){
+        const shieldPulse = 0.5 + Math.sin(frame*0.15)*0.5; // pulsate
+        ctx.globalAlpha=0.3*shieldPulse;
+        ctx.strokeStyle='#00ffff';
+        ctx.lineWidth=3;
+        ctx.shadowBlur=20; ctx.shadowColor='#00ffff';
+        ctx.beginPath();
+        ctx.arc(sx,sy,player.r+12,0,6.3);
+        ctx.stroke();
+        ctx.shadowBlur=0;
+        ctx.globalAlpha=1;
+      }
     }
   }
 
