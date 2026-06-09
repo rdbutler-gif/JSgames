@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RUSKO'S VOID — 3D SPACE SHOOTER</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@700;900&display=swap');
+  :root {
+    --bg: #000;
+    --neon: #00ff9c;
+    --neon-dim: #0a7a4e;
+    --hot: #ff2d6f;
+    --amber: #ffb000;
+    --cyan: #28e0ff;
+    --violet: #b06bff;
+    --alien: #9dff3c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #000; overflow: hidden; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'VT323', monospace;
+    background: radial-gradient(ellipse at center, #0a0a0a 0%, #000 80%);
+  }
+  #wrap { position: relative; width: 100%; height: 100vh; }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  /* WebGL canvas must be explicitly positioned with a low z-index, otherwise
+     the browser can composite it on its own GPU layer that paints OVER the
+     panels regardless of their z-index. This is what made the game-over
+     screen appear "frozen" — the panel was there, the canvas was just on top. */
+  #canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+  }
+  #hud {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+  }
+  #crt {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0, 255, 156, 0.04) 0px, rgba(0, 255, 156, 0.04) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode: screen;
+  }
+  #vig {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 120px 30px rgba(0, 0, 0, 0.9);
+  }
+  .panel {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--neon);
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 100;
+    letter-spacing: 1px;
+    padding: 20px;
+  }
+  .panel.hidden { display: none; }
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: 48px;
+    color: var(--neon);
+    text-shadow: 0 0 12px var(--neon), 0 0 30px var(--neon-dim);
+    margin-bottom: 6px;
+    letter-spacing: 5px;
+  }
+  .sub {
+    color: var(--hot);
+    font-size: 18px;
+    letter-spacing: 3px;
+    margin-bottom: 20px;
+    text-shadow: 0 0 8px var(--hot);
+  }
+  .btn {
+    font-family: 'VT323', monospace;
+    font-size: 22px;
+    letter-spacing: 2px;
+    color: var(--bg);
+    background: var(--neon);
+    border: none;
+    padding: 8px 24px;
+    cursor: pointer;
+    margin-top: 8px;
+    box-shadow: 0 0 16px var(--neon);
+  }
+  .btn:hover { background: var(--cyan); box-shadow: 0 0 20px var(--cyan); }
+  .blink { animation: blink 1s steps(2, start) infinite; font-size: 24px; color: var(--neon); }
+  @keyframes blink { to { opacity: 0; } }
+  .legend { font-size: 15px; color: var(--neon-dim); margin-top: 16px; line-height: 1.6; }
+  .legend b { color: var(--cyan); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="canvas"></canvas>
+  <canvas id="hud"></canvas>
+  <div id="crt"></div>
+  <div id="vig"></div>
+
+  <div id="title" class="panel">
+    <h1>RUSKO'S VOID</h1>
+    <div class="sub">// DEEP SPACE COMBAT SIMULATOR</div>
+    <div class="legend" style="margin-bottom: 20px;">
+      <b>6-AXIS FIGHTER CONTROLS</b><br>
+      MOVE: <b>W A S D</b> &nbsp; | &nbsp; PITCH: <b>↑↓</b> &nbsp; | &nbsp; YAW/ROLL: <b>←→</b> / <b>Q E</b><br>
+    </div>
+    <div class="controls" style="font-size: 16px; color: var(--cyan); margin-bottom: 20px; line-height: 1.7;">
+      THRUST: <b>W</b> (forward) &nbsp; <b>S</b> (brake)<br>
+      ROLL: <b>A</b> (left) &nbsp; <b>D</b> (right)<br>
+      LOOK: <b>RIGHT CLICK</b> + MOUSE &nbsp; FIRE: <b>SPACE</b> or <b>LMB</b><br>
+      <br>
+      GAMEPAD: <b>LEFT STICK</b> (thrust/roll) &nbsp; <b>RIGHT STICK</b> (look)<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>A BUTTON</b> (fire) &nbsp; <b>Y BUTTON</b> (special)
+    </div>
+    <div class="legend" style="margin-bottom: 30px;">
+      Destroy all enemy fighters in 3D combat.<br>
+      Survive each wave to face progressively harder enemies.
+    </div>
+    <button class="btn" id="startBtn">LAUNCH ▶</button>
+    <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="margin-left: 8px;">⚙ UPGRADE</button>
+    <button class="btn" id="resetBtn" onclick="resetGame()" style="margin-left: 8px; background: #ff2d6f; font-size: 14px;">RESET ALL</button>
+  </div>
+
+  <div id="gameover" class="panel hidden">
+    <h1 style="color: var(--hot);">VOID BREACH</h1>
+    <div style="font-size: 18px; color: var(--cyan); margin: 16px 0;">
+      <div>FINAL SCORE: <span id="finalScore" style="color: var(--neon);">000000</span></div>
+      <div>WAVE: <span id="waveCount" style="color: var(--amber);">0</span></div>
+      <div style="margin-top: 8px; font-size: 16px;">Enemies destroyed: <span id="enemyCount" style="color: var(--hot);">0</span></div>
+    </div>
+    <div style="font-size: 16px; color: var(--amber); margin-bottom: 16px; letter-spacing: 2px;">▶ HIGH SCORES ▶</div>
+    <div id="hsTable" style="font-size: 14px; color: var(--cyan); min-width: 200px; margin-bottom: 16px;"></div>
+    <button class="btn" id="restartBtn">RETURN TO DOCK</button>
+  </div>
+
+  <div id="entry" class="panel hidden">
+    <h1 style="font-size: 32px;">NEW HIGH SCORE</h1>
+    <div style="font-size: 18px; color: var(--amber); margin: 12px 0; letter-spacing: 2px;" id="entryScore">SCORE 000000</div>
+    <div style="font-size: 48px; letter-spacing: 16px; color: var(--amber); margin: 8px 0; font-family: 'Orbitron', sans-serif;" id="entryInitials"></div>
+    <div style="font-size: 14px; color: var(--cyan); margin-top: 12px;">↑↓ change &nbsp; ←→ move &nbsp; ENTER = confirm</div>
+  </div>
+
+  <!-- UPGRADES SHOP -->
+  <div id="upgrades" class="panel hidden" style="background: rgba(0, 10, 20, 0.95); overflow-y: auto;">
+    <h1 style="font-size: 36px; margin-bottom: 8px;">⚙ UPGRADES</h1>
+    <div style="font-size: 14px; color: var(--amber); letter-spacing: 1px; margin-bottom: 20px;">
+      RUSKOLEUM AVAILABLE: <span id="upgradeRuskoleum" style="color: var(--neon);">0</span>
+    </div>
+
+    <div style="text-align: left; max-width: 500px; margin: 0 auto; font-size: 13px;">
+      <!-- Bullet Speed -->
+      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
+        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">BULLET SPEED</div>
+        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Make projectiles faster. Cost: <span id="upgradeCost_bulletSpeed">5</span></div>
+        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_bulletSpeed">0</span></div>
+        <button class="btn" onclick="buyUpgradeBtn('bulletSpeed')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
+      </div>
+
+      <!-- Pickup Radius -->
+      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
+        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">PICKUP RADIUS</div>
+        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Attract resources from farther away. Cost: <span id="upgradeCost_pickupRadius">5</span></div>
+        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_pickupRadius">0</span></div>
+        <button class="btn" onclick="buyUpgradeBtn('pickupRadius')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
+      </div>
+
+      <!-- Hull Integrity -->
+      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
+        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">HULL INTEGRITY</div>
+        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Increase max health. Cost: <span id="upgradeCost_collisionRadius">5</span></div>
+        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_collisionRadius">0</span></div>
+        <button class="btn" onclick="buyUpgradeBtn('collisionRadius')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
+      </div>
+
+      <!-- Thrusters -->
+      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
+        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">THRUSTERS</div>
+        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Accelerate faster. Cost: <span id="upgradeCost_shipSpeed">5</span></div>
+        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_shipSpeed">0</span></div>
+        <button class="btn" onclick="buyUpgradeBtn('shipSpeed')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
+      </div>
+
+      <!-- Max Velocity -->
+      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 20px; background: rgba(0,40,28,0.3);">
+        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">TOP SPEED</div>
+        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Increase maximum velocity. Cost: <span id="upgradeCost_maxVelocity">5</span></div>
+        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_maxVelocity">0</span></div>
+        <button class="btn" onclick="buyUpgradeBtn('maxVelocity')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
+      </div>
+    </div>
+
+    <div style="margin-top: 20px; font-size: 12px; color: var(--neon-dim); max-width: 500px; margin-left: auto; margin-right: auto; text-align: left; border-top: 1px solid var(--neon-dim); padding-top: 12px;">
+      <div style="color: var(--cyan); margin-bottom: 8px;">CURRENT STATS:</div>
+      <div>Bullet Speed Bonus: <span style="color: var(--neon);">x<span id="statBulletSpeed">1.0</span></span></div>
+      <div>Pickup Radius: <span style="color: var(--neon);">+<span id="statPickupRadius">0</span> units</span></div>
+      <div>Hull Hardness: <span style="color: var(--neon);">+<span id="statCollisionRadius">0</span> units</span></div>
+      <div>Thrust Power: <span style="color: var(--neon);">x<span id="statShipSpeed">1.0</span></span></div>
+      <div>Top Speed: <span style="color: var(--neon);"><span id="statMaxVelocity">2.5</span> u/f</span></div>
+    </div>
+
+    <button class="btn" id="closeUpgradesBtn" onclick="closeUpgrades()" style="margin-top: 24px;">BACK TO DOCK ◀</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const canvas = document.getElementById('canvas');
+const hudCanvas = document.getElementById('hud');
+const hudCtx = hudCanvas.getContext('2d');
+
+let audioCtx = null;
+
+// Block message ports to prevent extension interference
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return; // Ignore cross-origin
+  event.stopPropagation();
+  event.preventDefault();
+}, true);
+
+// Handle unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  event.preventDefault();
+});
+
+// ====================================================================
+// HIGH SCORES
+// ====================================================================
+const HS_KEY = 'rusko_void_highscores_v1';
+const DEFAULT_SCORES = [
+  {ini:'RUS', sc:50000},{ini:'ELV', sc:40000},{ini:'NIC', sc:30000},
+  {ini:'C64', sc:20000},{ini:'AFV', sc:15000},{ini:'SUB', sc:10000},
+];
+
+function normalize(arr){
+  return arr.map(r=>({ini:String(r.ini||'AAA').toUpperCase().slice(0,3).padEnd(3,'A'),
+    sc:Math.max(0,parseInt(r.sc)||0)})).sort((a,b)=>b.sc-a.sc).slice(0,10);
+}
+
+function loadScores(){
+  try{ const raw=localStorage.getItem(HS_KEY);
+    if(raw){const a=JSON.parse(raw); if(Array.isArray(a)&&a.length) return normalize(a);} }catch(e){}
+  return normalize(DEFAULT_SCORES.slice());
+}
+
+let highScores = loadScores();
+
+function saveScores(){ try{localStorage.setItem(HS_KEY,JSON.stringify(highScores));}catch(e){} }
+function qualifies(s){ return highScores.length<10 || s>highScores[highScores.length-1].sc; }
+function insertScore(ini,s){
+  highScores.push({ini:ini.toUpperCase().slice(0,3).padEnd(3,'A'),sc:s});
+  highScores=normalize(highScores); saveScores();
+  return highScores.findIndex(r=>r.ini===ini.toUpperCase().slice(0,3).padEnd(3,'A')&&r.sc===s);
+}
+
+// ====================================================================
+// UPGRADE / RESOURCE SYSTEM
+// ====================================================================
+const UPGRADE_KEY = 'rusko_void_upgrades_v1';
+const DEFAULT_UPGRADES = {
+  ruskoleum: 0,  // total collected lifetime
+  bulletSpeed: 0,      // costs 5, 10, 20... (5 * 2^level)
+  pickupRadius: 0,     // costs 5, 10, 20...
+  collisionRadius: 0,  // costs 5, 10, 20... (ship max health)
+  shipSpeed: 0,        // costs 5, 10, 20... (acceleration/thrusters)
+  maxVelocity: 0,      // costs 5, 10, 20... (top speed)
+};
+
+function loadUpgrades(){
+  try {
+    const raw = localStorage.getItem(UPGRADE_KEY);
+    if (raw) { const u = JSON.parse(raw); if (typeof u === 'object') return {...DEFAULT_UPGRADES, ...u}; }
+  } catch(e) {}
+  return {...DEFAULT_UPGRADES};
+}
+
+let upgrades = loadUpgrades();
+
+function saveUpgrades() { 
+  try { localStorage.setItem(UPGRADE_KEY, JSON.stringify(upgrades)); } catch(e) {} 
+}
+
+// Buy an upgrade; costs scale: 5, 10, 20, 40, 80... (5 * 2^currentLevel)
+function buyUpgrade(key) {
+  const currentLevel = upgrades[key] || 0;
+  const cost = 5 * Math.pow(2, currentLevel); // 5 * 2^level
+  if (upgrades.ruskoleum >= cost) {
+    upgrades.ruskoleum -= cost;
+    upgrades[key] = currentLevel + 1;
+    saveUpgrades();
+    return true;
+  }
+  return false;
+}
+
+// Add ruskoleum (collected during play)
+function addRuskoleum(amount) {
+  upgrades.ruskoleum += amount;
+  saveUpgrades();
+}
+
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function pewSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(420, t);
+    osc.frequency.exponentialRampToValueAtTime(120, t + 0.3);
+    gain.gain.setValueAtTime(0.14, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2); // extended decay from 0.5s to 1.2s
+    osc.start(t);
+    osc.stop(t + 1.2);
+  } catch (e) { }
+}
+
+function hitSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(280, t);
+    osc.frequency.exponentialRampToValueAtTime(60, t + 0.2);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8); // extended decay from 0.1s to 0.8s
+    osc.start(t);
+    osc.stop(t + 0.8);
+  } catch (e) { }
+}
+
+function enemyFireSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'sawtooth'; // harsher than player fire
+    osc.frequency.setValueAtTime(200, t); // lower pitch than player
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.2);
+    gain.gain.setValueAtTime(0.08, t); // quieter than player fire
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.9); // extended decay from 0.15s to 0.9s
+    osc.start(t);
+    osc.stop(t + 0.9);
+  } catch (e) { }
+}
+
+function explosionSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    const bufLen = Math.floor(audioCtx.sampleRate * 0.6);
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(200, t);
+    filter.frequency.exponentialRampToValueAtTime(50, t + 0.6);
+    const ng = audioCtx.createGain();
+    noise.connect(filter);
+    filter.connect(ng);
+    ng.connect(audioCtx.destination);
+    ng.gain.setValueAtTime(0.35, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    noise.start(t);
+    noise.stop(t + 0.6);
+  } catch (e) { }
+}
+
+function enemyDeathExplosion() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // Layer 1: low boom, 100→30 Hz, 1.0s decay
+    const boom = audioCtx.createOscillator();
+    const boomGain = audioCtx.createGain();
+    boom.connect(boomGain);
+    boomGain.connect(audioCtx.destination);
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(100, t);
+    boom.frequency.exponentialRampToValueAtTime(30, t + 0.25);
+    boomGain.gain.setValueAtTime(0.35, t);
+    boomGain.gain.setValueAtTime(0.35, t + 0.04);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+    boom.start(t);
+    boom.stop(t + 1.0);
+
+    // Layer 2: mid noise rumble, 1.0s
+    const bufLen = Math.floor(audioCtx.sampleRate * 1.1);
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(400, t);
+    filter.frequency.exponentialRampToValueAtTime(50, t + 1.0);
+    const ng = audioCtx.createGain();
+    noise.connect(filter);
+    filter.connect(ng);
+    ng.connect(audioCtx.destination);
+    ng.gain.setValueAtTime(0.2, t);
+    ng.gain.setValueAtTime(0.2, t + 0.06);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+    noise.start(t);
+    noise.stop(t + 1.1);
+  } catch (e) { }
+}
+
+function playerDamageSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(200, t);
+    osc.frequency.exponentialRampToValueAtTime(60, t + 0.3);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.0); // extended decay from 0.25s to 1.0s
+    osc.start(t);
+    osc.stop(t + 1.0);
+  } catch (e) { }
+}
+
+function ruskoleumPickupSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // Two-note ascending chime
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(800, t);
+    gain1.gain.setValueAtTime(0.15, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.6); // extended from 0.15s to 0.6s
+    osc1.start(t);
+    osc1.stop(t + 0.6);
+    
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1200, t + 0.1);
+    gain2.gain.setValueAtTime(0.15, t + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.8); // extended from 0.23s to 0.8s
+    osc2.start(t + 0.1);
+    osc2.stop(t + 0.8);
+  } catch (e) { }
+}
+
+function rumble(duration, weak, strong) {
+  // Rumble disabled - can cause freezing
+  return;
+}
+
+document.addEventListener('click', ensureAudio, { once: false });
+document.addEventListener('keydown', ensureAudio, { once: false });
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+
+let gameState = 'title';
+let deathTimer = 0;
+let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
+let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0;
+
+const keys = {};
+let mouseX = 0, mouseY = 0, mouseDX = 0, mouseDY = 0;
+let rightMouseDown = false, leftMouseDown = false;
+
+addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (e.code === 'Space') e.preventDefault();
+});
+addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+document.addEventListener('mousemove', (e) => {
+  if (rightMouseDown) {
+    mouseDX += e.movementX * 0.003;
+    mouseDY += e.movementY * 0.003;
+  }
+});
+
+document.addEventListener('mousedown', (e) => {
+  if (e.button === 0) { leftMouseDown = true; ensureAudio(); }
+  if (e.button === 2) { rightMouseDown = true; }
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 0) leftMouseDown = false;
+  if (e.button === 2) rightMouseDown = false;
+});
+
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+let padIndex = null;
+// Gamepad disabled due to browser compatibility issues
+// addEventListener('gamepadconnected', (e) => { padIndex = e.gamepad.index; });
+// addEventListener('gamepaddisconnected', () => { padIndex = null; });
+
+function readPad() {
+  // Gamepad disabled due to browser compatibility issues
+  return { mx: 0, my: 0, ax: 0, ay: 0, fire: false, special: false };
+}
+
+function createPlayerShip() {
+  const group = new THREE.Group();
+  group.position.set(0, 0, 0);
+  group.velocity = new THREE.Vector3(0, 0, 0);
+  group.angularVelocity = new THREE.Vector3(0, 0, 0);
+  group.speed = 0.15;
+  group.rotSpeed = 0.08;
+  const maxHealthBonus = (upgrades.collisionRadius || 0) * 20;
+  group.maxHealth = 100 + maxHealthBonus;
+  group.health = group.maxHealth;
+  group.shotCooldown = 0;
+  group.fireRate = 8;
+
+  const hull = new THREE.Mesh(
+    new THREE.ConeGeometry(2, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x28e0ff, wireframe: true })
+  );
+  hull.rotation.x = Math.PI / 2;
+  group.add(hull);
+
+  const noseCone = new THREE.Mesh(
+    new THREE.SphereGeometry(1.5, 4, 4),
+    new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true })
+  );
+  noseCone.position.z = 6;
+  group.add(noseCone);
+
+  scene.add(group);
+  return group;
+}
+
+function createEnemy(x, y, z, type) {
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  group.velocity = new THREE.Vector3(0, 0, 0);
+  group.type = type || 'scout';
+  group.targetPlayer = true;
+  group.fireT = Math.random() * 60; // random offset in frames
+
+  if (group.type === 'scout') {
+    group.health = 1;
+    group.speed = 7.2; // 0.12 * 60
+    group.fireRate = 80;
+    const hull = new THREE.Mesh(
+      new THREE.TetrahedronGeometry(1.5, 0),
+      new THREE.MeshBasicMaterial({ color: 0x9dff3c, wireframe: true })
+    );
+    group.add(hull);
+  } else if (group.type === 'interceptor') {
+    group.health = 1;
+    group.speed = 4.8; // 0.08 * 60
+    group.fireRate = 60;
+    const hull = new THREE.Mesh(
+      new THREE.OctahedronGeometry(2, 0),
+      new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true })
+    );
+    group.add(hull);
+  } else {
+    group.health = 1;
+    group.speed = 3.0; // 0.05 * 60
+    group.fireRate = 100;
+    const hull = new THREE.Mesh(
+      new THREE.BoxGeometry(3, 3, 4),
+      new THREE.MeshBasicMaterial({ color: 0xb06bff, wireframe: true })
+    );
+    group.add(hull);
+  }
+
+  scene.add(group);
+  return group;
+}
+
+function createProjectile(pos, velocity, friendly) {
+  const geom = new THREE.SphereGeometry(0.3, 4, 4);
+  const color = friendly ? 0x28e0ff : 0xff2d6f;
+  const proj = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color }));
+  proj.position.copy(pos);
+  proj.velocity = velocity instanceof THREE.Vector3 ? velocity.clone() : velocity.clone().normalize().multiplyScalar(1.5);
+  proj.friendly = friendly;
+  proj.life = friendly ? 1000 : 250;  // enemy bullets: 250 frames (~4s), player bullets: 1000 frames
+  scene.add(proj);
+  return proj;
+}
+
+function createRuskoleum(pos) {
+  // Create a small glowing crystal
+  const geom = new THREE.OctahedronGeometry(0.4, 0);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: false });
+  const crystal = new THREE.Mesh(geom, mat);
+  crystal.position.copy(pos);
+  crystal.userData.velocity = new THREE.Vector3(
+    (Math.random() - 0.5) * 1.5,
+    (Math.random() - 0.5) * 1.5,
+    (Math.random() - 0.5) * 1.5
+  );
+  crystal.userData.spin = Math.random() * 0.1;
+  crystal.userData.spinAxis = new THREE.Vector3(
+    Math.random() - 0.5,
+    Math.random() - 0.5,
+    Math.random() - 0.5
+  ).normalize();
+  scene.add(crystal);
+  return crystal;
+}
+
+function spawnEnemyWave() {
+  wave++;
+  // Progressive difficulty: wave 1 is easy, each wave gets progressively harder
+  const speedMult = 1 + Math.max(0, wave - 1) * 0.12;      // wave 1: 1.0x, wave 2: 1.12x, wave 3: 1.24x...
+  const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10; // wave 1: 1.4x (slower), wave 2: 1.30x, wave 3: 1.20x... min 0.4x
+  
+  for (let i = 0; i < 10; i++) {
+    // Spawn enemies spread across a wide area around player (not just ahead)
+    // Broader distribution: ±500 in X/Y, variable in Z
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 300 + Math.random() * 400; // 300-700 units away
+    const spreadX = Math.cos(angle) * distance;
+    const spreadZ = Math.sin(angle) * distance;
+    const spreadY = (Math.random() - 0.5) * 300; // ±150 in Y
+    
+    const x = player.position.x + spreadX;
+    const y = player.position.y + spreadY;
+    const z = player.position.z + spreadZ;
+    
+    const types = ['scout', 'interceptor', 'heavy'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const e = createEnemy(x, y, z, type);
+    // Scale difficulty
+    e.speed *= speedMult;
+    e.fireRate = Math.max(40, Math.floor(e.fireRate * fireRateMult)); // min fireRate of 40 frames
+    enemies.push(e);
+  }
+}
+
+function createStarfield(count) {
+  const geom = new THREE.BufferGeometry();
+  const positions = [];
+  for (let i = 0; i < count; i++) {
+    positions.push(
+      (Math.random() - 0.5) * 5000,
+      (Math.random() - 0.5) * 5000,
+      (Math.random() - 0.5) * 5000
+    );
+  }
+  geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 2 });
+  return new THREE.Points(geom, mat);
+}
+
+function init() {
+  console.log('Initializing game...');
+  console.log('THREE defined?', typeof THREE !== 'undefined');
+  
+  gameState = 'play';
+  document.getElementById('title').classList.add('hidden');
+  document.getElementById('gameover').classList.add('hidden');
+  document.getElementById('entry').classList.add('hidden');
+
+  while (scene.children.length > 0) scene.remove(scene.children[0]);
+
+  score = 0;
+  enemiesDestroyed = 0;
+  distanceTraveled = 0;
+  wave = 0;
+  screenFlash = 0;
+  
+  console.log('Creating player...');
+  player = createPlayerShip();
+  console.log('Player created:', player);
+  
+  enemies = [];
+  resources = [];
+
+  const starfield = createStarfield(3000);
+  scene.add(starfield);
+  console.log('Starfield added');
+
+  spawnEnemyWave();
+  console.log('Enemies spawned:', enemies.length);
+
+  projectiles = [];
+  enemies_projectiles = [];
+  floatingText = [];
+  
+  // Start the game loop (only once)
+  if (!loopRunning) {
+    loopRunning = true;
+    loop();
+  }
+}
+
+function update(dt) {
+  if (gameState !== 'play' && gameState !== 'dying') return;
+  
+  // During dying state, only update enemies and particles (not player input)
+  if (gameState === 'dying') {
+    deathTimer++;
+    console.log('deathTimer:', deathTimer);
+    // After 3 seconds (180 frames), queue game over transition
+    if (deathTimer >= 180) {
+      console.log('Reaching gameover transition at deathTimer=180');
+      gameOverQueued = true;
+    }
+    
+    // Update particles/bullets so they keep moving
+    enemies_projectiles.forEach(p => {
+      p.position.addScaledVector(p.velocity, dt);
+    });
+    enemies_projectiles = enemies_projectiles.filter(p => p.position.length() < 2000);
+    
+    floatingText.forEach(ft => { ft.life--; });
+    floatingText = floatingText.filter(ft => ft.life > 0);
+    
+    // CHECK FOR GAMEOVER BEFORE RETURNING!
+    if (gameOverQueued) {
+      console.log('gameOverQueued triggered during dying state, calling gameOver()');
+      gameOverQueued = false;
+      gameOver();
+      console.log('gameOver() completed');
+    }
+    
+    return; // Don't process any other updates during dying
+  }
+
+  const pad = readPad();
+
+  // ---- THRUST / BRAKES ----
+  let thrustInput = 0;
+  if (keys['KeyW']) thrustInput = 1;
+  if (keys['KeyS']) thrustInput = -1;
+  thrustInput += pad.my; // left stick forward/back
+  
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+  const thrustMult = 1.0 + (upgrades.shipSpeed || 0) * 0.15;
+  player.velocity.addScaledVector(forward, thrustInput * 3.0 * thrustMult); // 0.05 per frame * 60 = 3.0
+  player.velocity.multiplyScalar(0.97);
+  
+  // ---- MAX VELOCITY CAP ----
+  const baseMaxVel = 150; // 2.5 units/frame * 60 = 150
+  const maxVelBonus = (upgrades.maxVelocity || 0) * 30; // 0.5 * 60 = 30 per upgrade
+  const maxVel = baseMaxVel + maxVelBonus;
+  const velMag = player.velocity.length();
+  if (velMag > maxVel) {
+    player.velocity.multiplyScalar(maxVel / velMag);
+  }
+
+  // ---- ROLL (A/D or left stick left/right) ----
+  let rollInput = 0;
+  if (keys['KeyA']) rollInput = 1;
+  if (keys['KeyD']) rollInput = -1;
+  rollInput += pad.mx; // left stick left/right
+  
+  if (Math.abs(rollInput) > 0.05) {
+    const localForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    const qRoll = new THREE.Quaternion();
+    qRoll.setFromAxisAngle(localForward, rollInput * 0.08);
+    player.quaternion.multiplyQuaternions(qRoll, player.quaternion);
+  }
+
+  // ---- YAW / PITCH (RMB mouselook or right stick) ----
+  let yawInput = mouseDX;
+  let pitchInput = mouseDY;
+  
+  if (Math.hypot(pad.ax, pad.ay) > 0.1) {
+    yawInput += pad.ax * 0.03;
+    pitchInput -= pad.ay * 0.03;
+  }
+
+  if (Math.abs(yawInput) > 0.002) {
+    const localUp = new THREE.Vector3(0, 1, 0).applyQuaternion(player.quaternion);
+    const qYaw = new THREE.Quaternion();
+    qYaw.setFromAxisAngle(localUp, -yawInput);
+    player.quaternion.multiplyQuaternions(qYaw, player.quaternion);
+  }
+
+  if (Math.abs(pitchInput) > 0.002) {
+    const localRight = new THREE.Vector3(1, 0, 0).applyQuaternion(player.quaternion);
+    const qPitch = new THREE.Quaternion();
+    qPitch.setFromAxisAngle(localRight, -pitchInput);
+    player.quaternion.multiplyQuaternions(qPitch, player.quaternion);
+  }
+
+  mouseDX *= 0.9;
+  mouseDY *= 0.9;
+
+  player.position.addScaledVector(player.velocity, dt);
+
+  camera.position.copy(player.position);
+  camera.quaternion.copy(player.quaternion);
+  camera.position.addScaledVector(camera.getWorldDirection(new THREE.Vector3()), -0.5);
+
+  // ---- FIRE (LMB or A button) ----
+  const firing = leftMouseDown || (pad.fire && (Math.hypot(pad.ax, pad.ay) > 0.2));
+  player.shotCooldown--;
+  if (firing && player.shotCooldown <= 0) {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    const bulletSpeedMult = 1.0 + (upgrades.bulletSpeed || 0) * 0.8; // +0.8x per upgrade
+    const bulletVelocity = forward.clone().multiplyScalar(120 * bulletSpeedMult).add(player.velocity.clone().multiplyScalar(0.7));
+    projectiles.push(createProjectile(
+      player.position.clone().addScaledVector(forward, 3),
+      bulletVelocity,
+      true
+    ));
+    pewSound();
+    player.shotCooldown = player.fireRate;
+  }
+
+  // ---- SPECIAL WEAPON (Spacebar or Y button) ----
+  // TODO: implement special weapon
+  if (keys['Space']) {
+    // placeholder
+  }
+  if (pad.special) {
+    // placeholder for Y button
+  }
+
+  enemies.forEach((e, eIdx) => {
+    const toPlayer = player.position.clone().sub(e.position);
+    const d = toPlayer.length();
+    
+    if (d === 0) return;
+    
+    // ---- INITIALIZE ORBITAL PARAMETERS (once per enemy) ----
+    if (!e.orbitAngle) {
+      e.orbitAngle = Math.random() * Math.PI * 2;
+      e.orbitRadius = 100 + Math.random() * 80;
+      e.orbitSpeed = 0.01 + Math.random() * 0.015; // rad/frame
+      e.verticalPhase = Math.random() * Math.PI * 2;
+    }
+
+    // ---- UPDATE ORBIT ----
+    e.orbitAngle += e.orbitSpeed;
+    e.verticalPhase += e.orbitSpeed * 0.5;
+    
+    // Target orbital position (circular path with vertical variation)
+    const targetX = Math.cos(e.orbitAngle) * e.orbitRadius;
+    const targetZ = Math.sin(e.orbitAngle) * e.orbitRadius;
+    const targetY = Math.sin(e.verticalPhase) * 40;
+    const targetPos = player.position.clone().add(new THREE.Vector3(targetX, targetY, targetZ));
+    
+    // Move toward orbital target
+    const toTarget = targetPos.clone().sub(e.position);
+    const toTargetDist = toTarget.length();
+    if (toTargetDist > 1) {
+      toTarget.normalize();
+      e.velocity.addScaledVector(toTarget, e.speed * 0.8);
+    }
+
+    // ---- COLLISION AVOIDANCE (avoid other enemies) ----
+    enemies.forEach((other, otherIdx) => {
+      if (otherIdx === eIdx) return;
+      const toOther = other.position.clone().sub(e.position);
+      const distToOther = toOther.length();
+      const minSeparation = 30;
+      
+      if (distToOther < minSeparation && distToOther > 0.1) {
+        toOther.normalize();
+        e.velocity.addScaledVector(toOther, -e.speed * 0.5); // repel
+      }
+    });
+
+    e.velocity.multiplyScalar(0.94);
+    e.position.addScaledVector(e.velocity, dt); // only scale position by dt
+
+    // ---- FIRING (when in range, fire at player) ----
+    e.fireT--;
+    if (e.fireT <= 0 && d < 400) {  // increased range to 400
+      // Fire 3 bullets in a spread toward player, regardless of facing
+      const toPlayer = player.position.clone().sub(e.position);
+      if (toPlayer.length() > 0) {
+        toPlayer.normalize();
+        const bulletSpeed = 40; // much slower, clearly visible
+        
+        // Fire 3 bullets with slight spread
+        for (let spread = -1; spread <= 1; spread++) {
+          // Create spread angle
+          const spreadOffset = spread * 0.2;
+          const spreadDir = new THREE.Vector3(
+            toPlayer.x + (Math.random() - 0.5) * 0.2,
+            toPlayer.y + (Math.random() - 0.5) * 0.2,
+            toPlayer.z + (Math.random() - 0.5) * 0.2
+          ).normalize();
+          
+          const enemyBulletVel = spreadDir.multiplyScalar(bulletSpeed);
+          enemies_projectiles.push(createProjectile(e.position.clone(), enemyBulletVel, false));
+        }
+        
+        // Play enemy fire sound
+        enemyFireSound();
+        
+        // Shorter cooldown between bursts: base fireRate is the main delay, random adds variability
+        e.fireT = e.fireRate + Math.random() * 20;  // smaller random component for consistency
+      }
+    }
+
+    if (Math.hypot(player.velocity.x, player.velocity.y, player.velocity.z) > 0.01) {
+      distanceTraveled += Math.hypot(player.velocity.x, player.velocity.y, player.velocity.z);
+    }
+  });
+
+  projectiles = projectiles.filter((p) => {
+    p.position.addScaledVector(p.velocity, dt); // scale position by dt
+    p.life--; // decrement per-frame
+
+    let hit = false;
+    enemies.forEach((e, eIdx) => {
+      const d = p.position.distanceTo(e.position);
+      if (d < 8) {
+        e.health--;
+        hit = true;
+        hitSound();
+        if (e.health <= 0) {
+          // ---- CALCULATE POINTS BY ENEMY TYPE ----
+          let pointsEarned = 100;
+          if (e.type === 'scout') pointsEarned = 100;
+          else if (e.type === 'interceptor') pointsEarned = 250;
+          else if (e.type === 'heavy') pointsEarned = 500;
+
+          // ---- CREATE EXPLOSION GEOMETRY ----
+          const expSize = e.type === 'heavy' ? 15 : e.type === 'interceptor' ? 12 : 8;
+          const expGeom = new THREE.IcosahedronGeometry(expSize, 1);
+          const expMat = new THREE.MeshBasicMaterial({ 
+            color: 0xff6600, 
+            wireframe: true,
+            transparent: true,
+            opacity: 1.0
+          });
+          const expMesh = new THREE.Mesh(expGeom, expMat);
+          expMesh.position.copy(e.position);
+          expMesh.userData.life = 30;
+          expMesh.userData.isExplosion = true;
+          scene.add(expMesh);
+
+          // ---- REMOVE ENEMY ----
+          scene.remove(e);
+          enemies.splice(eIdx, 1);
+          
+          // ---- SPAWN RUSKOLEUM ----
+          const dropCount = 2 + Math.floor(Math.random() * 2); // 2 or 3 crystals
+          for (let i = 0; i < dropCount; i++) {
+            resources.push(createRuskoleum(e.position.clone().add(
+              new THREE.Vector3(
+                (Math.random() - 0.5) * 3,
+                (Math.random() - 0.5) * 3,
+                (Math.random() - 0.5) * 3
+              )
+            )));
+          }
+          
+          score += pointsEarned;
+          enemiesDestroyed++;
+
+          // ---- PLAY EXPLOSION SOUND ----
+          enemyDeathExplosion();
+
+          // ---- ADD FLOATING TEXT ----
+          floatingText.push({
+            x: e.position.x,
+            y: e.position.y,
+            z: e.position.z,
+            text: '+' + pointsEarned,
+            life: 80,
+            color: 0xffb000
+          });
+
+          // ---- SPAWN NEW ENEMIES IF ALL DESTROYED ----
+          if (enemies.length === 0) {
+            spawnEnemyWave();
+          }
+        }
+      }
+    });
+
+    if (hit) {
+      scene.remove(p);
+    }
+
+    return p.life > 0 && !hit;
+  });
+
+  // ---- UPDATE EXPLOSIONS ----
+  scene.children.forEach((mesh) => {
+    if (mesh.userData.isExplosion) {
+      mesh.userData.life--;
+      mesh.rotation.x += 0.1;
+      mesh.rotation.y += 0.12;
+      mesh.scale.addScaledVector(new THREE.Vector3(1, 1, 1), 0.08);
+      mesh.material.opacity = mesh.userData.life / 30;
+      if (mesh.userData.life <= 0) {
+        scene.remove(mesh);
+      }
+    }
+  });
+
+  // ---- UPDATE FLOATING TEXT ----
+  floatingText = floatingText.filter((ft) => {
+    ft.life--;
+    ft.y += 0.5; // drift upward
+    return ft.life > 0;
+  });
+
+  // ---- UPDATE ENEMY PROJECTILES ----
+  enemies_projectiles = enemies_projectiles.filter((p) => {
+    p.position.addScaledVector(p.velocity, dt); // apply delta time scaling
+    p.life--;
+
+    const d = p.position.distanceTo(player.position);
+    if (d < 25) { // increased collision radius to 25 units (player ship size)
+      player.health -= 10;
+      playerDamageSound();
+      screenFlash = 20;
+      screenShake = 12;
+      rumble(300, 0.6, 0.9);
+      scene.remove(p);
+      if (player.health <= 0) {
+        gameState = 'dying';
+        deathTimer = 0;
+      }
+      return false;
+    }
+
+    if (p.life <= 0) {
+      scene.remove(p);
+      return false;
+    }
+
+    return true;
+  });
+  
+  // ---- UPDATE RESOURCES (RUSKOLEUM) ----
+  const pickupRadius = 15 + (upgrades.pickupRadius || 0) * 5; // base 15, +5 per upgrade
+  resources = resources.filter((r) => {
+    // Apply velocity
+    r.position.addScaledVector(r.userData.velocity, dt);
+    r.userData.velocity.multiplyScalar(0.98); // gentle drag
+    
+    // Spin the crystal
+    const axis = r.userData.spinAxis;
+    r.rotateOnWorldAxis(axis, r.userData.spin);
+    
+    // Check pickup collision with generous radius
+    const d = r.position.distanceTo(player.position);
+    if (d < pickupRadius) {
+      addRuskoleum(1);
+      ruskoleumPickupSound();
+      scene.remove(r);
+      return false; // remove from array
+    }
+    
+    // Age out if too far from player (prevent infinite drifting)
+    const distance = r.position.distanceTo(player.position);
+    if (distance > 1500) {
+      scene.remove(r);
+      return false;
+    }
+    
+    return true;
+  });
+  
+  // Check if gameOver was queued during this update
+  if (gameOverQueued) {
+    console.log('gameOverQueued triggered, calling gameOver()');
+    gameOverQueued = false;
+    gameOver();
+    console.log('gameOver() completed');
+  }
+}
+
+function gameOver() {
+  if (gameState !== 'play' && gameState !== 'dying') return;
+  console.log('gameOver: transitioning from state', gameState, 'to gameover');
+  gameState = 'gameover';
+
+  // Fill in the end-of-run stats on the panel
+  document.getElementById('finalScore').textContent = String(score).padStart(6, '0');
+  document.getElementById('waveCount').textContent = wave;
+  document.getElementById('enemyCount').textContent = enemiesDestroyed;
+
+  // If the score is good enough, do initials entry first.
+  // confirmEntry() will reveal the gameover panel afterward.
+  // Otherwise, show the panel and high-score board right away.
+  if (qualifies(score)) {
+    startEntry();
+  } else {
+    renderHSTable(-1);
+    document.getElementById('gameover').classList.remove('hidden');
+  }
+}
+
+function resetGame() {
+  const confirm = window.confirm(
+    'WARNING: This will WIPE all upgrades and high scores.\n\n' +
+    'Are you absolutely sure? (This cannot be undone)'
+  );
+  
+  if (!confirm) return;
+  
+  // Clear all stored data using correct keys
+  try {
+    localStorage.removeItem(UPGRADE_KEY);
+    localStorage.removeItem(HS_KEY);
+  } catch (e) {}
+  
+  // Reset upgrades to defaults
+  upgrades = {
+    ruskoleum: 0,
+    bulletSpeed: 0,
+    pickupRadius: 0,
+    collisionRadius: 0,
+    shipSpeed: 0,
+    maxVelocity: 0
+  };
+  saveUpgrades();
+  
+  // Reset high scores to defaults
+  highScores = [
+    {ini:'RUS', sc:50000},{ini:'SKO', sc:35000},{ini:'RUS', sc:25000},
+    {ini:'VOI', sc:15000},{ini:'DEV', sc:10000},{ini:'TST', sc:7500},
+    {ini:'BTA', sc:5000},{ini:'AWE', sc:3000},{ini:'GUN', sc:1500},{ini:'PEW', sc:500},
+  ];
+  saveScores();
+  
+  // Update UI
+  updateUpgradeUI();
+  refreshTitleTop();
+  
+  alert('All data has been reset. Game progression reset to default.');
+}
+
+function renderHSTable(highlightIdx=-1){
+  document.getElementById('hsTable').innerHTML=highScores.map((r,i)=>{
+    const me=i===highlightIdx?' style="color: var(--hot);"':'';
+    return `<div${me}>${String(i+1).padStart(2,'0')}. ${r.ini} &nbsp; ${String(r.sc).padStart(6,'0')}</div>`;
+  }).join('');
+}
+
+let entryInitials, entryPos;
+function startEntry(){
+  gameState = 'entry';
+  entryInitials=['A','A','A'];
+  entryPos=0;
+  document.getElementById('entryScore').textContent='SCORE '+String(score).padStart(6,'0');
+  drawEntry();
+  document.getElementById('entry').classList.remove('hidden');
+}
+function drawEntry(){
+  document.getElementById('entryInitials').innerHTML=
+    entryInitials.map((c,i)=>i===entryPos?`<span style="color: var(--neon);">${c}</span>`:`<span>${c}</span>`).join('');
+}
+function cycleLetter(d){
+  let c=entryInitials[entryPos].charCodeAt(0)-65;
+  c=(c+d+26)%26;
+  entryInitials[entryPos]=String.fromCharCode(65+c);
+  drawEntry();
+}
+function movePos(d){
+  entryPos=Math.max(0,Math.min(2,entryPos+d));
+  drawEntry();
+}
+function confirmEntry(){
+  const ini=entryInitials.join('');
+  const idx=insertScore(ini,score);
+  document.getElementById('entry').classList.add('hidden');
+  renderHSTable(idx);
+  document.getElementById('gameover').classList.remove('hidden');
+  gameState='gameover';
+}
+
+// ---- UPGRADE MENU ----
+function showUpgrades() {
+  document.getElementById('upgrades').classList.remove('hidden');
+  document.getElementById('title').classList.add('hidden');
+  updateUpgradeUI();
+}
+
+function closeUpgrades() {
+  document.getElementById('upgrades').classList.add('hidden');
+  document.getElementById('title').classList.remove('hidden');
+}
+
+function returnToTitle() {
+  document.getElementById('gameover').classList.add('hidden');
+  document.getElementById('entry').classList.add('hidden');
+  document.getElementById('title').classList.remove('hidden');
+  gameState = 'title';
+}
+
+function updateUpgradeUI() {
+  // Update Ruskoleum display
+  document.getElementById('upgradeRuskoleum').textContent = upgrades.ruskoleum;
+  
+  // Update upgrade level displays and next costs (5 * 2^level)
+  const upgradesToShow = ['bulletSpeed', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity'];
+  upgradesToShow.forEach(key => {
+    const lvl = upgrades[key] || 0;
+    document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
+    const nextCost = 5 * Math.pow(2, lvl);
+    document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
+  });
+  
+  // Update stat displays
+  const bulletSpeedMult = 1.0 + (upgrades.bulletSpeed || 0) * 0.8;
+  document.getElementById('statBulletSpeed').textContent = bulletSpeedMult.toFixed(1);
+  
+  const pickupBonus = (upgrades.pickupRadius || 0) * 5;
+  document.getElementById('statPickupRadius').textContent = pickupBonus;
+  
+  const healthBonus = (upgrades.collisionRadius || 0) * 20;
+  document.getElementById('statCollisionRadius').textContent = healthBonus;
+  
+  const speedMult = 1.0 + (upgrades.shipSpeed || 0) * 0.15;
+  document.getElementById('statShipSpeed').textContent = speedMult.toFixed(2);
+  
+  const maxVelBonus = (upgrades.maxVelocity || 0) * 0.5;
+  document.getElementById('statMaxVelocity').textContent = (2.5 + maxVelBonus).toFixed(1);
+}
+
+function buyUpgradeBtn(key) {
+  if (buyUpgrade(key)) {
+    ruskoleumPickupSound(); // use pickup sound for purchase success
+    updateUpgradeUI();
+  } else {
+    // Not enough Ruskoleum - could add a buzzer sound here
+  }
+}
+
+addEventListener('keydown', (e) => {
+  if (gameState !== 'entry') return;
+  if (e.code==='ArrowUp'||e.code==='KeyW') cycleLetter(1);
+  else if (e.code==='ArrowDown'||e.code==='KeyS') cycleLetter(-1);
+  else if (e.code==='ArrowLeft'||e.code==='KeyA') movePos(-1);
+  else if (e.code==='ArrowRight'||e.code==='KeyD') movePos(1);
+  else if (e.code==='Enter') confirmEntry();
+});
+
+function draw() {
+  // Draw during both play and dying states
+  if (gameState !== 'play' && gameState !== 'dying') return;
+  
+  if (!renderer || !scene || !camera) {
+    return;
+  }
+  
+  renderer.render(scene, camera);
+
+  hudCanvas.width = window.innerWidth;
+  hudCanvas.height = window.innerHeight;
+
+  if (!player) {
+    return;
+  }
+
+  hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
+  hudCtx.font = '18px VT323, monospace';
+  hudCtx.textAlign = 'left';
+  hudCtx.fillText('SCORE ' + String(score).padStart(6, '0'), 12, 30);
+  hudCtx.fillText('HEALTH ' + Math.max(0, Math.floor(player.health)), 12, 55);
+  hudCtx.fillText('ENEMIES ' + enemies.length, 12, 80);
+  hudCtx.fillStyle = '#00ff88';
+  hudCtx.fillText('RUSKOLEUM ' + upgrades.ruskoleum, 12, 105);
+  hudCtx.fillStyle = '#28e0ff';
+  
+  const speed = player.velocity.length();
+  hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 130);
+
+  const cxHud = window.innerWidth / 2;
+  const cyHud = window.innerHeight / 2;
+  hudCtx.strokeStyle = 'rgba(40, 224, 255, 0.6)';
+  hudCtx.lineWidth = 2;
+  hudCtx.beginPath();
+  hudCtx.moveTo(cxHud - 30, cyHud);
+  hudCtx.lineTo(cxHud + 30, cyHud);
+  hudCtx.moveTo(cxHud, cyHud - 30);
+  hudCtx.lineTo(cxHud, cyHud + 30);
+  hudCtx.stroke();
+
+  hudCtx.strokeStyle = 'rgba(40, 224, 255, 0.3)';
+  hudCtx.beginPath();
+  hudCtx.arc(cxHud, cyHud, 50, 0, Math.PI * 2);
+  hudCtx.stroke();
+
+  hudCtx.fillStyle = 'rgba(255, 176, 0, 0.4)';
+  const healthFrac = Math.max(0, player.health / player.maxHealth);
+  hudCtx.fillRect(12, window.innerHeight - 30, healthFrac * 200, 12);
+  hudCtx.strokeStyle = 'rgba(255, 176, 0, 0.7)';
+  hudCtx.lineWidth = 1;
+  hudCtx.strokeRect(12, window.innerHeight - 30, 200, 12);
+
+  // ---- RENDER FLOATING TEXT (points earned at death locations) ----
+  floatingText.forEach((ft) => {
+    const worldPos = new THREE.Vector3(ft.x, ft.y, ft.z);
+    const screenPos = new THREE.Vector2();
+    const projectionMatrix = camera.projectionMatrix;
+    const viewMatrix = camera.matrixWorldInverse;
+    const modelViewMatrix = new THREE.Matrix4();
+    modelViewMatrix.multiplyMatrices(viewMatrix, new THREE.Matrix4().setPosition(worldPos));
+    
+    worldPos.project(camera);
+    const screenX = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
+    const screenY = (-worldPos.y * 0.5 + 0.5) * window.innerHeight;
+    
+    if (worldPos.z < 1) { // only draw if in front of camera
+      const alpha = ft.life / 80;
+      hudCtx.globalAlpha = alpha;
+      hudCtx.fillStyle = '#ffb000';
+      hudCtx.font = 'bold 24px Orbitron, sans-serif';
+      hudCtx.textAlign = 'center';
+      hudCtx.textBaseline = 'middle';
+      hudCtx.fillText(ft.text, screenX, screenY);
+      hudCtx.globalAlpha = 1;
+    }
+  });
+
+  // Screen flash on damage
+  if (screenFlash > 0) {
+    hudCtx.fillStyle = `rgba(255, 100, 100, ${screenFlash / 20 * 0.6})`;
+    hudCtx.fillRect(0, 0, hudCanvas.width, hudCanvas.height);
+    screenFlash--;
+  }
+
+  // ---- GAME OVER GRAPHIC (during dying state) ----
+  if (gameState === 'dying') {
+    const w = hudCanvas.width;
+    const h = hudCanvas.height;
+    // Fade out: starts at 1.0 opacity, fades to 0 over 3 seconds (180 frames)
+    const fadeAlpha = Math.max(0, 1.0 - (deathTimer / 180));
+    
+    if (fadeAlpha > 0) {
+      // Semi-transparent dark overlay
+      hudCtx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha * 0.6})`;
+      hudCtx.fillRect(0, 0, w, h);
+      
+      // GAME OVER text
+      hudCtx.globalAlpha = fadeAlpha;
+      hudCtx.fillStyle = '#ff2d6f';
+      hudCtx.font = 'bold 120px Orbitron, sans-serif';
+      hudCtx.textAlign = 'center';
+      hudCtx.textBaseline = 'middle';
+      hudCtx.shadowColor = '#ff2d6f';
+      hudCtx.shadowBlur = 30;
+      hudCtx.fillText('GAME OVER', w / 2, h / 2 - 40);
+      
+      // Score display below
+      hudCtx.font = 'bold 48px Orbitron, sans-serif';
+      hudCtx.fillStyle = '#ffb000';
+      hudCtx.shadowColor = '#ffb000';
+      hudCtx.fillText('SCORE ' + String(score).padStart(6, '0'), w / 2, h / 2 + 60);
+      
+      hudCtx.globalAlpha = 1;
+      hudCtx.shadowBlur = 0;
+    }
+  }
+}
+
+let frameCount = 0;
+let loopRunning = false;
+let animFrameId = null;
+let gameOverQueued = false;
+let lastFrameTime = performance.now();
+let deltaTime = 0;
+
+function loop() {
+  frameCount++;
+  const now = performance.now();
+  deltaTime = Math.min((now - lastFrameTime) / 1000, 0.05); // dt in seconds, cap at 50ms to prevent large jumps
+  lastFrameTime = now;
+  
+  try {
+    update(deltaTime);
+    draw();
+  } catch (err) {
+    // If update or draw throws, log it instead of silently killing the loop.
+    // A thrown exception here is almost certainly the real cause of any "freeze".
+    console.error('LOOP ERROR:', err);
+  }
+  // Always continue the loop, even if the frame above threw.
+  animFrameId = requestAnimationFrame(loop);
+}
+
+document.getElementById('startBtn').onclick = init;
+document.getElementById('restartBtn').onclick = returnToTitle;
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+});
+</script>
+</body>
+</html>
