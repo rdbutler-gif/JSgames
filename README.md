@@ -25,6 +25,11 @@ Another arcade-style challenge. Built to test both coding skills and game design
 
 **Play:** [Rusko's Planet](./NullSector2/ruskos_descent.html)
 
+### Rusko's Void
+Thee dimensional space combat.  Persistent upgrades for replayability.
+
+**Play:** [Rusko's Void](./NullSector2/ruskos_3d_space.html)
+
 ## Technical Notes
 
 - Built with vanilla HTML5, CSS, and JavaScript

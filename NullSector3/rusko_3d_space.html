@@ -146,7 +146,8 @@
     </div>
     <button class="btn" id="startBtn">LAUNCH ▶</button>
     <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="margin-left: 8px;">⚙ UPGRADE</button>
-    <button class="btn" id="resetBtn" onclick="resetGame()" style="margin-left: 8px; background: #ff2d6f; font-size: 14px;">RESET ALL</button>
+    <button class="btn" id="resetGameBtn" onclick="resetGameOnly()" style="margin-left: 8px; background: #ff2d6f; font-size: 14px;">RESET GAME</button>
+    <button class="btn" id="resetScoresBtn" onclick="resetHighScoresOnly()" style="margin-left: 8px; background: #b06bff; font-size: 14px;">RESET SCORES</button>
   </div>
 
   <div id="gameover" class="panel hidden">
@@ -166,6 +167,7 @@
     <div style="font-size: 18px; color: var(--amber); margin: 12px 0; letter-spacing: 2px;" id="entryScore">SCORE 000000</div>
     <div style="font-size: 48px; letter-spacing: 16px; color: var(--amber); margin: 8px 0; font-family: 'Orbitron', sans-serif;" id="entryInitials"></div>
     <div style="font-size: 14px; color: var(--cyan); margin-top: 12px;">↑↓ change &nbsp; ←→ move &nbsp; ENTER = confirm</div>
+    <button class="btn" id="saveBtn" onclick="saveInitials()" style="margin-top: 16px;">[ SAVE ]</button>
   </div>
 
   <!-- UPGRADES SHOP -->
@@ -227,6 +229,22 @@
             <div style="font-size: 11px;">Cost: <span id="upgradeCost_maxVelocity">5</span> | Lvl: <span id="upgradeLvl_maxVelocity" style="color: var(--neon);">0</span></div>
             <div style="text-align: center;"></div>
             <button class="btn" onclick="buyUpgradeBtn('maxVelocity')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Space Mine -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 45, 111, 0.1);">
+            <div style="color: #ff2d6f; font-weight: bold;">SPACE MINE</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceMine">20</span> | Lvl: <span id="upgradeLvl_spaceMine" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('spaceMine')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Space Laser -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 176, 0, 0.1);">
+            <div style="color: #ffb000; font-weight: bold;">SPACE LASER</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceLaser">20</span> | Lvl: <span id="upgradeLvl_spaceLaser" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('spaceLaser')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
           </div>
         </div>
       </div>
@@ -311,6 +329,8 @@ const DEFAULT_UPGRADES = {
   collisionRadius: 0,  // costs 5, 10, 20... (ship max health)
   shipSpeed: 0,        // costs 5, 10, 20... (acceleration/thrusters)
   maxVelocity: 0,      // costs 5, 10, 20... (top speed)
+  spaceMine: 0,        // costs 20, 40, 80... (Q key weapon, level 0 = not purchased)
+  spaceLaser: 0,       // costs 20, 40, 80... (E key weapon, level 0 = not purchased)
 };
 
 function loadUpgrades(){
@@ -330,7 +350,9 @@ function saveUpgrades() {
 // Buy an upgrade; costs scale: 5, 10, 20, 40, 80... (5 * 2^currentLevel)
 function buyUpgrade(key) {
   const currentLevel = upgrades[key] || 0;
-  const cost = 5 * Math.pow(2, currentLevel); // 5 * 2^level
+  // Weapons (spaceMine, spaceLaser) cost 20 * 2^level; others cost 5 * 2^level
+  const baseCost = (key === 'spaceMine' || key === 'spaceLaser') ? 20 : 5;
+  const cost = baseCost * Math.pow(2, currentLevel);
   if (upgrades.ruskoleum >= cost) {
     upgrades.ruskoleum -= cost;
     upgrades[key] = currentLevel + 1;
@@ -521,6 +543,44 @@ function ruskoleumPickupSound() {
   } catch (e) { }
 }
 
+function mineDropSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // Deep, metallic "CHUNK" sound - low frequency thud with slight pitch rise
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.linearRampToValueAtTime(120, t + 0.3);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.start(t);
+    osc.stop(t + 0.4);
+  } catch (e) { }
+}
+
+function laserFireSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // High-frequency laser "PZZZEW" - rising tone with noise
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, t);
+    osc.frequency.exponentialRampToValueAtTime(3000, t + 0.5);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    osc.start(t);
+    osc.stop(t + 0.5);
+  } catch (e) { }
+}
+
 function rumble(duration, weak, strong) {
   // Rumble disabled - can cause freezing
   return;
@@ -547,7 +607,9 @@ rearRenderer.setPixelRatio(window.devicePixelRatio);
 let gameState = 'title';
 let deathTimer = 0;
 let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
+let mines = [], lasers = [];  // New weapons
 let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0;
+let mineCooldown = 0, laserCooldown = 0;  // Weapon cooldowns
 
 const keys = {};
 let mouseX = 0, mouseY = 0, mouseDX = 0, mouseDY = 0;
@@ -765,6 +827,10 @@ function init() {
   projectiles = [];
   enemies_projectiles = [];
   floatingText = [];
+  mines = [];
+  lasers = [];
+  mineCooldown = 0;
+  laserCooldown = 0;
   
   // Start the game loop (only once)
   if (!loopRunning) {
@@ -905,6 +971,41 @@ function update(dt) {
   if (pad.special) {
     // placeholder for Y button
   }
+
+  // ---- SPACE MINE (Q key) ----
+  mineCooldown--;
+  if (keys['KeyQ'] && upgrades.spaceMine > 0 && mineCooldown <= 0) {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
+    const mineProximity = 10 + (upgrades.spaceMine - 1) * 2; // 10u base, +2u per upgrade
+    mines.push({
+      position: minePos.clone(),
+      proximity: mineProximity,
+      alive: true,
+      life: 600  // 10 seconds at 60 FPS (halflife - disappears after 10 seconds if not triggered)
+    });
+    mineCooldown = 60 * (1 - (upgrades.spaceMine - 1) * 0.1); // 60 frames base, reduce by 10% per upgrade (min 30)
+    mineCooldown = Math.max(30, mineCooldown);
+    mineDropSound();
+  }
+
+  // ---- SPACE LASER (E key) ----
+  laserCooldown--;
+  if (keys['KeyE'] && upgrades.spaceLaser > 0 && laserCooldown <= 0) {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    const laserDuration = 30 + (upgrades.spaceLaser - 1) * 30; // 0.5s base (30 frames), +0.5s per upgrade
+    lasers.push({
+      position: player.position.clone(),
+      direction: forward.clone(),
+      life: laserDuration,
+      maxLife: laserDuration,
+      width: 10 // 10u detection width
+    });
+    laserCooldown = 120 * (1 - (upgrades.spaceLaser - 1) * 0.15); // 2s base, reduce by 15% per upgrade (min 60)
+    laserCooldown = Math.max(60, laserCooldown);
+    laserFireSound();
+  }
+
 
   enemies.forEach((e, eIdx) => {
     const toPlayer = player.position.clone().sub(e.position);
@@ -1058,9 +1159,9 @@ function update(dt) {
         if (e.health <= 0) {
           // ---- CALCULATE POINTS BY ENEMY TYPE ----
           let pointsEarned = 100;
-          if (e.type === 'scout') pointsEarned = 100;
+          if (e.type === 'scout') pointsEarned = 500;
           else if (e.type === 'interceptor') pointsEarned = 250;
-          else if (e.type === 'heavy') pointsEarned = 500;
+          else if (e.type === 'heavy') pointsEarned = 100;
 
           // ---- CREATE EXPLOSION GEOMETRY ----
           const expSize = e.type === 'heavy' ? 15 : e.type === 'interceptor' ? 12 : 8;
@@ -1123,6 +1224,128 @@ function update(dt) {
 
     return p.life > 0 && !hit;
   });
+
+  // ---- MINE COLLISION & UPDATES ----
+  for (let mIdx = mines.length - 1; mIdx >= 0; mIdx--) {
+    const mine = mines[mIdx];
+    if (!mine.alive) continue;
+    
+    // Decrement mine lifetime
+    mine.life--;
+    if (mine.life <= 0) {
+      mine.alive = false;
+      continue;
+    }
+    
+    // Check for enemy proximity to mine
+    for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+      const e = enemies[eIdx];
+      const dToMine = mine.position.distanceTo(e.position);
+      if (dToMine < mine.proximity) {
+        // EXPLOSION
+        const expGeom = new THREE.IcosahedronGeometry(20, 1);
+        const expMat = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true, transparent: true, opacity: 1.0 });
+        const expMesh = new THREE.Mesh(expGeom, expMat);
+        expMesh.position.copy(mine.position);
+        expMesh.userData.life = 30;
+        expMesh.userData.isExplosion = true;
+        scene.add(expMesh);
+        
+        // Destroy enemy
+        scene.remove(e);
+        enemies.splice(eIdx, 1);
+        let pointsEarned = 100;
+        if (e.type === 'scout') pointsEarned = 500;
+        else if (e.type === 'interceptor') pointsEarned = 250;
+        else if (e.type === 'heavy') pointsEarned = 100;
+        score += pointsEarned;
+        enemiesDestroyed++;
+        enemyDeathExplosion();
+        
+        // Drop Ruskoleum
+        const dropCount = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < dropCount; i++) {
+          resources.push(createRuskoleum(e.position.clone().add(
+            new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
+          )));
+        }
+        
+        // Remove mine
+        mine.alive = false;
+        break;
+      }
+    }
+  }
+  // Cleanup destroyed mines
+  mines.forEach(m => {
+    if (!m.alive && m.mesh) {
+      scene.remove(m.mesh);
+    }
+  });
+  mines = mines.filter(m => m.alive);
+
+  // ---- CHECK FOR WAVE SPAWN (after all collision) ----
+  if (enemies.length === 0 && gameState === 'play') {
+    spawnEnemyWave();
+  }
+
+  // ---- LASER COLLISION & UPDATES ----
+  for (let lIdx = lasers.length - 1; lIdx >= 0; lIdx--) {
+    const laser = lasers[lIdx];
+    laser.life--;
+    if (laser.life <= 0) continue;
+    
+    // Update laser direction to follow player orientation
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    laser.direction.copy(forward);
+    laser.position.copy(player.position);
+    
+    // Check for enemy collision with laser
+    for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+      const e = enemies[eIdx];
+      // Project enemy position onto laser line, check perpendicular distance
+      const toEnemy = e.position.clone().sub(laser.position);
+      const projDist = toEnemy.dot(laser.direction);
+      if (projDist > 0 && projDist < 2000) { // only forward along laser
+        const perpDist = toEnemy.clone().sub(laser.direction.clone().multiplyScalar(projDist)).length();
+        if (perpDist < laser.width) {
+          // Destroy enemy
+          const expGeom = new THREE.IcosahedronGeometry(12, 1);
+          const expMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 1.0 });
+          const expMesh = new THREE.Mesh(expGeom, expMat);
+          expMesh.position.copy(e.position);
+          expMesh.userData.life = 30;
+          expMesh.userData.isExplosion = true;
+          scene.add(expMesh);
+          
+          scene.remove(e);
+          enemies.splice(eIdx, 1);
+          let pointsEarned = 100;
+          if (e.type === 'scout') pointsEarned = 500;
+          else if (e.type === 'interceptor') pointsEarned = 250;
+          else if (e.type === 'heavy') pointsEarned = 100;
+          score += pointsEarned;
+          enemiesDestroyed++;
+          enemyDeathExplosion();
+          
+          // Drop Ruskoleum
+          const dropCount = 2 + Math.floor(Math.random() * 2);
+          for (let i = 0; i < dropCount; i++) {
+            resources.push(createRuskoleum(e.position.clone().add(
+              new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
+            )));
+          }
+        }
+      }
+    }
+  }
+  // Cleanup expired lasers
+  lasers.forEach(l => {
+    if (l.life <= 0 && l.line) {
+      scene.remove(l.line);
+    }
+  });
+  lasers = lasers.filter(l => l.life > 0);
 
   // ---- UPDATE EXPLOSIONS ----
   scene.children.forEach((mesh) => {
@@ -1230,6 +1453,62 @@ function gameOver() {
   }
 }
 
+function resetGameOnly() {
+  const confirm = window.confirm(
+    'WARNING: This will WIPE all upgrades.\n\n' +
+    'Are you absolutely sure? (This cannot be undone)'
+  );
+  
+  if (!confirm) return;
+  
+  // Clear upgrades only
+  try {
+    localStorage.removeItem(UPGRADE_KEY);
+  } catch (e) {}
+  
+  // Reset upgrades to defaults
+  upgrades = {
+    ruskoleum: 0,
+    bulletSpeed: 0,
+    pickupRadius: 0,
+    collisionRadius: 0,
+    shipSpeed: 0,
+    maxVelocity: 0
+  };
+  saveUpgrades();
+  
+  // Update UI
+  updateUpgradeUI();
+  
+  alert('All upgrades have been reset to defaults.');
+}
+
+function resetHighScoresOnly() {
+  const confirm = window.confirm(
+    'WARNING: This will WIPE all high scores.\n\n' +
+    'Are you absolutely sure? (This cannot be undone)'
+  );
+  
+  if (!confirm) return;
+  
+  // Clear high scores only
+  try {
+    localStorage.removeItem(HS_KEY);
+  } catch (e) {}
+  
+  // Reset high scores to defaults (AAA 000000)
+  highScores = [];
+  for (let i = 0; i < 10; i++) {
+    highScores.push({ini: 'AAA', sc: 0});
+  }
+  saveScores();
+  
+  // Update UI
+  refreshTitleTop();
+  
+  alert('All high scores have been reset to defaults.');
+}
+
 function resetGame() {
   const confirm = window.confirm(
     'WARNING: This will WIPE all upgrades and high scores.\n\n' +
@@ -1255,12 +1534,11 @@ function resetGame() {
   };
   saveUpgrades();
   
-  // Reset high scores to defaults
-  highScores = [
-    {ini:'RUS', sc:50000},{ini:'SKO', sc:35000},{ini:'RUS', sc:25000},
-    {ini:'VOI', sc:15000},{ini:'DEV', sc:10000},{ini:'TST', sc:7500},
-    {ini:'BTA', sc:5000},{ini:'AWE', sc:3000},{ini:'GUN', sc:1500},{ini:'PEW', sc:500},
-  ];
+  // Reset high scores to defaults (AAA 000000)
+  highScores = [];
+  for (let i = 0; i < 10; i++) {
+    highScores.push({ini: 'AAA', sc: 0});
+  }
   saveScores();
   
   // Update UI
@@ -1309,6 +1587,11 @@ function confirmEntry(){
   gameState='gameover';
 }
 
+function saveInitials(){
+  // Same as confirmEntry - for button click
+  confirmEntry();
+}
+
 // ---- UPGRADE MENU ----
 function showUpgrades() {
   document.getElementById('upgrades').classList.remove('hidden');
@@ -1332,12 +1615,21 @@ function updateUpgradeUI() {
   // Update Ruskoleum display
   document.getElementById('upgradeRuskoleum').textContent = upgrades.ruskoleum;
   
-  // Update upgrade level displays and next costs (5 * 2^level)
-  const upgradesToShow = ['bulletSpeed', 'bulletRadius', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity'];
-  upgradesToShow.forEach(key => {
+  // Update upgrade level displays and next costs (5 * 2^level for standard, 20 * 2^level for weapons)
+  const standardUpgrades = ['bulletSpeed', 'bulletRadius', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity'];
+  standardUpgrades.forEach(key => {
     const lvl = upgrades[key] || 0;
     document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
     const nextCost = 5 * Math.pow(2, lvl);
+    document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
+  });
+  
+  // Update weapon upgrade displays (20 * 2^level)
+  const weaponUpgrades = ['spaceMine', 'spaceLaser'];
+  weaponUpgrades.forEach(key => {
+    const lvl = upgrades[key] || 0;
+    document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
+    const nextCost = 20 * Math.pow(2, lvl);
     document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
   });
   
@@ -1387,6 +1679,47 @@ function draw() {
     return;
   }
   
+  // ---- RENDER MINES ----
+  mines.forEach(mine => {
+    // Create visual for mine if it doesn't have one
+    if (!mine.mesh) {
+      const geom = new THREE.OctahedronGeometry(5, 0);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true });
+      mine.mesh = new THREE.Mesh(geom, mat);
+      mine.mesh.position.copy(mine.position);
+      scene.add(mine.mesh);
+    }
+    mine.mesh.rotation.x += 0.05;
+    mine.mesh.rotation.y += 0.08;
+  });
+  
+  // ---- RENDER LASERS ----
+  lasers.forEach(laser => {
+    // Draw a line from player in laser direction
+    if (!laser.line) {
+      const geom = new THREE.BufferGeometry();
+      const positions = new Float32Array([
+        laser.position.x, laser.position.y, laser.position.z,
+        laser.position.x + laser.direction.x * 2000,
+        laser.position.y + laser.direction.y * 2000,
+        laser.position.z + laser.direction.z * 2000
+      ]);
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
+      laser.line = new THREE.Line(geom, mat);
+      scene.add(laser.line);
+    }
+    // Update laser line position and direction
+    const positions = laser.line.geometry.attributes.position.array;
+    positions[0] = laser.position.x;
+    positions[1] = laser.position.y;
+    positions[2] = laser.position.z;
+    positions[3] = laser.position.x + laser.direction.x * 2000;
+    positions[4] = laser.position.y + laser.direction.y * 2000;
+    positions[5] = laser.position.z + laser.direction.z * 2000;
+    laser.line.geometry.attributes.position.needsUpdate = true;
+  });
+  
   renderer.render(scene, camera);
 
   hudCanvas.width = window.innerWidth;
@@ -1413,6 +1746,33 @@ function draw() {
   
   const speed = player.velocity.length();
   hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 155);
+
+  // ---- WEAPON COOLDOWN DISPLAYS ----
+  if (upgrades.spaceMine > 0) {
+    const mineMaxCd = 60 * (1 - (upgrades.spaceMine - 1) * 0.1);
+    const mineMaxCdClamped = Math.max(30, mineMaxCd);
+    const mineCdPercent = Math.max(0, mineCooldown) / mineMaxCdClamped;
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.font = '13px VT323, monospace';
+    hudCtx.fillText('MINE', 12, 175);
+    hudCtx.fillStyle = 'rgba(255, 45, 111, 0.3)';
+    hudCtx.fillRect(12, 182, 80, 6);
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.fillRect(12, 182, 80 * (1 - mineCdPercent), 6);
+  }
+
+  if (upgrades.spaceLaser > 0) {
+    const laserMaxCd = 120 * (1 - (upgrades.spaceLaser - 1) * 0.15);
+    const laserMaxCdClamped = Math.max(60, laserMaxCd);
+    const laserCdPercent = Math.max(0, laserCooldown) / laserMaxCdClamped;
+    hudCtx.fillStyle = '#ffb000';
+    hudCtx.font = '13px VT323, monospace';
+    hudCtx.fillText('LASER', 12, 200);
+    hudCtx.fillStyle = 'rgba(255, 176, 0, 0.3)';
+    hudCtx.fillRect(12, 207, 80, 6);
+    hudCtx.fillStyle = '#ffb000';
+    hudCtx.fillRect(12, 207, 80 * (1 - laserCdPercent), 6);
+  }
 
   // ---- HIGH SCORE display (centered at top) ----
   hudCtx.fillStyle = 'rgba(255, 176, 0, 0.9)';
