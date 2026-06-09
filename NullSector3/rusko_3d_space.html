@@ -131,7 +131,6 @@
     <div class="sub">// DEEP SPACE COMBAT SIMULATOR</div>
     <div class="legend" style="margin-bottom: 20px;">
       <b>6-AXIS FIGHTER CONTROLS</b><br>
-      MOVE: <b>W A S D</b> &nbsp; | &nbsp; PITCH: <b>↑↓</b> &nbsp; | &nbsp; YAW/ROLL: <b>←→</b> / <b>Q E</b><br>
     </div>
     <div class="controls" style="font-size: 16px; color: var(--cyan); margin-bottom: 20px; line-height: 1.7;">
       THRUST: <b>W</b> (forward) &nbsp; <b>S</b> (brake)<br>
@@ -1404,14 +1403,22 @@ function draw() {
   hudCtx.font = '18px VT323, monospace';
   hudCtx.textAlign = 'left';
   hudCtx.fillText('SCORE ' + String(score).padStart(6, '0'), 12, 30);
-  hudCtx.fillText('HEALTH ' + Math.max(0, Math.floor(player.health)), 12, 55);
-  hudCtx.fillText('ENEMIES ' + enemies.length, 12, 80);
+  hudCtx.fillText('HEALTH ' + Math.max(0, Math.floor(player.health)) + '/' + player.maxHealth, 12, 55);
+  hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
+  hudCtx.fillText('WAVE ' + wave, 12, 80);
+  hudCtx.fillText('ENEMIES LEFT ' + enemies.length, 12, 105);
   hudCtx.fillStyle = '#00ff88';
-  hudCtx.fillText('RUSKOLEUM ' + upgrades.ruskoleum, 12, 105);
+  hudCtx.fillText('RUSKOLEUM ' + upgrades.ruskoleum, 12, 130);
   hudCtx.fillStyle = '#28e0ff';
   
   const speed = player.velocity.length();
-  hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 130);
+  hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 155);
+
+  // ---- HIGH SCORE display (centered at top) ----
+  hudCtx.fillStyle = 'rgba(255, 176, 0, 0.9)';
+  hudCtx.font = 'bold 24px VT323, monospace';
+  hudCtx.textAlign = 'center';
+  hudCtx.fillText('HIGH SCORE = ' + String(Math.max(...highScores.map(s => s.sc))).padStart(6, '0'), window.innerWidth / 2, 40);
 
   const cxHud = window.innerWidth / 2;
   const cyHud = window.innerHeight / 2;
@@ -1429,6 +1436,12 @@ function draw() {
   hudCtx.arc(cxHud, cyHud, 50, 0, Math.PI * 2);
   hudCtx.stroke();
 
+  // ---- HULL INTEGRITY label and bar ----
+  hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
+  hudCtx.font = '16px VT323, monospace';
+  hudCtx.textAlign = 'left';
+  hudCtx.fillText('HULL INTEGRITY', 12, window.innerHeight - 45);
+  
   hudCtx.fillStyle = 'rgba(255, 176, 0, 0.4)';
   const healthFrac = Math.max(0, player.health / player.maxHealth);
   hudCtx.fillRect(12, window.innerHeight - 30, healthFrac * 200, 12);
