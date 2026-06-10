@@ -122,7 +122,7 @@
 <div id="wrap">
   <canvas id="canvas"></canvas>
   <canvas id="hud"></canvas>
-  <canvas id="rearview" style="position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; border: 2px solid rgba(40,224,255,0.6); background: #000; display: block; z-index: 50;"></canvas>
+  <canvas id="rearview" style="position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; border: 2px solid rgba(40,224,255,0.6); background: #000; display: none; z-index: 50;"></canvas>
   <div id="crt"></div>
   <div id="vig"></div>
 
@@ -135,19 +135,23 @@
     <div class="controls" style="font-size: 16px; color: var(--cyan); margin-bottom: 20px; line-height: 1.7;">
       THRUST: <b>W</b> (forward) &nbsp; <b>S</b> (brake)<br>
       ROLL: <b>A</b> (left) &nbsp; <b>D</b> (right)<br>
-      LOOK: <b>RIGHT CLICK</b> + MOUSE &nbsp; FIRE: <b>SPACE</b> or <b>LMB</b><br>
+      LOOK: <b>RIGHT CLICK</b> + MOUSE &nbsp; FIRE: <b>LEFT CLICK</b><br>
       <br>
-      GAMEPAD: <b>LEFT STICK</b> (thrust/roll) &nbsp; <b>RIGHT STICK</b> (look)<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>A BUTTON</b> (fire) &nbsp; <b>Y BUTTON</b> (special)
+      SPACE MINE: <b>Q</b> &nbsp; SPACE LASER: <b>E</b><br>
+      <br>
+      <i>Gamepad Controller Support under construction...</i>
     </div>
     <div class="legend" style="margin-bottom: 30px;">
       Destroy all enemy fighters in 3D combat.<br>
-      Survive each wave to face progressively harder enemies.
+      Survive each wave to face progressively harder enemies.<br>
+      <br>
+      <i style="font-size: 14px; color: var(--neon-dim);">NEW IN THIS VERSION: Added player ship sound and revised Title Screen</i>
     </div>
-    <button class="btn" id="startBtn">LAUNCH ▶</button>
-    <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="margin-left: 8px;">⚙ UPGRADE</button>
-    <button class="btn" id="resetGameBtn" onclick="resetGameOnly()" style="margin-left: 8px; background: #ff2d6f; font-size: 14px;">RESET GAME</button>
-    <button class="btn" id="resetScoresBtn" onclick="resetHighScoresOnly()" style="margin-left: 8px; background: #b06bff; font-size: 14px;">RESET SCORES</button>
+    <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
+      <button class="btn" id="newGameBtn" onclick="newGameWithReset()" style="flex: 1; max-width: 140px;">NEW GAME</button>
+      <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">RE-LAUNCH ▶</button>
+      <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="flex: 1; max-width: 140px;">⚙ UPGRADE</button>
+    </div>
   </div>
 
   <div id="gameover" class="panel hidden">
@@ -901,6 +905,7 @@ function init() {
   document.getElementById('title').classList.add('hidden');
   document.getElementById('gameover').classList.add('hidden');
   document.getElementById('entry').classList.add('hidden');
+  document.getElementById('rearview').style.display = 'block';
 
   while (scene.children.length > 0) scene.remove(scene.children[0]);
 
@@ -1544,6 +1549,7 @@ function update(dt) {
 function gameOver() {
   if (gameState !== 'play' && gameState !== 'dying') return;
   gameState = 'gameover';
+  document.getElementById('rearview').style.display = 'none';
   
   // Stop engine sound
   if (engineNoise) {
@@ -1623,6 +1629,60 @@ function resetHighScoresOnly() {
   refreshTitleTop();
   
   alert('All high scores have been reset to defaults.');
+}
+
+function newGameWithReset() {
+  // Step 1: Ask if player wants to reset upgrades
+  const resetUpgrades = window.confirm(
+    'START A NEW GAME?\n\n' +
+    'This will reset all upgrades to their default state.\n' +
+    'Your high scores will be preserved.\n\n' +
+    'Proceed?'
+  );
+  
+  if (!resetUpgrades) return;
+  
+  // Step 2: Ask if player also wants to reset high scores
+  const alsoResetScores = window.confirm(
+    'Also RESET HIGH SCORES?\n\n' +
+    'WARNING: This will WIPE all saved high scores.\n' +
+    'This action CANNOT be undone.\n\n' +
+    'Delete all progress?'
+  );
+  
+  // Reset upgrades
+  try {
+    localStorage.removeItem(UPGRADE_KEY);
+  } catch (e) {}
+  
+  upgrades = {
+    ruskoleum: 0,
+    bulletSpeed: 0,
+    pickupRadius: 0,
+    collisionRadius: 0,
+    shipSpeed: 0,
+    maxVelocity: 0,
+    spaceMine: 0,
+    spaceLaser: 0
+  };
+  saveUpgrades();
+  
+  // Reset high scores if opted
+  if (alsoResetScores) {
+    try {
+      localStorage.removeItem(HS_KEY);
+    } catch (e) {}
+    highScores = [];
+    for (let i = 0; i < 10; i++) {
+      highScores.push({ini: 'AAA', sc: 0});
+    }
+    saveScores();
+  }
+  
+  // Update UI and start game
+  updateUpgradeUI();
+  refreshTitleTop();
+  startGame();
 }
 
 function resetGame() {
