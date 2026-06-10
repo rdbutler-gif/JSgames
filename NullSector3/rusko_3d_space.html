@@ -374,6 +374,8 @@ function ensureAudio() {
     catch (e) { }
   }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  // Initialize engine sound loops once
+  if (audioCtx && !engineNoise) initEngineLoops();
 }
 
 function pewSound() {
@@ -514,6 +516,47 @@ function playerDamageSound() {
   } catch (e) { }
 }
 
+function playerDeathExplosion() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // Layer 1: deep boom, 120→20 Hz, 3s decay (extended for death)
+    const boom = audioCtx.createOscillator();
+    const boomGain = audioCtx.createGain();
+    boom.connect(boomGain);
+    boomGain.connect(audioCtx.destination);
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(120, t);
+    boom.frequency.exponentialRampToValueAtTime(20, t + 0.4);
+    boomGain.gain.setValueAtTime(0.4, t);
+    boomGain.gain.setValueAtTime(0.4, t + 0.05);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, t + 3.0);
+    boom.start(t);
+    boom.stop(t + 3.0);
+
+    // Layer 2: mid noise rumble, 3s decay
+    const bufLen = Math.floor(audioCtx.sampleRate * 3.2);
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(500, t);
+    filter.frequency.exponentialRampToValueAtTime(40, t + 3.0);
+    const ng = audioCtx.createGain();
+    noise.connect(filter);
+    filter.connect(ng);
+    ng.connect(audioCtx.destination);
+    ng.gain.setValueAtTime(0.25, t);
+    ng.gain.setValueAtTime(0.25, t + 0.08);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 3.0);
+    noise.start(t);
+    noise.stop(t + 3.2);
+  } catch (e) { }
+}
+
 function ruskoleumPickupSound() {
   if (!audioCtx) return;
   try {
@@ -578,6 +621,59 @@ function laserFireSound() {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
     osc.start(t);
     osc.stop(t + 0.5);
+  } catch (e) { }
+}
+
+// ---- ENGINE SOUNDS ----
+let engineNoise = null, engineGain = null, engineFilter = null;
+
+function initEngineLoops() {
+  if (!audioCtx) return;
+  try {
+    // ENGINE CHURN - continuous rumble modulating with velocity
+    if (!engineNoise) {
+      const bufLen = Math.floor(audioCtx.sampleRate * 2); // 2 second loop
+      const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufLen; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.5; // brown noise
+      }
+      
+      engineNoise = audioCtx.createBufferSource();
+      engineNoise.buffer = buf;
+      engineNoise.loop = true;
+      
+      engineGain = audioCtx.createGain();
+      engineFilter = audioCtx.createBiquadFilter();
+      
+      engineFilter.type = 'lowpass';
+      engineFilter.frequency.setValueAtTime(400, audioCtx.currentTime);
+      engineGain.gain.setValueAtTime(0, audioCtx.currentTime); // Start silent
+      
+      engineNoise.connect(engineFilter);
+      engineFilter.connect(engineGain);
+      engineGain.connect(audioCtx.destination);
+      engineNoise.start();
+    }
+  } catch (e) { }
+}
+
+function updateEngineSounds(player) {
+  if (!audioCtx || !engineNoise || (gameState !== 'play' && gameState !== 'dying')) return;
+  
+  try {
+    const t = audioCtx.currentTime;
+    const velocity = player.velocity.length();
+    const maxVel = 2.5 + (upgrades.maxVelocity || 0) * 0.5; // same as max velocity calculation
+    const velPercent = Math.min(1, velocity / maxVel);
+    
+    // ENGINE CHURN - volume based on velocity
+    const engineVolume = velPercent * 0.25; // 0 to 0.25 based on speed
+    engineGain.gain.setTargetAtTime(engineVolume, t, 0.1); // Smooth ramping
+    
+    // Modulate filter frequency with velocity for "spinning up" effect
+    const filterFreq = 300 + velPercent * 200; // 300-500 Hz range
+    engineFilter.frequency.setTargetAtTime(filterFreq, t, 0.05);
   } catch (e) { }
 }
 
@@ -889,6 +985,9 @@ function update(dt) {
   if (velMag > maxVel) {
     player.velocity.multiplyScalar(maxVel / velMag);
   }
+
+  // ---- UPDATE ENGINE SOUNDS ----
+  updateEngineSounds(player);
 
   // ---- ROLL (A/D or left stick left/right) ----
   let rollInput = 0;
@@ -1384,6 +1483,15 @@ function update(dt) {
       if (player.health <= 0) {
         gameState = 'dying';
         deathTimer = 0;
+        // Stop engine sound immediately on death
+        if (engineNoise) {
+          try {
+            engineNoise.stop();
+            engineNoise = null;
+          } catch (e) { }
+        }
+        // Play death explosion sound
+        playerDeathExplosion();
       }
       return false;
     }
@@ -1436,6 +1544,14 @@ function update(dt) {
 function gameOver() {
   if (gameState !== 'play' && gameState !== 'dying') return;
   gameState = 'gameover';
+  
+  // Stop engine sound
+  if (engineNoise) {
+    try {
+      engineNoise.stop();
+      engineNoise = null;
+    } catch (e) { }
+  }
 
   // Fill in the end-of-run stats on the panel
   document.getElementById('finalScore').textContent = String(score).padStart(6, '0');
