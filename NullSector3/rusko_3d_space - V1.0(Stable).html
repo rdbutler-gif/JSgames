@@ -78,6 +78,11 @@
     padding: 20px;
   }
   .panel.hidden { display: none; }
+  #upgrades:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
   h1 {
     font-family: 'Orbitron', sans-serif;
     font-weight: 900;
@@ -117,6 +122,7 @@
 <div id="wrap">
   <canvas id="canvas"></canvas>
   <canvas id="hud"></canvas>
+  <canvas id="rearview" style="position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; border: 2px solid rgba(40,224,255,0.6); background: #000; display: block; z-index: 50;"></canvas>
   <div id="crt"></div>
   <div id="vig"></div>
 
@@ -125,7 +131,6 @@
     <div class="sub">// DEEP SPACE COMBAT SIMULATOR</div>
     <div class="legend" style="margin-bottom: 20px;">
       <b>6-AXIS FIGHTER CONTROLS</b><br>
-      MOVE: <b>W A S D</b> &nbsp; | &nbsp; PITCH: <b>↑↓</b> &nbsp; | &nbsp; YAW/ROLL: <b>←→</b> / <b>Q E</b><br>
     </div>
     <div class="controls" style="font-size: 16px; color: var(--cyan); margin-bottom: 20px; line-height: 1.7;">
       THRUST: <b>W</b> (forward) &nbsp; <b>S</b> (brake)<br>
@@ -141,7 +146,8 @@
     </div>
     <button class="btn" id="startBtn">LAUNCH ▶</button>
     <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="margin-left: 8px;">⚙ UPGRADE</button>
-    <button class="btn" id="resetBtn" onclick="resetGame()" style="margin-left: 8px; background: #ff2d6f; font-size: 14px;">RESET ALL</button>
+    <button class="btn" id="resetGameBtn" onclick="resetGameOnly()" style="margin-left: 8px; background: #ff2d6f; font-size: 14px;">RESET GAME</button>
+    <button class="btn" id="resetScoresBtn" onclick="resetHighScoresOnly()" style="margin-left: 8px; background: #b06bff; font-size: 14px;">RESET SCORES</button>
   </div>
 
   <div id="gameover" class="panel hidden">
@@ -161,67 +167,103 @@
     <div style="font-size: 18px; color: var(--amber); margin: 12px 0; letter-spacing: 2px;" id="entryScore">SCORE 000000</div>
     <div style="font-size: 48px; letter-spacing: 16px; color: var(--amber); margin: 8px 0; font-family: 'Orbitron', sans-serif;" id="entryInitials"></div>
     <div style="font-size: 14px; color: var(--cyan); margin-top: 12px;">↑↓ change &nbsp; ←→ move &nbsp; ENTER = confirm</div>
+    <button class="btn" id="saveBtn" onclick="saveInitials()" style="margin-top: 16px;">[ SAVE ]</button>
   </div>
 
   <!-- UPGRADES SHOP -->
-  <div id="upgrades" class="panel hidden" style="background: rgba(0, 10, 20, 0.95); overflow-y: auto;">
-    <h1 style="font-size: 36px; margin-bottom: 8px;">⚙ UPGRADES</h1>
-    <div style="font-size: 14px; color: var(--amber); letter-spacing: 1px; margin-bottom: 20px;">
-      RUSKOLEUM AVAILABLE: <span id="upgradeRuskoleum" style="color: var(--neon);">0</span>
+  <div id="upgrades" class="panel hidden" style="background: rgba(0, 10, 20, 0.95); padding: 0;">
+    <div style="width: 90vw; max-width: 700px; max-height: 90vh; background: rgba(0, 10, 20, 0.95); border: 2px solid var(--neon-dim); border-radius: 4px; display: flex; flex-direction: column; padding: 20px;">
+      
+      <h1 style="font-size: 32px; margin: 0 0 12px 0; text-align: center;">⚙ UPGRADES</h1>
+      <div style="font-size: 13px; color: var(--amber); text-align: center; margin-bottom: 16px; letter-spacing: 1px;">
+        RUSKOLEUM: <span id="upgradeRuskoleum" style="color: var(--neon); font-size: 16px;">0</span>
+      </div>
+
+      <!-- Scrollable upgrades list -->
+      <div style="flex: 1; overflow-y: auto; margin-bottom: 12px;">
+        <!-- Upgrade rows (compact list format) -->
+        <div style="font-size: 12px; color: var(--neon-dim);">
+          <!-- Bullet Speed -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div style="color: var(--cyan); font-weight: bold;">BULLET SPEED</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_bulletSpeed">5</span> | Lvl: <span id="upgradeLvl_bulletSpeed" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('bulletSpeed')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Bullet Radius -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div style="color: var(--cyan); font-weight: bold;">BULLET RADIUS</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_bulletRadius">5</span> | Lvl: <span id="upgradeLvl_bulletRadius" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('bulletRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Pickup Radius -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div style="color: var(--cyan); font-weight: bold;">PICKUP RADIUS</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_pickupRadius">5</span> | Lvl: <span id="upgradeLvl_pickupRadius" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('pickupRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Hull Integrity -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div style="color: var(--cyan); font-weight: bold;">HULL INTEGRITY</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_collisionRadius">5</span> | Lvl: <span id="upgradeLvl_collisionRadius" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('collisionRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Thrusters -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div style="color: var(--cyan); font-weight: bold;">THRUSTERS</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_shipSpeed">5</span> | Lvl: <span id="upgradeLvl_shipSpeed" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('shipSpeed')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Top Speed -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div style="color: var(--cyan); font-weight: bold;">TOP SPEED</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_maxVelocity">5</span> | Lvl: <span id="upgradeLvl_maxVelocity" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('maxVelocity')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Space Mine -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 45, 111, 0.1);">
+            <div style="color: #ff2d6f; font-weight: bold;">SPACE MINE</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceMine">20</span> | Lvl: <span id="upgradeLvl_spaceMine" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('spaceMine')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Space Laser -->
+          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 176, 0, 0.1);">
+            <div style="color: #ffb000; font-weight: bold;">SPACE LASER</div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceLaser">20</span> | Lvl: <span id="upgradeLvl_spaceLaser" style="color: var(--neon);">0</span></div>
+            <div style="text-align: center;"></div>
+            <button class="btn" onclick="buyUpgradeBtn('spaceLaser')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats section (compact) -->
+      <div style="border-top: 1px solid var(--neon-dim); padding-top: 10px; margin-bottom: 12px; font-size: 11px; color: var(--neon-dim);">
+        <div style="color: var(--cyan); margin-bottom: 6px; font-weight: bold;">STATS:</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>Speed: <span style="color: var(--neon);">x<span id="statBulletSpeed">1.0</span></span></div>
+          <div>Radius: <span style="color: var(--neon);">+<span id="statBulletRadius">0</span>u</span></div>
+          <div>Pickup: <span style="color: var(--neon);">+<span id="statPickupRadius">0</span>u</span></div>
+          <div>Hull: <span style="color: var(--neon);">+<span id="statCollisionRadius">0</span>u</span></div>
+          <div>Thrust: <span style="color: var(--neon);">x<span id="statShipSpeed">1.0</span></span></div>
+          <div style="grid-column: 1 / -1;">Max Speed: <span style="color: var(--neon);"><span id="statMaxVelocity">2.5</span> u/f</span></div>
+        </div>
+      </div>
+
+      <button class="btn" id="closeUpgradesBtn" onclick="closeUpgrades()" style="width: 100%; margin: 0;">BACK TO DOCK ◀</button>
     </div>
-
-    <div style="text-align: left; max-width: 500px; margin: 0 auto; font-size: 13px;">
-      <!-- Bullet Speed -->
-      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
-        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">BULLET SPEED</div>
-        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Make projectiles faster. Cost: <span id="upgradeCost_bulletSpeed">5</span></div>
-        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_bulletSpeed">0</span></div>
-        <button class="btn" onclick="buyUpgradeBtn('bulletSpeed')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
-      </div>
-
-      <!-- Pickup Radius -->
-      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
-        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">PICKUP RADIUS</div>
-        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Attract resources from farther away. Cost: <span id="upgradeCost_pickupRadius">5</span></div>
-        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_pickupRadius">0</span></div>
-        <button class="btn" onclick="buyUpgradeBtn('pickupRadius')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
-      </div>
-
-      <!-- Hull Integrity -->
-      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
-        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">HULL INTEGRITY</div>
-        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Increase max health. Cost: <span id="upgradeCost_collisionRadius">5</span></div>
-        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_collisionRadius">0</span></div>
-        <button class="btn" onclick="buyUpgradeBtn('collisionRadius')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
-      </div>
-
-      <!-- Thrusters -->
-      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 10px; background: rgba(0,40,28,0.3);">
-        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">THRUSTERS</div>
-        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Accelerate faster. Cost: <span id="upgradeCost_shipSpeed">5</span></div>
-        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_shipSpeed">0</span></div>
-        <button class="btn" onclick="buyUpgradeBtn('shipSpeed')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
-      </div>
-
-      <!-- Max Velocity -->
-      <div style="border: 1px solid var(--neon-dim); padding: 12px; margin-bottom: 20px; background: rgba(0,40,28,0.3);">
-        <div style="color: var(--cyan); font-weight: bold; margin-bottom: 4px;">TOP SPEED</div>
-        <div style="color: var(--neon-dim); font-size: 12px; margin-bottom: 8px;">Increase maximum velocity. Cost: <span id="upgradeCost_maxVelocity">5</span></div>
-        <div style="color: var(--neon); margin-bottom: 8px;">Level: <span id="upgradeLvl_maxVelocity">0</span></div>
-        <button class="btn" onclick="buyUpgradeBtn('maxVelocity')" style="font-size: 12px; padding: 4px 12px;">BUY</button>
-      </div>
-    </div>
-
-    <div style="margin-top: 20px; font-size: 12px; color: var(--neon-dim); max-width: 500px; margin-left: auto; margin-right: auto; text-align: left; border-top: 1px solid var(--neon-dim); padding-top: 12px;">
-      <div style="color: var(--cyan); margin-bottom: 8px;">CURRENT STATS:</div>
-      <div>Bullet Speed Bonus: <span style="color: var(--neon);">x<span id="statBulletSpeed">1.0</span></span></div>
-      <div>Pickup Radius: <span style="color: var(--neon);">+<span id="statPickupRadius">0</span> units</span></div>
-      <div>Hull Hardness: <span style="color: var(--neon);">+<span id="statCollisionRadius">0</span> units</span></div>
-      <div>Thrust Power: <span style="color: var(--neon);">x<span id="statShipSpeed">1.0</span></span></div>
-      <div>Top Speed: <span style="color: var(--neon);"><span id="statMaxVelocity">2.5</span> u/f</span></div>
-    </div>
-
-    <button class="btn" id="closeUpgradesBtn" onclick="closeUpgrades()" style="margin-top: 24px;">BACK TO DOCK ◀</button>
   </div>
 </div>
 
@@ -282,10 +324,13 @@ const UPGRADE_KEY = 'rusko_void_upgrades_v1';
 const DEFAULT_UPGRADES = {
   ruskoleum: 0,  // total collected lifetime
   bulletSpeed: 0,      // costs 5, 10, 20... (5 * 2^level)
+  bulletRadius: 0,     // costs 5, 10, 20... (bullet hit zone)
   pickupRadius: 0,     // costs 5, 10, 20...
   collisionRadius: 0,  // costs 5, 10, 20... (ship max health)
   shipSpeed: 0,        // costs 5, 10, 20... (acceleration/thrusters)
   maxVelocity: 0,      // costs 5, 10, 20... (top speed)
+  spaceMine: 0,        // costs 20, 40, 80... (Q key weapon, level 0 = not purchased)
+  spaceLaser: 0,       // costs 20, 40, 80... (E key weapon, level 0 = not purchased)
 };
 
 function loadUpgrades(){
@@ -305,7 +350,9 @@ function saveUpgrades() {
 // Buy an upgrade; costs scale: 5, 10, 20, 40, 80... (5 * 2^currentLevel)
 function buyUpgrade(key) {
   const currentLevel = upgrades[key] || 0;
-  const cost = 5 * Math.pow(2, currentLevel); // 5 * 2^level
+  // Weapons (spaceMine, spaceLaser) cost 20 * 2^level; others cost 5 * 2^level
+  const baseCost = (key === 'spaceMine' || key === 'spaceLaser') ? 20 : 5;
+  const cost = baseCost * Math.pow(2, currentLevel);
   if (upgrades.ruskoleum >= cost) {
     upgrades.ruskoleum -= cost;
     upgrades[key] = currentLevel + 1;
@@ -496,6 +543,44 @@ function ruskoleumPickupSound() {
   } catch (e) { }
 }
 
+function mineDropSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // Deep, metallic "CHUNK" sound - low frequency thud with slight pitch rise
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.linearRampToValueAtTime(120, t + 0.3);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.start(t);
+    osc.stop(t + 0.4);
+  } catch (e) { }
+}
+
+function laserFireSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // High-frequency laser "PZZZEW" - rising tone with noise
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1200, t);
+    osc.frequency.exponentialRampToValueAtTime(3000, t + 0.5);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    osc.start(t);
+    osc.stop(t + 0.5);
+  } catch (e) { }
+}
+
 function rumble(duration, weak, strong) {
   // Rumble disabled - can cause freezing
   return;
@@ -512,10 +597,19 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
 
+// Rearview camera and secondary renderer
+const rearviewCanvas = document.getElementById('rearview');
+const rearCamera = new THREE.PerspectiveCamera(60, 1, 0.1, 100000); // square aspect
+const rearRenderer = new THREE.WebGLRenderer({ canvas: rearviewCanvas, antialias: true });
+rearRenderer.setSize(180, 180);
+rearRenderer.setPixelRatio(window.devicePixelRatio);
+
 let gameState = 'title';
 let deathTimer = 0;
 let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
+let mines = [], lasers = [];  // New weapons
 let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0;
+let mineCooldown = 0, laserCooldown = 0;  // Weapon cooldowns
 
 const keys = {};
 let mouseX = 0, mouseY = 0, mouseDX = 0, mouseDY = 0;
@@ -592,8 +686,9 @@ function createEnemy(x, y, z, type) {
   group.position.set(x, y, z);
   group.velocity = new THREE.Vector3(0, 0, 0);
   group.type = type || 'scout';
-  group.targetPlayer = true;
+  group.engaged = false; // only engage player when within detection range
   group.fireT = Math.random() * 60; // random offset in frames
+  group.patrolAngle = Math.random() * Math.PI * 2; // random initial patrol direction
 
   if (group.type === 'scout') {
     group.health = 1;
@@ -668,10 +763,10 @@ function spawnEnemyWave() {
   const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10; // wave 1: 1.4x (slower), wave 2: 1.30x, wave 3: 1.20x... min 0.4x
   
   for (let i = 0; i < 10; i++) {
-    // Spawn enemies spread across a wide area around player (not just ahead)
-    // Broader distribution: ±500 in X/Y, variable in Z
+    // Spawn enemies far away so they don't fire immediately
+    // Broader distribution: 500-900 units away
     const angle = Math.random() * Math.PI * 2;
-    const distance = 300 + Math.random() * 400; // 300-700 units away
+    const distance = 500 + Math.random() * 400; // 500-900 units away (much further)
     const spreadX = Math.cos(angle) * distance;
     const spreadZ = Math.sin(angle) * distance;
     const spreadY = (Math.random() - 0.5) * 300; // ±150 in Y
@@ -706,9 +801,6 @@ function createStarfield(count) {
 }
 
 function init() {
-  console.log('Initializing game...');
-  console.log('THREE defined?', typeof THREE !== 'undefined');
-  
   gameState = 'play';
   document.getElementById('title').classList.add('hidden');
   document.getElementById('gameover').classList.add('hidden');
@@ -722,23 +814,23 @@ function init() {
   wave = 0;
   screenFlash = 0;
   
-  console.log('Creating player...');
   player = createPlayerShip();
-  console.log('Player created:', player);
   
   enemies = [];
   resources = [];
 
   const starfield = createStarfield(3000);
   scene.add(starfield);
-  console.log('Starfield added');
 
   spawnEnemyWave();
-  console.log('Enemies spawned:', enemies.length);
 
   projectiles = [];
   enemies_projectiles = [];
   floatingText = [];
+  mines = [];
+  lasers = [];
+  mineCooldown = 0;
+  laserCooldown = 0;
   
   // Start the game loop (only once)
   if (!loopRunning) {
@@ -753,10 +845,8 @@ function update(dt) {
   // During dying state, only update enemies and particles (not player input)
   if (gameState === 'dying') {
     deathTimer++;
-    console.log('deathTimer:', deathTimer);
     // After 3 seconds (180 frames), queue game over transition
     if (deathTimer >= 180) {
-      console.log('Reaching gameover transition at deathTimer=180');
       gameOverQueued = true;
     }
     
@@ -771,10 +861,8 @@ function update(dt) {
     
     // CHECK FOR GAMEOVER BEFORE RETURNING!
     if (gameOverQueued) {
-      console.log('gameOverQueued triggered during dying state, calling gameOver()');
       gameOverQueued = false;
       gameOver();
-      console.log('gameOver() completed');
     }
     
     return; // Don't process any other updates during dying
@@ -843,9 +931,21 @@ function update(dt) {
 
   player.position.addScaledVector(player.velocity, dt);
 
+  // ---- PLAYER BOUNDARY CONSTRAINTS ----
+  const BOUNDARY = 2300; // keep player within ±2300 units
+  player.position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, player.position.x));
+  player.position.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, player.position.y));
+  player.position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, player.position.z));
+
   camera.position.copy(player.position);
   camera.quaternion.copy(player.quaternion);
   camera.position.addScaledVector(camera.getWorldDirection(new THREE.Vector3()), -0.5);
+
+  // Position rearview camera behind player (180 degrees rotated)
+  rearCamera.position.copy(player.position);
+  rearCamera.quaternion.copy(player.quaternion);
+  rearCamera.rotateY(Math.PI); // Look backward
+  rearCamera.position.addScaledVector(rearCamera.getWorldDirection(new THREE.Vector3()), -0.5);
 
   // ---- FIRE (LMB or A button) ----
   const firing = leftMouseDown || (pad.fire && (Math.hypot(pad.ax, pad.ay) > 0.2));
@@ -872,12 +972,85 @@ function update(dt) {
     // placeholder for Y button
   }
 
+  // ---- SPACE MINE (Q key) ----
+  mineCooldown--;
+  if (keys['KeyQ'] && upgrades.spaceMine > 0 && mineCooldown <= 0) {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
+    const mineProximity = 10 + (upgrades.spaceMine - 1) * 2; // 10u base, +2u per upgrade
+    mines.push({
+      position: minePos.clone(),
+      proximity: mineProximity,
+      alive: true,
+      life: 600  // 10 seconds at 60 FPS (halflife - disappears after 10 seconds if not triggered)
+    });
+    mineCooldown = 60 * (1 - (upgrades.spaceMine - 1) * 0.1); // 60 frames base, reduce by 10% per upgrade (min 30)
+    mineCooldown = Math.max(30, mineCooldown);
+    mineDropSound();
+  }
+
+  // ---- SPACE LASER (E key) ----
+  laserCooldown--;
+  if (keys['KeyE'] && upgrades.spaceLaser > 0 && laserCooldown <= 0) {
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    const laserDuration = 30 + (upgrades.spaceLaser - 1) * 30; // 0.5s base (30 frames), +0.5s per upgrade
+    lasers.push({
+      position: player.position.clone(),
+      direction: forward.clone(),
+      life: laserDuration,
+      maxLife: laserDuration,
+      width: 10 // 10u detection width
+    });
+    laserCooldown = 120 * (1 - (upgrades.spaceLaser - 1) * 0.15); // 2s base, reduce by 15% per upgrade (min 60)
+    laserCooldown = Math.max(60, laserCooldown);
+    laserFireSound();
+  }
+
+
   enemies.forEach((e, eIdx) => {
     const toPlayer = player.position.clone().sub(e.position);
     const d = toPlayer.length();
     
     if (d === 0) return;
     
+    // ---- DETECTION: Check if player is in engagement range ----
+    const ENGAGEMENT_RANGE = 350; // detection range
+    if (d < ENGAGEMENT_RANGE) {
+      e.engaged = true;
+    }
+    // Disengage if player gets too far away
+    if (d > ENGAGEMENT_RANGE * 1.5) {
+      e.engaged = false;
+    }
+    
+    // ---- BEHAVIOR: Patrol or Engage ----
+    if (!e.engaged) {
+      // PATROL MODE: Wander in a simple pattern, no orbit
+      if (!e.patrolTarget) {
+        e.patrolTarget = e.position.clone();
+      }
+      
+      const toPatrol = e.patrolTarget.clone().sub(e.position);
+      const toPatrolDist = toPatrol.length();
+      
+      if (toPatrolDist < 20 || !e.patrolTarget) {
+        // Pick a new patrol target nearby
+        e.patrolAngle += (Math.random() - 0.5) * 0.5;
+        const patrolDist = 150;
+        e.patrolTarget = e.position.clone().add(
+          new THREE.Vector3(
+            Math.cos(e.patrolAngle) * patrolDist,
+            (Math.random() - 0.5) * 100,
+            Math.sin(e.patrolAngle) * patrolDist
+          )
+        );
+      } else {
+        // Move toward patrol target
+        toPatrol.normalize();
+        e.velocity.addScaledVector(toPatrol, e.speed * 0.5);
+      }
+    } else {
+      // ENGAGEMENT MODE: Orbit and attack
     // ---- INITIALIZE ORBITAL PARAMETERS (once per enemy) ----
     if (!e.orbitAngle) {
       e.orbitAngle = Math.random() * Math.PI * 2;
@@ -903,6 +1076,7 @@ function update(dt) {
       toTarget.normalize();
       e.velocity.addScaledVector(toTarget, e.speed * 0.8);
     }
+    }
 
     // ---- COLLISION AVOIDANCE (avoid other enemies) ----
     enemies.forEach((other, otherIdx) => {
@@ -920,9 +1094,23 @@ function update(dt) {
     e.velocity.multiplyScalar(0.94);
     e.position.addScaledVector(e.velocity, dt); // only scale position by dt
 
-    // ---- FIRING (when in range, fire at player) ----
+    // ---- ENEMY BOUNDARY CONSTRAINTS ----
+    const BOUNDARY = 2300; // keep enemies within ±2300 units
+    if (e.position.x < -BOUNDARY || e.position.x > BOUNDARY ||
+        e.position.y < -BOUNDARY || e.position.y > BOUNDARY ||
+        e.position.z < -BOUNDARY || e.position.z > BOUNDARY) {
+      // Clamp to boundary and reverse velocity component that went out of bounds
+      if (e.position.x < -BOUNDARY) { e.position.x = -BOUNDARY; e.velocity.x = Math.max(0, e.velocity.x); }
+      if (e.position.x > BOUNDARY) { e.position.x = BOUNDARY; e.velocity.x = Math.min(0, e.velocity.x); }
+      if (e.position.y < -BOUNDARY) { e.position.y = -BOUNDARY; e.velocity.y = Math.max(0, e.velocity.y); }
+      if (e.position.y > BOUNDARY) { e.position.y = BOUNDARY; e.velocity.y = Math.min(0, e.velocity.y); }
+      if (e.position.z < -BOUNDARY) { e.position.z = -BOUNDARY; e.velocity.z = Math.max(0, e.velocity.z); }
+      if (e.position.z > BOUNDARY) { e.position.z = BOUNDARY; e.velocity.z = Math.min(0, e.velocity.z); }
+    }
+
+    // ---- FIRING (only when engaged and in range) ----
     e.fireT--;
-    if (e.fireT <= 0 && d < 400) {  // increased range to 400
+    if (e.engaged && e.fireT <= 0 && d < ENGAGEMENT_RANGE) {
       // Fire 3 bullets in a spread toward player, regardless of facing
       const toPlayer = player.position.clone().sub(e.position);
       if (toPlayer.length() > 0) {
@@ -961,18 +1149,19 @@ function update(dt) {
     p.life--; // decrement per-frame
 
     let hit = false;
+    const bulletRadius = 8 + (upgrades.bulletRadius || 0) * 2; // base 8, +2 per level
     enemies.forEach((e, eIdx) => {
       const d = p.position.distanceTo(e.position);
-      if (d < 8) {
+      if (d < bulletRadius) {
         e.health--;
         hit = true;
         hitSound();
         if (e.health <= 0) {
           // ---- CALCULATE POINTS BY ENEMY TYPE ----
           let pointsEarned = 100;
-          if (e.type === 'scout') pointsEarned = 100;
+          if (e.type === 'scout') pointsEarned = 500;
           else if (e.type === 'interceptor') pointsEarned = 250;
-          else if (e.type === 'heavy') pointsEarned = 500;
+          else if (e.type === 'heavy') pointsEarned = 100;
 
           // ---- CREATE EXPLOSION GEOMETRY ----
           const expSize = e.type === 'heavy' ? 15 : e.type === 'interceptor' ? 12 : 8;
@@ -1035,6 +1224,128 @@ function update(dt) {
 
     return p.life > 0 && !hit;
   });
+
+  // ---- MINE COLLISION & UPDATES ----
+  for (let mIdx = mines.length - 1; mIdx >= 0; mIdx--) {
+    const mine = mines[mIdx];
+    if (!mine.alive) continue;
+    
+    // Decrement mine lifetime
+    mine.life--;
+    if (mine.life <= 0) {
+      mine.alive = false;
+      continue;
+    }
+    
+    // Check for enemy proximity to mine
+    for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+      const e = enemies[eIdx];
+      const dToMine = mine.position.distanceTo(e.position);
+      if (dToMine < mine.proximity) {
+        // EXPLOSION
+        const expGeom = new THREE.IcosahedronGeometry(20, 1);
+        const expMat = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true, transparent: true, opacity: 1.0 });
+        const expMesh = new THREE.Mesh(expGeom, expMat);
+        expMesh.position.copy(mine.position);
+        expMesh.userData.life = 30;
+        expMesh.userData.isExplosion = true;
+        scene.add(expMesh);
+        
+        // Destroy enemy
+        scene.remove(e);
+        enemies.splice(eIdx, 1);
+        let pointsEarned = 100;
+        if (e.type === 'scout') pointsEarned = 500;
+        else if (e.type === 'interceptor') pointsEarned = 250;
+        else if (e.type === 'heavy') pointsEarned = 100;
+        score += pointsEarned;
+        enemiesDestroyed++;
+        enemyDeathExplosion();
+        
+        // Drop Ruskoleum
+        const dropCount = 2 + Math.floor(Math.random() * 2);
+        for (let i = 0; i < dropCount; i++) {
+          resources.push(createRuskoleum(e.position.clone().add(
+            new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
+          )));
+        }
+        
+        // Remove mine
+        mine.alive = false;
+        break;
+      }
+    }
+  }
+  // Cleanup destroyed mines
+  mines.forEach(m => {
+    if (!m.alive && m.mesh) {
+      scene.remove(m.mesh);
+    }
+  });
+  mines = mines.filter(m => m.alive);
+
+  // ---- CHECK FOR WAVE SPAWN (after all collision) ----
+  if (enemies.length === 0 && gameState === 'play') {
+    spawnEnemyWave();
+  }
+
+  // ---- LASER COLLISION & UPDATES ----
+  for (let lIdx = lasers.length - 1; lIdx >= 0; lIdx--) {
+    const laser = lasers[lIdx];
+    laser.life--;
+    if (laser.life <= 0) continue;
+    
+    // Update laser direction to follow player orientation
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    laser.direction.copy(forward);
+    laser.position.copy(player.position);
+    
+    // Check for enemy collision with laser
+    for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+      const e = enemies[eIdx];
+      // Project enemy position onto laser line, check perpendicular distance
+      const toEnemy = e.position.clone().sub(laser.position);
+      const projDist = toEnemy.dot(laser.direction);
+      if (projDist > 0 && projDist < 2000) { // only forward along laser
+        const perpDist = toEnemy.clone().sub(laser.direction.clone().multiplyScalar(projDist)).length();
+        if (perpDist < laser.width) {
+          // Destroy enemy
+          const expGeom = new THREE.IcosahedronGeometry(12, 1);
+          const expMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 1.0 });
+          const expMesh = new THREE.Mesh(expGeom, expMat);
+          expMesh.position.copy(e.position);
+          expMesh.userData.life = 30;
+          expMesh.userData.isExplosion = true;
+          scene.add(expMesh);
+          
+          scene.remove(e);
+          enemies.splice(eIdx, 1);
+          let pointsEarned = 100;
+          if (e.type === 'scout') pointsEarned = 500;
+          else if (e.type === 'interceptor') pointsEarned = 250;
+          else if (e.type === 'heavy') pointsEarned = 100;
+          score += pointsEarned;
+          enemiesDestroyed++;
+          enemyDeathExplosion();
+          
+          // Drop Ruskoleum
+          const dropCount = 2 + Math.floor(Math.random() * 2);
+          for (let i = 0; i < dropCount; i++) {
+            resources.push(createRuskoleum(e.position.clone().add(
+              new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
+            )));
+          }
+        }
+      }
+    }
+  }
+  // Cleanup expired lasers
+  lasers.forEach(l => {
+    if (l.life <= 0 && l.line) {
+      scene.remove(l.line);
+    }
+  });
+  lasers = lasers.filter(l => l.life > 0);
 
   // ---- UPDATE EXPLOSIONS ----
   scene.children.forEach((mesh) => {
@@ -1117,16 +1428,13 @@ function update(dt) {
   
   // Check if gameOver was queued during this update
   if (gameOverQueued) {
-    console.log('gameOverQueued triggered, calling gameOver()');
     gameOverQueued = false;
     gameOver();
-    console.log('gameOver() completed');
   }
 }
 
 function gameOver() {
   if (gameState !== 'play' && gameState !== 'dying') return;
-  console.log('gameOver: transitioning from state', gameState, 'to gameover');
   gameState = 'gameover';
 
   // Fill in the end-of-run stats on the panel
@@ -1143,6 +1451,62 @@ function gameOver() {
     renderHSTable(-1);
     document.getElementById('gameover').classList.remove('hidden');
   }
+}
+
+function resetGameOnly() {
+  const confirm = window.confirm(
+    'WARNING: This will WIPE all upgrades.\n\n' +
+    'Are you absolutely sure? (This cannot be undone)'
+  );
+  
+  if (!confirm) return;
+  
+  // Clear upgrades only
+  try {
+    localStorage.removeItem(UPGRADE_KEY);
+  } catch (e) {}
+  
+  // Reset upgrades to defaults
+  upgrades = {
+    ruskoleum: 0,
+    bulletSpeed: 0,
+    pickupRadius: 0,
+    collisionRadius: 0,
+    shipSpeed: 0,
+    maxVelocity: 0
+  };
+  saveUpgrades();
+  
+  // Update UI
+  updateUpgradeUI();
+  
+  alert('All upgrades have been reset to defaults.');
+}
+
+function resetHighScoresOnly() {
+  const confirm = window.confirm(
+    'WARNING: This will WIPE all high scores.\n\n' +
+    'Are you absolutely sure? (This cannot be undone)'
+  );
+  
+  if (!confirm) return;
+  
+  // Clear high scores only
+  try {
+    localStorage.removeItem(HS_KEY);
+  } catch (e) {}
+  
+  // Reset high scores to defaults (AAA 000000)
+  highScores = [];
+  for (let i = 0; i < 10; i++) {
+    highScores.push({ini: 'AAA', sc: 0});
+  }
+  saveScores();
+  
+  // Update UI
+  refreshTitleTop();
+  
+  alert('All high scores have been reset to defaults.');
 }
 
 function resetGame() {
@@ -1170,12 +1534,11 @@ function resetGame() {
   };
   saveUpgrades();
   
-  // Reset high scores to defaults
-  highScores = [
-    {ini:'RUS', sc:50000},{ini:'SKO', sc:35000},{ini:'RUS', sc:25000},
-    {ini:'VOI', sc:15000},{ini:'DEV', sc:10000},{ini:'TST', sc:7500},
-    {ini:'BTA', sc:5000},{ini:'AWE', sc:3000},{ini:'GUN', sc:1500},{ini:'PEW', sc:500},
-  ];
+  // Reset high scores to defaults (AAA 000000)
+  highScores = [];
+  for (let i = 0; i < 10; i++) {
+    highScores.push({ini: 'AAA', sc: 0});
+  }
   saveScores();
   
   // Update UI
@@ -1224,6 +1587,11 @@ function confirmEntry(){
   gameState='gameover';
 }
 
+function saveInitials(){
+  // Same as confirmEntry - for button click
+  confirmEntry();
+}
+
 // ---- UPGRADE MENU ----
 function showUpgrades() {
   document.getElementById('upgrades').classList.remove('hidden');
@@ -1247,18 +1615,30 @@ function updateUpgradeUI() {
   // Update Ruskoleum display
   document.getElementById('upgradeRuskoleum').textContent = upgrades.ruskoleum;
   
-  // Update upgrade level displays and next costs (5 * 2^level)
-  const upgradesToShow = ['bulletSpeed', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity'];
-  upgradesToShow.forEach(key => {
+  // Update upgrade level displays and next costs (5 * 2^level for standard, 20 * 2^level for weapons)
+  const standardUpgrades = ['bulletSpeed', 'bulletRadius', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity'];
+  standardUpgrades.forEach(key => {
     const lvl = upgrades[key] || 0;
     document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
     const nextCost = 5 * Math.pow(2, lvl);
     document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
   });
   
+  // Update weapon upgrade displays (20 * 2^level)
+  const weaponUpgrades = ['spaceMine', 'spaceLaser'];
+  weaponUpgrades.forEach(key => {
+    const lvl = upgrades[key] || 0;
+    document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
+    const nextCost = 20 * Math.pow(2, lvl);
+    document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
+  });
+  
   // Update stat displays
   const bulletSpeedMult = 1.0 + (upgrades.bulletSpeed || 0) * 0.8;
   document.getElementById('statBulletSpeed').textContent = bulletSpeedMult.toFixed(1);
+  
+  const bulletRadiusBonus = (upgrades.bulletRadius || 0) * 2;
+  document.getElementById('statBulletRadius').textContent = bulletRadiusBonus;
   
   const pickupBonus = (upgrades.pickupRadius || 0) * 5;
   document.getElementById('statPickupRadius').textContent = pickupBonus;
@@ -1299,6 +1679,47 @@ function draw() {
     return;
   }
   
+  // ---- RENDER MINES ----
+  mines.forEach(mine => {
+    // Create visual for mine if it doesn't have one
+    if (!mine.mesh) {
+      const geom = new THREE.OctahedronGeometry(5, 0);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true });
+      mine.mesh = new THREE.Mesh(geom, mat);
+      mine.mesh.position.copy(mine.position);
+      scene.add(mine.mesh);
+    }
+    mine.mesh.rotation.x += 0.05;
+    mine.mesh.rotation.y += 0.08;
+  });
+  
+  // ---- RENDER LASERS ----
+  lasers.forEach(laser => {
+    // Draw a line from player in laser direction
+    if (!laser.line) {
+      const geom = new THREE.BufferGeometry();
+      const positions = new Float32Array([
+        laser.position.x, laser.position.y, laser.position.z,
+        laser.position.x + laser.direction.x * 2000,
+        laser.position.y + laser.direction.y * 2000,
+        laser.position.z + laser.direction.z * 2000
+      ]);
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
+      laser.line = new THREE.Line(geom, mat);
+      scene.add(laser.line);
+    }
+    // Update laser line position and direction
+    const positions = laser.line.geometry.attributes.position.array;
+    positions[0] = laser.position.x;
+    positions[1] = laser.position.y;
+    positions[2] = laser.position.z;
+    positions[3] = laser.position.x + laser.direction.x * 2000;
+    positions[4] = laser.position.y + laser.direction.y * 2000;
+    positions[5] = laser.position.z + laser.direction.z * 2000;
+    laser.line.geometry.attributes.position.needsUpdate = true;
+  });
+  
   renderer.render(scene, camera);
 
   hudCanvas.width = window.innerWidth;
@@ -1308,18 +1729,56 @@ function draw() {
     return;
   }
 
+  // ---- RENDER REARVIEW to separate canvas ----
+  rearRenderer.render(scene, rearCamera);
+
   hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
   hudCtx.font = '18px VT323, monospace';
   hudCtx.textAlign = 'left';
   hudCtx.fillText('SCORE ' + String(score).padStart(6, '0'), 12, 30);
-  hudCtx.fillText('HEALTH ' + Math.max(0, Math.floor(player.health)), 12, 55);
-  hudCtx.fillText('ENEMIES ' + enemies.length, 12, 80);
+  hudCtx.fillText('HEALTH ' + Math.max(0, Math.floor(player.health)) + '/' + player.maxHealth, 12, 55);
+  hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
+  hudCtx.fillText('WAVE ' + wave, 12, 80);
+  hudCtx.fillText('ENEMIES LEFT ' + enemies.length, 12, 105);
   hudCtx.fillStyle = '#00ff88';
-  hudCtx.fillText('RUSKOLEUM ' + upgrades.ruskoleum, 12, 105);
+  hudCtx.fillText('RUSKOLEUM ' + upgrades.ruskoleum, 12, 130);
   hudCtx.fillStyle = '#28e0ff';
   
   const speed = player.velocity.length();
-  hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 130);
+  hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 155);
+
+  // ---- WEAPON COOLDOWN DISPLAYS ----
+  if (upgrades.spaceMine > 0) {
+    const mineMaxCd = 60 * (1 - (upgrades.spaceMine - 1) * 0.1);
+    const mineMaxCdClamped = Math.max(30, mineMaxCd);
+    const mineCdPercent = Math.max(0, mineCooldown) / mineMaxCdClamped;
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.font = '13px VT323, monospace';
+    hudCtx.fillText('MINE', 12, 175);
+    hudCtx.fillStyle = 'rgba(255, 45, 111, 0.3)';
+    hudCtx.fillRect(12, 182, 80, 6);
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.fillRect(12, 182, 80 * (1 - mineCdPercent), 6);
+  }
+
+  if (upgrades.spaceLaser > 0) {
+    const laserMaxCd = 120 * (1 - (upgrades.spaceLaser - 1) * 0.15);
+    const laserMaxCdClamped = Math.max(60, laserMaxCd);
+    const laserCdPercent = Math.max(0, laserCooldown) / laserMaxCdClamped;
+    hudCtx.fillStyle = '#ffb000';
+    hudCtx.font = '13px VT323, monospace';
+    hudCtx.fillText('LASER', 12, 200);
+    hudCtx.fillStyle = 'rgba(255, 176, 0, 0.3)';
+    hudCtx.fillRect(12, 207, 80, 6);
+    hudCtx.fillStyle = '#ffb000';
+    hudCtx.fillRect(12, 207, 80 * (1 - laserCdPercent), 6);
+  }
+
+  // ---- HIGH SCORE display (centered at top) ----
+  hudCtx.fillStyle = 'rgba(255, 176, 0, 0.9)';
+  hudCtx.font = 'bold 24px VT323, monospace';
+  hudCtx.textAlign = 'center';
+  hudCtx.fillText('HIGH SCORE = ' + String(Math.max(...highScores.map(s => s.sc))).padStart(6, '0'), window.innerWidth / 2, 40);
 
   const cxHud = window.innerWidth / 2;
   const cyHud = window.innerHeight / 2;
@@ -1337,12 +1796,84 @@ function draw() {
   hudCtx.arc(cxHud, cyHud, 50, 0, Math.PI * 2);
   hudCtx.stroke();
 
+  // ---- HULL INTEGRITY label and bar ----
+  hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
+  hudCtx.font = '16px VT323, monospace';
+  hudCtx.textAlign = 'left';
+  hudCtx.fillText('HULL INTEGRITY', 12, window.innerHeight - 45);
+  
   hudCtx.fillStyle = 'rgba(255, 176, 0, 0.4)';
   const healthFrac = Math.max(0, player.health / player.maxHealth);
   hudCtx.fillRect(12, window.innerHeight - 30, healthFrac * 200, 12);
   hudCtx.strokeStyle = 'rgba(255, 176, 0, 0.7)';
   hudCtx.lineWidth = 1;
   hudCtx.strokeRect(12, window.innerHeight - 30, 200, 12);
+
+  // ---- ENEMY DIRECTION INDICATOR (nearest enemy pointer) ----
+  if (enemies.length > 0) {
+    // Find nearest enemy
+    let nearest = null;
+    let nearestDist = Infinity;
+    enemies.forEach(e => {
+      const d = player.position.distanceTo(e.position);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = e;
+      }
+    });
+    
+    if (nearest) {
+      // Project enemy position to screen space
+      const enemyScreenPos = new THREE.Vector3();
+      enemyScreenPos.copy(nearest.position);
+      enemyScreenPos.project(camera);
+      
+      // Convert from normalized device coordinates (-1 to 1) to screen pixels
+      const screenX = (enemyScreenPos.x * 0.5 + 0.5) * window.innerWidth;
+      const screenY = (-enemyScreenPos.y * 0.5 + 0.5) * window.innerHeight;
+      
+      // Calculate angle from screen center to enemy
+      const dx = screenX - cxHud;
+      const dy = screenY - cyHud;
+      const angleToEnemy = Math.atan2(dy, dx);
+      
+      // Position reticule on circle inside viewport (radius = 120 pixels from center)
+      const reticuleRadius = 120;
+      const reticuleX = cxHud + Math.cos(angleToEnemy) * reticuleRadius;
+      const reticuleY = cyHud + Math.sin(angleToEnemy) * reticuleRadius;
+      
+      // Draw arrow pointing to enemy
+      hudCtx.save();
+      hudCtx.translate(reticuleX, reticuleY);
+      hudCtx.rotate(angleToEnemy + Math.PI / 2); // Point outward from center
+      
+      // Crosshair/arrow shape
+      hudCtx.strokeStyle = '#ff2d6f';
+      hudCtx.lineWidth = 2;
+      hudCtx.beginPath();
+      hudCtx.moveTo(0, -20);  // top point (arrow tip)
+      hudCtx.lineTo(-8, -2);  // left barb
+      hudCtx.moveTo(0, -20);
+      hudCtx.lineTo(8, -2);   // right barb
+      hudCtx.stroke();
+      
+      // Draw small circle at reticule
+      hudCtx.strokeStyle = '#ff2d6f';
+      hudCtx.lineWidth = 1;
+      hudCtx.beginPath();
+      hudCtx.arc(0, 0, 6, 0, Math.PI * 2);
+      hudCtx.stroke();
+      
+      hudCtx.restore();
+      
+      // Draw distance text near reticule
+      const displayDist = Math.floor(nearestDist);
+      hudCtx.fillStyle = '#ff2d6f';
+      hudCtx.font = '12px VT323, monospace';
+      hudCtx.textAlign = 'center';
+      hudCtx.fillText(displayDist + 'u', reticuleX, reticuleY + 30);
+    }
+  }
 
   // ---- RENDER FLOATING TEXT (points earned at death locations) ----
   floatingText.forEach((ft) => {
