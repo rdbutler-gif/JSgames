@@ -2451,6 +2451,9 @@ function draw() {
       enemyScreenPos.copy(nearest.position);
       enemyScreenPos.project(camera);
       
+      // Check if behind camera (z > 1 means behind far plane)
+      const isBehind = enemyScreenPos.z > 1;
+      
       // Convert from normalized device coordinates (-1 to 1) to screen pixels
       const screenX = (enemyScreenPos.x * 0.5 + 0.5) * window.innerWidth;
       const screenY = (-enemyScreenPos.y * 0.5 + 0.5) * window.innerHeight;
@@ -2458,7 +2461,12 @@ function draw() {
       // Calculate angle from screen center to enemy
       const dx = screenX - cxHud;
       const dy = screenY - cyHud;
-      const angleToEnemy = Math.atan2(dy, dx);
+      let angleToEnemy = Math.atan2(dy, dx);
+      
+      // If behind camera, flip angle 180° so arrow points AT enemy, not away
+      if (isBehind) {
+        angleToEnemy += Math.PI;
+      }
       
       // Position reticule on circle inside viewport (radius = 120 pixels from center)
       const reticuleRadius = 120;
