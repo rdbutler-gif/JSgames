@@ -145,11 +145,11 @@
       Destroy all enemy fighters in 3D combat.<br>
       Survive each wave to face progressively harder enemies.<br>
       <br>
-      <i style="font-size: 14px; color: var(--neon-dim);">NEW IN THIS VERSION: Added player ship sound and revised Title Screen</i>
+      <i style="font-size: 14px; color: var(--neon-dim);">NEW IN THIS VERSION: Created wave completion time bonus and intruder detection sensors!</i>
     </div>
     <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
       <button class="btn" id="newGameBtn" onclick="newGameWithReset()" style="flex: 1; max-width: 140px;">NEW GAME</button>
-      <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">RE-LAUNCH ▶</button>
+      <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">LAUNCH ▶</button>
       <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="flex: 1; max-width: 140px;">⚙ UPGRADE</button>
     </div>
   </div>
@@ -176,10 +176,12 @@
 
   <!-- PAUSE MENU -->
   <div id="pause" class="panel hidden">
-    <h1 style="font-size: 56px; margin-bottom: 30px;">PAUSED</h1>
-    <div style="font-size: 20px; color: var(--cyan); margin-bottom: 40px; line-height: 1.8;">
-      <div style="margin-bottom: 20px;"><b>ESC</b> to return to dock</div>
-      <div>Any other key to resume</div>
+    <div style="width: 90vw; max-width: 500px; background: rgba(0, 10, 20, 0.95); border: 2px solid var(--neon); border-radius: 6px; display: flex; flex-direction: column; padding: 40px; align-items: center; justify-content: center;">
+      <h1 style="font-size: 48px; margin-bottom: 40px; color: var(--neon);">PAUSED</h1>
+      <div style="font-size: 18px; color: var(--cyan); margin-bottom: 30px; line-height: 2; text-align: center;">
+        <div style="margin-bottom: 15px;"><b>ESC</b> to return to dock</div>
+        <div style="color: var(--neon-dim);">Any other key to resume</div>
+      </div>
     </div>
   </div>
 
@@ -282,6 +284,28 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+// ====================================================================
+// RUSKO'S VOID — 3D SPACE SHOOTER
+// ====================================================================
+// A browser-based 3D space combat simulator built with Three.js and Web Audio API.
+// Single HTML file with vanilla JavaScript, no external dependencies.
+//
+// GAME MECHANICS:
+// - Player controls a 6-axis fighter ship in 3D space
+// - Destroy 10 enemies per wave to advance; progressively harder waves
+// - Time bonuses: Clear wave in under 2 minutes = 10,000 pts; scales down to 5 min
+// - Intruder Detection: If wave not cleared in 5 minutes, new enemies spawn
+//   and all enemies become aggressive (tighter orbits, faster pursuit)
+// - Upgrades: Spend Ruskoleum (enemy drops) on weapons, defenses, ship performance
+// - High scores saved locally; music via Web Audio API
+//
+// ARCHITECTURE:
+// - Three.js: 3D rendering, player/enemy ships, starfield, weapons
+// - Canvas 2D: HUD overlay (scores, timers, status bars, text)
+// - Web Audio: Engine sound (looping brown noise), weapon/hit effects, alarms
+// - Game State Machine: 'title', 'play', 'dying', 'gameover', pause overlay
+// ====================================================================
+
 const canvas = document.getElementById('canvas');
 const hudCanvas = document.getElementById('hud');
 const hudCtx = hudCanvas.getContext('2d');
@@ -381,6 +405,12 @@ function addRuskoleum(amount) {
   saveUpgrades();
 }
 
+// ====================================================================
+// AUDIO SYSTEM — Sound Effects and Engine Noise
+// ====================================================================
+// Web Audio API for all sound generation: weapon fire, impacts, music cues.
+// Brown noise loop modulates with ship velocity; siren activates on intruder alert.
+
 function ensureAudio() {
   if (!audioCtx) {
     try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -391,6 +421,7 @@ function ensureAudio() {
   if (audioCtx && !engineNoise) initEngineLoops();
 }
 
+// Player bullet fire: descending square wave "pew"
 function pewSound() {
   if (!audioCtx) return;
   try {
@@ -409,6 +440,7 @@ function pewSound() {
   } catch (e) { }
 }
 
+// Enemy bullet impact: bright descending triangle wave
 function hitSound() {
   if (!audioCtx) return;
   try {
@@ -755,11 +787,19 @@ function updateEngineSounds(player) {
   try {
     const t = audioCtx.currentTime;
     const velocity = player.velocity.length();
-    const maxVel = 2.5 + (upgrades.maxVelocity || 0) * 0.5; // same as max velocity calculation
+    
+    // CRITICAL FIX: Use the SAME maxVel calculation as player velocity clamping!
+    const baseMaxVel = 150;
+    const maxVelBonus = (upgrades.maxVelocity || 0) * 30;
+    const maxVel = baseMaxVel + maxVelBonus;
+    
     const velPercent = Math.min(1, velocity / maxVel);
     
-    // ENGINE CHURN - volume based on velocity
-    const engineVolume = velPercent * 0.25; // 0 to 0.25 based on speed
+    // ENGINE CHURN - volume based on velocity using cubic curve
+    // At 20% speed: volume should be 0.008
+    // At 50% speed: volume should be 0.125
+    // At 100% speed: volume should be 1.0
+    const engineVolume = velPercent * velPercent * velPercent; // Cubic curve: quiet at low speed, full volume only at max
     engineGain.gain.setTargetAtTime(engineVolume, t, 0.1); // Smooth ramping
     
     // Modulate filter frequency with velocity for "spinning up" effect
@@ -814,20 +854,38 @@ addEventListener('keydown', (e) => {
   
   // ---- ESC KEY: Pause during gameplay, Quit from pause ----
   if (e.code === 'Escape') {
-    if (gameState === 'play') {
-      pauseActive = true;
-      document.getElementById('pause').classList.remove('hidden');
-    } else if (pauseActive) {
+    if (pauseActive) {
       // ESC pressed in pause menu — return to title
       pauseActive = false;
       document.getElementById('pause').classList.add('hidden');
+      // Resume engine sound
+      if (audioCtx && audioCtx.state === 'running') {
+        initEngineLoops();
+      }
       returnToTitle();
+    } else if (gameState === 'play') {
+      // ESC pressed during play — pause game
+      pauseActive = true;
+      document.getElementById('pause').classList.remove('hidden');
+      // Stop engine sound during pause
+      if (engineNoise) {
+        try {
+          engineNoise.stop();
+          engineNoise = null;
+        } catch (e) { }
+      }
     }
+    return;  // Don't process other key handlers for ESC
   }
+  
   // ---- ANY OTHER KEY IN PAUSE: Resume game ----
-  else if (pauseActive) {
+  if (pauseActive) {
     pauseActive = false;
     document.getElementById('pause').classList.add('hidden');
+    // Resume engine sound
+    if (audioCtx && audioCtx.state === 'running') {
+      initEngineLoops();
+    }
   }
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
@@ -900,6 +958,8 @@ function createEnemy(x, y, z, type) {
   group.engaged = false; // only engage player when within detection range
   group.fireT = Math.random() * 60; // random offset in frames
   group.patrolAngle = Math.random() * Math.PI * 2; // random initial patrol direction
+  group.spawnPos = new THREE.Vector3(x, y, z); // Store spawn position for local patrol
+  group.patrolRadius = 200; // Stay within 200 units of spawn point
 
   if (group.type === 'scout') {
     group.health = 1;
@@ -1008,6 +1068,13 @@ function triggerPresenceDetected() {
   enemies.forEach(e => { e.aggressive = true; });
 }
 
+// ====================================================================
+// WAVES & ENEMY MANAGEMENT
+// ====================================================================
+// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus, trigger presence detection at 5min
+// triggerPresenceDetected(): Activate intruder alarm; spawn new enemies, force all to aggressive mode
+// createEnemy(): Instantiate enemy ship with type-specific stats (scout/interceptor/heavy)
+
 function spawnEnemyWave() {
   // ---- CALCULATE TIME BONUS FOR COMPLETING PREVIOUS WAVE ----
   if (wave > 0 && waveStartTime > 0) {
@@ -1081,6 +1148,13 @@ function createStarfield(count) {
   const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 2 });
   return new THREE.Points(geom, mat);
 }
+
+// ====================================================================
+// GAME INITIALIZATION & CORE LOOP
+// ====================================================================
+// init(): Set up new game, reset state, spawn first wave
+// update(): Main frame logic — player input, collision, enemy AI, score
+// Both called by requestAnimationFrame loop at ~60fps
 
 function init() {
   gameState = 'play';
@@ -1325,29 +1399,47 @@ function update(dt) {
     
     // ---- BEHAVIOR: Patrol or Engage ----
     if (!e.engaged) {
-      // PATROL MODE: Wander in a simple pattern, no orbit
-      if (!e.patrolTarget) {
-        e.patrolTarget = e.position.clone();
-      }
+      // PATROL MODE: Stay in a local area around spawn point
+      const toSpawn = e.spawnPos.clone().sub(e.position);
+      const distToSpawn = toSpawn.length();
       
-      const toPatrol = e.patrolTarget.clone().sub(e.position);
-      const toPatrolDist = toPatrol.length();
-      
-      if (toPatrolDist < 20 || !e.patrolTarget) {
-        // Pick a new patrol target nearby
-        e.patrolAngle += (Math.random() - 0.5) * 0.5;
-        const patrolDist = 150;
-        e.patrolTarget = e.position.clone().add(
-          new THREE.Vector3(
-            Math.cos(e.patrolAngle) * patrolDist,
-            (Math.random() - 0.5) * 100,
-            Math.sin(e.patrolAngle) * patrolDist
-          )
-        );
+      // If too far from spawn, head back toward it
+      if (distToSpawn > e.patrolRadius) {
+        toSpawn.normalize();
+        e.velocity.addScaledVector(toSpawn, e.speed * 0.6);
       } else {
-        // Move toward patrol target
-        toPatrol.normalize();
-        e.velocity.addScaledVector(toPatrol, e.speed * 0.5);
+        // Normal local patrol within radius
+        if (!e.patrolTarget) {
+          e.patrolTarget = e.position.clone();
+        }
+        
+        const toPatrol = e.patrolTarget.clone().sub(e.position);
+        const toPatrolDist = toPatrol.length();
+        
+        if (toPatrolDist < 20) {
+          // Pick a new patrol target nearby, but within patrol radius
+          e.patrolAngle += (Math.random() - 0.5) * 0.5;
+          const patrolDist = 120; // Smaller patrol distance (was 150)
+          const newTarget = e.spawnPos.clone().add(
+            new THREE.Vector3(
+              Math.cos(e.patrolAngle) * patrolDist,
+              (Math.random() - 0.5) * 80,
+              Math.sin(e.patrolAngle) * patrolDist
+            )
+          );
+          // Clamp to patrol radius to prevent drifting too far
+          const toNew = newTarget.clone().sub(e.spawnPos);
+          if (toNew.length() > e.patrolRadius) {
+            toNew.normalize().multiplyScalar(e.patrolRadius);
+            e.patrolTarget = e.spawnPos.clone().add(toNew);
+          } else {
+            e.patrolTarget = newTarget;
+          }
+        } else {
+          // Move toward patrol target
+          toPatrol.normalize();
+          e.velocity.addScaledVector(toPatrol, e.speed * 0.5);
+        }
       }
     } else {
       // ENGAGEMENT MODE: Orbit and attack
@@ -1418,37 +1510,35 @@ function update(dt) {
 
     // ---- FIRING (only when engaged and in range) ----
     e.fireT--;
-    if (e.engaged && e.fireT <= 0 && d < ENGAGEMENT_RANGE) {
-      // Fire 3 bullets in a spread toward player, regardless of facing
+    if (e.engaged && e.fireT <= 0 && d < ENGAGEMENT_RANGE && d > 0) {
+      // Fire 3 bullets in a spread toward player (use normalized direction from earlier)
       const toPlayer = player.position.clone().sub(e.position);
-      if (toPlayer.length() > 0) {
-        toPlayer.normalize();
-        const bulletSpeed = 40; // much slower, clearly visible
+      toPlayer.normalize();
+      const bulletSpeed = 40; // much slower, clearly visible
+      
+      // Fire 3 bullets with slight spread
+      for (let spread = -1; spread <= 1; spread++) {
+        const spreadDir = new THREE.Vector3(
+          toPlayer.x + (Math.random() - 0.5) * 0.2,
+          toPlayer.y + (Math.random() - 0.5) * 0.2,
+          toPlayer.z + (Math.random() - 0.5) * 0.2
+        ).normalize();
         
-        // Fire 3 bullets with slight spread
-        for (let spread = -1; spread <= 1; spread++) {
-          // Create spread angle
-          const spreadOffset = spread * 0.2;
-          const spreadDir = new THREE.Vector3(
-            toPlayer.x + (Math.random() - 0.5) * 0.2,
-            toPlayer.y + (Math.random() - 0.5) * 0.2,
-            toPlayer.z + (Math.random() - 0.5) * 0.2
-          ).normalize();
-          
-          const enemyBulletVel = spreadDir.multiplyScalar(bulletSpeed);
-          enemies_projectiles.push(createProjectile(e.position.clone(), enemyBulletVel, false));
-        }
-        
-        // Play enemy fire sound
-        enemyFireSound();
-        
-        // Shorter cooldown between bursts: base fireRate is the main delay, random adds variability
-        e.fireT = e.fireRate + Math.random() * 20;  // smaller random component for consistency
+        const enemyBulletVel = spreadDir.multiplyScalar(bulletSpeed);
+        enemies_projectiles.push(createProjectile(e.position.clone(), enemyBulletVel, false));
       }
+      
+      // Play enemy fire sound
+      enemyFireSound();
+      
+      // Shorter cooldown between bursts: base fireRate is the main delay, random adds variability
+      e.fireT = e.fireRate + Math.random() * 20;  // smaller random component for consistency
     }
 
-    if (Math.hypot(player.velocity.x, player.velocity.y, player.velocity.z) > 0.01) {
-      distanceTraveled += Math.hypot(player.velocity.x, player.velocity.y, player.velocity.z);
+    // Track distance traveled using velocity length (more efficient than Math.hypot)
+    const playerSpeed = player.velocity.length();
+    if (playerSpeed > 0.01) {
+      distanceTraveled += playerSpeed;
     }
   });
 
@@ -1765,6 +1855,13 @@ function update(dt) {
   }
 }
 
+// ====================================================================
+// GAME STATE TRANSITIONS
+// ====================================================================
+// gameOver(): Transition to gameover screen; check for high score entry
+// showUpgrades(): Open upgrade shop, hide title
+// returnToTitle(): Reset to title screen after game/upgrade/pause
+
 function gameOver() {
   if (gameState !== 'play' && gameState !== 'dying') return;
   gameState = 'gameover';
@@ -2068,6 +2165,12 @@ addEventListener('keydown', (e) => {
   else if (e.code==='ArrowRight'||e.code==='KeyD') movePos(1);
   else if (e.code==='Enter') confirmEntry();
 });
+
+// ====================================================================
+// RENDERING — 3D Scene & HUD
+// ====================================================================
+// draw(): Render Three.js scene + weapons/mines/HUD overlays
+// Separated from update() to allow independent render timing if needed
 
 function draw() {
   // Draw during both play and dying states
@@ -2416,6 +2519,13 @@ let gameOverQueued = false;
 let lastFrameTime = performance.now();
 let deltaTime = 0;
 
+// ====================================================================
+// MAIN GAME LOOP
+// ====================================================================
+// loop(): requestAnimationFrame callback running at ~60fps
+// Calls update() for game logic, then draw() for rendering
+// Delta time capped at 50ms to prevent spiral deaths from frame drops
+
 function loop() {
   frameCount++;
   const now = performance.now();
@@ -2433,6 +2543,11 @@ function loop() {
   // Always continue the loop, even if the frame above threw.
   animFrameId = requestAnimationFrame(loop);
 }
+
+// ====================================================================
+// EVENT HANDLERS & STARTUP
+// ====================================================================
+// Button and window event listeners; game initialization on page load
 
 document.getElementById('startBtn').onclick = init;
 document.getElementById('restartBtn').onclick = returnToTitle;
