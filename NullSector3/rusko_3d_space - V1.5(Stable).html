@@ -122,7 +122,7 @@
 <div id="wrap">
   <canvas id="canvas"></canvas>
   <canvas id="hud"></canvas>
-  <canvas id="rearview" style="position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; border: 2px solid rgba(40,224,255,0.6); background: #000; display: block; z-index: 50;"></canvas>
+  <canvas id="rearview" style="position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; border: 2px solid rgba(40,224,255,0.6); background: #000; display: none; z-index: 50;"></canvas>
   <div id="crt"></div>
   <div id="vig"></div>
 
@@ -135,19 +135,23 @@
     <div class="controls" style="font-size: 16px; color: var(--cyan); margin-bottom: 20px; line-height: 1.7;">
       THRUST: <b>W</b> (forward) &nbsp; <b>S</b> (brake)<br>
       ROLL: <b>A</b> (left) &nbsp; <b>D</b> (right)<br>
-      LOOK: <b>RIGHT CLICK</b> + MOUSE &nbsp; FIRE: <b>SPACE</b> or <b>LMB</b><br>
+      LOOK: <b>RIGHT CLICK</b> + MOUSE &nbsp; FIRE: <b>LEFT CLICK</b><br>
       <br>
-      GAMEPAD: <b>LEFT STICK</b> (thrust/roll) &nbsp; <b>RIGHT STICK</b> (look)<br>
-      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>A BUTTON</b> (fire) &nbsp; <b>Y BUTTON</b> (special)
+      SPACE MINE: <b>Q</b> &nbsp; SPACE LASER: <b>E</b><br>
+      <br>
+      <i>Gamepad Controller Support under construction...</i>
     </div>
     <div class="legend" style="margin-bottom: 30px;">
       Destroy all enemy fighters in 3D combat.<br>
-      Survive each wave to face progressively harder enemies.
+      Survive each wave to face progressively harder enemies.<br>
+      <br>
+      <i style="font-size: 14px; color: var(--neon-dim);">NEW IN THIS VERSION: Added player ship sound and revised Title Screen</i>
     </div>
-    <button class="btn" id="startBtn">LAUNCH ▶</button>
-    <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="margin-left: 8px;">⚙ UPGRADE</button>
-    <button class="btn" id="resetGameBtn" onclick="resetGameOnly()" style="margin-left: 8px; background: #ff2d6f; font-size: 14px;">RESET GAME</button>
-    <button class="btn" id="resetScoresBtn" onclick="resetHighScoresOnly()" style="margin-left: 8px; background: #b06bff; font-size: 14px;">RESET SCORES</button>
+    <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
+      <button class="btn" id="newGameBtn" onclick="newGameWithReset()" style="flex: 1; max-width: 140px;">NEW GAME</button>
+      <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">RE-LAUNCH ▶</button>
+      <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="flex: 1; max-width: 140px;">⚙ UPGRADE</button>
+    </div>
   </div>
 
   <div id="gameover" class="panel hidden">
@@ -374,6 +378,8 @@ function ensureAudio() {
     catch (e) { }
   }
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  // Initialize engine sound loops once
+  if (audioCtx && !engineNoise) initEngineLoops();
 }
 
 function pewSound() {
@@ -514,6 +520,47 @@ function playerDamageSound() {
   } catch (e) { }
 }
 
+function playerDeathExplosion() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // Layer 1: deep boom, 120→20 Hz, 3s decay (extended for death)
+    const boom = audioCtx.createOscillator();
+    const boomGain = audioCtx.createGain();
+    boom.connect(boomGain);
+    boomGain.connect(audioCtx.destination);
+    boom.type = 'sine';
+    boom.frequency.setValueAtTime(120, t);
+    boom.frequency.exponentialRampToValueAtTime(20, t + 0.4);
+    boomGain.gain.setValueAtTime(0.4, t);
+    boomGain.gain.setValueAtTime(0.4, t + 0.05);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, t + 3.0);
+    boom.start(t);
+    boom.stop(t + 3.0);
+
+    // Layer 2: mid noise rumble, 3s decay
+    const bufLen = Math.floor(audioCtx.sampleRate * 3.2);
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) d[i] = Math.random() * 2 - 1;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(500, t);
+    filter.frequency.exponentialRampToValueAtTime(40, t + 3.0);
+    const ng = audioCtx.createGain();
+    noise.connect(filter);
+    filter.connect(ng);
+    ng.connect(audioCtx.destination);
+    ng.gain.setValueAtTime(0.25, t);
+    ng.gain.setValueAtTime(0.25, t + 0.08);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 3.0);
+    noise.start(t);
+    noise.stop(t + 3.2);
+  } catch (e) { }
+}
+
 function ruskoleumPickupSound() {
   if (!audioCtx) return;
   try {
@@ -581,6 +628,137 @@ function laserFireSound() {
   } catch (e) { }
 }
 
+function cymbalSplashSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    // Cymbal splash: bright metallic noise with hi-pass filtering and resonance
+    // Create white noise buffer (0.8 seconds)
+    const bufLen = Math.floor(audioCtx.sampleRate * 0.8);
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buf;
+    
+    // Hi-pass filter for bright metallic character (3kHz and up)
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(3000, t);
+    filter.frequency.exponentialRampToValueAtTime(8000, t + 0.6);
+    filter.Q.value = 2.5;  // Add resonance peak
+    
+    const gain = audioCtx.createGain();
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    // Attack and long decay for rewarding splash effect
+    gain.gain.setValueAtTime(0.01, t);
+    gain.gain.linearRampToValueAtTime(0.5, t + 0.05);  // Quick attack
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.8);  // Long fade
+    
+    noise.start(t);
+    noise.stop(t + 0.8);
+  } catch (e) { }
+}
+
+function startSirenSound() {
+  if (!audioCtx || sirenSource) return;  // Only start if not already playing
+  try {
+    const t = audioCtx.currentTime;
+    // Create a 2-second looping siren pattern
+    const bufLen = Math.floor(audioCtx.sampleRate * 2);
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    
+    // Sawtooth wave that warbles: alternates between two frequencies
+    for (let i = 0; i < bufLen; i++) {
+      const time = i / audioCtx.sampleRate;
+      const wob = Math.sin(time * Math.PI * 2) * 0.5 + 0.5;  // 0 to 1 over 1 second
+      const freq = 800 + wob * 600;  // Warble between 800-1400 Hz
+      const phase = (i / audioCtx.sampleRate) * freq * Math.PI * 2;
+      data[i] = Math.sin(phase);  // Sine wave
+    }
+    
+    sirenSource = audioCtx.createBufferSource();
+    sirenSource.buffer = buf;
+    sirenSource.loop = true;
+    
+    const gain = audioCtx.createGain();
+    sirenSource.connect(gain);
+    gain.connect(audioCtx.destination);
+    gain.gain.setValueAtTime(0.35, t);
+    
+    sirenSource.start(t);
+  } catch (e) { }
+}
+
+function stopSirenSound() {
+  if (sirenSource) {
+    try {
+      sirenSource.stop();
+    } catch (e) { }
+    sirenSource = null;
+  }
+}
+
+// ---- ENGINE SOUNDS ----
+let engineNoise = null, engineGain = null, engineFilter = null;
+
+function initEngineLoops() {
+  if (!audioCtx) return;
+  try {
+    // ENGINE CHURN - continuous rumble modulating with velocity
+    if (!engineNoise) {
+      const bufLen = Math.floor(audioCtx.sampleRate * 2); // 2 second loop
+      const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufLen; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.5; // brown noise
+      }
+      
+      engineNoise = audioCtx.createBufferSource();
+      engineNoise.buffer = buf;
+      engineNoise.loop = true;
+      
+      engineGain = audioCtx.createGain();
+      engineFilter = audioCtx.createBiquadFilter();
+      
+      engineFilter.type = 'lowpass';
+      engineFilter.frequency.setValueAtTime(400, audioCtx.currentTime);
+      engineGain.gain.setValueAtTime(0, audioCtx.currentTime); // Start silent
+      
+      engineNoise.connect(engineFilter);
+      engineFilter.connect(engineGain);
+      engineGain.connect(audioCtx.destination);
+      engineNoise.start();
+    }
+  } catch (e) { }
+}
+
+function updateEngineSounds(player) {
+  if (!audioCtx || !engineNoise || (gameState !== 'play' && gameState !== 'dying')) return;
+  
+  try {
+    const t = audioCtx.currentTime;
+    const velocity = player.velocity.length();
+    const maxVel = 2.5 + (upgrades.maxVelocity || 0) * 0.5; // same as max velocity calculation
+    const velPercent = Math.min(1, velocity / maxVel);
+    
+    // ENGINE CHURN - volume based on velocity
+    const engineVolume = velPercent * 0.25; // 0 to 0.25 based on speed
+    engineGain.gain.setTargetAtTime(engineVolume, t, 0.1); // Smooth ramping
+    
+    // Modulate filter frequency with velocity for "spinning up" effect
+    const filterFreq = 300 + velPercent * 200; // 300-500 Hz range
+    engineFilter.frequency.setTargetAtTime(filterFreq, t, 0.05);
+  } catch (e) { }
+}
+
 function rumble(duration, weak, strong) {
   // Rumble disabled - can cause freezing
   return;
@@ -609,6 +787,11 @@ let deathTimer = 0;
 let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
 let mines = [], lasers = [];  // New weapons
 let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0;
+let waveStartTime = 0;  // Track when wave started for timer
+let waveFlashTime = 0;  // For wave transition flash effect
+let presenceDetected = false;  // Flag for 5-minute warning
+let presenceWarningFlashTime = 0;  // Flash effect for warning
+let sirenSource = null;  // Siren sound source (keeps playing)
 let mineCooldown = 0, laserCooldown = 0;  // Weapon cooldowns
 
 const keys = {};
@@ -756,8 +939,78 @@ function createRuskoleum(pos) {
   return crystal;
 }
 
+function triggerWaveTransition() {
+  waveFlashTime = 60;  // Flash duration in frames (~1 second at 60fps)
+  cymbalSplashSound();
+}
+
+function triggerPresenceDetected() {
+  if (presenceDetected) return;  // Only trigger once per wave
+  presenceDetected = true;
+  presenceWarningFlashTime = 120;  // Longer warning flash (2 seconds)
+  startSirenSound();
+  
+  // Spawn new enemies: wave count + 1
+  const spawnCount = wave + 1;
+  for (let i = 0; i < spawnCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 500 + Math.random() * 400;
+    const spreadX = Math.cos(angle) * distance;
+    const spreadZ = Math.sin(angle) * distance;
+    const spreadY = (Math.random() - 0.5) * 300;
+    
+    const x = player.position.x + spreadX;
+    const y = player.position.y + spreadY;
+    const z = player.position.z + spreadZ;
+    
+    const types = ['scout', 'interceptor', 'heavy'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const e = createEnemy(x, y, z, type);
+    
+    // Scale with wave difficulty
+    const speedMult = 1 + Math.max(0, wave - 1) * 0.12;
+    const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10;
+    e.speed *= speedMult;
+    e.fireRate = Math.max(40, Math.floor(e.fireRate * fireRateMult));
+    e.aggressive = true;  // Mark as aggressive
+    enemies.push(e);
+  }
+  
+  // Set all current enemies to aggressive
+  enemies.forEach(e => { e.aggressive = true; });
+}
+
 function spawnEnemyWave() {
+  // ---- CALCULATE TIME BONUS FOR COMPLETING PREVIOUS WAVE ----
+  if (wave > 0 && waveStartTime > 0) {
+    const elapsedMs = Date.now() - waveStartTime;
+    const twoMinutesMs = 2 * 60 * 1000;
+    const fiveMinutesMs = 5 * 60 * 1000;
+    
+    let timeBonus = 0;
+    if (elapsedMs < twoMinutesMs) {
+      // Under 2 minutes: Full 10000 point bonus
+      timeBonus = 10000;
+    } else if (elapsedMs < fiveMinutesMs) {
+      // 2-5 minutes: Linear scale from 10000 down to 0
+      const progressIntoWindow = (elapsedMs - twoMinutesMs) / (fiveMinutesMs - twoMinutesMs);
+      timeBonus = Math.floor(10000 * (1 - progressIntoWindow));
+    }
+    // Over 5 minutes: No bonus (timeBonus stays 0)
+    
+    if (timeBonus > 0) {
+      score += timeBonus;
+      // Could add floating text notification here if desired
+    }
+  }
+  
   wave++;
+  waveStartTime = Date.now();  // Reset timer for new wave
+  presenceDetected = false;  // Reset presence detection for new wave
+  presenceWarningFlashTime = 0;
+  stopSirenSound();  // Stop siren when new wave starts
+  triggerWaveTransition();  // Flash and sound effect
+  
   // Progressive difficulty: wave 1 is easy, each wave gets progressively harder
   const speedMult = 1 + Math.max(0, wave - 1) * 0.12;      // wave 1: 1.0x, wave 2: 1.12x, wave 3: 1.24x...
   const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10; // wave 1: 1.4x (slower), wave 2: 1.30x, wave 3: 1.20x... min 0.4x
@@ -781,6 +1034,7 @@ function spawnEnemyWave() {
     // Scale difficulty
     e.speed *= speedMult;
     e.fireRate = Math.max(40, Math.floor(e.fireRate * fireRateMult)); // min fireRate of 40 frames
+    e.aggressive = false;  // Start non-aggressive
     enemies.push(e);
   }
 }
@@ -805,6 +1059,7 @@ function init() {
   document.getElementById('title').classList.add('hidden');
   document.getElementById('gameover').classList.add('hidden');
   document.getElementById('entry').classList.add('hidden');
+  document.getElementById('rearview').style.display = 'block';
 
   while (scene.children.length > 0) scene.remove(scene.children[0]);
 
@@ -813,6 +1068,11 @@ function init() {
   distanceTraveled = 0;
   wave = 0;
   screenFlash = 0;
+  waveFlashTime = 0;
+  waveStartTime = 0;
+  presenceDetected = false;
+  presenceWarningFlashTime = 0;
+  stopSirenSound();  // Stop siren if running from previous game
   
   player = createPlayerShip();
   
@@ -889,6 +1149,9 @@ function update(dt) {
   if (velMag > maxVel) {
     player.velocity.multiplyScalar(maxVel / velMag);
   }
+
+  // ---- UPDATE ENGINE SOUNDS ----
+  updateEngineSounds(player);
 
   // ---- ROLL (A/D or left stick left/right) ----
   let rollInput = 0;
@@ -1013,14 +1276,20 @@ function update(dt) {
     
     if (d === 0) return;
     
-    // ---- DETECTION: Check if player is in engagement range ----
     const ENGAGEMENT_RANGE = 350; // detection range
-    if (d < ENGAGEMENT_RANGE) {
+    
+    // ---- DETECTION: Check if player is in engagement range ----
+    // AGGRESSIVE MODE: Always engaged, much larger engagement range
+    if (e.aggressive) {
       e.engaged = true;
-    }
-    // Disengage if player gets too far away
-    if (d > ENGAGEMENT_RANGE * 1.5) {
-      e.engaged = false;
+    } else {
+      if (d < ENGAGEMENT_RANGE) {
+        e.engaged = true;
+      }
+      // Disengage if player gets too far away
+      if (d > ENGAGEMENT_RANGE * 1.5) {
+        e.engaged = false;
+      }
     }
     
     // ---- BEHAVIOR: Patrol or Engage ----
@@ -1054,8 +1323,14 @@ function update(dt) {
     // ---- INITIALIZE ORBITAL PARAMETERS (once per enemy) ----
     if (!e.orbitAngle) {
       e.orbitAngle = Math.random() * Math.PI * 2;
-      e.orbitRadius = 100 + Math.random() * 80;
-      e.orbitSpeed = 0.01 + Math.random() * 0.015; // rad/frame
+      // AGGRESSIVE MODE: Tighter orbit, faster approach
+      if (e.aggressive) {
+        e.orbitRadius = 60 + Math.random() * 40;  // Closer orbit
+        e.orbitSpeed = 0.02 + Math.random() * 0.025;  // Faster orbit
+      } else {
+        e.orbitRadius = 100 + Math.random() * 80;
+        e.orbitSpeed = 0.01 + Math.random() * 0.015;
+      }
       e.verticalPhase = Math.random() * Math.PI * 2;
     }
 
@@ -1070,11 +1345,13 @@ function update(dt) {
     const targetPos = player.position.clone().add(new THREE.Vector3(targetX, targetY, targetZ));
     
     // Move toward orbital target
+    // AGGRESSIVE MODE: Faster approach
     const toTarget = targetPos.clone().sub(e.position);
     const toTargetDist = toTarget.length();
     if (toTargetDist > 1) {
       toTarget.normalize();
-      e.velocity.addScaledVector(toTarget, e.speed * 0.8);
+      const speedMult = e.aggressive ? 1.2 : 0.8;  // Aggressive enemies move 20% faster
+      e.velocity.addScaledVector(toTarget, e.speed * speedMult);
     }
     }
 
@@ -1289,6 +1566,21 @@ function update(dt) {
     spawnEnemyWave();
   }
 
+  // ---- UPDATE WAVE FLASH EFFECT ----
+  if (waveFlashTime > 0) waveFlashTime--;
+
+  // ---- CHECK FOR 5-MINUTE PRESENCE DETECTION ----
+  if (gameState === 'play' && waveStartTime > 0 && !presenceDetected) {
+    const elapsedMs = Date.now() - waveStartTime;
+    const fiveMinutesMs = 5 * 60 * 1000;  // 5 minutes in milliseconds
+    if (elapsedMs > fiveMinutesMs) {
+      triggerPresenceDetected();
+    }
+  }
+
+  // ---- UPDATE PRESENCE WARNING FLASH ----
+  if (presenceWarningFlashTime > 0) presenceWarningFlashTime--;
+
   // ---- LASER COLLISION & UPDATES ----
   for (let lIdx = lasers.length - 1; lIdx >= 0; lIdx--) {
     const laser = lasers[lIdx];
@@ -1384,6 +1676,15 @@ function update(dt) {
       if (player.health <= 0) {
         gameState = 'dying';
         deathTimer = 0;
+        // Stop engine sound immediately on death
+        if (engineNoise) {
+          try {
+            engineNoise.stop();
+            engineNoise = null;
+          } catch (e) { }
+        }
+        // Play death explosion sound
+        playerDeathExplosion();
       }
       return false;
     }
@@ -1436,6 +1737,18 @@ function update(dt) {
 function gameOver() {
   if (gameState !== 'play' && gameState !== 'dying') return;
   gameState = 'gameover';
+  document.getElementById('rearview').style.display = 'none';
+  
+  // Stop engine sound
+  if (engineNoise) {
+    try {
+      engineNoise.stop();
+      engineNoise = null;
+    } catch (e) { }
+  }
+
+  // Stop siren sound if playing
+  stopSirenSound();
 
   // Fill in the end-of-run stats on the panel
   document.getElementById('finalScore').textContent = String(score).padStart(6, '0');
@@ -1507,6 +1820,60 @@ function resetHighScoresOnly() {
   refreshTitleTop();
   
   alert('All high scores have been reset to defaults.');
+}
+
+function newGameWithReset() {
+  // Step 1: Ask if player wants to reset upgrades
+  const resetUpgrades = window.confirm(
+    'START A NEW GAME?\n\n' +
+    'This will reset all upgrades to their default state.\n' +
+    'Your high scores will be preserved.\n\n' +
+    'Proceed?'
+  );
+  
+  if (!resetUpgrades) return;
+  
+  // Step 2: Ask if player also wants to reset high scores
+  const alsoResetScores = window.confirm(
+    'Also RESET HIGH SCORES?\n\n' +
+    'WARNING: This will WIPE all saved high scores.\n' +
+    'This action CANNOT be undone.\n\n' +
+    'Delete all progress?'
+  );
+  
+  // Reset upgrades
+  try {
+    localStorage.removeItem(UPGRADE_KEY);
+  } catch (e) {}
+  
+  upgrades = {
+    ruskoleum: 0,
+    bulletSpeed: 0,
+    pickupRadius: 0,
+    collisionRadius: 0,
+    shipSpeed: 0,
+    maxVelocity: 0,
+    spaceMine: 0,
+    spaceLaser: 0
+  };
+  saveUpgrades();
+  
+  // Reset high scores if opted
+  if (alsoResetScores) {
+    try {
+      localStorage.removeItem(HS_KEY);
+    } catch (e) {}
+    highScores = [];
+    for (let i = 0; i < 10; i++) {
+      highScores.push({ini: 'AAA', sc: 0});
+    }
+    saveScores();
+  }
+  
+  // Update UI and start game
+  updateUpgradeUI();
+  refreshTitleTop();
+  startGame();
 }
 
 function resetGame() {
@@ -1780,6 +2147,20 @@ function draw() {
   hudCtx.textAlign = 'center';
   hudCtx.fillText('HIGH SCORE = ' + String(Math.max(...highScores.map(s => s.sc))).padStart(6, '0'), window.innerWidth / 2, 40);
 
+  // ---- WAVE TIMER display (temporary) ----
+  if (gameState === 'play' && waveStartTime > 0) {
+    const elapsedMs = Date.now() - waveStartTime;
+    const minutes = Math.floor(elapsedMs / 60000);
+    const seconds = Math.floor((elapsedMs % 60000) / 1000);
+    const ms = Math.floor((elapsedMs % 1000) / 10);
+    const timerStr = `${minutes}:${String(seconds).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+    
+    hudCtx.fillStyle = 'rgba(40, 224, 255, 0.9)';
+    hudCtx.font = 'bold 18px VT323, monospace';
+    hudCtx.textAlign = 'center';
+    hudCtx.fillText('WAVE ' + wave + ' : ' + timerStr, window.innerWidth / 2, 65);
+  }
+
   const cxHud = window.innerWidth / 2;
   const cyHud = window.innerHeight / 2;
   hudCtx.strokeStyle = 'rgba(40, 224, 255, 0.6)';
@@ -1907,7 +2288,63 @@ function draw() {
     screenFlash--;
   }
 
-  // ---- GAME OVER GRAPHIC (during dying state) ----
+  // ---- WAVE TRANSITION FLASH ----
+  if (waveFlashTime > 0) {
+    const w = hudCanvas.width;
+    const h = hudCanvas.height;
+    const flashProgress = waveFlashTime / 60;  // 0 to 1 (fades out)
+    
+    // Bright cyan flash background (fades over time)
+    const flashAlpha = flashProgress * 0.7;
+    hudCtx.fillStyle = `rgba(40, 224, 255, ${flashAlpha})`;
+    hudCtx.fillRect(0, 0, w, h);
+    
+    // Big bold "WAVE X!" text (scales and fades)
+    const textScale = 1 + (1 - flashProgress) * 0.3;  // Grows initially then shrinks slightly
+    const textAlpha = flashProgress;
+    hudCtx.globalAlpha = textAlpha;
+    hudCtx.font = `bold ${Math.floor(140 * textScale)}px Orbitron, sans-serif`;
+    hudCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    hudCtx.textAlign = 'center';
+    hudCtx.textBaseline = 'middle';
+    hudCtx.shadowColor = 'rgba(40, 224, 255, 1)';
+    hudCtx.shadowBlur = 40 * flashProgress;
+    hudCtx.fillText('WAVE ' + wave + '!', w / 2, h / 2 - 80);
+    
+    hudCtx.globalAlpha = 1;
+    hudCtx.shadowBlur = 0;
+  }
+
+  // ---- WARNING PRESENCE DETECTED FLASH ----
+  if (presenceWarningFlashTime > 0) {
+    const w = hudCanvas.width;
+    const h = hudCanvas.height;
+    const flashProgress = presenceWarningFlashTime / 120;  // 0 to 1 (fades out over 2 seconds)
+    
+    // Red/orange alarm flash background (fades over time)
+    const flashAlpha = flashProgress * 0.8;
+    hudCtx.fillStyle = `rgba(255, 80, 60, ${flashAlpha})`;
+    hudCtx.fillRect(0, 0, w, h);
+    
+    // Big bold "WARNING!" text (pulses slightly)
+    const textScale = 1 + Math.sin(presenceWarningFlashTime * 0.1) * 0.1;  // Slight pulsing
+    const textAlpha = flashProgress;
+    hudCtx.globalAlpha = textAlpha;
+    hudCtx.font = `bold ${Math.floor(120 * textScale)}px Orbitron, sans-serif`;
+    hudCtx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+    hudCtx.textAlign = 'center';
+    hudCtx.textBaseline = 'middle';
+    hudCtx.shadowColor = 'rgba(255, 100, 60, 1)';
+    hudCtx.shadowBlur = 50 * flashProgress;
+    hudCtx.fillText('WARNING!', w / 2, h / 2 - 100);
+    
+    hudCtx.font = `bold ${Math.floor(100 * textScale)}px Orbitron, sans-serif`;
+    hudCtx.shadowBlur = 40 * flashProgress;
+    hudCtx.fillText('PRESENCE DETECTED', w / 2, h / 2 + 20);
+    
+    hudCtx.globalAlpha = 1;
+    hudCtx.shadowBlur = 0;
+  }
   if (gameState === 'dying') {
     const w = hudCanvas.width;
     const h = hudCanvas.height;

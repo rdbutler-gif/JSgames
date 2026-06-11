@@ -72,7 +72,7 @@
     justify-content: center;
     text-align: center;
     color: var(--neon);
-    background: rgba(0, 0, 0, 0.92);
+    background: #000;
     z-index: 100;
     letter-spacing: 1px;
     padding: 20px;
@@ -172,6 +172,15 @@
     <div style="font-size: 48px; letter-spacing: 16px; color: var(--amber); margin: 8px 0; font-family: 'Orbitron', sans-serif;" id="entryInitials"></div>
     <div style="font-size: 14px; color: var(--cyan); margin-top: 12px;">↑↓ change &nbsp; ←→ move &nbsp; ENTER = confirm</div>
     <button class="btn" id="saveBtn" onclick="saveInitials()" style="margin-top: 16px;">[ SAVE ]</button>
+  </div>
+
+  <!-- PAUSE MENU -->
+  <div id="pause" class="panel hidden">
+    <h1 style="font-size: 56px; margin-bottom: 30px;">PAUSED</h1>
+    <div style="font-size: 20px; color: var(--cyan); margin-bottom: 40px; line-height: 1.8;">
+      <div style="margin-bottom: 20px;"><b>ESC</b> to return to dock</div>
+      <div>Any other key to resume</div>
+    </div>
   </div>
 
   <!-- UPGRADES SHOP -->
@@ -784,6 +793,7 @@ rearRenderer.setPixelRatio(window.devicePixelRatio);
 
 let gameState = 'title';
 let deathTimer = 0;
+let pauseActive = false;  // Track if game is paused
 let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
 let mines = [], lasers = [];  // New weapons
 let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0;
@@ -801,6 +811,24 @@ let rightMouseDown = false, leftMouseDown = false;
 addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
+  
+  // ---- ESC KEY: Pause during gameplay, Quit from pause ----
+  if (e.code === 'Escape') {
+    if (gameState === 'play') {
+      pauseActive = true;
+      document.getElementById('pause').classList.remove('hidden');
+    } else if (pauseActive) {
+      // ESC pressed in pause menu — return to title
+      pauseActive = false;
+      document.getElementById('pause').classList.add('hidden');
+      returnToTitle();
+    }
+  }
+  // ---- ANY OTHER KEY IN PAUSE: Resume game ----
+  else if (pauseActive) {
+    pauseActive = false;
+    document.getElementById('pause').classList.add('hidden');
+  }
 });
 addEventListener('keyup', (e) => { keys[e.code] = false; });
 
@@ -1101,6 +1129,9 @@ function init() {
 
 function update(dt) {
   if (gameState !== 'play' && gameState !== 'dying') return;
+  
+  // Skip game updates if paused (but still draw)
+  if (pauseActive) return;
   
   // During dying state, only update enemies and particles (not player input)
   if (gameState === 'dying') {
