@@ -902,6 +902,24 @@ addEventListener('keydown', (e) => {
     keys['KeyP'] = false;  // Reset to avoid repeated triggers
     return;
   }
+
+  // ---- CHEAT CODE: K+O = Advance Wave (Immediate) ----
+  if (keys['KeyK'] && keys['KeyO'] && gameState === 'play') {
+    wave++;
+    rescaleEnemiesForWave();
+    keys['KeyK'] = false;
+    keys['KeyO'] = false;  // Reset to avoid repeated triggers
+    return;
+  }
+
+  // ---- CHEAT CODE: K+M = Decrease Wave (Immediate) ----
+  if (keys['KeyK'] && keys['KeyM'] && gameState === 'play') {
+    if (wave > 0) wave--;
+    rescaleEnemiesForWave();
+    keys['KeyK'] = false;
+    keys['KeyM'] = false;  // Reset to avoid repeated triggers
+    return;
+  }
   
   // ---- ESC KEY: Pause during gameplay, Quit from pause ----
   if (e.code === 'Escape') {
@@ -1016,6 +1034,8 @@ function createEnemy(x, y, z, type) {
     group.health = 1;
     group.speed = 7.2; // 0.12 * 60
     group.fireRate = 80;
+    group.baseSpeed = 7.2;  // Store base for rescaling
+    group.baseFireRate = 80;
     const hull = new THREE.Mesh(
       new THREE.TetrahedronGeometry(1.5, 0),
       new THREE.MeshBasicMaterial({ color: 0x9dff3c, wireframe: true })
@@ -1025,6 +1045,8 @@ function createEnemy(x, y, z, type) {
     group.health = 1;
     group.speed = 4.8; // 0.08 * 60
     group.fireRate = 60;
+    group.baseSpeed = 4.8;  // Store base for rescaling
+    group.baseFireRate = 60;
     const hull = new THREE.Mesh(
       new THREE.OctahedronGeometry(2, 0),
       new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true })
@@ -1034,6 +1056,8 @@ function createEnemy(x, y, z, type) {
     group.health = 1;
     group.speed = 3.0; // 0.05 * 60
     group.fireRate = 100;
+    group.baseSpeed = 3.0;  // Store base for rescaling
+    group.baseFireRate = 100;
     const hull = new THREE.Mesh(
       new THREE.BoxGeometry(3, 3, 4),
       new THREE.MeshBasicMaterial({ color: 0xb06bff, wireframe: true })
@@ -1125,6 +1149,20 @@ function triggerPresenceDetected() {
 // spawnEnemyWave(): Spawn 10 enemies, calculate time bonus, trigger presence detection at 5min
 // triggerPresenceDetected(): Activate intruder alarm; spawn new enemies, force all to aggressive mode
 // createEnemy(): Instantiate enemy ship with type-specific stats (scout/interceptor/heavy)
+// rescaleEnemiesForWave(): Re-apply wave difficulty multipliers to all current enemies (cheat code use)
+
+function rescaleEnemiesForWave() {
+  // Recalculate and apply difficulty multipliers to all existing enemies
+  // Used when wave is changed via cheat code (K+O or K+M)
+  const speedMult = 1 + Math.max(0, wave - 1) * 0.12;      // wave 1: 1.0x, wave 2: 1.12x, etc.
+  const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10; // wave 1: 1.4x (slower), wave 2: 1.30x, etc.
+  
+  enemies.forEach(e => {
+    // Use stored base stats (set during createEnemy)
+    e.speed = e.baseSpeed * speedMult;
+    e.fireRate = Math.max(40, Math.floor(e.baseFireRate * fireRateMult));
+  });
+}
 
 function spawnEnemyWave() {
   // ---- CALCULATE TIME BONUS FOR COMPLETING PREVIOUS WAVE ----
