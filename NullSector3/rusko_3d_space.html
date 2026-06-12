@@ -1709,7 +1709,7 @@ function update(dt) {
           enemies.splice(eIdx, 1);
           
           // ---- SPAWN RUSKOLEUM ----
-          const dropCount = 2 + Math.floor(Math.random() * 2); // 2 or 3 crystals
+          const dropCount = wave * (2 + Math.floor(Math.random() * 2)); // wave * (2 or 3) crystals
           for (let i = 0; i < dropCount; i++) {
             resources.push(createRuskoleum(e.position.clone().add(
               new THREE.Vector3(
@@ -1789,7 +1789,7 @@ function update(dt) {
         enemyDeathExplosion();
         
         // Drop Ruskoleum
-        const dropCount = 2 + Math.floor(Math.random() * 2);
+        const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
         for (let i = 0; i < dropCount; i++) {
           resources.push(createRuskoleum(e.position.clone().add(
             new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
@@ -1870,7 +1870,7 @@ function update(dt) {
           enemyDeathExplosion();
           
           // Drop Ruskoleum
-          const dropCount = 2 + Math.floor(Math.random() * 2);
+          const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
           for (let i = 0; i < dropCount; i++) {
             resources.push(createRuskoleum(e.position.clone().add(
               new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
@@ -1881,11 +1881,6 @@ function update(dt) {
     }
   }
   // Cleanup expired lasers
-  lasers.forEach(l => {
-    if (l.life <= 0 && l.line) {
-      scene.remove(l.line);
-    }
-  });
   lasers = lasers.filter(l => l.life > 0);
 
   // ---- UPDATE EXPLOSIONS ----
@@ -2447,33 +2442,6 @@ function draw() {
   });
   
   // ---- RENDER LASERS ----
-  const laserRange = 500 + (upgrades.laserRange || 0) * 200;  // 500-2500u based on upgrade
-  lasers.forEach(laser => {
-    // Draw a line from player in laser direction
-    if (!laser.line) {
-      const geom = new THREE.BufferGeometry();
-      const positions = new Float32Array([
-        laser.position.x, laser.position.y, laser.position.z,
-        laser.position.x + laser.direction.x * laserRange,
-        laser.position.y + laser.direction.y * laserRange,
-        laser.position.z + laser.direction.z * laserRange
-      ]);
-      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      const mat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-      laser.line = new THREE.Line(geom, mat);
-      scene.add(laser.line);
-    }
-    // Update laser line position and direction
-    const positions = laser.line.geometry.attributes.position.array;
-    positions[0] = laser.position.x;
-    positions[1] = laser.position.y;
-    positions[2] = laser.position.z;
-    positions[3] = laser.position.x + laser.direction.x * laserRange;
-    positions[4] = laser.position.y + laser.direction.y * laserRange;
-    positions[5] = laser.position.z + laser.direction.z * laserRange;
-    laser.line.geometry.attributes.position.needsUpdate = true;
-  });
-  
   renderer.render(scene, camera);
 
   hudCanvas.width = window.innerWidth;
