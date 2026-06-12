@@ -271,11 +271,11 @@
             <button class="btn" onclick="buyUpgradeBtn('spaceLaser')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
           </div>
 
-          <!-- Laser Range -->
-          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 176, 0, 0.1);">
-            <div><div style="color: #ffb000; font-weight: bold;">LASER RANGE</div><div style="font-size: 10px; color: var(--neon-dim);">Beam distance</div></div>
-            <div style="font-size: 11px;">Cost: <span id="upgradeCost_laserRange">80</span> | Lvl: <span id="upgradeLvl_laserRange" style="color: var(--neon);">0</span></div>
-            <button class="btn" onclick="buyUpgradeBtn('laserRange')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          <!-- Laser Range (requires Space Laser) -->
+          <div id="laserRangeUpgradeRow" style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 176, 0, 0.05); opacity: 0.5;">
+            <div><div style="color: #b8905f; font-weight: bold;">LASER RANGE</div><div style="font-size: 10px; color: #6b6344;">Beam distance</div></div>
+            <div style="font-size: 11px; color: #6b6344;">Cost: <span id="upgradeCost_laserRange">5</span> | Lvl: <span id="upgradeLvl_laserRange" style="color: #6b6344;">0</span></div>
+            <button class="btn" id="buyBtn_laserRange" onclick="buyUpgradeBtn('laserRange')" disabled style="font-size: 10px; padding: 2px 8px; margin: 0; opacity: 0.5;">BUY</button>
           </div>
 
           <!-- SPACE MINE Subcategory -->
@@ -287,6 +287,13 @@
             <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceMine">20</span> | Lvl: <span id="upgradeLvl_spaceMine" style="color: var(--neon);">0</span></div>
             <button class="btn" onclick="buyUpgradeBtn('spaceMine')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
           </div>
+
+          <!-- Mine Radius (requires Space Mine) -->
+          <div id="mineRadiusUpgradeRow" style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 45, 111, 0.05); opacity: 0.5;">
+            <div><div style="color: #b8668f; font-weight: bold;">MINE RADIUS</div><div style="font-size: 10px; color: #6b4455;">Detonation range</div></div>
+            <div style="font-size: 11px; color: #6b4455;">Cost: <span id="upgradeCost_mineRadius">5</span> | Lvl: <span id="upgradeLvl_mineRadius" style="color: #6b4455;">0</span></div>
+            <button class="btn" id="buyBtn_mineRadius" onclick="buyUpgradeBtn('mineRadius')" disabled style="font-size: 10px; padding: 2px 8px; margin: 0; opacity: 0.5;">BUY</button>
+          </div>
         </div>
       </div>
 
@@ -294,15 +301,17 @@
       <div style="border-top: 1px solid var(--neon-dim); padding-top: 10px; margin-bottom: 12px; font-size: 10px; color: var(--neon-dim);">
         <div style="color: var(--cyan); margin-bottom: 8px; font-weight: bold;">⚡ STAT PROGRESSION (Current / Max at Level 10)</div>
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; line-height: 1.4;">
-          <div>🔫 Fire Rate: <span style="color: var(--neon);"><span id="statFireRate">16</span>/<span id="statFireRateMax">8</span> fps</span></div>
+          <div>🔫 Fire Rate: <span style="color: var(--neon);"><span id="statFireRate">3.75</span>/<span id="statFireRateMax">7.5</span> shots/sec</span></div>
           <div>💨 Bullet Spd: <span style="color: var(--neon);"><span id="statBulletSpeed">1.0</span>x/<span id="statBulletSpeedMax">9.0</span>x</span></div>
           <div>⊙ Bullet Rad: <span style="color: var(--neon);"><span id="statBulletRadius">0</span>/<span id="statBulletRadiusMax">20</span>u</span></div>
-          <div>🛡️ Hull Armor: <span style="color: var(--neon);"><span id="statCollisionRadius">0</span>/<span id="statCollisionRadiusMax">200</span> hp</span></div>
+          <div>🛡️ Hull Armor: <span style="color: var(--neon);"><span id="statCollisionRadius">100</span>/<span id="statCollisionRadiusMax">300</span> hp</span></div>
           <div>🚀 Thrusters: <span style="color: var(--neon);"><span id="statShipSpeed">1.0</span>x/<span id="statShipSpeedMax">2.5</span>x</span></div>
-          <div>📍 Top Speed: <span style="color: var(--neon);"><span id="statMaxVelocity">2.5</span>/<span id="statMaxVelocityMax">7.5</span> u/s</span></div>
-          <div>🔷 Pickup: <span style="color: var(--neon);"><span id="statPickupRadius">0</span>/<span id="statPickupRadiusMax">50</span>u</span></div>
-          <div>🔴 Space Mine: <span style="color: var(--neon);"><span id="statSpaceMine">3.0</span>s/<span id="statSpaceMineMax">1.5</span>s</span></div>
-          <div>⚡ Laser Range: <span style="color: var(--neon);"><span id="statLaserRange">500</span>/<span id="statLaserRangeMax">2500</span>u</span></div>
+          <div>📍 Top Speed: <span style="color: var(--neon);"><span id="statMaxVelocity">150</span>/<span id="statMaxVelocityMax">450</span> u/min</span></div>
+          <div>🔷 Pickup: <span style="color: var(--neon);"><span id="statPickupRadius">10</span>/<span id="statPickupRadiusMax">200</span>u</span></div>
+          <div>🔴 Mine CD: <span style="color: var(--neon);"><span id="statSpaceMine">3.0</span>s/<span id="statSpaceMineMax">1.5</span>s</span></div>
+          <div>🔴 Mine Rng: <span style="color: var(--neon);"><span id="statMineRadius">10</span>/<span id="statMineRadiusMax">28</span>u</span></div>
+          <div>⚡ Laser CD: <span style="color: var(--neon);"><span id="statLaserCooldown">3.0</span>s/<span id="statLaserCooldownMax">1.5</span>s</span></div>
+          <div>⚡ Laser Rng: <span style="color: var(--neon);"><span id="statLaserRange">500</span>/<span id="statLaserRangeMax">2500</span>u</span></div>
         </div>
       </div>
 
@@ -404,8 +413,9 @@ const DEFAULT_UPGRADES = {
   maxVelocity: 0,      // costs 5, 10, 20... (top speed)
   fireRate: 0,         // costs 5, 10, 20... (attack speed)
   spaceMine: 0,        // costs 20, 40, 80... (Q key weapon, level 0 = not purchased)
-  spaceLaser: 0,       // costs 20, 40, 80... (E key weapon, level 0 = not purchased)
-  laserRange: 0,       // costs 80, 160, 320... (laser beam range)
+  mineRadius: 0,       // costs 5, 10, 20... (mine detonation range, requires spaceMine)
+  spaceLaser: 0,       // costs 80, 160, 320... (E key weapon, level 0 = not purchased)
+  laserRange: 0,       // costs 5, 10, 20... (laser beam range, requires spaceLaser)
 };
 
 function loadUpgrades(){
@@ -426,10 +436,10 @@ function saveUpgrades() {
 function buyUpgrade(key) {
   const currentLevel = upgrades[key] || 0;
   if (currentLevel >= MAX_UPGRADE_LEVEL) return false;  // Already at max level
-  // Weapon costs: spaceMine=20, spaceLaser=80, laserRange=80, others=5
+  // Weapon costs: spaceMine=20, spaceLaser=80, others (including laserRange & mineRadius)=5
   let baseCost = 5;
   if (key === 'spaceMine') baseCost = 20;
-  else if (key === 'spaceLaser' || key === 'laserRange') baseCost = 80;
+  else if (key === 'spaceLaser') baseCost = 80;
   
   const cost = baseCost * Math.pow(2, currentLevel);
   if (upgrades.ruskoleum >= cost) {
@@ -670,6 +680,38 @@ function ruskoleumPickupSound() {
     gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.8); // extended from 0.23s to 0.8s
     osc2.start(t + 0.1);
     osc2.stop(t + 0.8);
+  } catch (e) { }
+}
+
+function errorBuzzerSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    const duration = 0.2;
+    
+    // High frequency buzz (square wave)
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.type = 'square';
+    osc1.frequency.setValueAtTime(500, t);
+    gain1.gain.setValueAtTime(0.12, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc1.start(t);
+    osc1.stop(t + duration);
+    
+    // Lower frequency buzz (dissonant) - creates annoying clash
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(320, t);
+    gain2.gain.setValueAtTime(0.12, t);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc2.start(t);
+    osc2.stop(t + duration);
   } catch (e) { }
 }
 
@@ -1434,14 +1476,14 @@ function update(dt) {
   if (keys['KeyQ'] && upgrades.spaceMine > 0 && mineCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
-    const mineProximity = 10 + (upgrades.spaceMine - 1) * 2; // 10u base, +2u per upgrade
+    const mineProximity = 10 + (upgrades.mineRadius - 1) * 2; // 10u base, +2u per mineRadius upgrade
     mines.push({
       position: minePos.clone(),
       proximity: mineProximity,
       alive: true,
       life: 10  // 10 seconds (was 600 frames at 60fps)
     });
-    mineCooldown = 3 * (1 - (upgrades.spaceMine - 1) * 0.1); // 3 second base, reduce by 10% per upgrade
+    mineCooldown = 3 * (1 - (upgrades.spaceMine - 1) * 0.1); // 3 second base, reduce by 10% per spaceMine upgrade
     mineCooldown = Math.max(1.5, mineCooldown);  // min 1.5s
     mineDropSound();
   }
@@ -1908,9 +1950,13 @@ function update(dt) {
   });
   
   // ---- UPDATE RESOURCES (RUSKOLEUM) ----
-  const pickupRadius = 15 + (upgrades.pickupRadius || 0) * 5; // base 15, +5 per upgrade
+  const pickupRadius = 10 + (upgrades.pickupRadius || 0) * 19; // base 10u, +19u per upgrade (max 200u at level 10)
+  const magneticThreshold = pickupRadius;  // Start magnetic pull at full pickup range
+  const collectionThreshold = 5;  // Only collect when gem reaches very close to ship
+  const magneticSpeed = 80;  // units/second speed toward player when magnetized
+  
   resources = resources.filter((r) => {
-    // Apply velocity
+    // Apply velocity (spin momentum)
     r.position.addScaledVector(r.userData.velocity, dt);
     r.userData.velocity.multiplyScalar(0.98); // gentle drag
     
@@ -1918,9 +1964,17 @@ function update(dt) {
     const axis = r.userData.spinAxis;
     r.rotateOnWorldAxis(axis, r.userData.spin);
     
-    // Check pickup collision with generous radius
+    // Check distance to player for pickup and magnetic attraction
     const d = r.position.distanceTo(player.position);
-    if (d < pickupRadius) {
+    
+    // Magnetic attraction: gems within pickup range are pulled toward player
+    if (d < magneticThreshold && d > collectionThreshold) {
+      const direction = new THREE.Vector3().subVectors(player.position, r.position).normalize();
+      r.position.addScaledVector(direction, magneticSpeed * dt);
+    }
+    
+    // Collection: only collect when gem is very close to ship
+    if (d < collectionThreshold) {
       addRuskoleum(1);
       ruskoleumPickupSound();
       scene.remove(r);
@@ -2200,7 +2254,7 @@ function updateUpgradeUI() {
   document.getElementById('upgradeRuskoleum').textContent = upgrades.ruskoleum;
   
   // Update upgrade level displays and next costs (5 * 2^level for standard, 20/80 * 2^level for weapons)
-  const standardUpgrades = ['bulletSpeed', 'bulletRadius', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity', 'fireRate'];
+  const standardUpgrades = ['bulletSpeed', 'bulletRadius', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity', 'fireRate', 'laserRange', 'mineRadius'];
   standardUpgrades.forEach(key => {
     const lvl = upgrades[key] || 0;
     document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
@@ -2208,7 +2262,7 @@ function updateUpgradeUI() {
     document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
   });
   
-  // Update weapon upgrade displays (20 * 2^level for spaceMine, 80 * 2^level for spaceLaser and laserRange)
+  // Update weapon upgrade displays (20 * 2^level for spaceMine, 80 * 2^level for spaceLaser)
   const weaponUpgrades = ['spaceMine'];
   weaponUpgrades.forEach(key => {
     const lvl = upgrades[key] || 0;
@@ -2217,7 +2271,7 @@ function updateUpgradeUI() {
     document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
   });
 
-  const expensiveWeaponUpgrades = ['spaceLaser', 'laserRange'];
+  const expensiveWeaponUpgrades = ['spaceLaser'];
   expensiveWeaponUpgrades.forEach(key => {
     const lvl = upgrades[key] || 0;
     document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
@@ -2235,14 +2289,18 @@ function updateUpgradeUI() {
     maxVelocity: upgrades.maxVelocity || 0,
     pickupRadius: upgrades.pickupRadius || 0,
     spaceMine: upgrades.spaceMine || 0,
+    mineRadius: upgrades.mineRadius || 0,
+    spaceLaser: upgrades.spaceLaser || 0,
     laserRange: upgrades.laserRange || 0
   };
 
   // Fire Rate: 16 - (level * 0.8), min 8 at level 10
   const fireRateCur = Math.max(8, 16 - currentLvl.fireRate * 0.8);
   const fireRateMax = 8;
-  document.getElementById('statFireRate').textContent = fireRateCur.toFixed(1);
-  document.getElementById('statFireRateMax').textContent = fireRateMax;
+  const shotsPerSecCur = (60 / fireRateCur).toFixed(2);
+  const shotsPerSecMax = (60 / fireRateMax).toFixed(2);
+  document.getElementById('statFireRate').textContent = shotsPerSecCur;
+  document.getElementById('statFireRateMax').textContent = shotsPerSecMax;
 
   // Bullet Speed: 1.0 + (level * 0.8)
   const bulletSpeedCur = 1.0 + currentLvl.bulletSpeed * 0.8;
@@ -2256,9 +2314,9 @@ function updateUpgradeUI() {
   document.getElementById('statBulletRadius').textContent = bulletRadiusCur;
   document.getElementById('statBulletRadiusMax').textContent = bulletRadiusMax;
 
-  // Hull Armor (collisionRadius): level * 20
-  const hullCur = currentLvl.collisionRadius * 20;
-  const hullMax = 10 * 20;
+  // Hull Armor (collisionRadius): 100 base + (level * 20)
+  const hullCur = 100 + currentLvl.collisionRadius * 20;
+  const hullMax = 100 + 10 * 20;
   document.getElementById('statCollisionRadius').textContent = hullCur;
   document.getElementById('statCollisionRadiusMax').textContent = hullMax;
 
@@ -2268,15 +2326,15 @@ function updateUpgradeUI() {
   document.getElementById('statShipSpeed').textContent = thrustCur.toFixed(2);
   document.getElementById('statShipSpeedMax').textContent = thrustMax.toFixed(2);
 
-  // Top Speed (maxVelocity): 2.5 + (level * 0.5)
-  const topSpeedCur = 2.5 + currentLvl.maxVelocity * 0.5;
-  const topSpeedMax = 2.5 + 10 * 0.5;
-  document.getElementById('statMaxVelocity').textContent = topSpeedCur.toFixed(1);
-  document.getElementById('statMaxVelocityMax').textContent = topSpeedMax.toFixed(1);
+  // Top Speed (maxVelocity): 150 + (level * 30) u/min
+  const topSpeedCur = 150 + currentLvl.maxVelocity * 30;
+  const topSpeedMax = 150 + 10 * 30;
+  document.getElementById('statMaxVelocity').textContent = topSpeedCur;
+  document.getElementById('statMaxVelocityMax').textContent = topSpeedMax;
 
-  // Pickup Range (pickupRadius): level * 5
-  const pickupCur = currentLvl.pickupRadius * 5;
-  const pickupMax = 10 * 5;
+  // Pickup Range (pickupRadius): 10 + (level * 19)
+  const pickupCur = 10 + currentLvl.pickupRadius * 19;
+  const pickupMax = 10 + 10 * 19;
   document.getElementById('statPickupRadius').textContent = pickupCur;
   document.getElementById('statPickupRadiusMax').textContent = pickupMax;
 
@@ -2286,19 +2344,71 @@ function updateUpgradeUI() {
   document.getElementById('statSpaceMine').textContent = mineCD.toFixed(1);
   document.getElementById('statSpaceMineMax').textContent = mineCDMax.toFixed(1);
 
+  // Space Mine Radius: 10 + (level - 1) * 2 (uses mineRadius upgrade level)
+  const mineRadiusCur = 10 + (currentLvl.mineRadius - 1) * 2;
+  const mineRadiusMax = 10 + (10 - 1) * 2;
+  document.getElementById('statMineRadius').textContent = mineRadiusCur;
+  document.getElementById('statMineRadiusMax').textContent = mineRadiusMax;
+
+  // Space Laser Cooldown: 3.0 * (1 - (level - 1) * 0.15), min 1.5s
+  const laserCD = currentLvl.spaceLaser > 0 ? Math.max(1.5, 3.0 * (1 - (currentLvl.spaceLaser - 1) * 0.15)) : 3.0;
+  const laserCDMax = 1.5;
+  document.getElementById('statLaserCooldown').textContent = laserCD.toFixed(1);
+  document.getElementById('statLaserCooldownMax').textContent = laserCDMax.toFixed(1);
+
   // Laser Range: 500 + (level * 200)
   const laserRangeCur = 500 + currentLvl.laserRange * 200;
   const laserRangeMax = 500 + 10 * 200;
   document.getElementById('statLaserRange').textContent = laserRangeCur;
   document.getElementById('statLaserRangeMax').textContent = laserRangeMax;
+
+  // ---- PREREQUISITE CHECKS: Enable/disable upgrades based on parent upgrades ----
+  // Mine Radius requires Space Mine (level > 0)
+  const mineRadiusRow = document.getElementById('mineRadiusUpgradeRow');
+  const buyBtn_mineRadius = document.getElementById('buyBtn_mineRadius');
+  if (mineRadiusRow && buyBtn_mineRadius) {
+    if (upgrades.spaceMine > 0) {
+      mineRadiusRow.style.opacity = '1';
+      buyBtn_mineRadius.disabled = false;
+      buyBtn_mineRadius.style.opacity = '1';
+    } else {
+      mineRadiusRow.style.opacity = '0.5';
+      buyBtn_mineRadius.disabled = true;
+      buyBtn_mineRadius.style.opacity = '0.5';
+    }
+  }
+
+  // Laser Range requires Space Laser (level > 0)
+  const laserRangeRow = document.getElementById('laserRangeUpgradeRow');
+  const buyBtn_laserRange = document.getElementById('buyBtn_laserRange');
+  if (laserRangeRow && buyBtn_laserRange) {
+    if (upgrades.spaceLaser > 0) {
+      laserRangeRow.style.opacity = '1';
+      buyBtn_laserRange.disabled = false;
+      buyBtn_laserRange.style.opacity = '1';
+    } else {
+      laserRangeRow.style.opacity = '0.5';
+      buyBtn_laserRange.disabled = true;
+      buyBtn_laserRange.style.opacity = '0.5';
+    }
+  }
 }
 
 function buyUpgradeBtn(key) {
+  // Check if button is disabled (prerequisite not met)
+  const btnId = `buyBtn_${key}`;
+  const btn = document.getElementById(btnId);
+  if (btn && btn.disabled) {
+    errorBuzzerSound();
+    return;
+  }
+
   if (buyUpgrade(key)) {
     ruskoleumPickupSound(); // use pickup sound for purchase success
     updateUpgradeUI();
   } else {
-    // Not enough Ruskoleum - could add a buzzer sound here
+    // Not enough Ruskoleum
+    errorBuzzerSound();
   }
 }
 
@@ -2392,7 +2502,7 @@ function draw() {
   hudCtx.fillStyle = '#28e0ff';
   
   const speed = player.velocity.length();
-  hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 155);
+  hudCtx.fillText('SPEED ' + speed.toFixed(0) + ' u/min', 12, 155);
 
   // ---- WEAPON COOLDOWN DISPLAYS ----
   if (upgrades.spaceMine > 0) {
