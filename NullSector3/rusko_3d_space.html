@@ -31,10 +31,6 @@
     width: 100%;
     height: 100%;
   }
-  /* WebGL canvas must be explicitly positioned with a low z-index, otherwise
-     the browser can composite it on its own GPU layer that paints OVER the
-     panels regardless of their z-index. This is what made the game-over
-     screen appear "frozen" — the panel was there, the canvas was just on top. */
   #canvas {
     position: absolute;
     top: 0;
@@ -1188,7 +1184,7 @@ function triggerPresenceDetected() {
 // ====================================================================
 // WAVES & ENEMY MANAGEMENT
 // ====================================================================
-// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus, trigger presence detection at 5min
+// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus (full at 1min, zero at 3min), trigger presence detection at 3min
 // triggerPresenceDetected(): Activate intruder alarm; spawn new enemies, force all to aggressive mode
 // createEnemy(): Instantiate enemy ship with type-specific stats (scout/interceptor/heavy)
 // rescaleEnemiesForWave(): Re-apply wave difficulty multipliers to all current enemies (cheat code use)
@@ -1210,19 +1206,19 @@ function spawnEnemyWave() {
   // ---- CALCULATE TIME BONUS FOR COMPLETING PREVIOUS WAVE ----
   if (wave > 0 && waveStartTime > 0) {
     const elapsedMs = Date.now() - waveStartTime;
-    const twoMinutesMs = 2 * 60 * 1000;
-    const fiveMinutesMs = 5 * 60 * 1000;
+    const oneMinuteMs = 1 * 60 * 1000;
+    const threeMinutesMs = 3 * 60 * 1000;
     
     let timeBonus = 0;
-    if (elapsedMs < twoMinutesMs) {
-      // Under 2 minutes: Full 10000 point bonus
+    if (elapsedMs < oneMinuteMs) {
+      // Under 1 minute: Full 10000 point bonus
       timeBonus = 10000;
-    } else if (elapsedMs < fiveMinutesMs) {
-      // 2-5 minutes: Linear scale from 10000 down to 0
-      const progressIntoWindow = (elapsedMs - twoMinutesMs) / (fiveMinutesMs - twoMinutesMs);
+    } else if (elapsedMs < threeMinutesMs) {
+      // 1-3 minutes: Linear scale from 10000 down to 0
+      const progressIntoWindow = (elapsedMs - oneMinuteMs) / (threeMinutesMs - oneMinuteMs);
       timeBonus = Math.floor(10000 * (1 - progressIntoWindow));
     }
-    // Over 5 minutes: No bonus (timeBonus stays 0)
+    // Over 3 minutes: No bonus (timeBonus stays 0)
     
     if (timeBonus > 0) {
       score += timeBonus;
@@ -1821,11 +1817,11 @@ function update(dt) {
   // ---- UPDATE WAVE FLASH EFFECT ----
   if (waveFlashTime > 0) waveFlashTime -= dt;  // Decrement by actual time (deltaTime-independent)
 
-  // ---- CHECK FOR 5-MINUTE PRESENCE DETECTION ----
+  // ---- CHECK FOR 3-MINUTE PRESENCE DETECTION ----
   if (gameState === 'play' && waveStartTime > 0 && !presenceDetected) {
     const elapsedMs = Date.now() - waveStartTime;
-    const fiveMinutesMs = 5 * 60 * 1000;  // 5 minutes in milliseconds
-    if (elapsedMs > fiveMinutesMs) {
+    const threeMinutesMs = 3 * 60 * 1000;  // 3 minutes in milliseconds
+    if (elapsedMs > threeMinutesMs) {
       triggerPresenceDetected();
     }
   }
@@ -2537,7 +2533,7 @@ function draw() {
   hudCtx.textAlign = 'center';
   hudCtx.fillText('HIGH SCORE = ' + String(Math.max(...highScores.map(s => s.sc))).padStart(6, '0'), window.innerWidth / 2, 40);
 
-  // ---- WAVE TIMER display (temporary) ----
+  // ---- WAVE TIMER display (permanent) ----
   if (gameState === 'play' && waveStartTime > 0) {
     const elapsedMs = Date.now() - waveStartTime;
     const minutes = Math.floor(elapsedMs / 60000);
