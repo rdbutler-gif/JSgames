@@ -1496,6 +1496,7 @@ function update(dt) {
       maxLife: laserDuration,
       width: 10 // 10u detection width
     });
+    
     laserCooldown = 3 * (1 - (upgrades.spaceLaser - 1) * 0.15); // 3s base, reduce by 15% per upgrade
     laserCooldown = Math.max(1.5, laserCooldown);  // min 1.5s
     laserFireSound();
