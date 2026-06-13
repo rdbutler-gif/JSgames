@@ -31,10 +31,6 @@
     width: 100%;
     height: 100%;
   }
-  /* WebGL canvas must be explicitly positioned with a low z-index, otherwise
-     the browser can composite it on its own GPU layer that paints OVER the
-     panels regardless of their z-index. This is what made the game-over
-     screen appear "frozen" — the panel was there, the canvas was just on top. */
   #canvas {
     position: absolute;
     top: 0;
@@ -187,93 +183,131 @@
 
   <!-- UPGRADES SHOP -->
   <div id="upgrades" class="panel hidden" style="background: rgba(0, 10, 20, 0.95); padding: 0;">
-    <div style="width: 90vw; max-width: 700px; max-height: 90vh; background: rgba(0, 10, 20, 0.95); border: 2px solid var(--neon-dim); border-radius: 4px; display: flex; flex-direction: column; padding: 20px;">
+    <div style="width: 90vw; max-width: 800px; max-height: 90vh; background: rgba(0, 10, 20, 0.95); border: 2px solid var(--neon-dim); border-radius: 4px; display: flex; flex-direction: column; padding: 20px;">
       
-      <h1 style="font-size: 32px; margin: 0 0 12px 0; text-align: center;">⚙ UPGRADES</h1>
-      <div style="font-size: 13px; color: var(--amber); text-align: center; margin-bottom: 16px; letter-spacing: 1px;">
+      <h1 style="font-size: 32px; margin: 0 0 8px 0; text-align: center;">⚙ UPGRADES</h1>
+      <div style="font-size: 12px; color: var(--amber); text-align: center; margin-bottom: 12px; letter-spacing: 1px;">
         RUSKOLEUM: <span id="upgradeRuskoleum" style="color: var(--neon); font-size: 16px;">0</span>
+      </div>
+
+      <!-- Info Banner about Max Level -->
+      <div style="background: rgba(157, 255, 60, 0.15); border-left: 3px solid var(--alien); padding: 8px 12px; margin-bottom: 12px; font-size: 11px; color: var(--alien);">
+        <strong>MAX LEVEL 10:</strong> Each upgrade has a hard cap at level 10. Costs double per level. So get collecting ruskoleum!
       </div>
 
       <!-- Scrollable upgrades list -->
       <div style="flex: 1; overflow-y: auto; margin-bottom: 12px;">
-        <!-- Upgrade rows (compact list format) -->
-        <div style="font-size: 12px; color: var(--neon-dim);">
-          <!-- Bullet Speed -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
-            <div style="color: var(--cyan); font-weight: bold;">BULLET SPEED</div>
-            <div style="font-size: 11px;">Cost: <span id="upgradeCost_bulletSpeed">5</span> | Lvl: <span id="upgradeLvl_bulletSpeed" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
-            <button class="btn" onclick="buyUpgradeBtn('bulletSpeed')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
-          </div>
-
-          <!-- Bullet Radius -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
-            <div style="color: var(--cyan); font-weight: bold;">BULLET RADIUS</div>
-            <div style="font-size: 11px;">Cost: <span id="upgradeCost_bulletRadius">5</span> | Lvl: <span id="upgradeLvl_bulletRadius" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
-            <button class="btn" onclick="buyUpgradeBtn('bulletRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
-          </div>
-
-          <!-- Pickup Radius -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
-            <div style="color: var(--cyan); font-weight: bold;">PICKUP RADIUS</div>
-            <div style="font-size: 11px;">Cost: <span id="upgradeCost_pickupRadius">5</span> | Lvl: <span id="upgradeLvl_pickupRadius" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
-            <button class="btn" onclick="buyUpgradeBtn('pickupRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
-          </div>
-
-          <!-- Hull Integrity -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
-            <div style="color: var(--cyan); font-weight: bold;">HULL INTEGRITY</div>
-            <div style="font-size: 11px;">Cost: <span id="upgradeCost_collisionRadius">5</span> | Lvl: <span id="upgradeLvl_collisionRadius" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
-            <button class="btn" onclick="buyUpgradeBtn('collisionRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
-          </div>
+        <div style="font-size: 11px; color: var(--neon-dim);">
+          
+          <!-- SHIP SYSTEMS -->
+          <div style="color: var(--cyan); font-weight: bold; padding: 8px 8px 6px 8px; font-size: 12px; letter-spacing: 1px;">▼ SHIP SYSTEMS</div>
 
           <!-- Thrusters -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
-            <div style="color: var(--cyan); font-weight: bold;">THRUSTERS</div>
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div><div style="color: var(--cyan); font-weight: bold;">THRUSTERS</div><div style="font-size: 10px; color: var(--neon-dim);">Acceleration</div></div>
             <div style="font-size: 11px;">Cost: <span id="upgradeCost_shipSpeed">5</span> | Lvl: <span id="upgradeLvl_shipSpeed" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
             <button class="btn" onclick="buyUpgradeBtn('shipSpeed')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
           </div>
 
           <!-- Top Speed -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
-            <div style="color: var(--cyan); font-weight: bold;">TOP SPEED</div>
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div><div style="color: var(--cyan); font-weight: bold;">TOP SPEED</div><div style="font-size: 10px; color: var(--neon-dim);">Max velocity</div></div>
             <div style="font-size: 11px;">Cost: <span id="upgradeCost_maxVelocity">5</span> | Lvl: <span id="upgradeLvl_maxVelocity" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
             <button class="btn" onclick="buyUpgradeBtn('maxVelocity')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
           </div>
 
+          <!-- Hull Armor -->
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div><div style="color: var(--cyan); font-weight: bold;">HULL ARMOR</div><div style="font-size: 10px; color: var(--neon-dim);">Max health</div></div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_collisionRadius">5</span> | Lvl: <span id="upgradeLvl_collisionRadius" style="color: var(--neon);">0</span></div>
+            <button class="btn" onclick="buyUpgradeBtn('collisionRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Pickup Range -->
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim);">
+            <div><div style="color: var(--cyan); font-weight: bold;">PICKUP RANGE</div><div style="font-size: 10px; color: var(--neon-dim);">Resource attraction</div></div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_pickupRadius">5</span> | Lvl: <span id="upgradeLvl_pickupRadius" style="color: var(--neon);">0</span></div>
+            <button class="btn" onclick="buyUpgradeBtn('pickupRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- WEAPONS -->
+          <div style="color: var(--cyan); font-weight: bold; padding: 8px 8px 6px 8px; font-size: 12px; letter-spacing: 1px; margin-top: 8px;">▼ WEAPONS</div>
+
+          <!-- MAIN GUN Subcategory -->
+          <div style="color: #28e0ff; font-weight: bold; padding: 6px 8px 4px 18px; font-size: 11px; letter-spacing: 0.5px;">▸ MAIN GUN</div>
+
+          <!-- Fire Rate -->
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim);">
+            <div><div style="color: #28e0ff; font-weight: bold;">FIRE RATE</div><div style="font-size: 10px; color: var(--neon-dim);">Attack speed</div></div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_fireRate">5</span> | Lvl: <span id="upgradeLvl_fireRate" style="color: var(--neon);">0</span></div>
+            <button class="btn" onclick="buyUpgradeBtn('fireRate')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Bullet Speed -->
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim);">
+            <div><div style="color: #28e0ff; font-weight: bold;">BULLET SPEED</div><div style="font-size: 10px; color: var(--neon-dim);">Projectile velocity</div></div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_bulletSpeed">5</span> | Lvl: <span id="upgradeLvl_bulletSpeed" style="color: var(--neon);">0</span></div>
+            <button class="btn" onclick="buyUpgradeBtn('bulletSpeed')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Bullet Radius -->
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim);">
+            <div><div style="color: #28e0ff; font-weight: bold;">BULLET RADIUS</div><div style="font-size: 10px; color: var(--neon-dim);">Hit detection area</div></div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_bulletRadius">5</span> | Lvl: <span id="upgradeLvl_bulletRadius" style="color: var(--neon);">0</span></div>
+            <button class="btn" onclick="buyUpgradeBtn('bulletRadius')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- SPACE LASER Subcategory -->
+          <div style="color: #ffb000; font-weight: bold; padding: 6px 8px 4px 18px; font-size: 11px; letter-spacing: 0.5px; margin-top: 4px;">▸ SPACE LASER</div>
+
+          <!-- Space Laser -->
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 176, 0, 0.1);">
+            <div><div style="color: #ffb000; font-weight: bold;">SPACE LASER</div><div style="font-size: 10px; color: var(--neon-dim);">Beam weapon (E)</div></div>
+            <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceLaser">80</span> | Lvl: <span id="upgradeLvl_spaceLaser" style="color: var(--neon);">0</span></div>
+            <button class="btn" onclick="buyUpgradeBtn('spaceLaser')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          </div>
+
+          <!-- Laser Range (requires Space Laser) -->
+          <div id="laserRangeUpgradeRow" style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 176, 0, 0.05); opacity: 0.5;">
+            <div><div style="color: #b8905f; font-weight: bold;">LASER RANGE</div><div style="font-size: 10px; color: #6b6344;">Beam distance</div></div>
+            <div style="font-size: 11px; color: #6b6344;">Cost: <span id="upgradeCost_laserRange">5</span> | Lvl: <span id="upgradeLvl_laserRange" style="color: #6b6344;">0</span></div>
+            <button class="btn" id="buyBtn_laserRange" onclick="buyUpgradeBtn('laserRange')" disabled style="font-size: 10px; padding: 2px 8px; margin: 0; opacity: 0.5;">BUY</button>
+          </div>
+
+          <!-- SPACE MINE Subcategory -->
+          <div style="color: #ff2d6f; font-weight: bold; padding: 6px 8px 4px 18px; font-size: 11px; letter-spacing: 0.5px; margin-top: 4px;">▸ SPACE MINE</div>
+
           <!-- Space Mine -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 45, 111, 0.1);">
-            <div style="color: #ff2d6f; font-weight: bold;">SPACE MINE</div>
+          <div style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 45, 111, 0.1);">
+            <div><div style="color: #ff2d6f; font-weight: bold;">SPACE MINE</div><div style="font-size: 10px; color: var(--neon-dim);">Proximity bomb (Q)</div></div>
             <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceMine">20</span> | Lvl: <span id="upgradeLvl_spaceMine" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
             <button class="btn" onclick="buyUpgradeBtn('spaceMine')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
           </div>
 
-          <!-- Space Laser -->
-          <div style="display: grid; grid-template-columns: 140px 1fr 45px 60px; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 176, 0, 0.1);">
-            <div style="color: #ffb000; font-weight: bold;">SPACE LASER</div>
-            <div style="font-size: 11px;">Cost: <span id="upgradeCost_spaceLaser">20</span> | Lvl: <span id="upgradeLvl_spaceLaser" style="color: var(--neon);">0</span></div>
-            <div style="text-align: center;"></div>
-            <button class="btn" onclick="buyUpgradeBtn('spaceLaser')" style="font-size: 10px; padding: 2px 8px; margin: 0;">BUY</button>
+          <!-- Mine Radius (requires Space Mine) -->
+          <div id="mineRadiusUpgradeRow" style="display: grid; grid-template-columns: 130px 1fr 60px; gap: 8px; align-items: center; padding: 8px 8px 8px 20px; border-bottom: 1px solid var(--neon-dim); background: rgba(255, 45, 111, 0.05); opacity: 0.5;">
+            <div><div style="color: #b8668f; font-weight: bold;">MINE RADIUS</div><div style="font-size: 10px; color: #6b4455;">Detonation range</div></div>
+            <div style="font-size: 11px; color: #6b4455;">Cost: <span id="upgradeCost_mineRadius">5</span> | Lvl: <span id="upgradeLvl_mineRadius" style="color: #6b4455;">0</span></div>
+            <button class="btn" id="buyBtn_mineRadius" onclick="buyUpgradeBtn('mineRadius')" disabled style="font-size: 10px; padding: 2px 8px; margin: 0; opacity: 0.5;">BUY</button>
           </div>
         </div>
       </div>
 
       <!-- Stats section (compact) -->
-      <div style="border-top: 1px solid var(--neon-dim); padding-top: 10px; margin-bottom: 12px; font-size: 11px; color: var(--neon-dim);">
-        <div style="color: var(--cyan); margin-bottom: 6px; font-weight: bold;">STATS:</div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <div>Speed: <span style="color: var(--neon);">x<span id="statBulletSpeed">1.0</span></span></div>
-          <div>Radius: <span style="color: var(--neon);">+<span id="statBulletRadius">0</span>u</span></div>
-          <div>Pickup: <span style="color: var(--neon);">+<span id="statPickupRadius">0</span>u</span></div>
-          <div>Hull: <span style="color: var(--neon);">+<span id="statCollisionRadius">0</span>u</span></div>
-          <div>Thrust: <span style="color: var(--neon);">x<span id="statShipSpeed">1.0</span></span></div>
-          <div style="grid-column: 1 / -1;">Max Speed: <span style="color: var(--neon);"><span id="statMaxVelocity">2.5</span> u/f</span></div>
+      <div style="border-top: 1px solid var(--neon-dim); padding-top: 10px; margin-bottom: 12px; font-size: 10px; color: var(--neon-dim);">
+        <div style="color: var(--cyan); margin-bottom: 8px; font-weight: bold;">⚡ STAT PROGRESSION (Current / Max at Level 10)</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; line-height: 1.4;">
+          <div>🔫 Fire Rate: <span style="color: var(--neon);"><span id="statFireRate">3.75</span>/<span id="statFireRateMax">7.5</span> shots/sec</span></div>
+          <div>💨 Bullet Spd: <span style="color: var(--neon);"><span id="statBulletSpeed">1.0</span>x/<span id="statBulletSpeedMax">9.0</span>x</span></div>
+          <div>⊙ Bullet Rad: <span style="color: var(--neon);"><span id="statBulletRadius">0</span>/<span id="statBulletRadiusMax">20</span>u</span></div>
+          <div>🛡️ Hull Armor: <span style="color: var(--neon);"><span id="statCollisionRadius">100</span>/<span id="statCollisionRadiusMax">300</span> hp</span></div>
+          <div>🚀 Thrusters: <span style="color: var(--neon);"><span id="statShipSpeed">1.0</span>x/<span id="statShipSpeedMax">2.5</span>x</span></div>
+          <div>📍 Top Speed: <span style="color: var(--neon);"><span id="statMaxVelocity">150</span>/<span id="statMaxVelocityMax">450</span> u/min</span></div>
+          <div>🔷 Pickup: <span style="color: var(--neon);"><span id="statPickupRadius">10</span>/<span id="statPickupRadiusMax">200</span>u</span></div>
+          <div>🔴 Mine CD: <span style="color: var(--neon);"><span id="statSpaceMine">3.0</span>s/<span id="statSpaceMineMax">1.5</span>s</span></div>
+          <div>🔴 Mine Rng: <span style="color: var(--neon);"><span id="statMineRadius">10</span>/<span id="statMineRadiusMax">28</span>u</span></div>
+          <div>⚡ Laser CD: <span style="color: var(--neon);"><span id="statLaserCooldown">3.0</span>s/<span id="statLaserCooldownMax">1.5</span>s</span></div>
+          <div>⚡ Laser Rng: <span style="color: var(--neon);"><span id="statLaserRange">500</span>/<span id="statLaserRangeMax">2500</span>u</span></div>
         </div>
       </div>
 
@@ -304,6 +338,12 @@
 // - Canvas 2D: HUD overlay (scores, timers, status bars, text)
 // - Web Audio: Engine sound (looping brown noise), weapon/hit effects, alarms
 // - Game State Machine: 'title', 'play', 'dying', 'gameover', pause overlay
+//
+// DESIGN PRINCIPLE: FRAME-RATE INDEPENDENCE
+// All timing uses deltaTime (dt) scaled by 60fps baseline. This ensures:
+// - Gameplay consistent across varying frame rates (30fps, 60fps, 120fps, etc.)
+// - All countdown/duration values use: variable -= dt * 60
+// - Position updates already use dt scaling; maintain consistency
 // ====================================================================
 
 const canvas = document.getElementById('canvas');
@@ -358,6 +398,7 @@ function insertScore(ini,s){
 // UPGRADE / RESOURCE SYSTEM
 // ====================================================================
 const UPGRADE_KEY = 'rusko_void_upgrades_v1';
+const MAX_UPGRADE_LEVEL = 10;  // Caps all upgrades at level 10 (prevents infinite scaling)
 const DEFAULT_UPGRADES = {
   ruskoleum: 0,  // total collected lifetime
   bulletSpeed: 0,      // costs 5, 10, 20... (5 * 2^level)
@@ -366,8 +407,11 @@ const DEFAULT_UPGRADES = {
   collisionRadius: 0,  // costs 5, 10, 20... (ship max health)
   shipSpeed: 0,        // costs 5, 10, 20... (acceleration/thrusters)
   maxVelocity: 0,      // costs 5, 10, 20... (top speed)
+  fireRate: 0,         // costs 5, 10, 20... (attack speed)
   spaceMine: 0,        // costs 20, 40, 80... (Q key weapon, level 0 = not purchased)
-  spaceLaser: 0,       // costs 20, 40, 80... (E key weapon, level 0 = not purchased)
+  mineRadius: 0,       // costs 5, 10, 20... (mine detonation range, requires spaceMine)
+  spaceLaser: 0,       // costs 80, 160, 320... (E key weapon, level 0 = not purchased)
+  laserRange: 0,       // costs 5, 10, 20... (laser beam range, requires spaceLaser)
 };
 
 function loadUpgrades(){
@@ -387,8 +431,12 @@ function saveUpgrades() {
 // Buy an upgrade; costs scale: 5, 10, 20, 40, 80... (5 * 2^currentLevel)
 function buyUpgrade(key) {
   const currentLevel = upgrades[key] || 0;
-  // Weapons (spaceMine, spaceLaser) cost 20 * 2^level; others cost 5 * 2^level
-  const baseCost = (key === 'spaceMine' || key === 'spaceLaser') ? 20 : 5;
+  if (currentLevel >= MAX_UPGRADE_LEVEL) return false;  // Already at max level
+  // Weapon costs: spaceMine=20, spaceLaser=80, others (including laserRange & mineRadius)=5
+  let baseCost = 5;
+  if (key === 'spaceMine') baseCost = 20;
+  else if (key === 'spaceLaser') baseCost = 80;
+  
   const cost = baseCost * Math.pow(2, currentLevel);
   if (upgrades.ruskoleum >= cost) {
     upgrades.ruskoleum -= cost;
@@ -631,6 +679,38 @@ function ruskoleumPickupSound() {
   } catch (e) { }
 }
 
+function errorBuzzerSound() {
+  if (!audioCtx) return;
+  try {
+    const t = audioCtx.currentTime;
+    const duration = 0.2;
+    
+    // High frequency buzz (square wave)
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.type = 'square';
+    osc1.frequency.setValueAtTime(500, t);
+    gain1.gain.setValueAtTime(0.12, t);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc1.start(t);
+    osc1.stop(t + duration);
+    
+    // Lower frequency buzz (dissonant) - creates annoying clash
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.type = 'square';
+    osc2.frequency.setValueAtTime(320, t);
+    gain2.gain.setValueAtTime(0.12, t);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    osc2.start(t);
+    osc2.stop(t + duration);
+  } catch (e) { }
+}
+
 function mineDropSound() {
   if (!audioCtx) return;
   try {
@@ -852,6 +932,33 @@ addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
   
+  // ---- CHEAT CODE: O+P = +10,000 Ruskoleum ----
+  if (keys['KeyO'] && keys['KeyP'] && gameState === 'play') {
+    upgrades.ruskoleum += 10000;
+    saveUpgrades();
+    keys['KeyO'] = false;
+    keys['KeyP'] = false;  // Reset to avoid repeated triggers
+    return;
+  }
+
+  // ---- CHEAT CODE: K+O = Advance Wave (Immediate) ----
+  if (keys['KeyK'] && keys['KeyO'] && gameState === 'play') {
+    wave++;
+    rescaleEnemiesForWave();
+    keys['KeyK'] = false;
+    keys['KeyO'] = false;  // Reset to avoid repeated triggers
+    return;
+  }
+
+  // ---- CHEAT CODE: K+M = Decrease Wave (Immediate) ----
+  if (keys['KeyK'] && keys['KeyM'] && gameState === 'play') {
+    if (wave > 0) wave--;
+    rescaleEnemiesForWave();
+    keys['KeyK'] = false;
+    keys['KeyM'] = false;  // Reset to avoid repeated triggers
+    return;
+  }
+  
   // ---- ESC KEY: Pause during gameplay, Quit from pause ----
   if (e.code === 'Escape') {
     if (pauseActive) {
@@ -930,7 +1037,7 @@ function createPlayerShip() {
   group.maxHealth = 100 + maxHealthBonus;
   group.health = group.maxHealth;
   group.shotCooldown = 0;
-  group.fireRate = 8;
+  group.fireRate = 16 - (upgrades.fireRate || 0) * 0.8;  // Starts 16, reaches 8 at level 10
 
   const hull = new THREE.Mesh(
     new THREE.ConeGeometry(2, 8, 8),
@@ -956,7 +1063,7 @@ function createEnemy(x, y, z, type) {
   group.velocity = new THREE.Vector3(0, 0, 0);
   group.type = type || 'scout';
   group.engaged = false; // only engage player when within detection range
-  group.fireT = Math.random() * 60; // random offset in frames
+  group.fireT = Math.random() * 1.0; // random offset in seconds (0-1s, was 0-60 frames)
   group.patrolAngle = Math.random() * Math.PI * 2; // random initial patrol direction
   group.spawnPos = new THREE.Vector3(x, y, z); // Store spawn position for local patrol
   group.patrolRadius = 200; // Stay within 200 units of spawn point
@@ -965,6 +1072,8 @@ function createEnemy(x, y, z, type) {
     group.health = 1;
     group.speed = 7.2; // 0.12 * 60
     group.fireRate = 80;
+    group.baseSpeed = 7.2;  // Store base for rescaling
+    group.baseFireRate = 80;
     const hull = new THREE.Mesh(
       new THREE.TetrahedronGeometry(1.5, 0),
       new THREE.MeshBasicMaterial({ color: 0x9dff3c, wireframe: true })
@@ -974,6 +1083,8 @@ function createEnemy(x, y, z, type) {
     group.health = 1;
     group.speed = 4.8; // 0.08 * 60
     group.fireRate = 60;
+    group.baseSpeed = 4.8;  // Store base for rescaling
+    group.baseFireRate = 60;
     const hull = new THREE.Mesh(
       new THREE.OctahedronGeometry(2, 0),
       new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true })
@@ -983,6 +1094,8 @@ function createEnemy(x, y, z, type) {
     group.health = 1;
     group.speed = 3.0; // 0.05 * 60
     group.fireRate = 100;
+    group.baseSpeed = 3.0;  // Store base for rescaling
+    group.baseFireRate = 100;
     const hull = new THREE.Mesh(
       new THREE.BoxGeometry(3, 3, 4),
       new THREE.MeshBasicMaterial({ color: 0xb06bff, wireframe: true })
@@ -1001,7 +1114,7 @@ function createProjectile(pos, velocity, friendly) {
   proj.position.copy(pos);
   proj.velocity = velocity instanceof THREE.Vector3 ? velocity.clone() : velocity.clone().normalize().multiplyScalar(1.5);
   proj.friendly = friendly;
-  proj.life = friendly ? 1000 : 250;  // enemy bullets: 250 frames (~4s), player bullets: 1000 frames
+  proj.life = friendly ? 16.67 : 4.17;  // enemy bullets: 4.17s (was 250 frames), player bullets: 16.67s (was 1000 frames)
   scene.add(proj);
   return proj;
 }
@@ -1028,14 +1141,14 @@ function createRuskoleum(pos) {
 }
 
 function triggerWaveTransition() {
-  waveFlashTime = 60;  // Flash duration in frames (~1 second at 60fps)
+  waveFlashTime = 1;  // Flash duration in seconds (~1 second, was 60 frames at 60fps)
   cymbalSplashSound();
 }
 
 function triggerPresenceDetected() {
   if (presenceDetected) return;  // Only trigger once per wave
   presenceDetected = true;
-  presenceWarningFlashTime = 120;  // Longer warning flash (2 seconds)
+  presenceWarningFlashTime = 2;  // Warning flash duration in seconds (was 120 frames)
   startSirenSound();
   
   // Spawn new enemies: wave count + 1
@@ -1071,27 +1184,41 @@ function triggerPresenceDetected() {
 // ====================================================================
 // WAVES & ENEMY MANAGEMENT
 // ====================================================================
-// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus, trigger presence detection at 5min
+// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus (full at 1min, zero at 3min), trigger presence detection at 3min
 // triggerPresenceDetected(): Activate intruder alarm; spawn new enemies, force all to aggressive mode
 // createEnemy(): Instantiate enemy ship with type-specific stats (scout/interceptor/heavy)
+// rescaleEnemiesForWave(): Re-apply wave difficulty multipliers to all current enemies (cheat code use)
+
+function rescaleEnemiesForWave() {
+  // Recalculate and apply difficulty multipliers to all existing enemies
+  // Used when wave is changed via cheat code (K+O or K+M)
+  const speedMult = 1 + Math.max(0, wave - 1) * 0.12;      // wave 1: 1.0x, wave 2: 1.12x, etc.
+  const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10; // wave 1: 1.4x (slower), wave 2: 1.30x, etc.
+  
+  enemies.forEach(e => {
+    // Use stored base stats (set during createEnemy)
+    e.speed = e.baseSpeed * speedMult;
+    e.fireRate = Math.max(40, Math.floor(e.baseFireRate * fireRateMult));
+  });
+}
 
 function spawnEnemyWave() {
   // ---- CALCULATE TIME BONUS FOR COMPLETING PREVIOUS WAVE ----
   if (wave > 0 && waveStartTime > 0) {
     const elapsedMs = Date.now() - waveStartTime;
-    const twoMinutesMs = 2 * 60 * 1000;
-    const fiveMinutesMs = 5 * 60 * 1000;
+    const oneMinuteMs = 1 * 60 * 1000;
+    const threeMinutesMs = 3 * 60 * 1000;
     
     let timeBonus = 0;
-    if (elapsedMs < twoMinutesMs) {
-      // Under 2 minutes: Full 10000 point bonus
+    if (elapsedMs < oneMinuteMs) {
+      // Under 1 minute: Full 10000 point bonus
       timeBonus = 10000;
-    } else if (elapsedMs < fiveMinutesMs) {
-      // 2-5 minutes: Linear scale from 10000 down to 0
-      const progressIntoWindow = (elapsedMs - twoMinutesMs) / (fiveMinutesMs - twoMinutesMs);
+    } else if (elapsedMs < threeMinutesMs) {
+      // 1-3 minutes: Linear scale from 10000 down to 0
+      const progressIntoWindow = (elapsedMs - oneMinuteMs) / (threeMinutesMs - oneMinuteMs);
       timeBonus = Math.floor(10000 * (1 - progressIntoWindow));
     }
-    // Over 5 minutes: No bonus (timeBonus stays 0)
+    // Over 3 minutes: No bonus (timeBonus stays 0)
     
     if (timeBonus > 0) {
       score += timeBonus;
@@ -1209,9 +1336,9 @@ function update(dt) {
   
   // During dying state, only update enemies and particles (not player input)
   if (gameState === 'dying') {
-    deathTimer++;
-    // After 3 seconds (180 frames), queue game over transition
-    if (deathTimer >= 180) {
+    deathTimer += dt;  // Increment by actual time elapsed (deltaTime-independent)
+    // After 3 seconds, queue game over transition
+    if (deathTimer >= 3) {
       gameOverQueued = true;
     }
     
@@ -1221,7 +1348,7 @@ function update(dt) {
     });
     enemies_projectiles = enemies_projectiles.filter(p => p.position.length() < 2000);
     
-    floatingText.forEach(ft => { ft.life--; });
+    floatingText.forEach(ft => { ft.life -= dt;  });  // Decrement by actual time (deltaTime-independent)
     floatingText = floatingText.filter(ft => ft.life > 0);
     
     // CHECK FOR GAMEOVER BEFORE RETURNING!
@@ -1317,7 +1444,7 @@ function update(dt) {
 
   // ---- FIRE (LMB or A button) ----
   const firing = leftMouseDown || (pad.fire && (Math.hypot(pad.ax, pad.ay) > 0.2));
-  player.shotCooldown--;
+  player.shotCooldown -= dt * 60;  // Scaled for 60fps baseline (deltaTime-independent)
   if (firing && player.shotCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const bulletSpeedMult = 1.0 + (upgrades.bulletSpeed || 0) * 0.8; // +0.8x per upgrade
@@ -1328,7 +1455,7 @@ function update(dt) {
       true
     ));
     pewSound();
-    player.shotCooldown = player.fireRate;
+    player.shotCooldown = player.fireRate;  // fireRate is in frame units; will be decremented by dt * 60
   }
 
   // ---- SPECIAL WEAPON (Spacebar or Y button) ----
@@ -1341,27 +1468,27 @@ function update(dt) {
   }
 
   // ---- SPACE MINE (Q key) ----
-  mineCooldown--;
+  mineCooldown -= dt;  // Decrement by seconds elapsed
   if (keys['KeyQ'] && upgrades.spaceMine > 0 && mineCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
-    const mineProximity = 10 + (upgrades.spaceMine - 1) * 2; // 10u base, +2u per upgrade
+    const mineProximity = 10 + (upgrades.mineRadius - 1) * 2; // 10u base, +2u per mineRadius upgrade
     mines.push({
       position: minePos.clone(),
       proximity: mineProximity,
       alive: true,
-      life: 600  // 10 seconds at 60 FPS (halflife - disappears after 10 seconds if not triggered)
+      life: 10  // 10 seconds (was 600 frames at 60fps)
     });
-    mineCooldown = 60 * (1 - (upgrades.spaceMine - 1) * 0.1); // 60 frames base, reduce by 10% per upgrade (min 30)
-    mineCooldown = Math.max(30, mineCooldown);
+    mineCooldown = 3 * (1 - (upgrades.spaceMine - 1) * 0.1); // 3 second base, reduce by 10% per spaceMine upgrade
+    mineCooldown = Math.max(1.5, mineCooldown);  // min 1.5s
     mineDropSound();
   }
 
   // ---- SPACE LASER (E key) ----
-  laserCooldown--;
+  laserCooldown -= dt;  // Decrement by seconds elapsed
   if (keys['KeyE'] && upgrades.spaceLaser > 0 && laserCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
-    const laserDuration = 30 + (upgrades.spaceLaser - 1) * 30; // 0.5s base (30 frames), +0.5s per upgrade
+    const laserDuration = 0.5 + (upgrades.spaceLaser - 1) * 0.5; // 0.5s base, +0.5s per upgrade (was 30 frames)
     lasers.push({
       position: player.position.clone(),
       direction: forward.clone(),
@@ -1369,8 +1496,9 @@ function update(dt) {
       maxLife: laserDuration,
       width: 10 // 10u detection width
     });
-    laserCooldown = 120 * (1 - (upgrades.spaceLaser - 1) * 0.15); // 2s base, reduce by 15% per upgrade (min 60)
-    laserCooldown = Math.max(60, laserCooldown);
+    
+    laserCooldown = 3 * (1 - (upgrades.spaceLaser - 1) * 0.15); // 3s base, reduce by 15% per upgrade
+    laserCooldown = Math.max(1.5, laserCooldown);  // min 1.5s
     laserFireSound();
   }
 
@@ -1509,7 +1637,7 @@ function update(dt) {
     }
 
     // ---- FIRING (only when engaged and in range) ----
-    e.fireT--;
+    e.fireT -= dt;  // Decrement by actual elapsed time in seconds
     if (e.engaged && e.fireT <= 0 && d < ENGAGEMENT_RANGE && d > 0) {
       // Fire 3 bullets in a spread toward player (use normalized direction from earlier)
       const toPlayer = player.position.clone().sub(e.position);
@@ -1532,7 +1660,7 @@ function update(dt) {
       enemyFireSound();
       
       // Shorter cooldown between bursts: base fireRate is the main delay, random adds variability
-      e.fireT = e.fireRate + Math.random() * 20;  // smaller random component for consistency
+      e.fireT = e.fireRate / 60 + Math.random() * (20 / 60);  // Convert frames to seconds, add random 0-0.33s
     }
 
     // Track distance traveled using velocity length (more efficient than Math.hypot)
@@ -1544,7 +1672,7 @@ function update(dt) {
 
   projectiles = projectiles.filter((p) => {
     p.position.addScaledVector(p.velocity, dt); // scale position by dt
-    p.life--; // decrement per-frame
+    p.life -= dt;  // Decrement by actual time elapsed (deltaTime-independent)
 
     let hit = false;
     const bulletRadius = 8 + (upgrades.bulletRadius || 0) * 2; // base 8, +2 per level
@@ -1572,7 +1700,7 @@ function update(dt) {
           });
           const expMesh = new THREE.Mesh(expGeom, expMat);
           expMesh.position.copy(e.position);
-          expMesh.userData.life = 30;
+          expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
           expMesh.userData.isExplosion = true;
           scene.add(expMesh);
 
@@ -1581,7 +1709,7 @@ function update(dt) {
           enemies.splice(eIdx, 1);
           
           // ---- SPAWN RUSKOLEUM ----
-          const dropCount = 2 + Math.floor(Math.random() * 2); // 2 or 3 crystals
+          const dropCount = wave * (2 + Math.floor(Math.random() * 2)); // wave * (2 or 3) crystals
           for (let i = 0; i < dropCount; i++) {
             resources.push(createRuskoleum(e.position.clone().add(
               new THREE.Vector3(
@@ -1604,7 +1732,7 @@ function update(dt) {
             y: e.position.y,
             z: e.position.z,
             text: '+' + pointsEarned,
-            life: 80,
+            life: 1.33,  // ~1.33 seconds (was 80 frames at 60fps)
             color: 0xffb000
           });
 
@@ -1628,8 +1756,8 @@ function update(dt) {
     const mine = mines[mIdx];
     if (!mine.alive) continue;
     
-    // Decrement mine lifetime
-    mine.life--;
+    // Decrement mine lifetime (deltaTime-independent)
+    mine.life -= dt;
     if (mine.life <= 0) {
       mine.alive = false;
       continue;
@@ -1645,7 +1773,7 @@ function update(dt) {
         const expMat = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true, transparent: true, opacity: 1.0 });
         const expMesh = new THREE.Mesh(expGeom, expMat);
         expMesh.position.copy(mine.position);
-        expMesh.userData.life = 30;
+        expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
         expMesh.userData.isExplosion = true;
         scene.add(expMesh);
         
@@ -1661,7 +1789,7 @@ function update(dt) {
         enemyDeathExplosion();
         
         // Drop Ruskoleum
-        const dropCount = 2 + Math.floor(Math.random() * 2);
+        const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
         for (let i = 0; i < dropCount; i++) {
           resources.push(createRuskoleum(e.position.clone().add(
             new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
@@ -1688,24 +1816,24 @@ function update(dt) {
   }
 
   // ---- UPDATE WAVE FLASH EFFECT ----
-  if (waveFlashTime > 0) waveFlashTime--;
+  if (waveFlashTime > 0) waveFlashTime -= dt;  // Decrement by actual time (deltaTime-independent)
 
-  // ---- CHECK FOR 5-MINUTE PRESENCE DETECTION ----
+  // ---- CHECK FOR 3-MINUTE PRESENCE DETECTION ----
   if (gameState === 'play' && waveStartTime > 0 && !presenceDetected) {
     const elapsedMs = Date.now() - waveStartTime;
-    const fiveMinutesMs = 5 * 60 * 1000;  // 5 minutes in milliseconds
-    if (elapsedMs > fiveMinutesMs) {
+    const threeMinutesMs = 3 * 60 * 1000;  // 3 minutes in milliseconds
+    if (elapsedMs > threeMinutesMs) {
       triggerPresenceDetected();
     }
   }
 
   // ---- UPDATE PRESENCE WARNING FLASH ----
-  if (presenceWarningFlashTime > 0) presenceWarningFlashTime--;
+  if (presenceWarningFlashTime > 0) presenceWarningFlashTime -= dt;  // Decrement by actual time (deltaTime-independent)
 
   // ---- LASER COLLISION & UPDATES ----
   for (let lIdx = lasers.length - 1; lIdx >= 0; lIdx--) {
     const laser = lasers[lIdx];
-    laser.life--;
+    laser.life -= dt;  // Decrement by actual time elapsed (deltaTime-independent)
     if (laser.life <= 0) continue;
     
     // Update laser direction to follow player orientation
@@ -1719,7 +1847,7 @@ function update(dt) {
       // Project enemy position onto laser line, check perpendicular distance
       const toEnemy = e.position.clone().sub(laser.position);
       const projDist = toEnemy.dot(laser.direction);
-      if (projDist > 0 && projDist < 2000) { // only forward along laser
+      if (projDist > 0 && projDist < (500 + (upgrades.laserRange || 0) * 200)) { // only forward along laser, range from upgrades
         const perpDist = toEnemy.clone().sub(laser.direction.clone().multiplyScalar(projDist)).length();
         if (perpDist < laser.width) {
           // Destroy enemy
@@ -1727,7 +1855,7 @@ function update(dt) {
           const expMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 1.0 });
           const expMesh = new THREE.Mesh(expGeom, expMat);
           expMesh.position.copy(e.position);
-          expMesh.userData.life = 30;
+          expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
           expMesh.userData.isExplosion = true;
           scene.add(expMesh);
           
@@ -1742,7 +1870,7 @@ function update(dt) {
           enemyDeathExplosion();
           
           // Drop Ruskoleum
-          const dropCount = 2 + Math.floor(Math.random() * 2);
+          const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
           for (let i = 0; i < dropCount; i++) {
             resources.push(createRuskoleum(e.position.clone().add(
               new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
@@ -1753,21 +1881,16 @@ function update(dt) {
     }
   }
   // Cleanup expired lasers
-  lasers.forEach(l => {
-    if (l.life <= 0 && l.line) {
-      scene.remove(l.line);
-    }
-  });
   lasers = lasers.filter(l => l.life > 0);
 
   // ---- UPDATE EXPLOSIONS ----
   scene.children.forEach((mesh) => {
     if (mesh.userData.isExplosion) {
-      mesh.userData.life--;
+      mesh.userData.life -= deltaTime;  // Decrement by actual time (deltaTime-independent)
       mesh.rotation.x += 0.1;
       mesh.rotation.y += 0.12;
       mesh.scale.addScaledVector(new THREE.Vector3(1, 1, 1), 0.08);
-      mesh.material.opacity = mesh.userData.life / 30;
+      mesh.material.opacity = mesh.userData.life / 0.5;  // was mesh.userData.life / 30, now scale for seconds
       if (mesh.userData.life <= 0) {
         scene.remove(mesh);
       }
@@ -1776,7 +1899,7 @@ function update(dt) {
 
   // ---- UPDATE FLOATING TEXT ----
   floatingText = floatingText.filter((ft) => {
-    ft.life--;
+    ft.life -= dt;  // Decrement by actual time (deltaTime-independent)
     ft.y += 0.5; // drift upward
     return ft.life > 0;
   });
@@ -1784,13 +1907,13 @@ function update(dt) {
   // ---- UPDATE ENEMY PROJECTILES ----
   enemies_projectiles = enemies_projectiles.filter((p) => {
     p.position.addScaledVector(p.velocity, dt); // apply delta time scaling
-    p.life--;
+    p.life -= dt;  // Decrement by actual time elapsed (deltaTime-independent)
 
     const d = p.position.distanceTo(player.position);
     if (d < 25) { // increased collision radius to 25 units (player ship size)
       player.health -= 10;
       playerDamageSound();
-      screenFlash = 20;
+      screenFlash = 0.33;  // ~0.33 seconds (was 20 frames at 60fps)
       screenShake = 12;
       rumble(300, 0.6, 0.9);
       scene.remove(p);
@@ -1819,9 +1942,13 @@ function update(dt) {
   });
   
   // ---- UPDATE RESOURCES (RUSKOLEUM) ----
-  const pickupRadius = 15 + (upgrades.pickupRadius || 0) * 5; // base 15, +5 per upgrade
+  const pickupRadius = 10 + (upgrades.pickupRadius || 0) * 19; // base 10u, +19u per upgrade (max 200u at level 10)
+  const magneticThreshold = pickupRadius;  // Start magnetic pull at full pickup range
+  const collectionThreshold = 5;  // Only collect when gem reaches very close to ship
+  const magneticSpeed = 80;  // units/second speed toward player when magnetized
+  
   resources = resources.filter((r) => {
-    // Apply velocity
+    // Apply velocity (spin momentum)
     r.position.addScaledVector(r.userData.velocity, dt);
     r.userData.velocity.multiplyScalar(0.98); // gentle drag
     
@@ -1829,9 +1956,17 @@ function update(dt) {
     const axis = r.userData.spinAxis;
     r.rotateOnWorldAxis(axis, r.userData.spin);
     
-    // Check pickup collision with generous radius
+    // Check distance to player for pickup and magnetic attraction
     const d = r.position.distanceTo(player.position);
-    if (d < pickupRadius) {
+    
+    // Magnetic attraction: gems within pickup range are pulled toward player
+    if (d < magneticThreshold && d > collectionThreshold) {
+      const direction = new THREE.Vector3().subVectors(player.position, r.position).normalize();
+      r.position.addScaledVector(direction, magneticSpeed * dt);
+    }
+    
+    // Collection: only collect when gem is very close to ship
+    if (d < collectionThreshold) {
       addRuskoleum(1);
       ruskoleumPickupSound();
       scene.remove(r);
@@ -2110,8 +2245,8 @@ function updateUpgradeUI() {
   // Update Ruskoleum display
   document.getElementById('upgradeRuskoleum').textContent = upgrades.ruskoleum;
   
-  // Update upgrade level displays and next costs (5 * 2^level for standard, 20 * 2^level for weapons)
-  const standardUpgrades = ['bulletSpeed', 'bulletRadius', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity'];
+  // Update upgrade level displays and next costs (5 * 2^level for standard, 20/80 * 2^level for weapons)
+  const standardUpgrades = ['bulletSpeed', 'bulletRadius', 'pickupRadius', 'collisionRadius', 'shipSpeed', 'maxVelocity', 'fireRate', 'laserRange', 'mineRadius'];
   standardUpgrades.forEach(key => {
     const lvl = upgrades[key] || 0;
     document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
@@ -2119,41 +2254,153 @@ function updateUpgradeUI() {
     document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
   });
   
-  // Update weapon upgrade displays (20 * 2^level)
-  const weaponUpgrades = ['spaceMine', 'spaceLaser'];
+  // Update weapon upgrade displays (20 * 2^level for spaceMine, 80 * 2^level for spaceLaser)
+  const weaponUpgrades = ['spaceMine'];
   weaponUpgrades.forEach(key => {
     const lvl = upgrades[key] || 0;
     document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
     const nextCost = 20 * Math.pow(2, lvl);
     document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
   });
+
+  const expensiveWeaponUpgrades = ['spaceLaser'];
+  expensiveWeaponUpgrades.forEach(key => {
+    const lvl = upgrades[key] || 0;
+    document.getElementById(`upgradeLvl_${key}`).textContent = lvl;
+    const nextCost = 80 * Math.pow(2, lvl);
+    document.getElementById(`upgradeCost_${key}`).textContent = nextCost;
+  });
   
-  // Update stat displays
-  const bulletSpeedMult = 1.0 + (upgrades.bulletSpeed || 0) * 0.8;
-  document.getElementById('statBulletSpeed').textContent = bulletSpeedMult.toFixed(1);
-  
-  const bulletRadiusBonus = (upgrades.bulletRadius || 0) * 2;
-  document.getElementById('statBulletRadius').textContent = bulletRadiusBonus;
-  
-  const pickupBonus = (upgrades.pickupRadius || 0) * 5;
-  document.getElementById('statPickupRadius').textContent = pickupBonus;
-  
-  const healthBonus = (upgrades.collisionRadius || 0) * 20;
-  document.getElementById('statCollisionRadius').textContent = healthBonus;
-  
-  const speedMult = 1.0 + (upgrades.shipSpeed || 0) * 0.15;
-  document.getElementById('statShipSpeed').textContent = speedMult.toFixed(2);
-  
-  const maxVelBonus = (upgrades.maxVelocity || 0) * 0.5;
-  document.getElementById('statMaxVelocity').textContent = (2.5 + maxVelBonus).toFixed(1);
+  // Calculate and display actual stat values
+  const currentLvl = {
+    fireRate: upgrades.fireRate || 0,
+    bulletSpeed: upgrades.bulletSpeed || 0,
+    bulletRadius: upgrades.bulletRadius || 0,
+    collisionRadius: upgrades.collisionRadius || 0,
+    shipSpeed: upgrades.shipSpeed || 0,
+    maxVelocity: upgrades.maxVelocity || 0,
+    pickupRadius: upgrades.pickupRadius || 0,
+    spaceMine: upgrades.spaceMine || 0,
+    mineRadius: upgrades.mineRadius || 0,
+    spaceLaser: upgrades.spaceLaser || 0,
+    laserRange: upgrades.laserRange || 0
+  };
+
+  // Fire Rate: 16 - (level * 0.8), min 8 at level 10
+  const fireRateCur = Math.max(8, 16 - currentLvl.fireRate * 0.8);
+  const fireRateMax = 8;
+  const shotsPerSecCur = (60 / fireRateCur).toFixed(2);
+  const shotsPerSecMax = (60 / fireRateMax).toFixed(2);
+  document.getElementById('statFireRate').textContent = shotsPerSecCur;
+  document.getElementById('statFireRateMax').textContent = shotsPerSecMax;
+
+  // Bullet Speed: 1.0 + (level * 0.8)
+  const bulletSpeedCur = 1.0 + currentLvl.bulletSpeed * 0.8;
+  const bulletSpeedMax = 1.0 + 10 * 0.8;
+  document.getElementById('statBulletSpeed').textContent = bulletSpeedCur.toFixed(1);
+  document.getElementById('statBulletSpeedMax').textContent = bulletSpeedMax.toFixed(1);
+
+  // Bullet Radius: level * 2
+  const bulletRadiusCur = currentLvl.bulletRadius * 2;
+  const bulletRadiusMax = 10 * 2;
+  document.getElementById('statBulletRadius').textContent = bulletRadiusCur;
+  document.getElementById('statBulletRadiusMax').textContent = bulletRadiusMax;
+
+  // Hull Armor (collisionRadius): 100 base + (level * 20)
+  const hullCur = 100 + currentLvl.collisionRadius * 20;
+  const hullMax = 100 + 10 * 20;
+  document.getElementById('statCollisionRadius').textContent = hullCur;
+  document.getElementById('statCollisionRadiusMax').textContent = hullMax;
+
+  // Thrusters (shipSpeed): 1.0 + (level * 0.15)
+  const thrustCur = 1.0 + currentLvl.shipSpeed * 0.15;
+  const thrustMax = 1.0 + 10 * 0.15;
+  document.getElementById('statShipSpeed').textContent = thrustCur.toFixed(2);
+  document.getElementById('statShipSpeedMax').textContent = thrustMax.toFixed(2);
+
+  // Top Speed (maxVelocity): 150 + (level * 30) u/min
+  const topSpeedCur = 150 + currentLvl.maxVelocity * 30;
+  const topSpeedMax = 150 + 10 * 30;
+  document.getElementById('statMaxVelocity').textContent = topSpeedCur;
+  document.getElementById('statMaxVelocityMax').textContent = topSpeedMax;
+
+  // Pickup Range (pickupRadius): 10 + (level * 19)
+  const pickupCur = 10 + currentLvl.pickupRadius * 19;
+  const pickupMax = 10 + 10 * 19;
+  document.getElementById('statPickupRadius').textContent = pickupCur;
+  document.getElementById('statPickupRadiusMax').textContent = pickupMax;
+
+  // Space Mine Cooldown: 3.0 * (1 - (level - 1) * 0.1), min 1.5s
+  const mineCD = currentLvl.spaceMine > 0 ? Math.max(1.5, 3.0 * (1 - (currentLvl.spaceMine - 1) * 0.1)) : 3.0;
+  const mineCDMax = 1.5;
+  document.getElementById('statSpaceMine').textContent = mineCD.toFixed(1);
+  document.getElementById('statSpaceMineMax').textContent = mineCDMax.toFixed(1);
+
+  // Space Mine Radius: 10 + (level - 1) * 2 (uses mineRadius upgrade level)
+  const mineRadiusCur = 10 + (currentLvl.mineRadius - 1) * 2;
+  const mineRadiusMax = 10 + (10 - 1) * 2;
+  document.getElementById('statMineRadius').textContent = mineRadiusCur;
+  document.getElementById('statMineRadiusMax').textContent = mineRadiusMax;
+
+  // Space Laser Cooldown: 3.0 * (1 - (level - 1) * 0.15), min 1.5s
+  const laserCD = currentLvl.spaceLaser > 0 ? Math.max(1.5, 3.0 * (1 - (currentLvl.spaceLaser - 1) * 0.15)) : 3.0;
+  const laserCDMax = 1.5;
+  document.getElementById('statLaserCooldown').textContent = laserCD.toFixed(1);
+  document.getElementById('statLaserCooldownMax').textContent = laserCDMax.toFixed(1);
+
+  // Laser Range: 500 + (level * 200)
+  const laserRangeCur = 500 + currentLvl.laserRange * 200;
+  const laserRangeMax = 500 + 10 * 200;
+  document.getElementById('statLaserRange').textContent = laserRangeCur;
+  document.getElementById('statLaserRangeMax').textContent = laserRangeMax;
+
+  // ---- PREREQUISITE CHECKS: Enable/disable upgrades based on parent upgrades ----
+  // Mine Radius requires Space Mine (level > 0)
+  const mineRadiusRow = document.getElementById('mineRadiusUpgradeRow');
+  const buyBtn_mineRadius = document.getElementById('buyBtn_mineRadius');
+  if (mineRadiusRow && buyBtn_mineRadius) {
+    if (upgrades.spaceMine > 0) {
+      mineRadiusRow.style.opacity = '1';
+      buyBtn_mineRadius.disabled = false;
+      buyBtn_mineRadius.style.opacity = '1';
+    } else {
+      mineRadiusRow.style.opacity = '0.5';
+      buyBtn_mineRadius.disabled = true;
+      buyBtn_mineRadius.style.opacity = '0.5';
+    }
+  }
+
+  // Laser Range requires Space Laser (level > 0)
+  const laserRangeRow = document.getElementById('laserRangeUpgradeRow');
+  const buyBtn_laserRange = document.getElementById('buyBtn_laserRange');
+  if (laserRangeRow && buyBtn_laserRange) {
+    if (upgrades.spaceLaser > 0) {
+      laserRangeRow.style.opacity = '1';
+      buyBtn_laserRange.disabled = false;
+      buyBtn_laserRange.style.opacity = '1';
+    } else {
+      laserRangeRow.style.opacity = '0.5';
+      buyBtn_laserRange.disabled = true;
+      buyBtn_laserRange.style.opacity = '0.5';
+    }
+  }
 }
 
 function buyUpgradeBtn(key) {
+  // Check if button is disabled (prerequisite not met)
+  const btnId = `buyBtn_${key}`;
+  const btn = document.getElementById(btnId);
+  if (btn && btn.disabled) {
+    errorBuzzerSound();
+    return;
+  }
+
   if (buyUpgrade(key)) {
     ruskoleumPickupSound(); // use pickup sound for purchase success
     updateUpgradeUI();
   } else {
-    // Not enough Ruskoleum - could add a buzzer sound here
+    // Not enough Ruskoleum
+    errorBuzzerSound();
   }
 }
 
@@ -2195,32 +2442,6 @@ function draw() {
   });
   
   // ---- RENDER LASERS ----
-  lasers.forEach(laser => {
-    // Draw a line from player in laser direction
-    if (!laser.line) {
-      const geom = new THREE.BufferGeometry();
-      const positions = new Float32Array([
-        laser.position.x, laser.position.y, laser.position.z,
-        laser.position.x + laser.direction.x * 2000,
-        laser.position.y + laser.direction.y * 2000,
-        laser.position.z + laser.direction.z * 2000
-      ]);
-      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      const mat = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 3 });
-      laser.line = new THREE.Line(geom, mat);
-      scene.add(laser.line);
-    }
-    // Update laser line position and direction
-    const positions = laser.line.geometry.attributes.position.array;
-    positions[0] = laser.position.x;
-    positions[1] = laser.position.y;
-    positions[2] = laser.position.z;
-    positions[3] = laser.position.x + laser.direction.x * 2000;
-    positions[4] = laser.position.y + laser.direction.y * 2000;
-    positions[5] = laser.position.z + laser.direction.z * 2000;
-    laser.line.geometry.attributes.position.needsUpdate = true;
-  });
-  
   renderer.render(scene, camera);
 
   hudCanvas.width = window.innerWidth;
@@ -2246,12 +2467,12 @@ function draw() {
   hudCtx.fillStyle = '#28e0ff';
   
   const speed = player.velocity.length();
-  hudCtx.fillText('SPEED ' + speed.toFixed(2), 12, 155);
+  hudCtx.fillText('SPEED ' + speed.toFixed(0) + ' u/min', 12, 155);
 
   // ---- WEAPON COOLDOWN DISPLAYS ----
   if (upgrades.spaceMine > 0) {
-    const mineMaxCd = 60 * (1 - (upgrades.spaceMine - 1) * 0.1);
-    const mineMaxCdClamped = Math.max(30, mineMaxCd);
+    const mineMaxCd = 3 * (1 - (upgrades.spaceMine - 1) * 0.1);  // Match actual cooldown (3 seconds base)
+    const mineMaxCdClamped = Math.max(1.5, mineMaxCd);  // Min 1.5s
     const mineCdPercent = Math.max(0, mineCooldown) / mineMaxCdClamped;
     hudCtx.fillStyle = '#ff2d6f';
     hudCtx.font = '13px VT323, monospace';
@@ -2263,8 +2484,8 @@ function draw() {
   }
 
   if (upgrades.spaceLaser > 0) {
-    const laserMaxCd = 120 * (1 - (upgrades.spaceLaser - 1) * 0.15);
-    const laserMaxCdClamped = Math.max(60, laserMaxCd);
+    const laserMaxCd = 3 * (1 - (upgrades.spaceLaser - 1) * 0.15);  // Match actual cooldown (3 seconds base)
+    const laserMaxCdClamped = Math.max(1.5, laserMaxCd);  // Min 1.5s
     const laserCdPercent = Math.max(0, laserCooldown) / laserMaxCdClamped;
     hudCtx.fillStyle = '#ffb000';
     hudCtx.font = '13px VT323, monospace';
@@ -2281,7 +2502,7 @@ function draw() {
   hudCtx.textAlign = 'center';
   hudCtx.fillText('HIGH SCORE = ' + String(Math.max(...highScores.map(s => s.sc))).padStart(6, '0'), window.innerWidth / 2, 40);
 
-  // ---- WAVE TIMER display (temporary) ----
+  // ---- WAVE TIMER display (permanent) ----
   if (gameState === 'play' && waveStartTime > 0) {
     const elapsedMs = Date.now() - waveStartTime;
     const minutes = Math.floor(elapsedMs / 60000);
@@ -2343,6 +2564,9 @@ function draw() {
       enemyScreenPos.copy(nearest.position);
       enemyScreenPos.project(camera);
       
+      // Check if behind camera (z > 1 means behind far plane)
+      const isBehind = enemyScreenPos.z > 1;
+      
       // Convert from normalized device coordinates (-1 to 1) to screen pixels
       const screenX = (enemyScreenPos.x * 0.5 + 0.5) * window.innerWidth;
       const screenY = (-enemyScreenPos.y * 0.5 + 0.5) * window.innerHeight;
@@ -2350,7 +2574,12 @@ function draw() {
       // Calculate angle from screen center to enemy
       const dx = screenX - cxHud;
       const dy = screenY - cyHud;
-      const angleToEnemy = Math.atan2(dy, dx);
+      let angleToEnemy = Math.atan2(dy, dx);
+      
+      // If behind camera, flip angle 180° so arrow points AT enemy, not away
+      if (isBehind) {
+        angleToEnemy += Math.PI;
+      }
       
       // Position reticule on circle inside viewport (radius = 120 pixels from center)
       const reticuleRadius = 120;
@@ -2404,7 +2633,7 @@ function draw() {
     const screenY = (-worldPos.y * 0.5 + 0.5) * window.innerHeight;
     
     if (worldPos.z < 1) { // only draw if in front of camera
-      const alpha = ft.life / 80;
+      const alpha = Math.min(1, ft.life / 1.33);  // Fade from 1 to 0 (was ft.life / 80 for frames)
       hudCtx.globalAlpha = alpha;
       hudCtx.fillStyle = '#ffb000';
       hudCtx.font = 'bold 24px Orbitron, sans-serif';
@@ -2417,16 +2646,16 @@ function draw() {
 
   // Screen flash on damage
   if (screenFlash > 0) {
-    hudCtx.fillStyle = `rgba(255, 100, 100, ${screenFlash / 20 * 0.6})`;
+    hudCtx.fillStyle = `rgba(255, 100, 100, ${Math.min(1, screenFlash / 0.33) * 0.6})`;
     hudCtx.fillRect(0, 0, hudCanvas.width, hudCanvas.height);
-    screenFlash--;
+    screenFlash -= deltaTime;  // Use global deltaTime variable
   }
 
   // ---- WAVE TRANSITION FLASH ----
   if (waveFlashTime > 0) {
     const w = hudCanvas.width;
     const h = hudCanvas.height;
-    const flashProgress = waveFlashTime / 60;  // 0 to 1 (fades out)
+    const flashProgress = Math.max(0, Math.min(1, waveFlashTime / 1));  // 0 to 1 (fades out, was waveFlashTime/60)
     
     // Bright cyan flash background (fades over time)
     const flashAlpha = flashProgress * 0.7;
@@ -2453,7 +2682,7 @@ function draw() {
   if (presenceWarningFlashTime > 0) {
     const w = hudCanvas.width;
     const h = hudCanvas.height;
-    const flashProgress = presenceWarningFlashTime / 120;  // 0 to 1 (fades out over 2 seconds)
+    const flashProgress = presenceWarningFlashTime / 2;  // 0 to 1 (fades out over 2 seconds, was presenceWarningFlashTime/120)
     
     // Red/orange alarm flash background (fades over time)
     const flashAlpha = flashProgress * 0.8;
@@ -2461,7 +2690,7 @@ function draw() {
     hudCtx.fillRect(0, 0, w, h);
     
     // Big bold "WARNING!" text (pulses slightly)
-    const textScale = 1 + Math.sin(presenceWarningFlashTime * 0.1) * 0.1;  // Slight pulsing
+    const textScale = 1 + Math.sin(presenceWarningFlashTime * 6) * 0.1;  // Slight pulsing (60x multiplier for time units)
     const textAlpha = flashProgress;
     hudCtx.globalAlpha = textAlpha;
     hudCtx.font = `bold ${Math.floor(120 * textScale)}px Orbitron, sans-serif`;
@@ -2482,8 +2711,8 @@ function draw() {
   if (gameState === 'dying') {
     const w = hudCanvas.width;
     const h = hudCanvas.height;
-    // Fade out: starts at 1.0 opacity, fades to 0 over 3 seconds (180 frames)
-    const fadeAlpha = Math.max(0, 1.0 - (deathTimer / 180));
+    // Fade out: starts at 1.0 opacity, fades to 0 over 3 seconds
+    const fadeAlpha = Math.max(0, 1.0 - (deathTimer / 3));  // deathTimer in seconds (was deathTimer / 180)
     
     if (fadeAlpha > 0) {
       // Semi-transparent dark overlay
