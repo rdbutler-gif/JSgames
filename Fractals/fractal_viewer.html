@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fractal Viewer</title>
+  <style>
+    :root {
+      --bg-page: #f5f5f5;
+      --bg-container: white;
+      --bg-secondary: #f9f9f9;
+      --bg-input: white;
+      --text-primary: #333;
+      --text-secondary: #666;
+      --text-tertiary: #999;
+      --border-color: #ddd;
+      --border-secondary: #e0e0e0;
+      --canvas-bg: #fff;
+    }
+    
+    body.dark-mode {
+      --bg-page: #1a1a1a;
+      --bg-container: #2a2a2a;
+      --bg-secondary: #1f1f1f;
+      --bg-input: #333;
+      --text-primary: #e0e0e0;
+      --text-secondary: #b0b0b0;
+      --text-tertiary: #808080;
+      --border-color: #444;
+      --border-secondary: #555;
+      --canvas-bg: #0a0a0a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg-page);
+      padding: 2rem;
+      color: var(--text-primary);
+      transition: background 0.2s, color 0.2s;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--bg-container);
+      border-radius: 8px;
+      padding: 2rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 1rem;
+      color: var(--text-primary);
+    }
+    canvas {
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      display: block;
+      width: 100%;
+      height: auto;
+      background: var(--canvas-bg);
+      cursor: crosshair;
+      margin-bottom: 1.5rem;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 1.5rem;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+    select, input[type="text"], input[type="number"] {
+      padding: 8px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--bg-input);
+      color: var(--text-primary);
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: #0066cc;
+      box-shadow: 0 0 0 2px rgba(0,102,204,0.1);
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 1.5rem;
+      align-items: center;
+    }
+    button {
+      padding: 8px 16px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0052a3;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    button.secondary {
+      background: #666;
+    }
+    button.secondary:hover {
+      background: #555;
+    }
+    .info {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 1rem;
+    }
+    .info-item {
+      display: flex;
+      gap: 8px;
+    }
+    .info-label {
+      color: var(--text-tertiary);
+      font-weight: 500;
+    }
+    .status {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      height: 20px;
+      margin-bottom: 1rem;
+    }
+    .help {
+      background: var(--bg-secondary);
+      border-left: 3px solid #0066cc;
+      padding: 12px;
+      margin-top: 1rem;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-radius: 4px;
+    }
+    .dynamic-controls {
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 1rem;
+      border: 1px solid var(--border-secondary);
+    }
+    #hiResModal {
+      display: none !important;
+    }
+    #hiResModal.show {
+      display: flex !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Fractal Viewer</h1>
+    
+    <div class="toolbar">
+      <div class="control-group">
+        <label for="fractalType">Fractal type:</label>
+        <select id="fractalType" onchange="changeFractal()">
+          <option value="mandelbrot">Mandelbrot Set</option>
+          <option value="julia">Julia Set</option>
+          <option value="burningship">Burning Ship</option>
+          <option value="tricorn">Tricorn</option>
+          <option value="newton">Newton Fractal</option>
+          <option value="lyapunov">Lyapunov</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="colorPalette">Color palette:</label>
+        <select id="colorPalette" onchange="updateRender()">
+          <option value="hsl">Hue Rainbow</option>
+          <option value="fire">Fire</option>
+          <option value="cool">Cool Blues</option>
+          <option value="grayscale">Grayscale</option>
+          <option value="purple">Purple Haze</option>
+          <option value="sunset">Sunset</option>
+          <option value="ocean">Ocean</option>
+          <option value="hot">Hot Lava</option>
+          <option value="aurora">Aurora</option>
+          <option value="neon">Neon</option>
+          <option value="twilight">Twilight</option>
+          <option value="candy">Candy Pastel</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="maxIter">Max iterations:</label>
+        <input type="range" id="maxIter" min="32" max="512" step="16" value="256" onchange="updateRender()" style="width: 100%;">
+        <span id="iterCount" style="font-size: 12px; color: var(--text-tertiary);">256</span>
+      </div>
+      <div class="control-group" style="justify-content: flex-end;">
+        <button onclick="toggleDarkMode()" style="padding: 8px 12px; font-size: 13px; background: #666;">🌙 Dark Mode</button>
+      </div>
+    </div>
+
+    <div class="dynamic-controls" id="dynamicControls"></div>
+
+    <canvas id="fractal" width="720" height="540"></canvas>
+    
+    <div class="controls">
+      <button onclick="resetView()">Reset</button>
+      <button onclick="zoomOut()">Zoom out</button>
+      <button onclick="saveImage()">Save as Image</button>
+      <button onclick="showHiResDialog()">Save Hi-Res</button>
+      <button id="cycleButton" onclick="startCycling()">Cycle Colors</button>
+      <button class="secondary" onclick="setJuliaFromClick()" id="juliaButton" style="display:none;">Click canvas to set Julia c</button>
+    </div>
+
+    <div class="info">
+      <div class="info-item">
+        <span class="info-label">Center:</span>
+        <span id="centerCoord">0.00, 0.00</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Zoom:</span>
+        <span id="zoomLevel">1.0x</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Mouse:</span>
+        <span id="mouseCoord">—</span>
+      </div>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="help" id="helpText">
+      <strong>How to use:</strong> Click to zoom in. Click and drag to pan. Scroll wheel to zoom. Right-click or "Zoom out" to go back.
+    </div>
+  </div>
+
+  <div id="hiResModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-container); padding:2rem; border-radius:8px; text-align:center; color:var(--text-primary); max-width:400px;">
+      <h2 style="margin-bottom:1rem;">Save High Resolution</h2>
+      <p style="margin-bottom:1.5rem; color:var(--text-secondary); font-size:14px;">Select resolution. Rendering may take a moment.</p>
+      <div style="display:grid; gap:10px; margin-bottom:1.5rem;">
+        <button onclick="saveHiRes(1440, 1080, '1440x1080 (1.5x)')">1440x1080 (1.5x)</button>
+        <button onclick="saveHiRes(2880, 2160, '2880x2160 (4x)')">2880x2160 (4x)</button>
+        <button onclick="saveHiRes(3840, 2880, '3840x2880 (5.3x)')">3840x2880 (5.3x)</button>
+        <button onclick="saveHiRes(1920, 1440, '1920x1440 (2.67x)')">1920x1440 (2.67x)</button>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <button onclick="closeHiResDialog()" style="background:#666;">Cancel</button>
+        <div id="hiResStatus" style="display:none; grid-column:1/-1; font-size:13px; color:var(--text-secondary); padding:10px; background:var(--bg-secondary); border-radius:4px;">Rendering...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('fractal');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    
+    let maxIterations = 256;
+    let isRendering = false;
+    let currentRenderID = 0;
+    let currentFractal = 'mandelbrot';
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+    let panOffset = { x: 0, y: 0 };
+
+    let isCycling = false;
+    let cycleOffset = 0;
+    let lastIterationData = null;
+
+    let viewState = {
+      xMin: -2.5,
+      xMax: 1.0,
+      yMin: -1.25,
+      yMax: 1.25
+    };
+
+    const zoomHistory = [JSON.parse(JSON.stringify(viewState))];
+
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      const isDarkMode = document.body.classList.contains('dark-mode');
+      localStorage.setItem('fractalViewerDarkMode', isDarkMode ? 'true' : 'false');
+      updateDarkModeButton();
+    }
+
+    function updateDarkModeButton() {
+      const button = document.querySelector('button[onclick="toggleDarkMode()"]');
+      const isDarkMode = document.body.classList.contains('dark-mode');
+      button.textContent = isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode';
+    }
+
+    function initDarkMode() {
+      const isDarkMode = localStorage.getItem('fractalViewerDarkMode') === 'true';
+      if (isDarkMode) {
+        document.body.classList.add('dark-mode');
+      }
+      updateDarkModeButton();
+    }
+
+    const fractals = {
+      mandelbrot: {
+        name: 'Mandelbrot Set',
+        defaultView: { xMin: -2.5, xMax: 1.0, yMin: -1.25, yMax: 1.25 },
+        compute: mandelbrotCompute,
+        getDynamicControls: () => ''
+      },
+      julia: {
+        name: 'Julia Set',
+        defaultView: { xMin: -2.0, xMax: 2.0, yMin: -1.5, yMax: 1.5 },
+        compute: juliaCompute,
+        params: { cx: -0.7, cy: 0.27 },
+        getDynamicControls: () => `
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 150px;">
+              <label style="font-size: 12px; color: var(--text-secondary);">c_real:</label>
+              <input type="number" id="juliaReal" value="-0.7" step="0.01" onchange="updateRender()" style="width: 100%; padding: 6px; font-size: 12px;">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+              <label style="font-size: 12px; color: var(--text-secondary);">c_imag:</label>
+              <input type="number" id="juliaImag" value="0.27" step="0.01" onchange="updateRender()" style="width: 100%; padding: 6px; font-size: 12px;">
+            </div>
+            <div style="align-self: flex-end;">
+              <button class="secondary" onclick="toggleJuliaSelector()" style="padding: 6px 12px; font-size: 12px;">Pick from Mandelbrot</button>
+            </div>
+          </div>
+        `
+      },
+      burningship: {
+        name: 'Burning Ship',
+        defaultView: { xMin: -1.8, xMax: -1.7, yMin: -0.08, yMax: 0.02 },
+        compute: burningshipCompute,
+        getDynamicControls: () => ''
+      },
+      tricorn: {
+        name: 'Tricorn',
+        defaultView: { xMin: -2.0, xMax: 1.0, yMin: -1.5, yMax: 1.5 },
+        compute: tricornCompute,
+        getDynamicControls: () => ''
+      },
+      newton: {
+        name: 'Newton Fractal',
+        defaultView: { xMin: -2.0, xMax: 2.0, yMin: -2.0, yMax: 2.0 },
+        compute: newtonCompute,
+        getDynamicControls: () => `
+          <div>
+            <label style="font-size: 12px; color: var(--text-secondary);">Polynomial: z^n - 1 where n =</label>
+            <input type="number" id="newtonPower" value="3" min="2" max="6" onchange="updateRender()" style="width: 100px; padding: 6px; font-size: 12px;">
+          </div>
+        `
+      },
+      lyapunov: {
+        name: 'Lyapunov Fractal',
+        defaultView: { xMin: 2.5, xMax: 4.0, yMin: 2.5, yMax: 4.0 },
+        compute: lyapunovCompute,
+        getDynamicControls: () => `
+          <div>
+            <label style="font-size: 12px; color: var(--text-secondary);">Sequence: 
+              <select id="lyapunovSeq" onchange="updateRender()" style="padding: 4px;">
+                <option value="AB">A, B (toggle)</option>
+                <option value="AB2">A, A, B, B</option>
+              </select>
+            </label>
+          </div>
+        `
+      }
+    };
+
+    function mandelbrotCompute(cx, cy, maxIter) {
+      let x = 0, y = 0;
+      for (let i = 0; i < maxIter; i++) {
+        const xx = x * x, yy = y * y;
+        if (xx + yy > 4) return i;
+        y = 2 * x * y + cy;
+        x = xx - yy + cx;
+      }
+      return maxIter;
+    }
+
+    function juliaCompute(cx, cy, maxIter) {
+      const juliaReal = parseFloat(document.getElementById('juliaReal').value);
+      const juliaImag = parseFloat(document.getElementById('juliaImag').value);
+      let x = cx, y = cy;
+      for (let i = 0; i < maxIter; i++) {
+        const xx = x * x, yy = y * y;
+        if (xx + yy > 4) return i;
+        y = 2 * x * y + juliaImag;
+        x = xx - yy + juliaReal;
+      }
+      return maxIter;
+    }
+
+    function burningshipCompute(cx, cy, maxIter) {
+      let x = 0, y = 0;
+      for (let i = 0; i < maxIter; i++) {
+        x = Math.abs(x);
+        y = Math.abs(y);
+        const xx = x * x, yy = y * y;
+        if (xx + yy > 4) return i;
+        y = 2 * x * y + cy;
+        x = xx - yy + cx;
+      }
+      return maxIter;
+    }
+
+    function tricornCompute(cx, cy, maxIter) {
+      let x = 0, y = 0;
+      for (let i = 0; i < maxIter; i++) {
+        const xx = x * x, yy = y * y;
+        if (xx + yy > 4) return i;
+        y = -2 * x * y + cy;
+        x = xx - yy + cx;
+      }
+      return maxIter;
+    }
+
+    function newtonCompute(cx, cy, maxIter) {
+      const power = parseInt(document.getElementById('newtonPower').value) || 3;
+      let x = cx, y = cy;
+      for (let i = 0; i < maxIter; i++) {
+        const xx = x * x, yy = y * y;
+        const r2 = xx + yy;
+        if (r2 < 1e-10) return i;
+
+        const zm1x = x, zm1y = y;
+        let zpx = x, zpy = y;
+        for (let p = 1; p < power; p++) {
+          const tx = zpx * x - zpy * y;
+          zpy = zpx * y + zpy * x;
+          zpx = tx;
+        }
+
+        const denom = power * (zpx * zpx + zpy * zpy);
+        if (denom < 1e-10) return i;
+
+        const num = (zm1x * zpx + zm1y * zpy - 1) / denom;
+        x = zm1x - num * zpx;
+        y = zm1y - num * zpy;
+      }
+      return maxIter;
+    }
+
+    function lyapunovCompute(cx, cy, maxIter) {
+      const seq = document.getElementById('lyapunovSeq')?.value || 'AB';
+      let sequence = seq === 'AB' ? [cx, cy] : [cx, cx, cy, cy];
+      let x = 0.5;
+      let sumLog = 0;
+      for (let i = 0; i < maxIter; i++) {
+        const r = sequence[i % sequence.length];
+        x = r * x * (1 - x);
+        if (x > 0 && x < 1) {
+          sumLog += Math.log(Math.abs(r * (1 - 2 * x)));
+        }
+      }
+      const lyapunov = sumLog / maxIter;
+      return Math.max(0, Math.min(maxIter, 128 + lyapunov * 32));
+    }
+
+    const colorPalettes = {
+      hsl: (iter, max) => {
+        const hue = (iter / max) * 360;
+        return hslToRgb(hue, 100, 50);
+      },
+      fire: (iter, max) => {
+        const t = iter / max;
+        if (t < 0.25) {
+          return [0, 0, Math.round(t * 4 * 255)];
+        } else if (t < 0.5) {
+          return [0, Math.round((t - 0.25) * 4 * 255), 255];
+        } else if (t < 0.75) {
+          return [Math.round((t - 0.5) * 4 * 255), 255, Math.round((1 - (t - 0.5) * 4) * 255)];
+        } else {
+          return [255, 255, 0];
+        }
+      },
+      cool: (iter, max) => {
+        const t = iter / max;
+        return [
+          Math.round(50 + t * 150),
+          Math.round(150 + t * 100),
+          255
+        ];
+      },
+      grayscale: (iter, max) => {
+        const val = Math.round((iter / max) * 255);
+        return [val, val, val];
+      },
+      purple: (iter, max) => {
+        const t = iter / max;
+        return [
+          Math.round(100 + t * 155),
+          Math.round(50 + t * 100),
+          Math.round(200 + t * 55)
+        ];
+      },
+      sunset: (iter, max) => {
+        const t = iter / max;
+        if (t < 0.5) {
+          return [
+            Math.round(255),
+            Math.round(100 + t * 2 * 100),
+            Math.round(50 + t * 2 * 50)
+          ];
+        } else {
+          return [
+            Math.round(255 - (t - 0.5) * 2 * 100),
+            Math.round(200 - (t - 0.5) * 2 * 150),
+            Math.round(100 + (t - 0.5) * 2 * 50)
+          ];
+        }
+      },
+      ocean: (iter, max) => {
+        const t = iter / max;
+        return [
+          Math.round(0 + t * 100),
+          Math.round(50 + t * 200),
+          Math.round(100 + t * 155)
+        ];
+      },
+      hot: (iter, max) => {
+        const t = iter / max;
+        if (t < 0.3) {
+          return [Math.round(t * 3.33 * 255), 0, 0];
+        } else if (t < 0.6) {
+          return [255, Math.round((t - 0.3) * 3.33 * 255), 0];
+        } else {
+          return [255, 255, Math.round((t - 0.6) * 2.5 * 255)];
+        }
+      },
+      aurora: (iter, max) => {
+        const t = iter / max;
+        if (t < 0.33) {
+          return [0, Math.round(t * 3 * 200), Math.round(t * 3 * 150)];
+        } else if (t < 0.66) {
+          return [Math.round((t - 0.33) * 3 * 100), Math.round(200 - (t - 0.33) * 3 * 100), 150];
+        } else {
+          return [100, Math.round((t - 0.66) * 3 * 50), Math.round(150 + (t - 0.66) * 3 * 105)];
+        }
+      },
+      neon: (iter, max) => {
+        const t = iter / max;
+        const hue = (t * 360) % 360;
+        const saturation = 100;
+        const lightness = 50 + t * 10;
+        return hslToRgb(hue, saturation, lightness);
+      },
+      twilight: (iter, max) => {
+        const t = iter / max;
+        if (t < 0.5) {
+          return [
+            Math.round(20 + t * 2 * 60),
+            Math.round(20 + t * 2 * 40),
+            Math.round(80 + t * 2 * 100)
+          ];
+        } else {
+          return [
+            Math.round(80 + (t - 0.5) * 2 * 150),
+            Math.round(60 - (t - 0.5) * 2 * 30),
+            Math.round(180 - (t - 0.5) * 2 * 100)
+          ];
+        }
+      },
+      candy: (iter, max) => {
+        const t = iter / max;
+        if (t < 0.25) {
+          return [255, Math.round(t * 4 * 200), Math.round(t * 4 * 150)];
+        } else if (t < 0.5) {
+          return [Math.round(255 - (t - 0.25) * 4 * 150), 200, 150];
+        } else if (t < 0.75) {
+          return [100, Math.round(200 - (t - 0.5) * 4 * 150), Math.round(150 + (t - 0.5) * 4 * 100)];
+        } else {
+          return [100, 50, Math.round(250 - (t - 0.75) * 4 * 100)];
+        }
+      }
+    };
+
+    function hslToRgb(h, s, l) {
+      h = h % 360;
+      s /= 100;
+      l /= 100;
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      const m = l - c / 2;
+      let r, g, b;
+      if (h < 60) [r, g, b] = [c, x, 0];
+      else if (h < 120) [r, g, b] = [x, c, 0];
+      else if (h < 180) [r, g, b] = [0, c, x];
+      else if (h < 240) [r, g, b] = [0, x, c];
+      else if (h < 300) [r, g, b] = [x, 0, c];
+      else [r, g, b] = [c, 0, x];
+      return [
+        Math.round((r + m) * 255),
+        Math.round((g + m) * 255),
+        Math.round((b + m) * 255)
+      ];
+    }
+
+    function changeFractal() {
+      currentFractal = document.getElementById('fractalType').value;
+      const fractal = fractals[currentFractal];
+      viewState = JSON.parse(JSON.stringify(fractal.defaultView));
+      zoomHistory.length = 1;
+      zoomHistory[0] = JSON.parse(JSON.stringify(viewState));
+      
+      const controlsDiv = document.getElementById('dynamicControls');
+      controlsDiv.innerHTML = fractal.getDynamicControls();
+      
+      const juliaButton = document.getElementById('juliaButton');
+      juliaButton.style.display = currentFractal === 'julia' ? 'block' : 'none';
+      
+      updateDisplay();
+      updateRender();
+    }
+
+    function toggleJuliaSelector() {
+      if (canvas.style.cursor === 'crosshair') {
+        canvas.style.cursor = 'default';
+        return;
+      }
+      currentFractal = 'mandelbrot';
+      document.getElementById('fractalType').value = 'mandelbrot';
+      changeFractal();
+      canvas.style.cursor = 'crosshair';
+    }
+
+    function setJuliaFromClick() {
+      toggleJuliaSelector();
+    }
+
+    function updateRender() {
+      stopCycling();
+      maxIterations = parseInt(document.getElementById('maxIter').value);
+      document.getElementById('iterCount').textContent = maxIterations;
+      document.getElementById('status').textContent = 'Computing...';
+      
+      isRendering = true;
+      currentRenderID++;
+      const renderID = currentRenderID;
+
+      const width = canvas.width;
+      const height = canvas.height;
+      const imageData = ctx.createImageData(width, height);
+      const data = imageData.data;
+      const fractalFunc = fractals[currentFractal].compute;
+      const colorFunc = colorPalettes[document.getElementById('colorPalette').value];
+      const iterationData = new Uint16Array(width * height);
+
+      let pixelsProcessed = 0;
+      const totalPixels = width * height;
+      let lastStatusUpdate = Date.now();
+
+      function renderChunk() {
+        if (renderID !== currentRenderID) {
+          isRendering = false;
+          return;
+        }
+
+        const chunkSize = 40000;
+        const endPixel = Math.min(pixelsProcessed + chunkSize, totalPixels);
+
+        for (let pixel = pixelsProcessed; pixel < endPixel; pixel++) {
+          const py = Math.floor(pixel / width);
+          const px = pixel % width;
+
+          const cx = viewState.xMin + (px / width) * (viewState.xMax - viewState.xMin);
+          const cy = viewState.yMin + (py / height) * (viewState.yMax - viewState.yMin);
+          const iterations = fractalFunc(cx, cy, maxIterations);
+          
+          iterationData[pixel] = iterations;
+
+          const [r, g, b] = colorFunc(iterations, maxIterations);
+          const idx = pixel * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        }
+
+        pixelsProcessed = endPixel;
+
+        const now = Date.now();
+        if (now - lastStatusUpdate > 100) {
+          const progress = Math.round((pixelsProcessed / totalPixels) * 100);
+          document.getElementById('status').textContent = `Rendering: ${progress}%`;
+          lastStatusUpdate = now;
+        }
+
+        if (pixelsProcessed < totalPixels) {
+          requestAnimationFrame(renderChunk);
+        } else {
+          ctx.putImageData(imageData, 0, 0);
+          lastIterationData = { data: iterationData, width, height, maxIter: maxIterations };
+          document.getElementById('status').textContent = 'Ready';
+          isRendering = false;
+        }
+      }
+
+      renderChunk();
+    }
+
+    function resetView() {
+      const fractal = fractals[currentFractal];
+      viewState = JSON.parse(JSON.stringify(fractal.defaultView));
+      zoomHistory.length = 1;
+      zoomHistory[0] = JSON.parse(JSON.stringify(viewState));
+      updateDisplay();
+      updateRender();
+    }
+
+    function zoomOut() {
+      if (zoomHistory.length > 1) {
+        zoomHistory.pop();
+        viewState = JSON.parse(JSON.stringify(zoomHistory[zoomHistory.length - 1]));
+        updateDisplay();
+        updateRender();
+      }
+    }
+
+    function saveImage() {
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const filename = `${currentFractal}_${timestamp}.png`;
+      
+      canvas.toBlob(function(blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    function showHiResDialog() {
+      document.getElementById('hiResModal').classList.add('show');
+    }
+
+    function closeHiResDialog() {
+      document.getElementById('hiResModal').classList.remove('show');
+      document.getElementById('hiResStatus').style.display = 'none';
+    }
+
+    function saveHiRes(width, height, label) {
+      const hiResCanvas = document.createElement('canvas');
+      hiResCanvas.width = width;
+      hiResCanvas.height = height;
+      const hiResCtx = hiResCanvas.getContext('2d', { alpha: false });
+
+      const statusDiv = document.getElementById('hiResStatus');
+      statusDiv.style.display = 'block';
+      statusDiv.textContent = `Rendering ${label}...`;
+
+      setTimeout(() => {
+        const imageData = hiResCtx.createImageData(width, height);
+        const data = imageData.data;
+        const fractalFunc = fractals[currentFractal].compute;
+        const colorFunc = colorPalettes[document.getElementById('colorPalette').value];
+        let pixelsProcessed = 0;
+        const totalPixels = width * height;
+        let lastStatusUpdate = Date.now();
+
+        function renderChunk() {
+          const chunkSize = 50000;
+          const endPixel = Math.min(pixelsProcessed + chunkSize, totalPixels);
+
+          for (let pixel = pixelsProcessed; pixel < endPixel; pixel++) {
+            const py = Math.floor(pixel / width);
+            const px = pixel % width;
+
+            const cx = viewState.xMin + (px / width) * (viewState.xMax - viewState.xMin);
+            const cy = viewState.yMin + (py / height) * (viewState.yMax - viewState.yMin);
+            const iterations = fractalFunc(cx, cy, maxIterations);
+
+            const [r, g, b] = colorFunc(iterations, maxIterations);
+            const idx = pixel * 4;
+            data[idx] = r;
+            data[idx + 1] = g;
+            data[idx + 2] = b;
+            data[idx + 3] = 255;
+          }
+
+          pixelsProcessed = endPixel;
+
+          const now = Date.now();
+          if (now - lastStatusUpdate > 200) {
+            const progress = Math.round((pixelsProcessed / totalPixels) * 100);
+            statusDiv.textContent = `Rendering ${label}... ${progress}%`;
+            lastStatusUpdate = now;
+          }
+
+          if (pixelsProcessed < totalPixels) {
+            requestAnimationFrame(renderChunk);
+          } else {
+            hiResCtx.putImageData(imageData, 0, 0);
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            const filename = `${currentFractal}_hires_${width}x${height}_${timestamp}.png`;
+            
+            hiResCanvas.toBlob(function(blob) {
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+              
+              statusDiv.textContent = 'Done! File downloaded.';
+              setTimeout(() => closeHiResDialog(), 1500);
+            });
+          }
+        }
+
+        renderChunk();
+      }, 100);
+    }
+
+    function startCycling() {
+      if (!lastIterationData) return;
+      isCycling = true;
+      cycleOffset = 0;
+      updateCycleButton();
+      cycleTick();
+    }
+
+    function stopCycling() {
+      isCycling = false;
+      updateCycleButton();
+    }
+
+    function updateCycleButton() {
+      const button = document.getElementById('cycleButton');
+      if (isCycling) {
+        button.textContent = 'Stop Cycling';
+        button.onclick = stopCycling;
+      } else {
+        button.textContent = 'Cycle Colors';
+        button.onclick = startCycling;
+      }
+    }
+
+    function cycleTick() {
+      if (!isCycling || !lastIterationData) return;
+
+      const { data: iterationData, width, height, maxIter } = lastIterationData;
+      const imageData = ctx.createImageData(width, height);
+      const colorData = imageData.data;
+      const colorFunc = colorPalettes[document.getElementById('colorPalette').value];
+
+      for (let pixel = 0; pixel < width * height; pixel++) {
+        const iterations = (iterationData[pixel] + cycleOffset) % (maxIter + 1);
+        const [r, g, b] = colorFunc(iterations, maxIter);
+        const idx = pixel * 4;
+        colorData[idx] = r;
+        colorData[idx + 1] = g;
+        colorData[idx + 2] = b;
+        colorData[idx + 3] = 255;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      cycleOffset = (cycleOffset + 2) % (maxIter + 1);
+      requestAnimationFrame(cycleTick);
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (currentFractal === 'mandelbrot' && canvas.style.cursor === 'crosshair') {
+        const rect = canvas.getBoundingClientRect();
+        const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+        const cx = viewState.xMin + (px / canvas.width) * (viewState.xMax - viewState.xMin);
+        const cy = viewState.yMin + (py / canvas.height) * (viewState.yMax - viewState.yMin);
+
+        document.getElementById('juliaReal').value = cx.toFixed(4);
+        document.getElementById('juliaImag').value = cy.toFixed(4);
+
+        currentFractal = 'julia';
+        document.getElementById('fractalType').value = 'julia';
+        changeFractal();
+        return;
+      }
+
+      isPanning = true;
+      const rect = canvas.getBoundingClientRect();
+      panStart.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+      panStart.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+      panOffset.x = 0;
+      panOffset.y = 0;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+      const cx = viewState.xMin + (px / canvas.width) * (viewState.xMax - viewState.xMin);
+      const cy = viewState.yMin + (py / canvas.height) * (viewState.yMax - viewState.yMin);
+      document.getElementById('mouseCoord').textContent = cx.toFixed(4) + ', ' + cy.toFixed(4);
+
+      if (isPanning) {
+        panOffset.x = panStart.x - px;
+        panOffset.y = panStart.y - py;
+        document.getElementById('status').textContent = 'Panning...';
+      }
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      if (isPanning && (Math.abs(panOffset.x) > 5 || Math.abs(panOffset.y) > 5)) {
+        // This was a drag (pan)
+        const xScale = (viewState.xMax - viewState.xMin) / canvas.width;
+        const yScale = (viewState.yMax - viewState.yMin) / canvas.height;
+
+        viewState = {
+          xMin: viewState.xMin + panOffset.x * xScale,
+          xMax: viewState.xMax + panOffset.x * xScale,
+          yMin: viewState.yMin + panOffset.y * yScale,
+          yMax: viewState.yMax + panOffset.y * yScale
+        };
+
+        zoomHistory.push(JSON.parse(JSON.stringify(viewState)));
+        updateDisplay();
+        updateRender();
+      } else if (isPanning && Math.abs(panOffset.x) <= 5 && Math.abs(panOffset.y) <= 5) {
+        // This was a quick click (zoom in)
+        const cx = viewState.xMin + (panStart.x / canvas.width) * (viewState.xMax - viewState.xMin);
+        const cy = viewState.yMin + (panStart.y / canvas.height) * (viewState.yMax - viewState.yMin);
+
+        const width = viewState.xMax - viewState.xMin;
+        const height = viewState.yMax - viewState.yMin;
+
+        viewState = {
+          xMin: cx - width / 4,
+          xMax: cx + width / 4,
+          yMin: cy - height / 4,
+          yMax: cy + height / 4
+        };
+
+        zoomHistory.push(JSON.parse(JSON.stringify(viewState)));
+        updateDisplay();
+        updateRender();
+      }
+      isPanning = false;
+      panOffset.x = 0;
+      panOffset.y = 0;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      
+      const rect = canvas.getBoundingClientRect();
+      const px = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const py = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+      const cx = viewState.xMin + (px / canvas.width) * (viewState.xMax - viewState.xMin);
+      const cy = viewState.yMin + (py / canvas.height) * (viewState.yMax - viewState.yMin);
+
+      const zoomFactor = e.deltaY > 0 ? 0.8 : 1.2;
+      const width = viewState.xMax - viewState.xMin;
+      const height = viewState.yMax - viewState.yMin;
+
+      viewState = {
+        xMin: cx - (width / zoomFactor) / 2,
+        xMax: cx + (width / zoomFactor) / 2,
+        yMin: cy - (height / zoomFactor) / 2,
+        yMax: cy + (height / zoomFactor) / 2
+      };
+
+      zoomHistory.push(JSON.parse(JSON.stringify(viewState)));
+      updateDisplay();
+      updateRender();
+    }, { passive: false });
+
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      zoomOut();
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      document.getElementById('mouseCoord').textContent = '—';
+    });
+
+    function updateDisplay() {
+      const centerX = (viewState.xMin + viewState.xMax) / 2;
+      const centerY = (viewState.yMin + viewState.yMax) / 2;
+      document.getElementById('centerCoord').textContent = centerX.toFixed(4) + ', ' + centerY.toFixed(4);
+
+      const defaultFractal = fractals[currentFractal];
+      const defaultWidth = defaultFractal.defaultView.xMax - defaultFractal.defaultView.xMin;
+      const currentWidth = viewState.xMax - viewState.xMin;
+      const zoom = defaultWidth / currentWidth;
+      document.getElementById('zoomLevel').textContent = zoom.toFixed(1) + 'x';
+    }
+
+    changeFractal();
+    initDarkMode();
+  </script>
+</body>
+</html>
