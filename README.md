@@ -1,6 +1,6 @@
 # Russ's Games
 
-A collection of JavaScript games built with the help of coding AI.
+A collection of JavaScript games built with the help of code tutoring from ClaudeAI.
 
 ## About
 
@@ -29,6 +29,11 @@ Another arcade-style challenge. Built to test both coding skills and game design
 Thee dimensional space combat.  Persistent upgrades for replayability.
 
 **Play:** [Rusko's Void](./NullSector2/ruskos_3d_space.html)
+
+### Fractal Viewer
+Thee dimensional space combat.  Persistent upgrades for replayability.
+
+**Open:** [Fractal Viewer](./fractals/fractal_viewer.html)
 
 ## Technical Notes
 
