@@ -158,6 +158,10 @@
       padding: 12px;
       margin-bottom: 1rem;
       border: 1px solid var(--border-secondary);
+      display: none;
+    }
+    .dynamic-controls:not(:empty) {
+      display: block;
     }
     #hiResModal {
       display: none !important;
@@ -185,20 +189,23 @@
       </div>
       <div class="control-group">
         <label for="colorPalette">Color palette:</label>
-        <select id="colorPalette" onchange="updateRender()">
-          <option value="hsl">Hue Rainbow</option>
-          <option value="fire">Fire</option>
-          <option value="cool">Cool Blues</option>
-          <option value="grayscale">Grayscale</option>
-          <option value="purple">Purple Haze</option>
-          <option value="sunset">Sunset</option>
-          <option value="ocean">Ocean</option>
-          <option value="hot">Hot Lava</option>
-          <option value="aurora">Aurora</option>
-          <option value="neon">Neon</option>
-          <option value="twilight">Twilight</option>
-          <option value="candy">Candy Pastel</option>
-        </select>
+        <div style="display: flex; gap: 8px; align-items: flex-end;">
+          <select id="colorPalette" onchange="updateRender()" style="flex: 1;">
+            <option value="hsl">Hue Rainbow</option>
+            <option value="fire">Fire</option>
+            <option value="cool">Cool Blues</option>
+            <option value="grayscale">Grayscale</option>
+            <option value="purple">Purple Haze</option>
+            <option value="sunset">Sunset</option>
+            <option value="ocean">Ocean</option>
+            <option value="hot">Hot Lava</option>
+            <option value="aurora">Aurora</option>
+            <option value="neon">Neon</option>
+            <option value="twilight">Twilight</option>
+            <option value="candy">Candy Pastel</option>
+          </select>
+          <button id="cycleButton" onclick="startCycling()" style="padding: 8px 12px; white-space: nowrap;">Cycle Colors</button>
+        </div>
       </div>
       <div class="control-group">
         <label for="maxIter">Max iterations:</label>
@@ -212,14 +219,60 @@
 
     <div class="dynamic-controls" id="dynamicControls"></div>
 
+    <div id="recordingSection" style="background: var(--bg-secondary); border-radius: 4px; padding: 12px; margin-bottom: 1rem; border: 1px solid var(--border-secondary);">
+      <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 150px;">
+          <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Recording State</label>
+          <div style="font-size: 13px; color: var(--text-primary);">
+            <span id="startViewStatus" style="color: var(--text-tertiary);">Start: not set</span> | <span id="endViewStatus" style="color: var(--text-tertiary);">End: not set</span>
+          </div>
+        </div>
+        <button id="setStartBtn" onclick="setStartView()" style="padding: 8px 14px; font-size: 13px; background: #0066cc;">Set as Start</button>
+        <button id="setEndBtn" onclick="setEndView()" style="padding: 8px 14px; font-size: 13px; background: #0066cc;">Set as End</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px;">
+        <div>
+          <label style="font-size: 12px; color: var(--text-secondary);">Frames:</label>
+          <select id="frameCount" onchange="updateDuration()" style="width: 100%; padding: 6px; font-size: 12px;">
+            <option value="30">30 frames</option>
+            <option value="60" selected>60 frames</option>
+            <option value="120">120 frames</option>
+            <option value="240">240 frames</option>
+            <option value="360">360 frames</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 12px; color: var(--text-secondary);">Frame Rate:</label>
+          <select id="frameRate" onchange="updateDuration()" style="width: 100%; padding: 6px; font-size: 12px;">
+            <option value="24">24 fps</option>
+            <option value="30" selected>30 fps</option>
+            <option value="60">60 fps</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 12px; color: var(--text-secondary);">Duration:</label>
+          <div style="padding: 6px; font-size: 12px; color: var(--text-primary); font-weight: 500;">
+            <span id="durationDisplay">2.0s</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+        <button id="beginProcessBtn" onclick="beginRecording()" style="padding: 10px 16px; font-size: 13px; background: #28a745;">Begin Processing</button>
+        <button id="cancelProcessBtn" onclick="cancelRecording()" style="padding: 10px 16px; font-size: 13px; background: #dc3545; display: none;">Cancel Recording</button>
+        <button id="saveVideoBtn" onclick="saveVideo()" style="padding: 10px 16px; font-size: 13px; background: #28a745; display: none;">Save Video</button>
+        <button id="saveHiResVideoBtn" onclick="showHiResVideoDialog()" style="padding: 10px 16px; font-size: 13px; background: #28a745; display: none;">Save Hi-Res Video</button>
+        <div id="recordingStatus" style="display: none; align-self: center; font-size: 13px; color: var(--text-secondary);">Recording...</div>
+      </div>
+    </div>
+
     <canvas id="fractal" width="720" height="540"></canvas>
     
     <div class="controls">
       <button onclick="resetView()">Reset</button>
       <button onclick="zoomOut()">Zoom out</button>
-      <button onclick="saveImage()">Save as Image</button>
-      <button onclick="showHiResDialog()">Save Hi-Res</button>
-      <button id="cycleButton" onclick="startCycling()">Cycle Colors</button>
+      <button onclick="showHiResDialog()">Save Image</button>
       <button class="secondary" onclick="setJuliaFromClick()" id="juliaButton" style="display:none;">Click canvas to set Julia c</button>
     </div>
 
@@ -245,19 +298,19 @@
     </div>
   </div>
 
-  <div id="hiResModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div id="hiResVideoModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--bg-container); padding:2rem; border-radius:8px; text-align:center; color:var(--text-primary); max-width:400px;">
-      <h2 style="margin-bottom:1rem;">Save High Resolution</h2>
-      <p style="margin-bottom:1.5rem; color:var(--text-secondary); font-size:14px;">Select resolution. Rendering may take a moment.</p>
+      <h2 style="margin-bottom:1rem;">Save High Resolution Video</h2>
+      <p style="margin-bottom:1.5rem; color:var(--text-secondary); font-size:14px;">Select resolution. Rendering may take longer.</p>
       <div style="display:grid; gap:10px; margin-bottom:1.5rem;">
-        <button onclick="saveHiRes(1440, 1080, '1440x1080 (1.5x)')">1440x1080 (1.5x)</button>
-        <button onclick="saveHiRes(2880, 2160, '2880x2160 (4x)')">2880x2160 (4x)</button>
-        <button onclick="saveHiRes(3840, 2880, '3840x2880 (5.3x)')">3840x2880 (5.3x)</button>
-        <button onclick="saveHiRes(1920, 1440, '1920x1440 (2.67x)')">1920x1440 (2.67x)</button>
+        <button onclick="saveHiResVideo(1440, 1080, '1440x1080 (2x)')">1440x1080 (2x)</button>
+        <button onclick="saveHiResVideo(1920, 1440, '1920x1440 (2.67x)')">1920x1440 (2.67x)</button>
+        <button onclick="saveHiResVideo(2880, 2160, '2880x2160 (4x)')">2880x2160 (4x)</button>
+        <button onclick="saveHiResVideo(3840, 2880, '3840x2880 (5.3x)')">3840x2880 (5.3x)</button>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-        <button onclick="closeHiResDialog()" style="background:#666;">Cancel</button>
-        <div id="hiResStatus" style="display:none; grid-column:1/-1; font-size:13px; color:var(--text-secondary); padding:10px; background:var(--bg-secondary); border-radius:4px;">Rendering...</div>
+        <button onclick="closeHiResVideoDialog()" style="background:#666;">Cancel</button>
+        <div id="hiResVideoStatus" style="display:none; grid-column:1/-1; font-size:13px; color:var(--text-secondary); padding:10px; background:var(--bg-secondary); border-radius:4px;">Rendering...</div>
       </div>
     </div>
   </div>
@@ -277,6 +330,12 @@
     let isCycling = false;
     let cycleOffset = 0;
     let lastIterationData = null;
+
+    let startViewState = null;
+    let endViewState = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
 
     let viewState = {
       xMin: -2.5,
@@ -726,22 +785,6 @@
       }
     }
 
-    function saveImage() {
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-      const filename = `${currentFractal}_${timestamp}.png`;
-      
-      canvas.toBlob(function(blob) {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      });
-    }
-
     function showHiResDialog() {
       document.getElementById('hiResModal').classList.add('show');
     }
@@ -871,6 +914,322 @@
       ctx.putImageData(imageData, 0, 0);
       cycleOffset = (cycleOffset + 2) % (maxIter + 1);
       requestAnimationFrame(cycleTick);
+    }
+
+    function setStartView() {
+      startViewState = JSON.parse(JSON.stringify(viewState));
+      document.getElementById('startViewStatus').textContent = `Start: ${startViewState.xMin.toFixed(3)}, ${startViewState.yMin.toFixed(3)}`;
+      document.getElementById('startViewStatus').style.color = 'var(--text-primary)';
+      updateRecordingSection();
+    }
+
+    function setEndView() {
+      endViewState = JSON.parse(JSON.stringify(viewState));
+      document.getElementById('endViewStatus').textContent = `End: ${endViewState.xMin.toFixed(3)}, ${endViewState.yMin.toFixed(3)}`;
+      document.getElementById('endViewStatus').style.color = 'var(--text-primary)';
+      updateRecordingSection();
+    }
+
+    function updateRecordingSection() {
+      const hasStart = startViewState !== null;
+      const hasEnd = endViewState !== null;
+      document.getElementById('beginProcessBtn').disabled = !(hasStart && hasEnd);
+      if (!(hasStart && hasEnd)) {
+        document.getElementById('beginProcessBtn').style.opacity = '0.5';
+        document.getElementById('beginProcessBtn').style.cursor = 'not-allowed';
+      } else {
+        document.getElementById('beginProcessBtn').style.opacity = '1';
+        document.getElementById('beginProcessBtn').style.cursor = 'pointer';
+      }
+    }
+
+    function updateDuration() {
+      const frames = parseInt(document.getElementById('frameCount').value);
+      const fps = parseInt(document.getElementById('frameRate').value);
+      const duration = (frames / fps).toFixed(1);
+      document.getElementById('durationDisplay').textContent = duration + 's';
+    }
+
+    function interpolateViewState(startView, endView, t) {
+      // t goes from 0 to 1
+      return {
+        xMin: startView.xMin + (endView.xMin - startView.xMin) * t,
+        xMax: startView.xMax + (endView.xMax - startView.xMax) * t,
+        yMin: startView.yMin + (endView.yMin - startView.yMin) * t,
+        yMax: startView.yMax + (endView.yMax - startView.yMax) * t
+      };
+    }
+
+    function beginRecording() {
+      if (!startViewState || !endViewState) return;
+
+      const frameCount = parseInt(document.getElementById('frameCount').value);
+      const frameRate = parseInt(document.getElementById('frameRate').value);
+
+      document.getElementById('beginProcessBtn').style.display = 'none';
+      document.getElementById('cancelProcessBtn').style.display = 'inline-block';
+      document.getElementById('recordingStatus').style.display = 'inline';
+      document.getElementById('setStartBtn').disabled = true;
+      document.getElementById('setEndBtn').disabled = true;
+
+      // Phase 1: Pre-render all frames
+      document.getElementById('recordingStatus').textContent = 'Pre-rendering frames...';
+      const width = canvas.width;
+      const height = canvas.height;
+      const renderedFrames = [];
+      const fractalFunc = fractals[currentFractal].compute;
+      const colorFunc = colorPalettes[document.getElementById('colorPalette').value];
+
+      function preRenderFrames(frameIndex) {
+        if (frameIndex > frameCount) {
+          // Phase 2: Record pre-rendered frames
+          recordPreRenderedFrames(renderedFrames, frameRate, frameCount);
+          return;
+        }
+
+        const t = frameCount > 0 ? frameIndex / frameCount : 1;
+        viewState = interpolateViewState(startViewState, endViewState, t);
+
+        const imageData = ctx.createImageData(width, height);
+        const data = imageData.data;
+
+        for (let pixel = 0; pixel < width * height; pixel++) {
+          const py = Math.floor(pixel / width);
+          const px = pixel % width;
+
+          const cx = viewState.xMin + (px / width) * (viewState.xMax - viewState.xMin);
+          const cy = viewState.yMin + (py / height) * (viewState.yMax - viewState.yMin);
+          const iterations = fractalFunc(cx, cy, maxIterations);
+
+          const [r, g, b] = colorFunc(iterations, maxIterations);
+          const idx = pixel * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        renderedFrames.push(imageData);
+
+        const progress = Math.round((frameIndex / frameCount) * 100);
+        document.getElementById('recordingStatus').textContent = `Pre-rendering frames... ${progress}%`;
+
+        // Continue on next event loop
+        setTimeout(() => preRenderFrames(frameIndex + 1), 0);
+      }
+
+      preRenderFrames(0);
+    }
+
+    function recordPreRenderedFrames(renderedFrames, frameRate, frameCount) {
+      isRecording = true;
+      recordedChunks = [];
+      const frameInterval = 1000 / frameRate;
+
+      document.getElementById('recordingStatus').textContent = 'Recording video...';
+
+      const stream = canvas.captureStream(frameRate);
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        window.recordedVideoBlob = blob;
+        window.recordedVideoFormat = 'webm';
+        isRecording = false;
+        document.getElementById('recordingStatus').style.display = 'none';
+        document.getElementById('cancelProcessBtn').style.display = 'none';
+        document.getElementById('saveVideoBtn').style.display = 'inline-block';
+        document.getElementById('saveHiResVideoBtn').style.display = 'inline-block';
+        document.getElementById('setStartBtn').disabled = false;
+        document.getElementById('setEndBtn').disabled = false;
+      };
+
+      mediaRecorder.start();
+
+      let playbackFrame = 0;
+      const width = canvas.width;
+      const height = canvas.height;
+
+      function playBackFrame() {
+        if (!isRecording || playbackFrame > frameCount) {
+          mediaRecorder.stop();
+          return;
+        }
+
+        const imageData = renderedFrames[playbackFrame];
+        ctx.putImageData(imageData, 0, 0);
+        playbackFrame++;
+
+        const progress = Math.round((playbackFrame / frameCount) * 100);
+        document.getElementById('recordingStatus').textContent = `Recording... ${progress}%`;
+
+        setTimeout(playBackFrame, frameInterval);
+      }
+
+      playBackFrame();
+    }
+
+    function cancelRecording() {
+      isRecording = false;
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      recordedChunks = [];
+      document.getElementById('beginProcessBtn').style.display = 'inline-block';
+      document.getElementById('cancelProcessBtn').style.display = 'none';
+      document.getElementById('recordingStatus').style.display = 'none';
+      document.getElementById('setStartBtn').disabled = false;
+      document.getElementById('setEndBtn').disabled = false;
+      updateRender();
+    }
+
+    function saveVideo() {
+      if (!window.recordedVideoBlob) return;
+
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+      const filename = `${currentFractal}_zoom_${timestamp}.webm`;
+
+      const url = URL.createObjectURL(window.recordedVideoBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      document.getElementById('saveVideoBtn').style.display = 'none';
+      document.getElementById('saveHiResVideoBtn').style.display = 'none';
+      updateRender();
+    }
+
+    function showHiResVideoDialog() {
+      document.getElementById('hiResVideoModal').style.display = 'flex';
+    }
+
+    function closeHiResVideoDialog() {
+      document.getElementById('hiResVideoModal').style.display = 'none';
+      document.getElementById('hiResVideoStatus').style.display = 'none';
+    }
+
+    function saveHiResVideo(width, height, label) {
+      const statusDiv = document.getElementById('hiResVideoStatus');
+      statusDiv.style.display = 'block';
+      statusDiv.textContent = `Pre-rendering ${label}...`;
+
+      const frameCount = parseInt(document.getElementById('frameCount').value);
+      const frameRate = parseInt(document.getElementById('frameRate').value);
+      const fractalFunc = fractals[currentFractal].compute;
+      const colorFunc = colorPalettes[document.getElementById('colorPalette').value];
+      const renderedFrames = [];
+
+      // Phase 1: Pre-render frames at hi-res
+      function preRenderHiResFrames(frameIndex) {
+        if (frameIndex > frameCount) {
+          // Phase 2: Record pre-rendered frames
+          recordPreRenderedHiResFrames(renderedFrames, width, height, frameRate, frameCount);
+          return;
+        }
+
+        const t = frameCount > 0 ? frameIndex / frameCount : 1;
+        const interpView = interpolateViewState(startViewState, endViewState, t);
+
+        const imageData = new ImageData(width, height);
+        const data = imageData.data;
+
+        for (let pixel = 0; pixel < width * height; pixel++) {
+          const py = Math.floor(pixel / width);
+          const px = pixel % width;
+
+          const cx = interpView.xMin + (px / width) * (interpView.xMax - interpView.xMin);
+          const cy = interpView.yMin + (py / height) * (interpView.yMax - interpView.yMin);
+          const iterations = fractalFunc(cx, cy, maxIterations);
+
+          const [r, g, b] = colorFunc(iterations, maxIterations);
+          const idx = pixel * 4;
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        }
+
+        renderedFrames.push(imageData);
+
+        const progress = Math.round((frameIndex / frameCount) * 100);
+        statusDiv.textContent = `Pre-rendering ${label}... ${progress}%`;
+
+        setTimeout(() => preRenderHiResFrames(frameIndex + 1), 0);
+      }
+
+      preRenderHiResFrames(0);
+    }
+
+    function recordPreRenderedHiResFrames(renderedFrames, width, height, frameRate, frameCount) {
+      const statusDiv = document.getElementById('hiResVideoStatus');
+      statusDiv.textContent = `Recording video...`;
+
+      const hiResCanvas = document.createElement('canvas');
+      hiResCanvas.width = width;
+      hiResCanvas.height = height;
+      const hiResCtx = hiResCanvas.getContext('2d', { alpha: false });
+
+      const recordedChunksHiRes = [];
+      const frameInterval = 1000 / frameRate;
+      let playbackFrame = 0;
+
+      const stream = hiResCanvas.captureStream(frameRate);
+      const mediaRecorderHiRes = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+      mediaRecorderHiRes.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksHiRes.push(event.data);
+        }
+      };
+
+      mediaRecorderHiRes.onstop = () => {
+        const blob = new Blob(recordedChunksHiRes, { type: 'video/webm' });
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const filename = `${currentFractal}_zoom_hires_${width}x${height}_${timestamp}.webm`;
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        statusDiv.textContent = 'Done! File downloaded.';
+        setTimeout(() => closeHiResVideoDialog(), 1500);
+      };
+
+      mediaRecorderHiRes.start();
+
+      function playBackFrameHiRes() {
+        if (playbackFrame > frameCount) {
+          mediaRecorderHiRes.stop();
+          return;
+        }
+
+        const imageData = renderedFrames[playbackFrame];
+        hiResCtx.putImageData(imageData, 0, 0);
+        playbackFrame++;
+
+        const progress = Math.round((playbackFrame / frameCount) * 100);
+        statusDiv.textContent = `Recording... ${progress}%`;
+
+        setTimeout(playBackFrameHiRes, frameInterval);
+      }
+
+      playBackFrameHiRes();
     }
 
     canvas.addEventListener('mousedown', (e) => {
