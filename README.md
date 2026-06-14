@@ -33,7 +33,7 @@ Thee dimensional space combat.  Persistent upgrades for replayability.
 ### Fractal Viewer
 Thee dimensional space combat.  Persistent upgrades for replayability.
 
-**Open:** [Fractal Viewer](./fractals/fractal_viewer.html)
+**Open:** [Fractal Viewer](./Fractals/fractal_viewer.html)
 
 ## Technical Notes
 
