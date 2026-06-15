@@ -298,6 +298,23 @@
     </div>
   </div>
 
+  <div id="hiResModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-container); padding:2rem; border-radius:8px; text-align:center; color:var(--text-primary); max-width:400px;">
+      <h2 style="margin-bottom:1rem;">Save High Resolution</h2>
+      <p style="margin-bottom:1.5rem; color:var(--text-secondary); font-size:14px;">Select resolution. Rendering may take a moment.</p>
+      <div style="display:grid; gap:10px; margin-bottom:1.5rem;">
+        <button onclick="saveHiRes(1440, 1080, '1440x1080 (1.5x)')">1440x1080 (1.5x)</button>
+        <button onclick="saveHiRes(1920, 1440, '1920x1440 (2.67x)')">1920x1440 (2.67x)</button>
+        <button onclick="saveHiRes(2880, 2160, '2880x2160 (4x)')">2880x2160 (4x)</button>
+        <button onclick="saveHiRes(3840, 2880, '3840x2880 (5.3x)')">3840x2880 (5.3x)</button>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <button onclick="closeHiResDialog()" style="background:#666;">Cancel</button>
+        <div id="hiResStatus" style="display:none; grid-column:1/-1; font-size:13px; color:var(--text-secondary); padding:10px; background:var(--bg-secondary); border-radius:4px;">Rendering...</div>
+      </div>
+    </div>
+  </div>
+
   <div id="hiResVideoModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
     <div style="background:var(--bg-container); padding:2rem; border-radius:8px; text-align:center; color:var(--text-primary); max-width:400px;">
       <h2 style="margin-bottom:1rem;">Save High Resolution Video</h2>

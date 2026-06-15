@@ -1109,6 +1109,32 @@ function createEnemy(x, y, z, type) {
   return group;
 }
 
+// ---- GPU RESOURCE DISPOSAL ----
+// scene.remove() only detaches from the scene graph; the GPU-side geometry and
+// material persist until explicitly disposed. Call this whenever removing an
+// object from the scene to prevent a slow GPU-memory leak over long sessions.
+// Handles both single meshes and Groups (player ship / enemies) by recursing.
+function disposeObject(obj) {
+  if (!obj) return;
+  obj.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach((m) => m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+  });
+}
+
+// Remove an object from the scene AND free its GPU resources.
+function removeAndDispose(obj) {
+  if (!obj) return;
+  scene.remove(obj);
+  disposeObject(obj);
+}
+
 function createProjectile(pos, velocity, friendly) {
   const geom = new THREE.SphereGeometry(0.3, 4, 4);
   const color = friendly ? 0x28e0ff : 0xff2d6f;
@@ -1292,7 +1318,10 @@ function init() {
   document.getElementById('entry').classList.add('hidden');
   document.getElementById('rearview').style.display = 'block';
 
-  while (scene.children.length > 0) scene.remove(scene.children[0]);
+  while (scene.children.length > 0) {
+    const child = scene.children[0];
+    removeAndDispose(child);
+  }
 
   score = 0;
   enemiesDestroyed = 0;
@@ -1475,11 +1504,19 @@ function update(dt) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
     const mineProximity = 10 + (upgrades.mineRadius - 1) * 2; // 10u base, +2u per mineRadius upgrade
+    // Build the mine's visual now (in update, where mine state lives) rather than
+    // lazily in draw(). Keeps rendering read-only over game state.
+    const mineGeom = new THREE.OctahedronGeometry(5, 0);
+    const mineMat = new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true });
+    const mineMesh = new THREE.Mesh(mineGeom, mineMat);
+    mineMesh.position.copy(minePos);
+    scene.add(mineMesh);
     mines.push({
       position: minePos.clone(),
       proximity: mineProximity,
       alive: true,
-      life: 10  // 10 seconds (was 600 frames at 60fps)
+      life: 10,  // 10 seconds (was 600 frames at 60fps)
+      mesh: mineMesh
     });
     mineCooldown = 3 * (1 - (upgrades.spaceMine - 1) * 0.1); // 3 second base, reduce by 10% per spaceMine upgrade
     mineCooldown = Math.max(1.5, mineCooldown);  // min 1.5s
@@ -1707,7 +1744,7 @@ function update(dt) {
           scene.add(expMesh);
 
           // ---- REMOVE ENEMY ----
-          scene.remove(e);
+          removeAndDispose(e);
           enemies.splice(eIdx, 1);
           
           // ---- SPAWN RUSKOLEUM ----
@@ -1747,7 +1784,7 @@ function update(dt) {
     });
 
     if (hit) {
-      scene.remove(p);
+      removeAndDispose(p);
     }
 
     return p.life > 0 && !hit;
@@ -1780,7 +1817,7 @@ function update(dt) {
         scene.add(expMesh);
         
         // Destroy enemy
-        scene.remove(e);
+        removeAndDispose(e);
         enemies.splice(eIdx, 1);
         let pointsEarned = 100;
         if (e.type === 'scout') pointsEarned = 500;
@@ -1807,7 +1844,7 @@ function update(dt) {
   // Cleanup destroyed mines
   mines.forEach(m => {
     if (!m.alive && m.mesh) {
-      scene.remove(m.mesh);
+      removeAndDispose(m.mesh);
     }
   });
   mines = mines.filter(m => m.alive);
@@ -1861,7 +1898,7 @@ function update(dt) {
           expMesh.userData.isExplosion = true;
           scene.add(expMesh);
           
-          scene.remove(e);
+          removeAndDispose(e);
           enemies.splice(eIdx, 1);
           let pointsEarned = 100;
           if (e.type === 'scout') pointsEarned = 500;
@@ -1886,18 +1923,22 @@ function update(dt) {
   lasers = lasers.filter(l => l.life > 0);
 
   // ---- UPDATE EXPLOSIONS ----
+  // Collect expired explosions during the pass, then remove/dispose them AFTER,
+  // so we never splice scene.children while forEach is iterating it.
+  const expiredExplosions = [];
   scene.children.forEach((mesh) => {
     if (mesh.userData.isExplosion) {
-      mesh.userData.life -= deltaTime;  // Decrement by actual time (deltaTime-independent)
+      mesh.userData.life -= dt;  // Decrement by actual time (use update's dt param for consistency)
       mesh.rotation.x += 0.1;
       mesh.rotation.y += 0.12;
       mesh.scale.addScaledVector(new THREE.Vector3(1, 1, 1), 0.08);
       mesh.material.opacity = mesh.userData.life / 0.5;  // was mesh.userData.life / 30, now scale for seconds
       if (mesh.userData.life <= 0) {
-        scene.remove(mesh);
+        expiredExplosions.push(mesh);
       }
     }
   });
+  expiredExplosions.forEach((mesh) => removeAndDispose(mesh));
 
   // ---- UPDATE FLOATING TEXT ----
   floatingText = floatingText.filter((ft) => {
@@ -1918,7 +1959,7 @@ function update(dt) {
       screenFlash = 0.33;  // ~0.33 seconds (was 20 frames at 60fps)
       screenShake = 12;
       rumble(300, 0.6, 0.9);
-      scene.remove(p);
+      removeAndDispose(p);
       if (player.health <= 0) {
         gameState = 'dying';
         deathTimer = 0;
@@ -1936,7 +1977,7 @@ function update(dt) {
     }
 
     if (p.life <= 0) {
-      scene.remove(p);
+      removeAndDispose(p);
       return false;
     }
 
@@ -1971,14 +2012,14 @@ function update(dt) {
     if (d < collectionThreshold) {
       addRuskoleum(1);
       ruskoleumPickupSound();
-      scene.remove(r);
+      removeAndDispose(r);
       return false; // remove from array
     }
     
     // Age out if too far from player (prevent infinite drifting)
     const distance = r.position.distanceTo(player.position);
     if (distance > 1500) {
-      scene.remove(r);
+      removeAndDispose(r);
       return false;
     }
     
@@ -2045,14 +2086,7 @@ function resetGameOnly() {
   } catch (e) {}
   
   // Reset upgrades to defaults
-  upgrades = {
-    ruskoleum: 0,
-    bulletSpeed: 0,
-    pickupRadius: 0,
-    collisionRadius: 0,
-    shipSpeed: 0,
-    maxVelocity: 0
-  };
+  upgrades = { ...DEFAULT_UPGRADES };
   saveUpgrades();
   
   // Update UI
@@ -2087,6 +2121,11 @@ function resetHighScoresOnly() {
   alert('All high scores have been reset to defaults.');
 }
 
+function refreshTitleTop() {
+  // Title screen has no dynamic readout to refresh; safe no-op.
+  // Defined to prevent ReferenceError from reset/new-game handlers.
+}
+
 function newGameWithReset() {
   // Step 1: Ask if player wants to reset upgrades
   const resetUpgrades = window.confirm(
@@ -2111,16 +2150,7 @@ function newGameWithReset() {
     localStorage.removeItem(UPGRADE_KEY);
   } catch (e) {}
   
-  upgrades = {
-    ruskoleum: 0,
-    bulletSpeed: 0,
-    pickupRadius: 0,
-    collisionRadius: 0,
-    shipSpeed: 0,
-    maxVelocity: 0,
-    spaceMine: 0,
-    spaceLaser: 0
-  };
+  upgrades = { ...DEFAULT_UPGRADES };
   saveUpgrades();
   
   // Reset high scores if opted
@@ -2138,7 +2168,7 @@ function newGameWithReset() {
   // Update UI and start game
   updateUpgradeUI();
   refreshTitleTop();
-  startGame();
+  init();
 }
 
 function resetGame() {
@@ -2156,14 +2186,7 @@ function resetGame() {
   } catch (e) {}
   
   // Reset upgrades to defaults
-  upgrades = {
-    ruskoleum: 0,
-    bulletSpeed: 0,
-    pickupRadius: 0,
-    collisionRadius: 0,
-    shipSpeed: 0,
-    maxVelocity: 0
-  };
+  upgrades = { ...DEFAULT_UPGRADES };
   saveUpgrades();
   
   // Reset high scores to defaults (AAA 000000)
@@ -2430,17 +2453,12 @@ function draw() {
   }
   
   // ---- RENDER MINES ----
+  // Meshes are created at drop time in update(); here we only animate them.
   mines.forEach(mine => {
-    // Create visual for mine if it doesn't have one
-    if (!mine.mesh) {
-      const geom = new THREE.OctahedronGeometry(5, 0);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true });
-      mine.mesh = new THREE.Mesh(geom, mat);
-      mine.mesh.position.copy(mine.position);
-      scene.add(mine.mesh);
+    if (mine.mesh) {
+      mine.mesh.rotation.x += 0.05;
+      mine.mesh.rotation.y += 0.08;
     }
-    mine.mesh.rotation.x += 0.05;
-    mine.mesh.rotation.y += 0.08;
   });
   
   // ---- RENDER LASERS ----

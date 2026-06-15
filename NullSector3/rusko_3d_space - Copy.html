@@ -812,7 +812,7 @@ function startSirenSound() {
     const gain = audioCtx.createGain();
     sirenSource.connect(gain);
     gain.connect(audioCtx.destination);
-    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.setValueAtTime(0.20, t);
     
     sirenSource.start(t);
   } catch (e) { }
@@ -981,6 +981,8 @@ addEventListener('keydown', (e) => {
           engineNoise = null;
         } catch (e) { }
       }
+      // Stop siren during pause
+      stopSirenSound();
     }
     return;  // Don't process other key handlers for ESC
   }
