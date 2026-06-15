@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dungeon Crawler</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; width: 100%; height: 100vh; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #0f0;
+      font-family: monospace;
+      font-size: 12px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px;
+      border: 1px solid #0f0;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(0,255,0,0.3);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+  <div id="crosshair"></div>
+  <div id="info">
+    WASD: Move | Mouse: Look | ESC: Release pointer<br>
+    <span id="pos">Pos: 0, 0, 0</span><br>
+    <span id="room">Room: Start</span>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, controls = {};
+    let playerPos = { x: 0, y: 1.7, z: 0 };
+    let currentRoom = 0;
+    let rooms = [];
+
+    function generateStoneTexture(width, height) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      
+      ctx.fillStyle = '#666';
+      ctx.fillRect(0, 0, width, height);
+      
+      for (let i = 0; i < 200; i++) {
+        ctx.fillStyle = `rgba(80,80,80,${Math.random() * 0.5})`;
+        ctx.fillRect(
+          Math.random() * width,
+          Math.random() * height,
+          Math.random() * 40 + 10,
+          Math.random() * 40 + 10
+        );
+      }
+      
+      for (let i = 0; i < 100; i++) {
+        ctx.strokeStyle = `rgba(100,100,100,${Math.random() * 0.3})`;
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(
+          Math.random() * width,
+          Math.random() * height,
+          Math.random() * 60 + 20,
+          Math.random() * 60 + 20
+        );
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.NearestFilter;
+      return texture;
+    }
+
+    function generateBrickTexture(width, height) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(0, 0, width, height);
+      
+      const brickH = 20;
+      const brickW = 40;
+      for (let y = 0; y < height; y += brickH) {
+        for (let x = 0; x < width; x += brickW) {
+          const offset = (y / brickH) % 2 === 0 ? 0 : brickW / 2;
+          ctx.fillStyle = `rgba(139,69,19,${Math.random() * 0.3})`;
+          ctx.fillRect(x + offset, y, brickW - 2, brickH - 2);
+          ctx.strokeStyle = '#4A2511';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + offset, y, brickW - 2, brickH - 2);
+        }
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.NearestFilter;
+      return texture;
+    }
+
+    function generateMetalTexture(width, height) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      
+      ctx.fillStyle = '#555';
+      ctx.fillRect(0, 0, width, height);
+      
+      for (let i = 0; i < 50; i++) {
+        ctx.fillStyle = `rgba(200,200,200,${Math.random() * 0.4})`;
+        ctx.fillRect(Math.random() * width, Math.random() * height, Math.random() * 80 + 20, 2);
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.NearestFilter;
+      return texture;
+    }
+
+    function createRoom(x, z, width, length, height, textures) {
+      const room = {
+        position: { x, z },
+        width, length, height,
+        meshes: []
+      };
+      
+      const mat = new THREE.MeshLambertMaterial();
+      const group = new THREE.Group();
+      
+      const createWall = (px, py, pz, w, h, tex, rotY = 0) => {
+        const geom = new THREE.PlaneGeometry(w, h);
+        const material = new THREE.MeshLambertMaterial({ map: tex });
+        const mesh = new THREE.Mesh(geom, material);
+        mesh.position.set(px, py, pz);
+        mesh.rotation.y = rotY;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+        room.meshes.push(mesh);
+        return mesh;
+      };
+      
+      const hh = height / 2;
+      const ww = width / 2;
+      const ll = length / 2;
+      const y = hh;
+      
+      // Front wall
+      createWall(x, y, z - ll, width, height, textures.wall1);
+      // Back wall
+      createWall(x, y, z + ll, width, height, textures.wall2);
+      // Left wall
+      createWall(x - ww, y, z, length, height, textures.wall3, Math.PI / 2);
+      // Right wall
+      createWall(x + ww, y, z, length, height, textures.wall4, Math.PI / 2);
+      // Floor
+      const floorGeom = new THREE.PlaneGeometry(width, length);
+      const floorMat = new THREE.MeshLambertMaterial({ map: textures.floor });
+      const floor = new THREE.Mesh(floorGeom, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.set(x, 0, z);
+      floor.receiveShadow = true;
+      group.add(floor);
+      room.meshes.push(floor);
+      // Ceiling
+      const ceilGeom = new THREE.PlaneGeometry(width, length);
+      const ceilMat = new THREE.MeshLambertMaterial({ map: textures.ceiling });
+      const ceil = new THREE.Mesh(ceilGeom, ceilMat);
+      ceil.rotation.x = Math.PI / 2;
+      ceil.position.set(x, height, z);
+      ceil.receiveShadow = true;
+      group.add(ceil);
+      room.meshes.push(ceil);
+      
+      scene.add(group);
+      return room;
+    }
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a1a);
+      scene.fog = new THREE.Fog(0x1a1a1a, 30, 100);
+      
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 1.7, 0);
+      
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      
+      // Lighting
+      const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambient);
+      
+      const light1 = new THREE.PointLight(0xffff99, 1, 40);
+      light1.position.set(0, 4, 0);
+      light1.castShadow = true;
+      scene.add(light1);
+      
+      const light2 = new THREE.PointLight(0x99ccff, 0.8, 30);
+      light2.position.set(20, 3, -20);
+      scene.add(light2);
+      
+      // Generate textures
+      const textures = {
+        wall1: generateStoneTexture(512, 512),
+        wall2: generateBrickTexture(512, 512),
+        wall3: generateMetalTexture(512, 512),
+        wall4: generateStoneTexture(512, 512),
+        floor: generateBrickTexture(512, 512),
+        ceiling: generateMetalTexture(512, 512)
+      };
+      
+      // Create rooms
+      rooms.push(createRoom(0, 0, 16, 20, 8, textures));
+      rooms.push(createRoom(20, 0, 16, 16, 8, {
+        wall1: generateBrickTexture(512, 512),
+        wall2: generateStoneTexture(512, 512),
+        wall3: generateMetalTexture(512, 512),
+        wall4: generateStoneTexture(512, 512),
+        floor: generateStoneTexture(512, 512),
+        ceiling: generateBrickTexture(512, 512)
+      }));
+      rooms.push(createRoom(0, -20, 16, 16, 8, {
+        wall1: generateMetalTexture(512, 512),
+        wall2: generateBrickTexture(512, 512),
+        wall3: generateStoneTexture(512, 512),
+        wall4: generateMetalTexture(512, 512),
+        floor: generateMetalTexture(512, 512),
+        ceiling: generateStoneTexture(512, 512)
+      }));
+      
+      setupControls();
+      setupPointerLock();
+      animate();
+    }
+
+    function setupControls() {
+      document.addEventListener('keydown', (e) => {
+        controls[e.key.toLowerCase()] = true;
+      });
+      document.addEventListener('keyup', (e) => {
+        controls[e.key.toLowerCase()] = false;
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement === document.body) {
+          camera.rotation.order = 'YXZ';
+          camera.rotation.y -= e.movementX * 0.005;
+          camera.rotation.x -= e.movementY * 0.005;
+          camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+        }
+      });
+    }
+
+    function setupPointerLock() {
+      document.body.addEventListener('click', () => {
+        document.body.requestPointerLock = document.body.requestPointerLock || document.body.mozRequestPointerLock;
+        document.body.requestPointerLock();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          document.exitPointerLock();
+        }
+      });
+    }
+
+    function updateCamera() {
+      const speed = 0.15;
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+      
+      const right = new THREE.Vector3();
+      right.crossVectors(camera.up, forward).normalize();
+      
+      if (controls['w'] || controls['arrowup']) {
+        playerPos.x += forward.x * speed;
+        playerPos.z += forward.z * speed;
+      }
+      if (controls['s'] || controls['arrowdown']) {
+        playerPos.x -= forward.x * speed;
+        playerPos.z -= forward.z * speed;
+      }
+      if (controls['a']) {
+        playerPos.x -= right.x * speed;
+        playerPos.z -= right.z * speed;
+      }
+      if (controls['d']) {
+        playerPos.x += right.x * speed;
+        playerPos.z += right.z * speed;
+      }
+      
+      // Collision detection
+      for (let room of rooms) {
+        const hh = room.width / 2;
+        const ll = room.length / 2;
+        const x = room.position.x;
+        const z = room.position.z;
+        
+        const margin = 0.5;
+        if (playerPos.x > x - hh + margin && playerPos.x < x + hh - margin &&
+            playerPos.z > z - ll + margin && playerPos.z < z + ll - margin) {
+          currentRoom = rooms.indexOf(room);
+          camera.position.set(playerPos.x, playerPos.y, playerPos.z);
+          return;
+        }
+      }
+      
+      // Revert if out of bounds
+      camera.position.set(playerPos.x, playerPos.y, playerPos.z);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      updateCamera();
+      
+      document.getElementById('pos').textContent = `Pos: ${playerPos.x.toFixed(1)}, ${playerPos.y.toFixed(1)}, ${playerPos.z.toFixed(1)}`;
+      document.getElementById('room').textContent = `Room: ${currentRoom}`;
+      
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    init();
+  </script>
+</body>
+</html>
