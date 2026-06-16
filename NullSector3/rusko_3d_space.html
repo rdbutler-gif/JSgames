@@ -916,6 +916,7 @@ let deathTimer = 0;
 let pauseActive = false;  // Track if game is paused
 let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
 let mines = [], lasers = [];  // New weapons
+let celestialBodies = null;   // Binary suns + planet backdrop group (visual landmark)
 // Core run-state. NOTE: `distanceTraveled` is currently unused — it was an
 // abandoned attempt at an idle/camping detector. Kept as a placeholder in case
 // that mechanic is revived; nothing reads or increments it right now.
@@ -926,6 +927,7 @@ let presenceDetected = false;  // Flag for 5-minute warning
 let presenceWarningFlashTime = 0;  // Flash effect for warning
 let sirenSource = null;  // Siren sound source (keeps playing)
 let mineCooldown = 0, laserCooldown = 0;  // Weapon cooldowns
+let aggroCheckTimer = 0;  // Countdown to next aggression-quota check (~0.5s cadence)
 
 const keys = {};
 let mouseX = 0, mouseY = 0, mouseDX = 0, mouseDY = 0;
@@ -1227,47 +1229,75 @@ function triggerWaveTransition() {
   cymbalSplashSound();
 }
 
-function triggerPresenceDetected() {
-  if (presenceDetected) return;  // Only trigger once per wave
-  presenceDetected = true;
-  presenceWarningFlashTime = 2;  // Warning flash duration in seconds (was 120 frames)
-  startSirenSound();
-  
-  // Spawn new enemies: wave count + 1
-  const spawnCount = wave + 1;
-  for (let i = 0; i < spawnCount; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 500 + Math.random() * 400;
-    const spreadX = Math.cos(angle) * distance;
-    const spreadZ = Math.sin(angle) * distance;
-    const spreadY = (Math.random() - 0.5) * 300;
-    
-    const x = player.position.x + spreadX;
-    const y = player.position.y + spreadY;
-    const z = player.position.z + spreadZ;
-    
-    const types = ['scout', 'interceptor', 'heavy'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    const e = createEnemy(x, y, z, type);
-    
-    // Scale with wave difficulty
-    const speedMult = 1 + Math.max(0, wave - 1) * 0.12;
-    const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10;
-    e.speed *= speedMult;
-    e.fireRate = Math.max(40, Math.floor(e.fireRate * fireRateMult));
-    e.aggressive = true;  // Mark as aggressive
-    enemies.push(e);
+// ====================================================================
+// AGGRESSION QUOTA — guarantees the player always has pursuers
+// ====================================================================
+// Design goal: no sitting still and pot-shotting from range. During each wave
+// we maintain a minimum number of AGGRESSIVE (actively hunting) enemies equal
+// to the wave number. Aggressive enemies engage from any distance with a
+// tighter, faster orbit (see the enemy AI in update()).
+//
+// How it works (checked every ~0.5s, see update()):
+//   1. Count living aggressive enemies.
+//   2. If that count is below the quota (= wave number), promote the NEAREST
+//      passive enemies to aggressive until the quota is met or no passives
+//      remain.
+//
+// Promotion is PERMANENT for that enemy's life — once a hunter, always a hunter
+// until killed (one hit, like any enemy). The quota only ever tops up, never
+// demotes, so pressure RATCHETS upward over a wave: every time you kill a
+// hunter a replacement is drafted, and earlier promotions stay aggressive on
+// top of the baseline. When few enough enemies remain that the living count is
+// at or below the wave number, the entire remaining wave is aggressive.
+// enforceAggressionQuota(promoteOne):
+//   promoteOne = false -> fill the entire shortfall at once (used at wave start
+//                         so the player immediately faces `wave` hunters).
+//   promoteOne = true  -> promote AT MOST ONE nearest passive (used by the slow
+//                         periodic top-up between checks).
+// Returns true if it actually promoted someone, false otherwise.
+function enforceAggressionQuota(promoteOne) {
+  if (!enemies || enemies.length === 0) return false;
+
+  const quota = wave;  // wave 1 -> 1 hunter, wave 5 -> 5 hunters, etc.
+
+  // Count current hunters.
+  let aggressiveCount = 0;
+  for (const e of enemies) {
+    if (e.aggressive) aggressiveCount++;
   }
-  
-  // Set all current enemies to aggressive
-  enemies.forEach(e => { e.aggressive = true; });
+
+  let needed = quota - aggressiveCount;
+  if (needed <= 0) return false;  // quota already satisfied
+
+  // Gather the passive enemies and sort them by distance to the player, so we
+  // promote the closest ones first (they apply pressure soonest).
+  const passives = enemies.filter(e => !e.aggressive);
+  if (passives.length === 0) return false;  // everyone's already a hunter
+
+  passives.sort((a, b) =>
+    a.position.distanceTo(player.position) -
+    b.position.distanceTo(player.position)
+  );
+
+  // Periodic checks promote one at a time; the wave-start fill promotes the
+  // whole shortfall.
+  const toPromote = promoteOne ? 1 : Math.min(needed, passives.length);
+  for (let i = 0; i < toPromote; i++) {
+    passives[i].aggressive = true;
+  }
+  return true;
+}
+
+// How long (seconds) between periodic hunter top-ups, scaled by wave:
+//   wave 1 = 10s, wave 2 = 9s, ... wave 10 = 1s, floored at 1s thereafter.
+function aggroPromotionInterval() {
+  return Math.max(1, 11 - wave);
 }
 
 // ====================================================================
 // WAVES & ENEMY MANAGEMENT
 // ====================================================================
-// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus (full at 1min, zero at 3min), trigger presence detection at 3min
-// triggerPresenceDetected(): Activate intruder alarm; spawn new enemies, force all to aggressive mode
+// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus (full at 1min, zero at 3min)
 // createEnemy(): Instantiate enemy ship with type-specific stats (scout/interceptor/heavy)
 // rescaleEnemiesForWave(): Re-apply wave difficulty multipliers to all current enemies (cheat code use)
 
@@ -1309,10 +1339,11 @@ function spawnEnemyWave() {
   }
   
   wave++;
-  waveStartTime = Date.now();  // Reset timer for new wave
-  presenceDetected = false;  // Reset presence detection for new wave
+  waveStartTime = Date.now();  // Reset timer for new wave (still used by the time-bonus scoring)
+  presenceDetected = false;  // (dormant) legacy presence flags, kept for possible boss-fight reuse
   presenceWarningFlashTime = 0;
-  stopSirenSound();  // Stop siren when new wave starts
+  stopSirenSound();  // (dormant) ensure no leftover siren
+  aggroCheckTimer = aggroPromotionInterval();  // first periodic top-up is one full interval away
   triggerWaveTransition();  // Flash and sound effect
   
   // Progressive difficulty: wave 1 is easy, each wave gets progressively harder
@@ -1341,6 +1372,11 @@ function spawnEnemyWave() {
     e.aggressive = false;  // Start non-aggressive
     enemies.push(e);
   }
+
+  // Fill the opening quota immediately so the player faces `wave` hunters from
+  // the very first moment (no peaceful grace period). Subsequent replacements
+  // come slowly via the wave-scaled periodic top-up in update().
+  enforceAggressionQuota(false);
 }
 
 function createStarfield(count) {
@@ -1356,6 +1392,137 @@ function createStarfield(count) {
   geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
   const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 2 });
   return new THREE.Points(geom, mat);
+}
+
+// ====================================================================
+// CELESTIAL BACKDROP — Binary Suns + Banded Planet (skybox parallax)
+// ====================================================================
+// These are purely visual landmarks that give the player a sense of heading in
+// the otherwise featureless void. They are NOT reachable: every frame the whole
+// group is recentered on the camera (see updateCelestialBodies), so the bodies
+// shift as you TURN (useful as a compass) but never get closer as you THRUST.
+//
+// They're placed at a large fixed radius and have depthWrite disabled so all
+// gameplay objects (ships, bullets, crystals) always render in front of them.
+//
+// Returns a Group with extra fields used by the per-frame updater:
+//   .sunA, .sunB        the two glowing suns
+//   .binaryPivot        an inner group the two suns orbit around (the barycenter)
+//   .planet             the banded planet
+
+// Build a striped/banded texture on an offscreen canvas so the planet has
+// visible surface bands without needing an uploaded image file (keeps the game
+// a single portable HTML file).
+function makePlanetTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+
+  // Base fill
+  ctx.fillStyle = '#3a2d6b';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Horizontal bands of varying height and hue — gives a gas-giant look.
+  const bandColors = ['#5a4a9c', '#43357d', '#6b5ab0', '#352a63', '#7d6ac4', '#4a3d8a'];
+  let y = 0;
+  let ci = 0;
+  while (y < 256) {
+    const h = 8 + Math.floor(Math.random() * 22);
+    ctx.fillStyle = bandColors[ci % bandColors.length];
+    ctx.fillRect(0, y, 256, h);
+    y += h;
+    ci++;
+  }
+
+  // A faint lighter "storm" oval for a bit of character.
+  ctx.fillStyle = 'rgba(180, 150, 230, 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(170, 150, 34, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(c);
+  return tex;
+}
+
+function createCelestialBodies() {
+  const group = new THREE.Group();
+
+  // ---- BINARY SUNS ----
+  // Both suns orbit a shared pivot (their barycenter). The pivot is parked at a
+  // fixed offset; we rotate the pivot each frame so the two suns circle it.
+  const DIST = 9000;  // how far the bodies sit from the player (large = reads as distant)
+
+  const binaryPivot = new THREE.Group();
+  binaryPivot.position.set(-DIST * 0.55, DIST * 0.25, -DIST * 0.78); // a fixed heading
+  group.add(binaryPivot);
+
+  // Sun A — larger, amber-orange
+  const sunA = new THREE.Mesh(
+    new THREE.SphereGeometry(620, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffae3c, depthWrite: false })
+  );
+  sunA.position.set(900, 0, 0);  // offset from the barycenter
+  binaryPivot.add(sunA);
+
+  // Sun A glow halo (slightly larger, transparent, additive)
+  const sunAGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(820, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  sunA.add(sunAGlow);
+
+  // Sun B — smaller, deeper red-orange
+  const sunB = new THREE.Mesh(
+    new THREE.SphereGeometry(380, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff5e2c, depthWrite: false })
+  );
+  sunB.position.set(-900, 0, 0);  // opposite side of the barycenter
+  binaryPivot.add(sunB);
+
+  const sunBGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(540, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0xd83a1a, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  sunB.add(sunBGlow);
+
+  // ---- BANDED PLANET ---- (different heading than the suns)
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(1500, 48, 48),
+    new THREE.MeshBasicMaterial({ map: makePlanetTexture(), depthWrite: false })
+  );
+  planet.position.set(DIST * 0.7, -DIST * 0.18, DIST * 0.62);
+  planet.rotation.z = 0.3;  // slight axial tilt
+  group.add(planet);
+
+  // A faint atmospheric rim shell around the planet.
+  const planetAtmo = new THREE.Mesh(
+    new THREE.SphereGeometry(1580, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0x9d8ad0, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  planet.add(planetAtmo);
+
+  // Stash references for the per-frame updater.
+  group.userData.isCelestial = true;
+  group.userData.binaryPivot = binaryPivot;
+  group.userData.sunA = sunA;
+  group.userData.sunB = sunB;
+  group.userData.planet = planet;
+
+  return group;
+}
+
+// Per-frame celestial update: recenter the whole group on the camera (so the
+// bodies never get closer — the parallax/skybox trick), slowly rotate the
+// binary suns around their barycenter, and gently spin the planet.
+function updateCelestialBodies(group, dt) {
+  if (!group) return;
+  // Recenter on the camera position so thrusting never closes the distance.
+  group.position.copy(camera.position);
+  // Orbit the binary pair (slow).
+  group.userData.binaryPivot.rotation.y += dt * 0.05;
+  // Spin the planet on its tilted axis (slow).
+  group.userData.planet.rotation.y += dt * 0.02;
 }
 
 // ====================================================================
@@ -1395,6 +1562,10 @@ function init() {
 
   const starfield = createStarfield(3000);
   scene.add(starfield);
+
+  // Distant binary suns + banded planet as a navigation backdrop.
+  celestialBodies = createCelestialBodies();
+  scene.add(celestialBodies);
 
   spawnEnemyWave();
 
@@ -1543,6 +1714,11 @@ function update(dt) {
   rearCamera.quaternion.copy(player.quaternion);
   rearCamera.rotateY(Math.PI); // Look backward
   rearCamera.position.addScaledVector(rearCamera.getWorldDirection(new THREE.Vector3()), -0.5);
+
+  // Keep the celestial backdrop centered on the camera (parallax/skybox effect)
+  // and animate the binary suns + planet. Done after camera positioning so it
+  // recenters on the camera's final position this frame.
+  updateCelestialBodies(celestialBodies, dt);
 
   // ---- FIRE (LMB or A button) ----
   const firing = leftMouseDown || (pad.fire && (Math.hypot(pad.ax, pad.ay) > 0.2));
@@ -1881,17 +2057,18 @@ function update(dt) {
   // ---- UPDATE WAVE FLASH EFFECT ----
   if (waveFlashTime > 0) waveFlashTime -= dt;  // Decrement by actual time (deltaTime-independent)
 
-  // ---- CHECK FOR 3-MINUTE PRESENCE DETECTION ----
-  if (gameState === 'play' && waveStartTime > 0 && !presenceDetected) {
-    const elapsedMs = Date.now() - waveStartTime;
-    const threeMinutesMs = 3 * 60 * 1000;  // 3 minutes in milliseconds
-    if (elapsedMs > threeMinutesMs) {
-      triggerPresenceDetected();
+  // ---- AGGRESSION QUOTA TOP-UP (wave-scaled interval) ----
+  // The opening quota is filled instantly at wave start (see spawnEnemyWave).
+  // After that, hunters are replaced SLOWLY: one promotion per check, with the
+  // interval shrinking as waves climb (wave 1 = 10s between top-ups, down to a
+  // 1s floor). So killing your pursuer on wave 1 buys a real ~10s breather.
+  if (gameState === 'play') {
+    aggroCheckTimer -= dt;
+    if (aggroCheckTimer <= 0) {
+      enforceAggressionQuota(true);  // promote at most one nearest passive
+      aggroCheckTimer = aggroPromotionInterval();
     }
   }
-
-  // ---- UPDATE PRESENCE WARNING FLASH ----
-  if (presenceWarningFlashTime > 0) presenceWarningFlashTime -= dt;  // Decrement by actual time (deltaTime-independent)
 
   // ---- LASER COLLISION & UPDATES ----
   for (let lIdx = lasers.length - 1; lIdx >= 0; lIdx--) {
