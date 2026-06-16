@@ -916,6 +916,9 @@ let deathTimer = 0;
 let pauseActive = false;  // Track if game is paused
 let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
 let mines = [], lasers = [];  // New weapons
+// Core run-state. NOTE: `distanceTraveled` is currently unused — it was an
+// abandoned attempt at an idle/camping detector. Kept as a placeholder in case
+// that mechanic is revived; nothing reads or increments it right now.
 let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0, screenShake = 0;
 let waveStartTime = 0;  // Track when wave started for timer
 let waveFlashTime = 0;  // For wave transition flash effect
@@ -1166,6 +1169,57 @@ function createRuskoleum(pos) {
   ).normalize();
   scene.add(crystal);
   return crystal;
+}
+
+// ====================================================================
+// ENEMY-KILL HELPERS (shared by bullet, mine, and laser weapons)
+// ====================================================================
+// The three weapon types each destroy enemies, and previously each contained
+// its OWN copy of the point-award, crystal-drop, and explosion logic. These
+// helpers consolidate that shared behavior so a balance tweak (point values,
+// drop rates, explosion look) only has to be made in ONE place.
+
+// Points awarded for destroying an enemy, by type. Scouts are fastest/hardest
+// to hit, so they're worth the most; heavies are slow and worth the least.
+function enemyPoints(type) {
+  if (type === 'scout') return 500;
+  if (type === 'interceptor') return 250;
+  return 100; // heavy (and any unknown fallback)
+}
+
+// Scatter Ruskoleum crystals at a kill location. Each wave drops more: the
+// count is wave * (2 or 3), so later waves are richer in resources. Crystals
+// get a tiny random position offset so they don't all stack on one point.
+function dropRuskoleum(pos) {
+  const dropCount = wave * (2 + Math.floor(Math.random() * 2)); // wave * (2 or 3)
+  for (let i = 0; i < dropCount; i++) {
+    resources.push(createRuskoleum(pos.clone().add(
+      new THREE.Vector3(
+        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 3
+      )
+    )));
+  }
+}
+
+// Spawn a short-lived expanding wireframe explosion at a position. `size` sets
+// the starting radius and `color` the hue (orange for ballistic/mine kills,
+// yellow for laser kills). The explosion is tagged isExplosion so the main
+// update loop animates and disposes it.
+function spawnExplosion(pos, size, color) {
+  const expGeom = new THREE.IcosahedronGeometry(size, 1);
+  const expMat = new THREE.MeshBasicMaterial({
+    color: color,
+    wireframe: true,
+    transparent: true,
+    opacity: 1.0
+  });
+  const expMesh = new THREE.Mesh(expGeom, expMat);
+  expMesh.position.copy(pos);
+  expMesh.userData.life = 0.5;          // 0.5s lifespan (was 30 frames at 60fps)
+  expMesh.userData.isExplosion = true;
+  scene.add(expMesh);
 }
 
 function triggerWaveTransition() {
@@ -1715,14 +1769,10 @@ function update(dt) {
       // Play enemy fire sound
       enemyFireSound();
       
-      // Shorter cooldown between bursts: base fireRate is the main delay, random adds variability
-      e.fireT = e.fireRate / 60 + Math.random() * (20 / 60);  // Convert frames to seconds, add random 0-0.33s
-    }
-
-    // Track distance traveled using velocity length (more efficient than Math.hypot)
-    const playerSpeed = player.velocity.length();
-    if (playerSpeed > 0.01) {
-      distanceTraveled += playerSpeed;
+      // Reset this enemy's fire timer: base cadence (fireRate, converted from
+      // legacy frame units to seconds) plus a small random jitter (0–0.33s) so
+      // multiple enemies don't fire in perfect unison.
+      e.fireT = e.fireRate / 60 + Math.random() * (20 / 60);
     }
   });
 
@@ -1739,60 +1789,33 @@ function update(dt) {
         hit = true;
         hitSound();
         if (e.health <= 0) {
-          // ---- CALCULATE POINTS BY ENEMY TYPE ----
-          let pointsEarned = 100;
-          if (e.type === 'scout') pointsEarned = 500;
-          else if (e.type === 'interceptor') pointsEarned = 250;
-          else if (e.type === 'heavy') pointsEarned = 100;
+          // Award points, then remove the enemy from scene and array.
+          const pointsEarned = enemyPoints(e.type);
 
-          // ---- CREATE EXPLOSION GEOMETRY ----
+          // Explosion size scales with enemy bulk (heavy biggest, scout smallest).
           const expSize = e.type === 'heavy' ? 15 : e.type === 'interceptor' ? 12 : 8;
-          const expGeom = new THREE.IcosahedronGeometry(expSize, 1);
-          const expMat = new THREE.MeshBasicMaterial({ 
-            color: 0xff6600, 
-            wireframe: true,
-            transparent: true,
-            opacity: 1.0
-          });
-          const expMesh = new THREE.Mesh(expGeom, expMat);
-          expMesh.position.copy(e.position);
-          expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
-          expMesh.userData.isExplosion = true;
-          scene.add(expMesh);
+          spawnExplosion(e.position, expSize, 0xff6600);
 
-          // ---- REMOVE ENEMY ----
           removeAndDispose(e);
           enemies.splice(eIdx, 1);
-          
-          // ---- SPAWN RUSKOLEUM ----
-          const dropCount = wave * (2 + Math.floor(Math.random() * 2)); // wave * (2 or 3) crystals
-          for (let i = 0; i < dropCount; i++) {
-            resources.push(createRuskoleum(e.position.clone().add(
-              new THREE.Vector3(
-                (Math.random() - 0.5) * 3,
-                (Math.random() - 0.5) * 3,
-                (Math.random() - 0.5) * 3
-              )
-            )));
-          }
-          
+
+          dropRuskoleum(e.position);
+
           score += pointsEarned;
           enemiesDestroyed++;
+          enemyDeathExplosion();  // audio
 
-          // ---- PLAY EXPLOSION SOUND ----
-          enemyDeathExplosion();
-
-          // ---- ADD FLOATING TEXT ----
+          // Floating "+points" text that drifts up from the kill location.
           floatingText.push({
             x: e.position.x,
             y: e.position.y,
             z: e.position.z,
             text: '+' + pointsEarned,
-            life: 1.33,  // ~1.33 seconds (was 80 frames at 60fps)
+            life: 1.33,  // ~1.33s lifespan (was 80 frames at 60fps)
             color: 0xffb000
           });
 
-          // ---- SPAWN NEW ENEMIES IF ALL DESTROYED ----
+          // If that was the last enemy, immediately start the next wave.
           if (enemies.length === 0) {
             spawnEnemyWave();
           }
@@ -1824,36 +1847,20 @@ function update(dt) {
       const e = enemies[eIdx];
       const dToMine = mine.position.distanceTo(e.position);
       if (dToMine < mine.proximity) {
-        // EXPLOSION
-        const expGeom = new THREE.IcosahedronGeometry(20, 1);
-        const expMat = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true, transparent: true, opacity: 1.0 });
-        const expMesh = new THREE.Mesh(expGeom, expMat);
-        expMesh.position.copy(mine.position);
-        expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
-        expMesh.userData.isExplosion = true;
-        scene.add(expMesh);
-        
-        // Destroy enemy
+        // Detonation: explosion centered on the mine, destroy the enemy, award
+        // points and crystals via the shared helpers, then consume the mine.
+        spawnExplosion(mine.position, 20, 0xff6600);
+
         removeAndDispose(e);
         enemies.splice(eIdx, 1);
-        let pointsEarned = 100;
-        if (e.type === 'scout') pointsEarned = 500;
-        else if (e.type === 'interceptor') pointsEarned = 250;
-        else if (e.type === 'heavy') pointsEarned = 100;
-        score += pointsEarned;
+
+        score += enemyPoints(e.type);
         enemiesDestroyed++;
-        enemyDeathExplosion();
-        
-        // Drop Ruskoleum
-        const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
-        for (let i = 0; i < dropCount; i++) {
-          resources.push(createRuskoleum(e.position.clone().add(
-            new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
-          )));
-        }
-        
-        // Remove mine
-        mine.alive = false;
+        enemyDeathExplosion();  // audio
+
+        dropRuskoleum(e.position);
+
+        mine.alive = false;  // a mine detonates only once
         break;
       }
     }
@@ -1906,32 +1913,18 @@ function update(dt) {
       if (projDist > 0 && projDist < (500 + (upgrades.laserRange || 0) * 200)) { // only forward along laser, range from upgrades
         const perpDist = toEnemy.clone().sub(laser.direction.clone().multiplyScalar(projDist)).length();
         if (perpDist < laser.width) {
-          // Destroy enemy
-          const expGeom = new THREE.IcosahedronGeometry(12, 1);
-          const expMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 1.0 });
-          const expMesh = new THREE.Mesh(expGeom, expMat);
-          expMesh.position.copy(e.position);
-          expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
-          expMesh.userData.isExplosion = true;
-          scene.add(expMesh);
-          
+          // Enemy is within the beam: destroy it. Laser kills use a yellow
+          // explosion to visually distinguish them from ballistic/mine kills.
+          spawnExplosion(e.position, 12, 0xffff00);
+
           removeAndDispose(e);
           enemies.splice(eIdx, 1);
-          let pointsEarned = 100;
-          if (e.type === 'scout') pointsEarned = 500;
-          else if (e.type === 'interceptor') pointsEarned = 250;
-          else if (e.type === 'heavy') pointsEarned = 100;
-          score += pointsEarned;
+
+          score += enemyPoints(e.type);
           enemiesDestroyed++;
-          enemyDeathExplosion();
-          
-          // Drop Ruskoleum
-          const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
-          for (let i = 0; i < dropCount; i++) {
-            resources.push(createRuskoleum(e.position.clone().add(
-              new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
-            )));
-          }
+          enemyDeathExplosion();  // audio
+
+          dropRuskoleum(e.position);
         }
       }
     }
@@ -2001,47 +1994,63 @@ function update(dt) {
     return true;
   });
   
-  // ---- UPDATE RESOURCES (RUSKOLEUM) ----
-  const pickupRadius = 10 + (upgrades.pickupRadius || 0) * 19; // base 10u, +19u per upgrade (max 200u at level 10)
-  const magneticThreshold = pickupRadius;  // Start magnetic pull at full pickup range
-  const collectionThreshold = 5;  // Only collect when gem reaches very close to ship
-  const magneticSpeed = 80;  // units/second speed toward player when magnetized
-  
+  // ====================================================================
+  // UPDATE RESOURCES (RUSKOLEUM CRYSTALS)
+  // ====================================================================
+  // Each crystal drifts with leftover spawn momentum, spins for visual flair,
+  // and is magnetically pulled toward the ship once within pickup range. We
+  // tally crystals collected this frame and write to localStorage ONCE at the
+  // end, instead of saving on every individual pickup — a single wave-10 kill
+  // can drop ~30 crystals that get vacuumed up in a fraction of a second, and
+  // 30 synchronous localStorage writes in quick succession can cause a stutter.
+  const pickupRadius = 10 + (upgrades.pickupRadius || 0) * 19; // base 10u, +19u per upgrade level (max 200u at lvl 10)
+  const magneticThreshold = pickupRadius;  // Distance at which the magnetic pull kicks in (= full pickup range)
+  const collectionThreshold = 5;           // Distance at which a crystal is actually collected (very close to ship)
+  const magneticSpeed = 80;                // Pull speed (units/second) once a crystal is being magnetized
+  let ruskoleumCollectedThisFrame = 0;     // Batch counter — flushed to storage after the loop
+
   resources = resources.filter((r) => {
-    // Apply velocity (spin momentum)
+    // Drift with spawn momentum, then bleed it off with gentle drag.
     r.position.addScaledVector(r.userData.velocity, dt);
-    r.userData.velocity.multiplyScalar(0.98); // gentle drag
-    
-    // Spin the crystal
-    const axis = r.userData.spinAxis;
-    r.rotateOnWorldAxis(axis, r.userData.spin);
-    
-    // Check distance to player for pickup and magnetic attraction
+    r.userData.velocity.multiplyScalar(0.98);
+
+    // Spin the crystal in place for a bit of visual life.
+    r.rotateOnWorldAxis(r.userData.spinAxis, r.userData.spin);
+
+    // Distance to the player — computed ONCE and reused below (was previously
+    // calculated twice, once for pickup and again for the age-out check).
     const d = r.position.distanceTo(player.position);
-    
-    // Magnetic attraction: gems within pickup range are pulled toward player
+
+    // MAGNETIC ATTRACTION: crystals inside pickup range (but not yet collected)
+    // are drawn steadily toward the ship.
     if (d < magneticThreshold && d > collectionThreshold) {
       const direction = new THREE.Vector3().subVectors(player.position, r.position).normalize();
       r.position.addScaledVector(direction, magneticSpeed * dt);
     }
-    
-    // Collection: only collect when gem is very close to ship
+
+    // COLLECTION: once a crystal reaches the ship, tally it and remove it.
     if (d < collectionThreshold) {
-      addRuskoleum(1);
+      ruskoleumCollectedThisFrame++;
       ruskoleumPickupSound();
-      removeAndDispose(r);
-      return false; // remove from array
-    }
-    
-    // Age out if too far from player (prevent infinite drifting)
-    const distance = r.position.distanceTo(player.position);
-    if (distance > 1500) {
       removeAndDispose(r);
       return false;
     }
-    
+
+    // AGE-OUT: discard crystals that have drifted absurdly far away, so they
+    // don't linger forever and waste memory. Reuses the same distance `d`.
+    if (d > 1500) {
+      removeAndDispose(r);
+      return false;
+    }
+
     return true;
   });
+
+  // Flush the frame's collected crystals to the running total in a single
+  // localStorage write (see batching note above).
+  if (ruskoleumCollectedThisFrame > 0) {
+    addRuskoleum(ruskoleumCollectedThisFrame);
+  }
   
   // Check if gameOver was queued during this update
   if (gameOverQueued) {
@@ -2534,10 +2543,13 @@ function draw() {
   }
 
   // ---- HIGH SCORE display (centered at top) ----
+  // highScores is always kept sorted descending by normalize(), so the top
+  // score is simply element [0] — no need to scan the whole list every frame.
   hudCtx.fillStyle = 'rgba(255, 176, 0, 0.9)';
   hudCtx.font = 'bold 24px VT323, monospace';
   hudCtx.textAlign = 'center';
-  hudCtx.fillText('HIGH SCORE = ' + String(Math.max(...highScores.map(s => s.sc))).padStart(6, '0'), window.innerWidth / 2, 40);
+  const topScore = (highScores.length > 0) ? highScores[0].sc : 0;
+  hudCtx.fillText('HIGH SCORE = ' + String(topScore).padStart(6, '0'), window.innerWidth / 2, 40);
 
   // ---- WAVE TIMER display (permanent) ----
   if (gameState === 'play' && waveStartTime > 0) {
