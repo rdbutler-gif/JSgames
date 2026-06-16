@@ -793,11 +793,11 @@ function cymbalSplashSound() {
   } catch (e) { }
 }
 
-function startSirenSound() {
+function startSirenSound(once) {
   if (!audioCtx || sirenSource) return;  // Only start if not already playing
   try {
     const t = audioCtx.currentTime;
-    // Create a 2-second looping siren pattern
+    // Create a 2-second siren pattern
     const bufLen = Math.floor(audioCtx.sampleRate * 2);
     const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
     const data = buf.getChannelData(0);
@@ -813,7 +813,9 @@ function startSirenSound() {
     
     sirenSource = audioCtx.createBufferSource();
     sirenSource.buffer = buf;
-    sirenSource.loop = true;
+    // `once` = play a single 2s pass then stop (used as the boss-entrance
+    // alarm). Default (no arg) loops continuously for general alarm use.
+    sirenSource.loop = !once;
     
     const gain = audioCtx.createGain();
     sirenSource.connect(gain);
@@ -821,6 +823,13 @@ function startSirenSound() {
     gain.gain.setValueAtTime(0.20, t);
     
     sirenSource.start(t);
+
+    // When a one-shot finishes, clear the handle so the siren can be triggered
+    // again later (and so stopSirenSound has nothing stale to stop).
+    if (once) {
+      sirenSource.onended = () => { sirenSource = null; };
+      sirenSource.stop(t + 2);  // ensure it ends after one 2s pass
+    }
   } catch (e) { }
 }
 
@@ -929,11 +938,23 @@ let celestialBodies = null;   // Binary suns + planet backdrop group (visual lan
 let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0, screenShake = 0;
 let waveStartTime = 0;  // Track when wave started for timer
 let waveFlashTime = 0;  // For wave transition flash effect
+let bannerText = '';    // Text shown in the transition banner (wave # or custom)
 let presenceDetected = false;  // Flag for 5-minute warning
 let presenceWarningFlashTime = 0;  // Flash effect for warning
 let sirenSource = null;  // Siren sound source (keeps playing)
 let mineCooldown = 0, laserCooldown = 0;  // Weapon cooldowns
 let aggroCheckTimer = 0;  // Countdown to next aggression-quota check (~0.5s cadence)
+
+// ---- BOSS STATE ----
+// The boss fight is a distinct game state entered when a wave is cleared.
+// A boss now appears at the end of EVERY wave (see onWaveCleared).
+// NOTE: BOSS_AFTER_WAVE is currently unused — kept in case you want to revert
+// to a single boss after one specific wave. To do that, restore the
+// `if (wave === BOSS_AFTER_WAVE)` gate in onWaveCleared().
+const BOSS_AFTER_WAVE = 1;       // (unused) which wave a single boss would follow
+let boss = null;                 // the active boss object (null when none)
+let bossFireTimer = 0;           // countdown to the boss's next volley
+let bossPatternToggle = 0;       // alternates 0/1 between stream and spread patterns
 
 const keys = {};
 let mouseX = 0, mouseY = 0, mouseDX = 0, mouseDY = 0;
@@ -1158,6 +1179,35 @@ function createProjectile(pos, velocity, friendly) {
   return proj;
 }
 
+// Boss projectile: a much larger, brighter, glowing bullet so the boss's fire
+// reads as a serious threat (vs. the tiny default enemy rounds). Visually big
+// via a bright core + a translucent additive glow halo; still an enemy bullet
+// for collision purposes (same player-hit check). Lives 6s.
+function createBossProjectile(pos, velocity) {
+  const group = new THREE.Group();
+
+  // Bright solid core.
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(3.2, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xfff2a0 })  // near-white hot yellow
+  );
+  group.add(core);
+
+  // Additive glow halo around the core.
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(6.5, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  group.add(glow);
+
+  group.position.copy(pos);
+  group.velocity = velocity.clone();
+  group.friendly = false;
+  group.life = 6;  // seconds
+  scene.add(group);
+  return group;
+}
+
 function createRuskoleum(pos) {
   // Create a small glowing crystal
   const geom = new THREE.OctahedronGeometry(0.4, 0);
@@ -1230,8 +1280,11 @@ function spawnExplosion(pos, size, color) {
   scene.add(expMesh);
 }
 
-function triggerWaveTransition() {
+function triggerWaveTransition(customText) {
   waveFlashTime = 1;  // Flash duration in seconds (~1 second, was 60 frames at 60fps)
+  // The banner normally announces the wave number, but callers (e.g. the boss
+  // entrance) can pass custom text like "INTRUSION DETECTED!".
+  bannerText = customText || ('WAVE ' + wave + '!');
   cymbalSplashSound();
 }
 
@@ -1383,6 +1436,297 @@ function spawnEnemyWave() {
   // the very first moment (no peaceful grace period). Subsequent replacements
   // come slowly via the wave-scaled periodic top-up in update().
   enforceAggressionQuota(false);
+}
+
+// ====================================================================
+// BOSS FIGHT
+// ====================================================================
+// A large three-section boss: a big central sphere with two smaller spheres
+// attached out to either side, all rigidly linked in one group. Each section
+// has its own hitpoints (start at 1) and explodes when destroyed. When all
+// three sections are dead, a large final explosion plays and the boss is gone.
+//
+// The boss spawns ~1000u from the player (clamped to stay inside the playfield
+// boundary), drifts slowly, and alternates two firing patterns from its center:
+// a straight 5-round stream, then a 5-round fan spread.
+//
+// Structure of the `boss` object:
+//   .group      THREE.Group holding the three section meshes (this is what moves)
+//   .sections[] array of { mesh, health, alive, offset, type } — offset is the
+//               section's fixed local position relative to the group center
+//   .alive      true until all sections are destroyed
+
+function createBoss() {
+  const group = new THREE.Group();
+
+  // ---- Pick a spawn point ~1000u from the player, clamped to the boundary ----
+  const BOUNDARY = 2300;
+  const SPAWN_DIST = 1000;
+  // Random direction on a sphere around the player.
+  let dir = new THREE.Vector3(
+    Math.random() - 0.5,
+    (Math.random() - 0.5) * 0.6,  // less vertical spread so it spawns roughly ahead
+    Math.random() - 0.5
+  );
+  if (dir.lengthSq() < 0.001) dir.set(0, 0, -1);  // guard against a zero vector
+  dir.normalize();
+
+  let spawnPos = player.position.clone().addScaledVector(dir, SPAWN_DIST);
+  // Clamp inside the playfield so the boss never spawns out beyond the void edge.
+  spawnPos.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, spawnPos.x));
+  spawnPos.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, spawnPos.y));
+  spawnPos.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, spawnPos.z));
+  group.position.copy(spawnPos);
+
+  // ---- Build the three sections ----
+  // Center: large solid sphere. Sides: smaller solid spheres offset left/right.
+  // Each section is a solid colored sphere with a brighter wireframe shell over
+  // it for sci-fi definition (so it reads as a built craft, not a plain ball).
+  const sections = [];
+
+  function addSection(type, radius, offset, color, hp) {
+    // Solid body.
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 24, 24),
+      new THREE.MeshBasicMaterial({ color: color })
+    );
+    mesh.position.copy(offset);
+    group.add(mesh);
+
+    // Brighter wireframe shell over the solid for panel-line definition.
+    const wire = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 1.04, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.25 })
+    );
+    mesh.add(wire);
+
+    sections.push({
+      mesh: mesh,
+      radius: radius,
+      health: hp,
+      maxHealth: hp,      // stored for the on-screen health bar fill ratio
+      alive: true,
+      offset: offset.clone(),
+      type: type
+    });
+  }
+
+  // Section HP scales with wave: wave 1 keeps the tuned 3/5/3, and each later
+  // wave adds +1 per pod and +2 to the core, so the boss gets progressively
+  // tankier as you climb. (`wave` here is the wave just cleared.)
+  const podHp  = 3 + Math.max(0, wave - 1) * 1;
+  const coreHp = 5 + Math.max(0, wave - 1) * 2;
+  addSection('left',   34, new THREE.Vector3(-120, 0, 0), 0xff2d6f, podHp);  // left pod
+  addSection('center', 70, new THREE.Vector3(   0, 0, 0), 0xb06bff, coreHp); // central core
+  addSection('right',  34, new THREE.Vector3( 120, 0, 0), 0xff2d6f, podHp);  // right pod
+
+  // ---- Connecting struts ----
+  // Two cylinders link the center core to each side pod so the boss reads as a
+  // single rigid craft. They're decorative (no collision) and part of the group
+  // so they move and turn with the body.
+  function addStrut(xFrom, xTo) {
+    const length = Math.abs(xTo - xFrom);
+    const strut = new THREE.Mesh(
+      new THREE.CylinderGeometry(10, 10, length, 12),
+      new THREE.MeshBasicMaterial({ color: 0x888899 })
+    );
+    // Cylinders are built along Y; rotate to lie along X and center it between
+    // the two attach points.
+    strut.rotation.z = Math.PI / 2;
+    strut.position.set((xFrom + xTo) / 2, 0, 0);
+    group.add(strut);
+  }
+  addStrut(-120, 0);  // left pod to center
+  addStrut(0, 120);   // center to right pod
+
+  scene.add(group);
+
+  return {
+    group: group,
+    sections: sections,
+    alive: true,
+    // Orbit-attack state (mirrors the small-enemy orbit pattern, but larger/slower).
+    orbitAngle: Math.random() * Math.PI * 2,
+    orbitRadius: 320,                 // circles the player at this range (close enough to threaten)
+    orbitSpeed: 0.18,                 // radians/sec around the player (slow)
+    verticalPhase: Math.random() * Math.PI * 2,
+    lastPos: spawnPos.clone()         // previous position, used to face heading
+  };
+}
+
+// Begin the boss fight: create the boss, switch the wave HUD to a boss banner,
+// and (re)start the dormant siren as the boss alarm.
+function startBossFight() {
+  boss = createBoss();
+  bossFireTimer = 1.5;        // brief delay before the first volley
+  bossPatternToggle = 0;
+  triggerWaveTransition('INTRUSION DETECTED!');  // dramatic boss-entrance banner
+  startSirenSound(true);      // single siren pass as the boss-entrance alarm
+}
+
+// Fire one of the boss's two patterns from the center section toward the player.
+function bossFire() {
+  if (!boss || !boss.alive) return;
+  // Find the center section's world position to fire from. Fall back to the
+  // group center if the center section is already destroyed.
+  let origin = new THREE.Vector3();
+  const center = boss.sections.find(s => s.type === 'center' && s.alive);
+  if (center) {
+    center.mesh.getWorldPosition(origin);
+  } else {
+    boss.group.getWorldPosition(origin);
+  }
+
+  const toPlayer = player.position.clone().sub(origin).normalize();
+  const bulletSpeed = 160;  // fast — short travel time so shots actually threaten
+
+  if (bossPatternToggle === 0) {
+    // PATTERN A: a tight 3-round straight stream, staggered slightly in space
+    // along the aim line so they arrive as a quick "burst train" dead at the
+    // player's current position.
+    for (let i = 0; i < 3; i++) {
+      const startPos = origin.clone().addScaledVector(toPlayer, i * 14);
+      const vel = toPlayer.clone().multiplyScalar(bulletSpeed);
+      enemies_projectiles.push(createBossProjectile(startPos, vel));
+    }
+  } else {
+    // PATTERN B: a 3-round fan spread across a small arc around the aim line.
+    const up = Math.abs(toPlayer.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const right = new THREE.Vector3().crossVectors(toPlayer, up).normalize();
+    for (let i = 0; i < 3; i++) {
+      const t = (i - 1) * 0.14;  // angular offset: -0.14, 0, +0.14 rad
+      const dir = toPlayer.clone().addScaledVector(right, t).normalize();
+      const vel = dir.multiplyScalar(bulletSpeed);
+      enemies_projectiles.push(createBossProjectile(origin.clone(), vel));
+    }
+  }
+
+  enemyFireSound();
+  bossPatternToggle = bossPatternToggle === 0 ? 1 : 0;  // alternate next time
+}
+
+// Per-frame boss update: orbit the player like the small enemies do (but on a
+// larger, slower scale), face the direction it's actually moving, and run the
+// firing timer.
+function updateBoss(dt) {
+  if (!boss || !boss.alive) return;
+
+  // ---- Movement: orbit the player (same idea as the small-enemy attack) ----
+  // Advance the orbit angle and a slower vertical bob, then compute a target
+  // point on a circle around the player and ease toward it. This makes the boss
+  // circle and weave rather than just sit at a fixed standoff.
+  boss.orbitAngle += boss.orbitSpeed * dt;
+  boss.verticalPhase += boss.orbitSpeed * 0.5 * dt;
+
+  const targetX = Math.cos(boss.orbitAngle) * boss.orbitRadius;
+  const targetZ = Math.sin(boss.orbitAngle) * boss.orbitRadius;
+  const targetY = Math.sin(boss.verticalPhase) * 120;  // gentle vertical weave
+  const targetPos = player.position.clone().add(new THREE.Vector3(targetX, targetY, targetZ));
+
+  // Ease the boss toward the orbital target (slow, heavy feel).
+  const toTarget = targetPos.clone().sub(boss.group.position);
+  const MOVE_SPEED = 90;  // units/sec cap toward the orbit point
+  const step = Math.min(MOVE_SPEED * dt, toTarget.length());
+  if (toTarget.length() > 0.001) {
+    toTarget.normalize();
+    boss.group.position.addScaledVector(toTarget, step);
+  }
+
+  // Keep the boss inside the playfield boundary.
+  const BOUNDARY = 2300;
+  boss.group.position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.x));
+  boss.group.position.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.y));
+  boss.group.position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.z));
+
+  // ---- Facing: orient the whole craft along its actual movement heading ----
+  // Use the frame's displacement (current minus last position) as the forward
+  // direction so the boss "noses" the way it's traveling instead of spinning.
+  const heading = boss.group.position.clone().sub(boss.lastPos);
+  if (heading.lengthSq() > 0.0001) {
+    const lookTarget = boss.group.position.clone().add(heading);
+    boss.group.lookAt(lookTarget);
+  }
+  boss.lastPos.copy(boss.group.position);
+
+  // ---- Firing ----
+  bossFireTimer -= dt;
+  if (bossFireTimer <= 0) {
+    bossFire();
+    bossFireTimer = 1.8;  // seconds between volleys
+  }
+}
+
+// Handle the destruction of a single boss section (called from the bullet
+// collision loop when a section's health hits zero).
+function destroyBossSection(section) {
+  if (!section.alive) return;
+  section.alive = false;
+
+  // Explosion at the section's world position, sized to the section.
+  const wp = new THREE.Vector3();
+  section.mesh.getWorldPosition(wp);
+  spawnExplosion(wp, section.radius * 0.8, 0xff6600);
+  enemyDeathExplosion();
+
+  // Hide the section mesh (kept in the group so offsets stay valid; just made
+  // invisible and non-collidable via its alive flag).
+  section.mesh.visible = false;
+
+  // Award points for the section.
+  score += 1000;
+
+  // If every section is dead, finish the boss.
+  if (boss.sections.every(s => !s.alive)) {
+    finishBoss();
+  }
+}
+
+// Final boss death: a large multi-explosion, big score, cleanup, then resume
+// normal wave progression.
+function finishBoss() {
+  if (!boss) return;
+  boss.alive = false;
+
+  // A cluster of large explosions across the boss body for a dramatic finish.
+  const center = new THREE.Vector3();
+  boss.group.getWorldPosition(center);
+  for (let i = 0; i < 6; i++) {
+    const off = new THREE.Vector3(
+      (Math.random() - 0.5) * 200,
+      (Math.random() - 0.5) * 120,
+      (Math.random() - 0.5) * 200
+    );
+    spawnExplosion(center.clone().add(off), 30 + Math.random() * 25, 0xffaa00);
+  }
+  enemyDeathExplosion();
+
+  // Score + a Ruskoleum payout that starts small and scales with wave, so the
+  // wave-1 boss drops only a handful and later bosses get progressively richer.
+  score += 10000;
+  const bossDrop = 5 + Math.max(0, wave - 1) * 4;  // wave 1: 5, wave 2: 9, wave 3: 13...
+  for (let i = 0; i < bossDrop; i++) {
+    resources.push(createRuskoleum(center.clone().add(
+      new THREE.Vector3((Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80)
+    )));
+  }
+
+  // Remove the boss group from the scene and dispose it.
+  removeAndDispose(boss.group);
+  boss = null;
+
+  stopSirenSound();  // boss alarm off
+
+  // Resume normal play: spawn the next wave so the game continues.
+  spawnEnemyWave();
+}
+
+// Called whenever the field is cleared of wave enemies. A boss now appears at
+// the end of EVERY wave: clear the wave -> fight the boss -> on boss death,
+// finishBoss() spawns the next wave, and the cycle repeats. (The old single-
+// shot BOSS_AFTER_WAVE constant is no longer used as a gate.)
+function onWaveCleared() {
+  if (boss) return;       // a boss fight is already in progress — do nothing
+  startBossFight();       // every wave ends in a boss fight
 }
 
 function createStarfield(count) {
@@ -1560,6 +1904,11 @@ function init() {
   presenceDetected = false;
   presenceWarningFlashTime = 0;
   stopSirenSound();  // Stop siren if running from previous game
+
+  // Reset boss state (the scene-clear above already disposed any boss group).
+  boss = null;
+  bossFireTimer = 0;
+  bossPatternToggle = 0;
   
   player = createPlayerShip();
   
@@ -1997,13 +2346,36 @@ function update(dt) {
             color: 0xffb000
           });
 
-          // If that was the last enemy, immediately start the next wave.
+          // If that was the last enemy, advance (boss fight or next wave).
           if (enemies.length === 0) {
-            spawnEnemyWave();
+            onWaveCleared();
           }
         }
       }
     });
+
+    // ---- PLAYER BULLET vs BOSS SECTIONS ----
+    // Check each living boss section. A hit costs the bullet and damages the
+    // section; at zero health the section explodes (and the boss dies once all
+    // sections are gone). Uses the section's world position since sections live
+    // inside the moving boss group.
+    if (!hit && boss && boss.alive) {
+      const _wp = new THREE.Vector3();
+      for (const section of boss.sections) {
+        if (!section.alive) continue;
+        section.mesh.getWorldPosition(_wp);
+        const d = p.position.distanceTo(_wp);
+        if (d < section.radius + bulletRadius) {
+          section.health--;
+          hit = true;
+          hitSound();
+          if (section.health <= 0) {
+            destroyBossSection(section);
+          }
+          break;  // one bullet hits one section
+        }
+      }
+    }
 
     if (hit) {
       removeAndDispose(p);
@@ -2056,8 +2428,10 @@ function update(dt) {
   mines = mines.filter(m => m.alive);
 
   // ---- CHECK FOR WAVE SPAWN (after all collision) ----
-  if (enemies.length === 0 && gameState === 'play') {
-    spawnEnemyWave();
+  // Skip while a boss is active: the field is "empty" of wave enemies during
+  // the boss fight, but we must not spawn a new wave until the boss is dead.
+  if (enemies.length === 0 && gameState === 'play' && !boss) {
+    onWaveCleared();
   }
 
   // ---- UPDATE WAVE FLASH EFFECT ----
@@ -2074,6 +2448,11 @@ function update(dt) {
       enforceAggressionQuota(true);  // promote at most one nearest passive
       aggroCheckTimer = aggroPromotionInterval();
     }
+  }
+
+  // ---- BOSS UPDATE (movement + firing) ----
+  if (boss && gameState === 'play') {
+    updateBoss(dt);
   }
 
   // ---- LASER COLLISION & UPDATES ----
@@ -2694,7 +3073,14 @@ function draw() {
   hudCtx.fillText('HEALTH ' + Math.max(0, Math.floor(player.health)) + '/' + player.maxHealth, 12, 55);
   hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
   hudCtx.fillText('WAVE ' + wave, 12, 80);
-  hudCtx.fillText('ENEMIES LEFT ' + enemies.length, 12, 105);
+  // During a boss fight show living section count instead of a (zero) enemy count.
+  if (boss && boss.alive) {
+    const livingSections = boss.sections.filter(s => s.alive).length;
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.fillText('BOSS SECTIONS ' + livingSections + '/3', 12, 105);
+  } else {
+    hudCtx.fillText('ENEMIES LEFT ' + enemies.length, 12, 105);
+  }
   hudCtx.fillStyle = '#00ff88';
   hudCtx.fillText('RUSKOLEUM ' + upgrades.ruskoleum, 12, 130);
   hudCtx.fillStyle = '#28e0ff';
@@ -2752,6 +3138,35 @@ function draw() {
     hudCtx.fillText('WAVE ' + wave + ' : ' + timerStr, window.innerWidth / 2, 65);
   }
 
+  // ---- OVERALL BOSS HEALTH BAR (top center, during boss fight) ----
+  if (boss && boss.alive) {
+    let cur = 0, max = 0;
+    boss.sections.forEach(s => { cur += Math.max(0, s.health); max += s.maxHealth; });
+    const frac = max > 0 ? cur / max : 0;
+
+    const barW = Math.min(420, window.innerWidth * 0.5);
+    const barH = 16;
+    const barX = window.innerWidth / 2 - barW / 2;
+    const barY = 84;
+
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.font = 'bold 16px Orbitron, sans-serif';
+    hudCtx.textAlign = 'center';
+    hudCtx.fillText('◤ BOSS ◢', window.innerWidth / 2, barY - 6);
+
+    // Track + border.
+    hudCtx.fillStyle = 'rgba(0,0,0,0.6)';
+    hudCtx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
+    hudCtx.fillStyle = 'rgba(120, 30, 50, 0.85)';
+    hudCtx.fillRect(barX, barY, barW, barH);
+    // Fill.
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.fillRect(barX, barY, barW * frac, barH);
+    hudCtx.strokeStyle = 'rgba(255, 45, 111, 0.9)';
+    hudCtx.lineWidth = 1;
+    hudCtx.strokeRect(barX, barY, barW, barH);
+  }
+
   const cxHud = window.innerWidth / 2;
   const cyHud = window.innerHeight / 2;
   hudCtx.strokeStyle = 'rgba(40, 224, 255, 0.6)';
@@ -2781,23 +3196,38 @@ function draw() {
   hudCtx.lineWidth = 1;
   hudCtx.strokeRect(12, window.innerHeight - 30, 200, 12);
 
-  // ---- ENEMY DIRECTION INDICATOR (nearest enemy pointer) ----
-  if (enemies.length > 0) {
-    // Find nearest enemy
-    let nearest = null;
-    let nearestDist = Infinity;
-    enemies.forEach(e => {
-      const d = player.position.distanceTo(e.position);
+  // ---- ENEMY DIRECTION INDICATOR (nearest target pointer) ----
+  // Tracks the nearest threat: any living enemy OR, during the boss fight, the
+  // nearest living boss section. We resolve a target POSITION (a THREE.Vector3)
+  // so the same projection/arrow code works for both.
+  let nearestPos = null;
+  let nearestDist = Infinity;
+  enemies.forEach(e => {
+    const d = player.position.distanceTo(e.position);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestPos = e.position;
+    }
+  });
+  // Consider boss sections (use each living section's world position).
+  if (boss && boss.alive) {
+    const _wp = new THREE.Vector3();
+    boss.sections.forEach(s => {
+      if (!s.alive) return;
+      s.mesh.getWorldPosition(_wp);
+      const d = player.position.distanceTo(_wp);
       if (d < nearestDist) {
         nearestDist = d;
-        nearest = e;
+        nearestPos = _wp.clone();
       }
     });
-    
-    if (nearest) {
-      // Project enemy position to screen space
+  }
+
+  if (nearestPos) {
+    {
+      // Project target position to screen space
       const enemyScreenPos = new THREE.Vector3();
-      enemyScreenPos.copy(nearest.position);
+      enemyScreenPos.copy(nearestPos);
       enemyScreenPos.project(camera);
       
       // Check if behind camera (z > 1 means behind far plane)
@@ -2855,6 +3285,47 @@ function draw() {
     }
   }
 
+  // ---- BOSS PER-SECTION HEALTH BARS (floating above each living section) ----
+  if (boss && boss.alive) {
+    const _wp = new THREE.Vector3();
+    boss.sections.forEach(s => {
+      if (!s.alive) return;
+      s.mesh.getWorldPosition(_wp);
+      const proj = _wp.clone();
+      proj.project(camera);
+      if (proj.z > 1) return;  // section is behind the camera; skip its bar
+
+      const sx = (proj.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-proj.y * 0.5 + 0.5) * window.innerHeight;
+
+      // Bar sits a fixed pixel offset above the section's projected center.
+      const barW = 70;
+      const barH = 7;
+      const barX = sx - barW / 2;
+      const barY = sy - 55;
+      const frac = Math.max(0, s.health / s.maxHealth);
+
+      // Background track.
+      hudCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      hudCtx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      // Empty portion.
+      hudCtx.fillStyle = 'rgba(120, 30, 50, 0.8)';
+      hudCtx.fillRect(barX, barY, barW, barH);
+      // Filled portion — green when healthy, amber mid, red when low.
+      let fillColor = '#00ff9c';
+      if (frac <= 0.34) fillColor = '#ff2d6f';
+      else if (frac <= 0.67) fillColor = '#ffb000';
+      hudCtx.fillStyle = fillColor;
+      hudCtx.fillRect(barX, barY, barW * frac, barH);
+
+      // Small label (CORE for center, POD for sides).
+      hudCtx.fillStyle = 'rgba(255,255,255,0.85)';
+      hudCtx.font = '11px VT323, monospace';
+      hudCtx.textAlign = 'center';
+      hudCtx.fillText(s.type === 'center' ? 'CORE' : 'POD', sx, barY - 4);
+    });
+  }
+
   // ---- RENDER FLOATING TEXT (points earned at death locations) ----
   floatingText.forEach((ft) => {
     // Project the world-space kill location to screen space. (.project() does
@@ -2895,17 +3366,29 @@ function draw() {
     hudCtx.fillStyle = `rgba(40, 224, 255, ${flashAlpha})`;
     hudCtx.fillRect(0, 0, w, h);
     
-    // Big bold "WAVE X!" text (scales and fades)
+    // Banner text scales and fades. The base size adapts to text length and is
+    // then capped to fit the screen width, so a long banner like "INTRUSION
+    // DETECTED!" shrinks to stay fully visible while short "WAVE 1!" stays big.
     const textScale = 1 + (1 - flashProgress) * 0.3;  // Grows initially then shrinks slightly
     const textAlpha = flashProgress;
     hudCtx.globalAlpha = textAlpha;
-    hudCtx.font = `bold ${Math.floor(140 * textScale)}px Orbitron, sans-serif`;
-    hudCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     hudCtx.textAlign = 'center';
     hudCtx.textBaseline = 'middle';
+
+    // Start from a length-aware base size, then shrink if it would overflow.
+    let baseSize = bannerText.length > 10 ? 80 : 140;
+    hudCtx.font = `bold ${Math.floor(baseSize * textScale)}px Orbitron, sans-serif`;
+    const maxWidth = w * 0.9;
+    let measured = hudCtx.measureText(bannerText).width;
+    if (measured > maxWidth) {
+      baseSize = baseSize * (maxWidth / measured);
+      hudCtx.font = `bold ${Math.floor(baseSize * textScale)}px Orbitron, sans-serif`;
+    }
+
+    hudCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     hudCtx.shadowColor = 'rgba(40, 224, 255, 1)';
     hudCtx.shadowBlur = 40 * flashProgress;
-    hudCtx.fillText('WAVE ' + wave + '!', w / 2, h / 2 - 80);
+    hudCtx.fillText(bannerText, w / 2, h / 2 - 80);
     
     hudCtx.globalAlpha = 1;
     hudCtx.shadowBlur = 0;
