@@ -125,27 +125,49 @@
   <div id="title" class="panel">
     <h1>RUSKO'S VOID</h1>
     <div class="sub">// DEEP SPACE COMBAT SIMULATOR</div>
-    <div class="legend" style="margin-bottom: 20px;">
-      <b>6-AXIS FIGHTER CONTROLS</b><br>
+    <div class="legend" style="margin-bottom: 14px;">
+      <b>6-AXIS FIGHTER CONTROLS</b>
     </div>
-    <div class="controls" style="font-size: 16px; color: var(--cyan); margin-bottom: 20px; line-height: 1.7;">
-      THRUST: <b>W</b> (forward) &nbsp; <b>S</b> (brake)<br>
-      ROLL: <b>A</b> (left) &nbsp; <b>D</b> (right)<br>
-      LOOK: <b>RIGHT CLICK</b> + MOUSE &nbsp; FIRE: <b>LEFT CLICK</b><br>
-      <br>
-      SPACE MINE: <b>Q</b> &nbsp; SPACE LASER: <b>E</b><br>
-      <br>
-      <i>Gamepad Controller Support under construction...</i>
+    <div class="controls" style="font-size: 15px; color: var(--cyan); margin-bottom: 18px; line-height: 1.65;">
+      <div style="display: grid; grid-template-columns: auto auto auto; gap: 4px 22px; justify-content: center; text-align: left; align-items: baseline;">
+        <div style="color: var(--neon-dim); text-align: right;">ACTION</div>
+        <div style="color: var(--amber);">KEYBOARD / MOUSE</div>
+        <div style="color: var(--alien);">XBOX PAD</div>
+
+        <div style="color: var(--neon-dim); text-align: right;">Thrust / Brake</div>
+        <div><b>W</b> / <b>S</b></div>
+        <div><b>L-Stick</b> ↑↓</div>
+
+        <div style="color: var(--neon-dim); text-align: right;">Look / Aim</div>
+        <div><b>R-Click</b> + Mouse</div>
+        <div><b>R-Stick</b></div>
+
+        <div style="color: var(--neon-dim); text-align: right;">Roll L / R</div>
+        <div><b>A</b> / <b>D</b></div>
+        <div><b>LB</b> / <b>RB</b></div>
+
+        <div style="color: var(--neon-dim); text-align: right;">Fire</div>
+        <div><b>L-Click</b></div>
+        <div><b>RT</b></div>
+
+        <div style="color: var(--neon-dim); text-align: right;">Space Laser</div>
+        <div><b>E</b></div>
+        <div><b>LT</b></div>
+
+        <div style="color: var(--neon-dim); text-align: right;">Space Mine</div>
+        <div><b>Q</b></div>
+        <div><b>X</b></div>
+      </div>
     </div>
-    <div class="legend" style="margin-bottom: 30px;">
-      Destroy all enemy fighters in 3D combat.<br>
-      Survive each wave to face progressively harder enemies.<br>
+    <div class="legend" style="margin-bottom: 24px;">
+      Destroy all enemy fighters in 3D combat, then face the wave boss.<br>
+      Each wave grows harder — and so does the boss.<br>
       <br>
-      <i style="font-size: 14px; color: var(--neon-dim);">NEW IN THIS VERSION: Created wave completion time bonus and intruder detection sensors!</i>
+      <i style="font-size: 13px; color: var(--neon-dim);">NEW: Xbox controller support &amp; end-of-wave boss fights!</i>
     </div>
     <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
       <button class="btn" id="newGameBtn" onclick="newGameWithReset()" style="flex: 1; max-width: 140px;">NEW GAME</button>
-      <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">LAUNCH ▶</button>
+      <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">LAUNCH&nbsp;<span style="font-size: 14px; color: var(--bg); background: var(--amber); border-radius: 50%; padding: 1px 7px;">Ⓐ</span></button>
       <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="flex: 1; max-width: 140px;">⚙ UPGRADE</button>
     </div>
   </div>
@@ -159,7 +181,8 @@
     </div>
     <div style="font-size: 16px; color: var(--amber); margin-bottom: 16px; letter-spacing: 2px;">▶ HIGH SCORES ▶</div>
     <div id="hsTable" style="font-size: 14px; color: var(--cyan); min-width: 200px; margin-bottom: 16px;"></div>
-    <button class="btn" id="restartBtn">RETURN TO DOCK</button>
+    <button class="btn" id="restartBtn">RETURN TO DOCK &nbsp;<span style="font-size: 15px; color: var(--bg); background: var(--amber); border-radius: 50%; padding: 1px 8px;">Ⓐ</span></button>
+    <div style="font-size: 13px; color: var(--neon-dim); margin-top: 10px;">Press <b style="color: var(--cyan);">A</b> or click to continue</div>
   </div>
 
   <div id="entry" class="panel hidden">
@@ -1051,13 +1074,59 @@ document.addEventListener('mouseup', (e) => {
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 let padIndex = null;
-// Gamepad disabled due to browser compatibility issues
-// addEventListener('gamepadconnected', (e) => { padIndex = e.gamepad.index; });
-// addEventListener('gamepaddisconnected', () => { padIndex = null; });
+// Re-enabled gamepad support. The Gamepad API is well-supported in current
+// browsers; we read the pad fresh each frame in readPad() rather than caching
+// state on the connect event.
+addEventListener('gamepadconnected', (e) => { padIndex = e.gamepad.index; });
+addEventListener('gamepaddisconnected', (e) => {
+  if (padIndex === e.gamepad.index) padIndex = null;
+});
 
+// Read the current Xbox controller state and return a normalized input object.
+// Standard-mapping indices (Xbox):
+//   axes:    0 = LS-X, 1 = LS-Y, 2 = RS-X, 3 = RS-Y
+//   buttons: 0 = A, 1 = B, 2 = X, 3 = Y, 4 = LB, 5 = RB, 6 = LT, 7 = RT
+//
+// Mapping (Option A):
+//   thrust  = left stick Y          -> my   (forward/back)
+//   aim     = right stick X/Y       -> ax/ay (yaw/pitch)
+//   roll    = LB / RB               -> roll  (-1 / +1, digital like A/D keys)
+//   fire    = RT                    -> fire
+//   laser   = LT                    -> laser
+//   mine    = X button             -> mine
 function readPad() {
-  // Gamepad disabled due to browser compatibility issues
-  return { mx: 0, my: 0, ax: 0, ay: 0, fire: false, special: false };
+  const idle = { my: 0, ax: 0, ay: 0, roll: 0, fire: false, laser: false, mine: false };
+  if (padIndex === null || !navigator.getGamepads) return idle;
+
+  const gp = navigator.getGamepads()[padIndex];
+  if (!gp) return idle;
+
+  // Deadzone helper — sticks rarely rest at exactly zero, so ignore small drift.
+  const DEAD = 0.18;
+  const dz = (v) => (Math.abs(v) < DEAD ? 0 : v);
+
+  const lsY = dz(gp.axes[1] || 0);   // left stick vertical
+  const rsX = dz(gp.axes[2] || 0);   // right stick horizontal
+  const rsY = dz(gp.axes[3] || 0);   // right stick vertical
+
+  const btn = (i) => (gp.buttons[i] ? gp.buttons[i].pressed || gp.buttons[i].value > 0.5 : false);
+
+  const lb = btn(4), rb = btn(5);
+  let roll = 0;
+  if (lb) roll += 1;   // roll left  (matches KeyA = +1)
+  if (rb) roll -= 1;   // roll right (matches KeyD = -1)
+
+  return {
+    // Thrust: push stick UP (negative Y on the pad) = forward. Negate so up = +1.
+    my:   -lsY,
+    // Aim: right stick. ax = yaw (left/right), ay = pitch (up/down).
+    ax:    rsX,
+    ay:    rsY,
+    roll:  roll,
+    fire:  btn(7),   // RT
+    laser: btn(6),   // LT
+    mine:  btn(2)    // X
+  };
 }
 
 function createPlayerShip() {
@@ -1973,6 +2042,13 @@ function update(dt) {
 
   const pad = readPad();
 
+  // The AudioContext is normally resumed on click/keydown. A controller-only
+  // player never fires those, so resume on any active gamepad input too.
+  if (pad.fire || pad.laser || pad.mine || pad.roll !== 0 ||
+      Math.abs(pad.my) > 0 || Math.abs(pad.ax) > 0 || Math.abs(pad.ay) > 0) {
+    ensureAudio();
+  }
+
   // ---- THRUST / BRAKES ----
   let thrustInput = 0;
   if (keys['KeyW']) thrustInput = 1;
@@ -1996,11 +2072,11 @@ function update(dt) {
   // ---- UPDATE ENGINE SOUNDS ----
   updateEngineSounds(player);
 
-  // ---- ROLL (A/D or left stick left/right) ----
+  // ---- ROLL (A/D keys or LB/RB bumpers) ----
   let rollInput = 0;
   if (keys['KeyA']) rollInput = 1;
   if (keys['KeyD']) rollInput = -1;
-  rollInput += pad.mx; // left stick left/right
+  rollInput += pad.roll; // LB/RB bumpers (digital, same sign convention as A/D)
   
   if (Math.abs(rollInput) > 0.05) {
     const localForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
@@ -2012,10 +2088,17 @@ function update(dt) {
   // ---- YAW / PITCH (RMB mouselook or right stick) ----
   let yawInput = mouseDX;
   let pitchInput = mouseDY;
-  
-  if (Math.hypot(pad.ax, pad.ay) > 0.1) {
-    yawInput += pad.ax * 0.03;
-    pitchInput -= pad.ay * 0.03;
+
+  // Right stick adds a steady turn rate while deflected (constant-rate feel,
+  // unlike the mouse's accumulate-and-decay). Scaled by stick deflection so a
+  // light push turns gently and a full push turns fast.
+  if (Math.hypot(pad.ax, pad.ay) > 0.001) {
+    const STICK_TURN = 0.045;  // max per-frame turn at full deflection
+    yawInput   += pad.ax * STICK_TURN;
+    // Pitch: INVERTED (flight-stick style) — right stick UP points the nose
+    // DOWN, stick DOWN points the nose UP. To switch back to non-inverted
+    // (stick up = nose up), negate this term. A user setting may expose this later.
+    pitchInput += -pad.ay * STICK_TURN;
   }
 
   if (Math.abs(yawInput) > 0.002) {
@@ -2075,8 +2158,8 @@ function update(dt) {
   // recenters on the camera's final position this frame.
   updateCelestialBodies(celestialBodies, dt);
 
-  // ---- FIRE (LMB or A button) ----
-  const firing = leftMouseDown || (pad.fire && (Math.hypot(pad.ax, pad.ay) > 0.2));
+  // ---- FIRE (LMB or Right Trigger) ----
+  const firing = leftMouseDown || pad.fire;
   player.shotCooldown -= dt * 60;  // Scaled for 60fps baseline (deltaTime-independent)
   if (firing && player.shotCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
@@ -2091,18 +2174,15 @@ function update(dt) {
     player.shotCooldown = player.fireRate;  // fireRate is in frame units; will be decremented by dt * 60
   }
 
-  // ---- SPECIAL WEAPON (Spacebar or Y button) ----
+  // ---- SPECIAL WEAPON (Spacebar) ----
   // TODO: implement special weapon
   if (keys['Space']) {
     // placeholder
   }
-  if (pad.special) {
-    // placeholder for Y button
-  }
 
-  // ---- SPACE MINE (Q key) ----
+  // ---- SPACE MINE (Q key or X button) ----
   mineCooldown -= dt;  // Decrement by seconds elapsed
-  if (keys['KeyQ'] && upgrades.spaceMine > 0 && mineCooldown <= 0) {
+  if ((keys['KeyQ'] || pad.mine) && upgrades.spaceMine > 0 && mineCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
     const mineProximity = 10 + (upgrades.mineRadius - 1) * 2; // 10u base, +2u per mineRadius upgrade
@@ -2125,9 +2205,9 @@ function update(dt) {
     mineDropSound();
   }
 
-  // ---- SPACE LASER (E key) ----
+  // ---- SPACE LASER (E key or Left Trigger) ----
   laserCooldown -= dt;  // Decrement by seconds elapsed
-  if (keys['KeyE'] && upgrades.spaceLaser > 0 && laserCooldown <= 0) {
+  if ((keys['KeyE'] || pad.laser) && upgrades.spaceLaser > 0 && laserCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const laserDuration = 0.5 + (upgrades.spaceLaser - 1) * 0.5; // 0.5s base, +0.5s per upgrade (was 30 frames)
     lasers.push({
@@ -3471,6 +3551,31 @@ let deltaTime = 0;
 // Calls update() for game logic, then draw() for rendering
 // Delta time capped at 50ms to prevent spiral deaths from frame drops
 
+// Edge-detect the A button for menu use (so a single press fires once rather
+// than repeating every frame it's held). Currently used on the game-over screen
+// to let the player continue with A instead of clicking RETURN TO DOCK.
+let menuAButtonWasDown = false;
+function pollMenuGamepad() {
+  if (padIndex === null || !navigator.getGamepads) return;
+  const gp = navigator.getGamepads()[padIndex];
+  if (!gp) return;
+
+  const aDown = gp.buttons[0] ? (gp.buttons[0].pressed || gp.buttons[0].value > 0.5) : false;
+  const aJustPressed = aDown && !menuAButtonWasDown;
+  menuAButtonWasDown = aDown;
+
+  if (aJustPressed && gameState === 'gameover') {
+    returnToTitle();
+  } else if (aJustPressed && gameState === 'title') {
+    // Only launch if the title screen itself is showing — not when the upgrade
+    // panel is open over it (the upgrade panel keeps gameState === 'title').
+    const upgradesOpen = !document.getElementById('upgrades').classList.contains('hidden');
+    if (!upgradesOpen) {
+      init();  // same as the LAUNCH button
+    }
+  }
+}
+
 function loop() {
   frameCount++;
   const now = performance.now();
@@ -3478,6 +3583,7 @@ function loop() {
   lastFrameTime = now;
   
   try {
+    pollMenuGamepad();   // menu navigation (A to continue on game-over)
     update(deltaTime);
     draw();
   } catch (err) {

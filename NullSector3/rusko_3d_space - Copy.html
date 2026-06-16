@@ -350,6 +350,12 @@ const canvas = document.getElementById('canvas');
 const hudCanvas = document.getElementById('hud');
 const hudCtx = hudCanvas.getContext('2d');
 
+// Size the HUD canvas backing buffer to the window. A canvas with no explicit
+// width/height defaults to 300x150 and gets stretched by CSS (blurry, offset
+// HUD). We set it once here and again on resize, rather than every frame.
+hudCanvas.width = window.innerWidth;
+hudCanvas.height = window.innerHeight;
+
 let audioCtx = null;
 
 // Block message ports to prevent extension interference
@@ -787,11 +793,11 @@ function cymbalSplashSound() {
   } catch (e) { }
 }
 
-function startSirenSound() {
+function startSirenSound(once) {
   if (!audioCtx || sirenSource) return;  // Only start if not already playing
   try {
     const t = audioCtx.currentTime;
-    // Create a 2-second looping siren pattern
+    // Create a 2-second siren pattern
     const bufLen = Math.floor(audioCtx.sampleRate * 2);
     const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
     const data = buf.getChannelData(0);
@@ -807,7 +813,9 @@ function startSirenSound() {
     
     sirenSource = audioCtx.createBufferSource();
     sirenSource.buffer = buf;
-    sirenSource.loop = true;
+    // `once` = play a single 2s pass then stop (used as the boss-entrance
+    // alarm). Default (no arg) loops continuously for general alarm use.
+    sirenSource.loop = !once;
     
     const gain = audioCtx.createGain();
     sirenSource.connect(gain);
@@ -815,6 +823,13 @@ function startSirenSound() {
     gain.gain.setValueAtTime(0.20, t);
     
     sirenSource.start(t);
+
+    // When a one-shot finishes, clear the handle so the siren can be triggered
+    // again later (and so stopSirenSound has nothing stale to stop).
+    if (once) {
+      sirenSource.onended = () => { sirenSource = null; };
+      sirenSource.stop(t + 2);  // ensure it ends after one 2s pass
+    }
   } catch (e) { }
 }
 
@@ -916,13 +931,30 @@ let deathTimer = 0;
 let pauseActive = false;  // Track if game is paused
 let player, enemies = [], projectiles = [], enemies_projectiles = [], floatingText = [], resources = [];
 let mines = [], lasers = [];  // New weapons
-let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0;
+let celestialBodies = null;   // Binary suns + planet backdrop group (visual landmark)
+// Core run-state. NOTE: `distanceTraveled` is currently unused — it was an
+// abandoned attempt at an idle/camping detector. Kept as a placeholder in case
+// that mechanic is revived; nothing reads or increments it right now.
+let score = 0, enemiesDestroyed = 0, distanceTraveled = 0, wave = 0, screenFlash = 0, screenShake = 0;
 let waveStartTime = 0;  // Track when wave started for timer
 let waveFlashTime = 0;  // For wave transition flash effect
+let bannerText = '';    // Text shown in the transition banner (wave # or custom)
 let presenceDetected = false;  // Flag for 5-minute warning
 let presenceWarningFlashTime = 0;  // Flash effect for warning
 let sirenSource = null;  // Siren sound source (keeps playing)
 let mineCooldown = 0, laserCooldown = 0;  // Weapon cooldowns
+let aggroCheckTimer = 0;  // Countdown to next aggression-quota check (~0.5s cadence)
+
+// ---- BOSS STATE ----
+// The boss fight is a distinct game state entered when a wave is cleared.
+// A boss now appears at the end of EVERY wave (see onWaveCleared).
+// NOTE: BOSS_AFTER_WAVE is currently unused — kept in case you want to revert
+// to a single boss after one specific wave. To do that, restore the
+// `if (wave === BOSS_AFTER_WAVE)` gate in onWaveCleared().
+const BOSS_AFTER_WAVE = 1;       // (unused) which wave a single boss would follow
+let boss = null;                 // the active boss object (null when none)
+let bossFireTimer = 0;           // countdown to the boss's next volley
+let bossPatternToggle = 0;       // alternates 0/1 between stream and spread patterns
 
 const keys = {};
 let mouseX = 0, mouseY = 0, mouseDX = 0, mouseDY = 0;
@@ -1109,6 +1141,32 @@ function createEnemy(x, y, z, type) {
   return group;
 }
 
+// ---- GPU RESOURCE DISPOSAL ----
+// scene.remove() only detaches from the scene graph; the GPU-side geometry and
+// material persist until explicitly disposed. Call this whenever removing an
+// object from the scene to prevent a slow GPU-memory leak over long sessions.
+// Handles both single meshes and Groups (player ship / enemies) by recursing.
+function disposeObject(obj) {
+  if (!obj) return;
+  obj.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach((m) => m.dispose());
+      } else {
+        child.material.dispose();
+      }
+    }
+  });
+}
+
+// Remove an object from the scene AND free its GPU resources.
+function removeAndDispose(obj) {
+  if (!obj) return;
+  scene.remove(obj);
+  disposeObject(obj);
+}
+
 function createProjectile(pos, velocity, friendly) {
   const geom = new THREE.SphereGeometry(0.3, 4, 4);
   const color = friendly ? 0x28e0ff : 0xff2d6f;
@@ -1116,9 +1174,38 @@ function createProjectile(pos, velocity, friendly) {
   proj.position.copy(pos);
   proj.velocity = velocity instanceof THREE.Vector3 ? velocity.clone() : velocity.clone().normalize().multiplyScalar(1.5);
   proj.friendly = friendly;
-  proj.life = friendly ? 16.67 : 4.17;  // enemy bullets: 4.17s (was 250 frames), player bullets: 16.67s (was 1000 frames)
+  proj.life = friendly ? 16.67 : 10;  // enemy bullets: 10s (400u reach at 40 u/sec, exceeds 350u firing range); player bullets: 16.67s (was 1000 frames)
   scene.add(proj);
   return proj;
+}
+
+// Boss projectile: a much larger, brighter, glowing bullet so the boss's fire
+// reads as a serious threat (vs. the tiny default enemy rounds). Visually big
+// via a bright core + a translucent additive glow halo; still an enemy bullet
+// for collision purposes (same player-hit check). Lives 6s.
+function createBossProjectile(pos, velocity) {
+  const group = new THREE.Group();
+
+  // Bright solid core.
+  const core = new THREE.Mesh(
+    new THREE.SphereGeometry(3.2, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xfff2a0 })  // near-white hot yellow
+  );
+  group.add(core);
+
+  // Additive glow halo around the core.
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(6.5, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  group.add(glow);
+
+  group.position.copy(pos);
+  group.velocity = velocity.clone();
+  group.friendly = false;
+  group.life = 6;  // seconds
+  scene.add(group);
+  return group;
 }
 
 function createRuskoleum(pos) {
@@ -1142,52 +1229,134 @@ function createRuskoleum(pos) {
   return crystal;
 }
 
-function triggerWaveTransition() {
+// ====================================================================
+// ENEMY-KILL HELPERS (shared by bullet, mine, and laser weapons)
+// ====================================================================
+// The three weapon types each destroy enemies, and previously each contained
+// its OWN copy of the point-award, crystal-drop, and explosion logic. These
+// helpers consolidate that shared behavior so a balance tweak (point values,
+// drop rates, explosion look) only has to be made in ONE place.
+
+// Points awarded for destroying an enemy, by type. Scouts are fastest/hardest
+// to hit, so they're worth the most; heavies are slow and worth the least.
+function enemyPoints(type) {
+  if (type === 'scout') return 500;
+  if (type === 'interceptor') return 250;
+  return 100; // heavy (and any unknown fallback)
+}
+
+// Scatter Ruskoleum crystals at a kill location. Each wave drops more: the
+// count is wave * (2 or 3), so later waves are richer in resources. Crystals
+// get a tiny random position offset so they don't all stack on one point.
+function dropRuskoleum(pos) {
+  const dropCount = wave * (2 + Math.floor(Math.random() * 2)); // wave * (2 or 3)
+  for (let i = 0; i < dropCount; i++) {
+    resources.push(createRuskoleum(pos.clone().add(
+      new THREE.Vector3(
+        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 3
+      )
+    )));
+  }
+}
+
+// Spawn a short-lived expanding wireframe explosion at a position. `size` sets
+// the starting radius and `color` the hue (orange for ballistic/mine kills,
+// yellow for laser kills). The explosion is tagged isExplosion so the main
+// update loop animates and disposes it.
+function spawnExplosion(pos, size, color) {
+  const expGeom = new THREE.IcosahedronGeometry(size, 1);
+  const expMat = new THREE.MeshBasicMaterial({
+    color: color,
+    wireframe: true,
+    transparent: true,
+    opacity: 1.0
+  });
+  const expMesh = new THREE.Mesh(expGeom, expMat);
+  expMesh.position.copy(pos);
+  expMesh.userData.life = 0.5;          // 0.5s lifespan (was 30 frames at 60fps)
+  expMesh.userData.isExplosion = true;
+  scene.add(expMesh);
+}
+
+function triggerWaveTransition(customText) {
   waveFlashTime = 1;  // Flash duration in seconds (~1 second, was 60 frames at 60fps)
+  // The banner normally announces the wave number, but callers (e.g. the boss
+  // entrance) can pass custom text like "INTRUSION DETECTED!".
+  bannerText = customText || ('WAVE ' + wave + '!');
   cymbalSplashSound();
 }
 
-function triggerPresenceDetected() {
-  if (presenceDetected) return;  // Only trigger once per wave
-  presenceDetected = true;
-  presenceWarningFlashTime = 2;  // Warning flash duration in seconds (was 120 frames)
-  startSirenSound();
-  
-  // Spawn new enemies: wave count + 1
-  const spawnCount = wave + 1;
-  for (let i = 0; i < spawnCount; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 500 + Math.random() * 400;
-    const spreadX = Math.cos(angle) * distance;
-    const spreadZ = Math.sin(angle) * distance;
-    const spreadY = (Math.random() - 0.5) * 300;
-    
-    const x = player.position.x + spreadX;
-    const y = player.position.y + spreadY;
-    const z = player.position.z + spreadZ;
-    
-    const types = ['scout', 'interceptor', 'heavy'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    const e = createEnemy(x, y, z, type);
-    
-    // Scale with wave difficulty
-    const speedMult = 1 + Math.max(0, wave - 1) * 0.12;
-    const fireRateMult = 1.4 - Math.max(0, wave - 1) * 0.10;
-    e.speed *= speedMult;
-    e.fireRate = Math.max(40, Math.floor(e.fireRate * fireRateMult));
-    e.aggressive = true;  // Mark as aggressive
-    enemies.push(e);
+// ====================================================================
+// AGGRESSION QUOTA — guarantees the player always has pursuers
+// ====================================================================
+// Design goal: no sitting still and pot-shotting from range. During each wave
+// we maintain a minimum number of AGGRESSIVE (actively hunting) enemies equal
+// to the wave number. Aggressive enemies engage from any distance with a
+// tighter, faster orbit (see the enemy AI in update()).
+//
+// How it works (checked every ~0.5s, see update()):
+//   1. Count living aggressive enemies.
+//   2. If that count is below the quota (= wave number), promote the NEAREST
+//      passive enemies to aggressive until the quota is met or no passives
+//      remain.
+//
+// Promotion is PERMANENT for that enemy's life — once a hunter, always a hunter
+// until killed (one hit, like any enemy). The quota only ever tops up, never
+// demotes, so pressure RATCHETS upward over a wave: every time you kill a
+// hunter a replacement is drafted, and earlier promotions stay aggressive on
+// top of the baseline. When few enough enemies remain that the living count is
+// at or below the wave number, the entire remaining wave is aggressive.
+// enforceAggressionQuota(promoteOne):
+//   promoteOne = false -> fill the entire shortfall at once (used at wave start
+//                         so the player immediately faces `wave` hunters).
+//   promoteOne = true  -> promote AT MOST ONE nearest passive (used by the slow
+//                         periodic top-up between checks).
+// Returns true if it actually promoted someone, false otherwise.
+function enforceAggressionQuota(promoteOne) {
+  if (!enemies || enemies.length === 0) return false;
+
+  const quota = wave;  // wave 1 -> 1 hunter, wave 5 -> 5 hunters, etc.
+
+  // Count current hunters.
+  let aggressiveCount = 0;
+  for (const e of enemies) {
+    if (e.aggressive) aggressiveCount++;
   }
-  
-  // Set all current enemies to aggressive
-  enemies.forEach(e => { e.aggressive = true; });
+
+  let needed = quota - aggressiveCount;
+  if (needed <= 0) return false;  // quota already satisfied
+
+  // Gather the passive enemies and sort them by distance to the player, so we
+  // promote the closest ones first (they apply pressure soonest).
+  const passives = enemies.filter(e => !e.aggressive);
+  if (passives.length === 0) return false;  // everyone's already a hunter
+
+  passives.sort((a, b) =>
+    a.position.distanceTo(player.position) -
+    b.position.distanceTo(player.position)
+  );
+
+  // Periodic checks promote one at a time; the wave-start fill promotes the
+  // whole shortfall.
+  const toPromote = promoteOne ? 1 : Math.min(needed, passives.length);
+  for (let i = 0; i < toPromote; i++) {
+    passives[i].aggressive = true;
+  }
+  return true;
+}
+
+// How long (seconds) between periodic hunter top-ups, scaled by wave:
+//   wave 1 = 10s, wave 2 = 9s, ... wave 10 = 1s, floored at 1s thereafter.
+function aggroPromotionInterval() {
+  return Math.max(1, 11 - wave);
 }
 
 // ====================================================================
 // WAVES & ENEMY MANAGEMENT
 // ====================================================================
-// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus (full at 1min, zero at 3min), trigger presence detection at 3min
-// triggerPresenceDetected(): Activate intruder alarm; spawn new enemies, force all to aggressive mode
+// spawnEnemyWave(): Spawn 10 enemies, calculate time bonus (full at 1min, zero at 3min)
 // createEnemy(): Instantiate enemy ship with type-specific stats (scout/interceptor/heavy)
 // rescaleEnemiesForWave(): Re-apply wave difficulty multipliers to all current enemies (cheat code use)
 
@@ -1229,10 +1398,11 @@ function spawnEnemyWave() {
   }
   
   wave++;
-  waveStartTime = Date.now();  // Reset timer for new wave
-  presenceDetected = false;  // Reset presence detection for new wave
+  waveStartTime = Date.now();  // Reset timer for new wave (still used by the time-bonus scoring)
+  presenceDetected = false;  // (dormant) legacy presence flags, kept for possible boss-fight reuse
   presenceWarningFlashTime = 0;
-  stopSirenSound();  // Stop siren when new wave starts
+  stopSirenSound();  // (dormant) ensure no leftover siren
+  aggroCheckTimer = aggroPromotionInterval();  // first periodic top-up is one full interval away
   triggerWaveTransition();  // Flash and sound effect
   
   // Progressive difficulty: wave 1 is easy, each wave gets progressively harder
@@ -1261,6 +1431,302 @@ function spawnEnemyWave() {
     e.aggressive = false;  // Start non-aggressive
     enemies.push(e);
   }
+
+  // Fill the opening quota immediately so the player faces `wave` hunters from
+  // the very first moment (no peaceful grace period). Subsequent replacements
+  // come slowly via the wave-scaled periodic top-up in update().
+  enforceAggressionQuota(false);
+}
+
+// ====================================================================
+// BOSS FIGHT
+// ====================================================================
+// A large three-section boss: a big central sphere with two smaller spheres
+// attached out to either side, all rigidly linked in one group. Each section
+// has its own hitpoints (start at 1) and explodes when destroyed. When all
+// three sections are dead, a large final explosion plays and the boss is gone.
+//
+// The boss spawns ~1000u from the player (clamped to stay inside the playfield
+// boundary), drifts slowly, and alternates two firing patterns from its center:
+// a straight 5-round stream, then a 5-round fan spread.
+//
+// Structure of the `boss` object:
+//   .group      THREE.Group holding the three section meshes (this is what moves)
+//   .sections[] array of { mesh, health, alive, offset, type } — offset is the
+//               section's fixed local position relative to the group center
+//   .alive      true until all sections are destroyed
+
+function createBoss() {
+  const group = new THREE.Group();
+
+  // ---- Pick a spawn point ~1000u from the player, clamped to the boundary ----
+  const BOUNDARY = 2300;
+  const SPAWN_DIST = 1000;
+  // Random direction on a sphere around the player.
+  let dir = new THREE.Vector3(
+    Math.random() - 0.5,
+    (Math.random() - 0.5) * 0.6,  // less vertical spread so it spawns roughly ahead
+    Math.random() - 0.5
+  );
+  if (dir.lengthSq() < 0.001) dir.set(0, 0, -1);  // guard against a zero vector
+  dir.normalize();
+
+  let spawnPos = player.position.clone().addScaledVector(dir, SPAWN_DIST);
+  // Clamp inside the playfield so the boss never spawns out beyond the void edge.
+  spawnPos.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, spawnPos.x));
+  spawnPos.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, spawnPos.y));
+  spawnPos.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, spawnPos.z));
+  group.position.copy(spawnPos);
+
+  // ---- Build the three sections ----
+  // Center: large solid sphere. Sides: smaller solid spheres offset left/right.
+  // Each section is a solid colored sphere with a brighter wireframe shell over
+  // it for sci-fi definition (so it reads as a built craft, not a plain ball).
+  const sections = [];
+
+  function addSection(type, radius, offset, color, hp) {
+    // Solid body.
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 24, 24),
+      new THREE.MeshBasicMaterial({ color: color })
+    );
+    mesh.position.copy(offset);
+    group.add(mesh);
+
+    // Brighter wireframe shell over the solid for panel-line definition.
+    const wire = new THREE.Mesh(
+      new THREE.SphereGeometry(radius * 1.04, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.25 })
+    );
+    mesh.add(wire);
+
+    sections.push({
+      mesh: mesh,
+      radius: radius,
+      health: hp,
+      maxHealth: hp,      // stored for the on-screen health bar fill ratio
+      alive: true,
+      offset: offset.clone(),
+      type: type
+    });
+  }
+
+  // Section HP scales with wave: wave 1 keeps the tuned 3/5/3, and each later
+  // wave adds +1 per pod and +2 to the core, so the boss gets progressively
+  // tankier as you climb. (`wave` here is the wave just cleared.)
+  const podHp  = 3 + Math.max(0, wave - 1) * 1;
+  const coreHp = 5 + Math.max(0, wave - 1) * 2;
+  addSection('left',   34, new THREE.Vector3(-120, 0, 0), 0xff2d6f, podHp);  // left pod
+  addSection('center', 70, new THREE.Vector3(   0, 0, 0), 0xb06bff, coreHp); // central core
+  addSection('right',  34, new THREE.Vector3( 120, 0, 0), 0xff2d6f, podHp);  // right pod
+
+  // ---- Connecting struts ----
+  // Two cylinders link the center core to each side pod so the boss reads as a
+  // single rigid craft. They're decorative (no collision) and part of the group
+  // so they move and turn with the body.
+  function addStrut(xFrom, xTo) {
+    const length = Math.abs(xTo - xFrom);
+    const strut = new THREE.Mesh(
+      new THREE.CylinderGeometry(10, 10, length, 12),
+      new THREE.MeshBasicMaterial({ color: 0x888899 })
+    );
+    // Cylinders are built along Y; rotate to lie along X and center it between
+    // the two attach points.
+    strut.rotation.z = Math.PI / 2;
+    strut.position.set((xFrom + xTo) / 2, 0, 0);
+    group.add(strut);
+  }
+  addStrut(-120, 0);  // left pod to center
+  addStrut(0, 120);   // center to right pod
+
+  scene.add(group);
+
+  return {
+    group: group,
+    sections: sections,
+    alive: true,
+    // Orbit-attack state (mirrors the small-enemy orbit pattern, but larger/slower).
+    orbitAngle: Math.random() * Math.PI * 2,
+    orbitRadius: 320,                 // circles the player at this range (close enough to threaten)
+    orbitSpeed: 0.18,                 // radians/sec around the player (slow)
+    verticalPhase: Math.random() * Math.PI * 2,
+    lastPos: spawnPos.clone()         // previous position, used to face heading
+  };
+}
+
+// Begin the boss fight: create the boss, switch the wave HUD to a boss banner,
+// and (re)start the dormant siren as the boss alarm.
+function startBossFight() {
+  boss = createBoss();
+  bossFireTimer = 1.5;        // brief delay before the first volley
+  bossPatternToggle = 0;
+  triggerWaveTransition('INTRUSION DETECTED!');  // dramatic boss-entrance banner
+  startSirenSound(true);      // single siren pass as the boss-entrance alarm
+}
+
+// Fire one of the boss's two patterns from the center section toward the player.
+function bossFire() {
+  if (!boss || !boss.alive) return;
+  // Find the center section's world position to fire from. Fall back to the
+  // group center if the center section is already destroyed.
+  let origin = new THREE.Vector3();
+  const center = boss.sections.find(s => s.type === 'center' && s.alive);
+  if (center) {
+    center.mesh.getWorldPosition(origin);
+  } else {
+    boss.group.getWorldPosition(origin);
+  }
+
+  const toPlayer = player.position.clone().sub(origin).normalize();
+  const bulletSpeed = 160;  // fast — short travel time so shots actually threaten
+
+  if (bossPatternToggle === 0) {
+    // PATTERN A: a tight 3-round straight stream, staggered slightly in space
+    // along the aim line so they arrive as a quick "burst train" dead at the
+    // player's current position.
+    for (let i = 0; i < 3; i++) {
+      const startPos = origin.clone().addScaledVector(toPlayer, i * 14);
+      const vel = toPlayer.clone().multiplyScalar(bulletSpeed);
+      enemies_projectiles.push(createBossProjectile(startPos, vel));
+    }
+  } else {
+    // PATTERN B: a 3-round fan spread across a small arc around the aim line.
+    const up = Math.abs(toPlayer.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const right = new THREE.Vector3().crossVectors(toPlayer, up).normalize();
+    for (let i = 0; i < 3; i++) {
+      const t = (i - 1) * 0.14;  // angular offset: -0.14, 0, +0.14 rad
+      const dir = toPlayer.clone().addScaledVector(right, t).normalize();
+      const vel = dir.multiplyScalar(bulletSpeed);
+      enemies_projectiles.push(createBossProjectile(origin.clone(), vel));
+    }
+  }
+
+  enemyFireSound();
+  bossPatternToggle = bossPatternToggle === 0 ? 1 : 0;  // alternate next time
+}
+
+// Per-frame boss update: orbit the player like the small enemies do (but on a
+// larger, slower scale), face the direction it's actually moving, and run the
+// firing timer.
+function updateBoss(dt) {
+  if (!boss || !boss.alive) return;
+
+  // ---- Movement: orbit the player (same idea as the small-enemy attack) ----
+  // Advance the orbit angle and a slower vertical bob, then compute a target
+  // point on a circle around the player and ease toward it. This makes the boss
+  // circle and weave rather than just sit at a fixed standoff.
+  boss.orbitAngle += boss.orbitSpeed * dt;
+  boss.verticalPhase += boss.orbitSpeed * 0.5 * dt;
+
+  const targetX = Math.cos(boss.orbitAngle) * boss.orbitRadius;
+  const targetZ = Math.sin(boss.orbitAngle) * boss.orbitRadius;
+  const targetY = Math.sin(boss.verticalPhase) * 120;  // gentle vertical weave
+  const targetPos = player.position.clone().add(new THREE.Vector3(targetX, targetY, targetZ));
+
+  // Ease the boss toward the orbital target (slow, heavy feel).
+  const toTarget = targetPos.clone().sub(boss.group.position);
+  const MOVE_SPEED = 90;  // units/sec cap toward the orbit point
+  const step = Math.min(MOVE_SPEED * dt, toTarget.length());
+  if (toTarget.length() > 0.001) {
+    toTarget.normalize();
+    boss.group.position.addScaledVector(toTarget, step);
+  }
+
+  // Keep the boss inside the playfield boundary.
+  const BOUNDARY = 2300;
+  boss.group.position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.x));
+  boss.group.position.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.y));
+  boss.group.position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.z));
+
+  // ---- Facing: orient the whole craft along its actual movement heading ----
+  // Use the frame's displacement (current minus last position) as the forward
+  // direction so the boss "noses" the way it's traveling instead of spinning.
+  const heading = boss.group.position.clone().sub(boss.lastPos);
+  if (heading.lengthSq() > 0.0001) {
+    const lookTarget = boss.group.position.clone().add(heading);
+    boss.group.lookAt(lookTarget);
+  }
+  boss.lastPos.copy(boss.group.position);
+
+  // ---- Firing ----
+  bossFireTimer -= dt;
+  if (bossFireTimer <= 0) {
+    bossFire();
+    bossFireTimer = 1.8;  // seconds between volleys
+  }
+}
+
+// Handle the destruction of a single boss section (called from the bullet
+// collision loop when a section's health hits zero).
+function destroyBossSection(section) {
+  if (!section.alive) return;
+  section.alive = false;
+
+  // Explosion at the section's world position, sized to the section.
+  const wp = new THREE.Vector3();
+  section.mesh.getWorldPosition(wp);
+  spawnExplosion(wp, section.radius * 0.8, 0xff6600);
+  enemyDeathExplosion();
+
+  // Hide the section mesh (kept in the group so offsets stay valid; just made
+  // invisible and non-collidable via its alive flag).
+  section.mesh.visible = false;
+
+  // Award points for the section.
+  score += 1000;
+
+  // If every section is dead, finish the boss.
+  if (boss.sections.every(s => !s.alive)) {
+    finishBoss();
+  }
+}
+
+// Final boss death: a large multi-explosion, big score, cleanup, then resume
+// normal wave progression.
+function finishBoss() {
+  if (!boss) return;
+  boss.alive = false;
+
+  // A cluster of large explosions across the boss body for a dramatic finish.
+  const center = new THREE.Vector3();
+  boss.group.getWorldPosition(center);
+  for (let i = 0; i < 6; i++) {
+    const off = new THREE.Vector3(
+      (Math.random() - 0.5) * 200,
+      (Math.random() - 0.5) * 120,
+      (Math.random() - 0.5) * 200
+    );
+    spawnExplosion(center.clone().add(off), 30 + Math.random() * 25, 0xffaa00);
+  }
+  enemyDeathExplosion();
+
+  // Score + a Ruskoleum payout that starts small and scales with wave, so the
+  // wave-1 boss drops only a handful and later bosses get progressively richer.
+  score += 10000;
+  const bossDrop = 5 + Math.max(0, wave - 1) * 4;  // wave 1: 5, wave 2: 9, wave 3: 13...
+  for (let i = 0; i < bossDrop; i++) {
+    resources.push(createRuskoleum(center.clone().add(
+      new THREE.Vector3((Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80)
+    )));
+  }
+
+  // Remove the boss group from the scene and dispose it.
+  removeAndDispose(boss.group);
+  boss = null;
+
+  stopSirenSound();  // boss alarm off
+
+  // Resume normal play: spawn the next wave so the game continues.
+  spawnEnemyWave();
+}
+
+// Called whenever the field is cleared of wave enemies. A boss now appears at
+// the end of EVERY wave: clear the wave -> fight the boss -> on boss death,
+// finishBoss() spawns the next wave, and the cycle repeats. (The old single-
+// shot BOSS_AFTER_WAVE constant is no longer used as a gate.)
+function onWaveCleared() {
+  if (boss) return;       // a boss fight is already in progress — do nothing
+  startBossFight();       // every wave ends in a boss fight
 }
 
 function createStarfield(count) {
@@ -1279,6 +1745,137 @@ function createStarfield(count) {
 }
 
 // ====================================================================
+// CELESTIAL BACKDROP — Binary Suns + Banded Planet (skybox parallax)
+// ====================================================================
+// These are purely visual landmarks that give the player a sense of heading in
+// the otherwise featureless void. They are NOT reachable: every frame the whole
+// group is recentered on the camera (see updateCelestialBodies), so the bodies
+// shift as you TURN (useful as a compass) but never get closer as you THRUST.
+//
+// They're placed at a large fixed radius and have depthWrite disabled so all
+// gameplay objects (ships, bullets, crystals) always render in front of them.
+//
+// Returns a Group with extra fields used by the per-frame updater:
+//   .sunA, .sunB        the two glowing suns
+//   .binaryPivot        an inner group the two suns orbit around (the barycenter)
+//   .planet             the banded planet
+
+// Build a striped/banded texture on an offscreen canvas so the planet has
+// visible surface bands without needing an uploaded image file (keeps the game
+// a single portable HTML file).
+function makePlanetTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+
+  // Base fill
+  ctx.fillStyle = '#3a2d6b';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Horizontal bands of varying height and hue — gives a gas-giant look.
+  const bandColors = ['#5a4a9c', '#43357d', '#6b5ab0', '#352a63', '#7d6ac4', '#4a3d8a'];
+  let y = 0;
+  let ci = 0;
+  while (y < 256) {
+    const h = 8 + Math.floor(Math.random() * 22);
+    ctx.fillStyle = bandColors[ci % bandColors.length];
+    ctx.fillRect(0, y, 256, h);
+    y += h;
+    ci++;
+  }
+
+  // A faint lighter "storm" oval for a bit of character.
+  ctx.fillStyle = 'rgba(180, 150, 230, 0.45)';
+  ctx.beginPath();
+  ctx.ellipse(170, 150, 34, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(c);
+  return tex;
+}
+
+function createCelestialBodies() {
+  const group = new THREE.Group();
+
+  // ---- BINARY SUNS ----
+  // Both suns orbit a shared pivot (their barycenter). The pivot is parked at a
+  // fixed offset; we rotate the pivot each frame so the two suns circle it.
+  const DIST = 9000;  // how far the bodies sit from the player (large = reads as distant)
+
+  const binaryPivot = new THREE.Group();
+  binaryPivot.position.set(-DIST * 0.55, DIST * 0.25, -DIST * 0.78); // a fixed heading
+  group.add(binaryPivot);
+
+  // Sun A — larger, amber-orange
+  const sunA = new THREE.Mesh(
+    new THREE.SphereGeometry(620, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffae3c, depthWrite: false })
+  );
+  sunA.position.set(900, 0, 0);  // offset from the barycenter
+  binaryPivot.add(sunA);
+
+  // Sun A glow halo (slightly larger, transparent, additive)
+  const sunAGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(820, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  sunA.add(sunAGlow);
+
+  // Sun B — smaller, deeper red-orange
+  const sunB = new THREE.Mesh(
+    new THREE.SphereGeometry(380, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff5e2c, depthWrite: false })
+  );
+  sunB.position.set(-900, 0, 0);  // opposite side of the barycenter
+  binaryPivot.add(sunB);
+
+  const sunBGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(540, 24, 24),
+    new THREE.MeshBasicMaterial({ color: 0xd83a1a, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  sunB.add(sunBGlow);
+
+  // ---- BANDED PLANET ---- (different heading than the suns)
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(1500, 48, 48),
+    new THREE.MeshBasicMaterial({ map: makePlanetTexture(), depthWrite: false })
+  );
+  planet.position.set(DIST * 0.7, -DIST * 0.18, DIST * 0.62);
+  planet.rotation.z = 0.3;  // slight axial tilt
+  group.add(planet);
+
+  // A faint atmospheric rim shell around the planet.
+  const planetAtmo = new THREE.Mesh(
+    new THREE.SphereGeometry(1580, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0x9d8ad0, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending })
+  );
+  planet.add(planetAtmo);
+
+  // Stash references for the per-frame updater.
+  group.userData.isCelestial = true;
+  group.userData.binaryPivot = binaryPivot;
+  group.userData.sunA = sunA;
+  group.userData.sunB = sunB;
+  group.userData.planet = planet;
+
+  return group;
+}
+
+// Per-frame celestial update: recenter the whole group on the camera (so the
+// bodies never get closer — the parallax/skybox trick), slowly rotate the
+// binary suns around their barycenter, and gently spin the planet.
+function updateCelestialBodies(group, dt) {
+  if (!group) return;
+  // Recenter on the camera position so thrusting never closes the distance.
+  group.position.copy(camera.position);
+  // Orbit the binary pair (slow).
+  group.userData.binaryPivot.rotation.y += dt * 0.05;
+  // Spin the planet on its tilted axis (slow).
+  group.userData.planet.rotation.y += dt * 0.02;
+}
+
+// ====================================================================
 // GAME INITIALIZATION & CORE LOOP
 // ====================================================================
 // init(): Set up new game, reset state, spawn first wave
@@ -1292,7 +1889,10 @@ function init() {
   document.getElementById('entry').classList.add('hidden');
   document.getElementById('rearview').style.display = 'block';
 
-  while (scene.children.length > 0) scene.remove(scene.children[0]);
+  while (scene.children.length > 0) {
+    const child = scene.children[0];
+    removeAndDispose(child);
+  }
 
   score = 0;
   enemiesDestroyed = 0;
@@ -1304,6 +1904,11 @@ function init() {
   presenceDetected = false;
   presenceWarningFlashTime = 0;
   stopSirenSound();  // Stop siren if running from previous game
+
+  // Reset boss state (the scene-clear above already disposed any boss group).
+  boss = null;
+  bossFireTimer = 0;
+  bossPatternToggle = 0;
   
   player = createPlayerShip();
   
@@ -1312,6 +1917,10 @@ function init() {
 
   const starfield = createStarfield(3000);
   scene.add(starfield);
+
+  // Distant binary suns + banded planet as a navigation backdrop.
+  celestialBodies = createCelestialBodies();
+  scene.add(celestialBodies);
 
   spawnEnemyWave();
 
@@ -1438,11 +2047,33 @@ function update(dt) {
   camera.quaternion.copy(player.quaternion);
   camera.position.addScaledVector(camera.getWorldDirection(new THREE.Vector3()), -0.5);
 
+  // ---- CAMERA SHAKE ON DAMAGE ----
+  // screenShake is set to a magnitude when the player is hit, then decays here.
+  // Offset is applied along the camera's LOCAL right/up axes so the rattle reads
+  // as cockpit jitter rather than the world tilting, regardless of ship heading.
+  if (screenShake > 0) {
+    const localRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const localUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const shakeX = (Math.random() - 0.5) * 2 * screenShake;
+    const shakeY = (Math.random() - 0.5) * 2 * screenShake;
+    camera.position.addScaledVector(localRight, shakeX);
+    camera.position.addScaledVector(localUp, shakeY);
+    // Decay toward zero over ~0.25s, frame-rate independent, so the shake
+    // visibly settles rather than vanishing in a single frame.
+    screenShake -= dt * 2.4;  // 0.6 magnitude -> ~0.25s to reach zero
+    if (screenShake < 0) screenShake = 0;
+  }
+
   // Position rearview camera behind player (180 degrees rotated)
   rearCamera.position.copy(player.position);
   rearCamera.quaternion.copy(player.quaternion);
   rearCamera.rotateY(Math.PI); // Look backward
   rearCamera.position.addScaledVector(rearCamera.getWorldDirection(new THREE.Vector3()), -0.5);
+
+  // Keep the celestial backdrop centered on the camera (parallax/skybox effect)
+  // and animate the binary suns + planet. Done after camera positioning so it
+  // recenters on the camera's final position this frame.
+  updateCelestialBodies(celestialBodies, dt);
 
   // ---- FIRE (LMB or A button) ----
   const firing = leftMouseDown || (pad.fire && (Math.hypot(pad.ax, pad.ay) > 0.2));
@@ -1475,11 +2106,19 @@ function update(dt) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
     const mineProximity = 10 + (upgrades.mineRadius - 1) * 2; // 10u base, +2u per mineRadius upgrade
+    // Build the mine's visual now (in update, where mine state lives) rather than
+    // lazily in draw(). Keeps rendering read-only over game state.
+    const mineGeom = new THREE.OctahedronGeometry(5, 0);
+    const mineMat = new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true });
+    const mineMesh = new THREE.Mesh(mineGeom, mineMat);
+    mineMesh.position.copy(minePos);
+    scene.add(mineMesh);
     mines.push({
       position: minePos.clone(),
       proximity: mineProximity,
       alive: true,
-      life: 10  // 10 seconds (was 600 frames at 60fps)
+      life: 10,  // 10 seconds (was 600 frames at 60fps)
+      mesh: mineMesh
     });
     mineCooldown = 3 * (1 - (upgrades.spaceMine - 1) * 0.1); // 3 second base, reduce by 10% per spaceMine upgrade
     mineCooldown = Math.max(1.5, mineCooldown);  // min 1.5s
@@ -1661,14 +2300,10 @@ function update(dt) {
       // Play enemy fire sound
       enemyFireSound();
       
-      // Shorter cooldown between bursts: base fireRate is the main delay, random adds variability
-      e.fireT = e.fireRate / 60 + Math.random() * (20 / 60);  // Convert frames to seconds, add random 0-0.33s
-    }
-
-    // Track distance traveled using velocity length (more efficient than Math.hypot)
-    const playerSpeed = player.velocity.length();
-    if (playerSpeed > 0.01) {
-      distanceTraveled += playerSpeed;
+      // Reset this enemy's fire timer: base cadence (fireRate, converted from
+      // legacy frame units to seconds) plus a small random jitter (0–0.33s) so
+      // multiple enemies don't fire in perfect unison.
+      e.fireT = e.fireRate / 60 + Math.random() * (20 / 60);
     }
   });
 
@@ -1685,69 +2320,65 @@ function update(dt) {
         hit = true;
         hitSound();
         if (e.health <= 0) {
-          // ---- CALCULATE POINTS BY ENEMY TYPE ----
-          let pointsEarned = 100;
-          if (e.type === 'scout') pointsEarned = 500;
-          else if (e.type === 'interceptor') pointsEarned = 250;
-          else if (e.type === 'heavy') pointsEarned = 100;
+          // Award points, then remove the enemy from scene and array.
+          const pointsEarned = enemyPoints(e.type);
 
-          // ---- CREATE EXPLOSION GEOMETRY ----
+          // Explosion size scales with enemy bulk (heavy biggest, scout smallest).
           const expSize = e.type === 'heavy' ? 15 : e.type === 'interceptor' ? 12 : 8;
-          const expGeom = new THREE.IcosahedronGeometry(expSize, 1);
-          const expMat = new THREE.MeshBasicMaterial({ 
-            color: 0xff6600, 
-            wireframe: true,
-            transparent: true,
-            opacity: 1.0
-          });
-          const expMesh = new THREE.Mesh(expGeom, expMat);
-          expMesh.position.copy(e.position);
-          expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
-          expMesh.userData.isExplosion = true;
-          scene.add(expMesh);
+          spawnExplosion(e.position, expSize, 0xff6600);
 
-          // ---- REMOVE ENEMY ----
-          scene.remove(e);
+          removeAndDispose(e);
           enemies.splice(eIdx, 1);
-          
-          // ---- SPAWN RUSKOLEUM ----
-          const dropCount = wave * (2 + Math.floor(Math.random() * 2)); // wave * (2 or 3) crystals
-          for (let i = 0; i < dropCount; i++) {
-            resources.push(createRuskoleum(e.position.clone().add(
-              new THREE.Vector3(
-                (Math.random() - 0.5) * 3,
-                (Math.random() - 0.5) * 3,
-                (Math.random() - 0.5) * 3
-              )
-            )));
-          }
-          
+
+          dropRuskoleum(e.position);
+
           score += pointsEarned;
           enemiesDestroyed++;
+          enemyDeathExplosion();  // audio
 
-          // ---- PLAY EXPLOSION SOUND ----
-          enemyDeathExplosion();
-
-          // ---- ADD FLOATING TEXT ----
+          // Floating "+points" text that drifts up from the kill location.
           floatingText.push({
             x: e.position.x,
             y: e.position.y,
             z: e.position.z,
             text: '+' + pointsEarned,
-            life: 1.33,  // ~1.33 seconds (was 80 frames at 60fps)
+            life: 1.33,  // ~1.33s lifespan (was 80 frames at 60fps)
             color: 0xffb000
           });
 
-          // ---- SPAWN NEW ENEMIES IF ALL DESTROYED ----
+          // If that was the last enemy, advance (boss fight or next wave).
           if (enemies.length === 0) {
-            spawnEnemyWave();
+            onWaveCleared();
           }
         }
       }
     });
 
+    // ---- PLAYER BULLET vs BOSS SECTIONS ----
+    // Check each living boss section. A hit costs the bullet and damages the
+    // section; at zero health the section explodes (and the boss dies once all
+    // sections are gone). Uses the section's world position since sections live
+    // inside the moving boss group.
+    if (!hit && boss && boss.alive) {
+      const _wp = new THREE.Vector3();
+      for (const section of boss.sections) {
+        if (!section.alive) continue;
+        section.mesh.getWorldPosition(_wp);
+        const d = p.position.distanceTo(_wp);
+        if (d < section.radius + bulletRadius) {
+          section.health--;
+          hit = true;
+          hitSound();
+          if (section.health <= 0) {
+            destroyBossSection(section);
+          }
+          break;  // one bullet hits one section
+        }
+      }
+    }
+
     if (hit) {
-      scene.remove(p);
+      removeAndDispose(p);
     }
 
     return p.life > 0 && !hit;
@@ -1770,36 +2401,20 @@ function update(dt) {
       const e = enemies[eIdx];
       const dToMine = mine.position.distanceTo(e.position);
       if (dToMine < mine.proximity) {
-        // EXPLOSION
-        const expGeom = new THREE.IcosahedronGeometry(20, 1);
-        const expMat = new THREE.MeshBasicMaterial({ color: 0xff6600, wireframe: true, transparent: true, opacity: 1.0 });
-        const expMesh = new THREE.Mesh(expGeom, expMat);
-        expMesh.position.copy(mine.position);
-        expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
-        expMesh.userData.isExplosion = true;
-        scene.add(expMesh);
-        
-        // Destroy enemy
-        scene.remove(e);
+        // Detonation: explosion centered on the mine, destroy the enemy, award
+        // points and crystals via the shared helpers, then consume the mine.
+        spawnExplosion(mine.position, 20, 0xff6600);
+
+        removeAndDispose(e);
         enemies.splice(eIdx, 1);
-        let pointsEarned = 100;
-        if (e.type === 'scout') pointsEarned = 500;
-        else if (e.type === 'interceptor') pointsEarned = 250;
-        else if (e.type === 'heavy') pointsEarned = 100;
-        score += pointsEarned;
+
+        score += enemyPoints(e.type);
         enemiesDestroyed++;
-        enemyDeathExplosion();
-        
-        // Drop Ruskoleum
-        const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
-        for (let i = 0; i < dropCount; i++) {
-          resources.push(createRuskoleum(e.position.clone().add(
-            new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
-          )));
-        }
-        
-        // Remove mine
-        mine.alive = false;
+        enemyDeathExplosion();  // audio
+
+        dropRuskoleum(e.position);
+
+        mine.alive = false;  // a mine detonates only once
         break;
       }
     }
@@ -1807,30 +2422,38 @@ function update(dt) {
   // Cleanup destroyed mines
   mines.forEach(m => {
     if (!m.alive && m.mesh) {
-      scene.remove(m.mesh);
+      removeAndDispose(m.mesh);
     }
   });
   mines = mines.filter(m => m.alive);
 
   // ---- CHECK FOR WAVE SPAWN (after all collision) ----
-  if (enemies.length === 0 && gameState === 'play') {
-    spawnEnemyWave();
+  // Skip while a boss is active: the field is "empty" of wave enemies during
+  // the boss fight, but we must not spawn a new wave until the boss is dead.
+  if (enemies.length === 0 && gameState === 'play' && !boss) {
+    onWaveCleared();
   }
 
   // ---- UPDATE WAVE FLASH EFFECT ----
   if (waveFlashTime > 0) waveFlashTime -= dt;  // Decrement by actual time (deltaTime-independent)
 
-  // ---- CHECK FOR 3-MINUTE PRESENCE DETECTION ----
-  if (gameState === 'play' && waveStartTime > 0 && !presenceDetected) {
-    const elapsedMs = Date.now() - waveStartTime;
-    const threeMinutesMs = 3 * 60 * 1000;  // 3 minutes in milliseconds
-    if (elapsedMs > threeMinutesMs) {
-      triggerPresenceDetected();
+  // ---- AGGRESSION QUOTA TOP-UP (wave-scaled interval) ----
+  // The opening quota is filled instantly at wave start (see spawnEnemyWave).
+  // After that, hunters are replaced SLOWLY: one promotion per check, with the
+  // interval shrinking as waves climb (wave 1 = 10s between top-ups, down to a
+  // 1s floor). So killing your pursuer on wave 1 buys a real ~10s breather.
+  if (gameState === 'play') {
+    aggroCheckTimer -= dt;
+    if (aggroCheckTimer <= 0) {
+      enforceAggressionQuota(true);  // promote at most one nearest passive
+      aggroCheckTimer = aggroPromotionInterval();
     }
   }
 
-  // ---- UPDATE PRESENCE WARNING FLASH ----
-  if (presenceWarningFlashTime > 0) presenceWarningFlashTime -= dt;  // Decrement by actual time (deltaTime-independent)
+  // ---- BOSS UPDATE (movement + firing) ----
+  if (boss && gameState === 'play') {
+    updateBoss(dt);
+  }
 
   // ---- LASER COLLISION & UPDATES ----
   for (let lIdx = lasers.length - 1; lIdx >= 0; lIdx--) {
@@ -1852,32 +2475,18 @@ function update(dt) {
       if (projDist > 0 && projDist < (500 + (upgrades.laserRange || 0) * 200)) { // only forward along laser, range from upgrades
         const perpDist = toEnemy.clone().sub(laser.direction.clone().multiplyScalar(projDist)).length();
         if (perpDist < laser.width) {
-          // Destroy enemy
-          const expGeom = new THREE.IcosahedronGeometry(12, 1);
-          const expMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 1.0 });
-          const expMesh = new THREE.Mesh(expGeom, expMat);
-          expMesh.position.copy(e.position);
-          expMesh.userData.life = 0.5;  // 0.5 seconds (was 30 frames at 60fps)
-          expMesh.userData.isExplosion = true;
-          scene.add(expMesh);
-          
-          scene.remove(e);
+          // Enemy is within the beam: destroy it. Laser kills use a yellow
+          // explosion to visually distinguish them from ballistic/mine kills.
+          spawnExplosion(e.position, 12, 0xffff00);
+
+          removeAndDispose(e);
           enemies.splice(eIdx, 1);
-          let pointsEarned = 100;
-          if (e.type === 'scout') pointsEarned = 500;
-          else if (e.type === 'interceptor') pointsEarned = 250;
-          else if (e.type === 'heavy') pointsEarned = 100;
-          score += pointsEarned;
+
+          score += enemyPoints(e.type);
           enemiesDestroyed++;
-          enemyDeathExplosion();
-          
-          // Drop Ruskoleum
-          const dropCount = wave * (2 + Math.floor(Math.random() * 2));  // wave * (2 or 3) crystals
-          for (let i = 0; i < dropCount; i++) {
-            resources.push(createRuskoleum(e.position.clone().add(
-              new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3)
-            )));
-          }
+          enemyDeathExplosion();  // audio
+
+          dropRuskoleum(e.position);
         }
       }
     }
@@ -1886,18 +2495,22 @@ function update(dt) {
   lasers = lasers.filter(l => l.life > 0);
 
   // ---- UPDATE EXPLOSIONS ----
+  // Collect expired explosions during the pass, then remove/dispose them AFTER,
+  // so we never splice scene.children while forEach is iterating it.
+  const expiredExplosions = [];
   scene.children.forEach((mesh) => {
     if (mesh.userData.isExplosion) {
-      mesh.userData.life -= deltaTime;  // Decrement by actual time (deltaTime-independent)
+      mesh.userData.life -= dt;  // Decrement by actual time (use update's dt param for consistency)
       mesh.rotation.x += 0.1;
       mesh.rotation.y += 0.12;
       mesh.scale.addScaledVector(new THREE.Vector3(1, 1, 1), 0.08);
       mesh.material.opacity = mesh.userData.life / 0.5;  // was mesh.userData.life / 30, now scale for seconds
       if (mesh.userData.life <= 0) {
-        scene.remove(mesh);
+        expiredExplosions.push(mesh);
       }
     }
   });
+  expiredExplosions.forEach((mesh) => removeAndDispose(mesh));
 
   // ---- UPDATE FLOATING TEXT ----
   floatingText = floatingText.filter((ft) => {
@@ -1916,9 +2529,9 @@ function update(dt) {
       player.health -= 10;
       playerDamageSound();
       screenFlash = 0.33;  // ~0.33 seconds (was 20 frames at 60fps)
-      screenShake = 12;
+      screenShake = 0.6;  // jitter magnitude in world units; decays in update()
       rumble(300, 0.6, 0.9);
-      scene.remove(p);
+      removeAndDispose(p);
       if (player.health <= 0) {
         gameState = 'dying';
         deathTimer = 0;
@@ -1936,54 +2549,70 @@ function update(dt) {
     }
 
     if (p.life <= 0) {
-      scene.remove(p);
+      removeAndDispose(p);
       return false;
     }
 
     return true;
   });
   
-  // ---- UPDATE RESOURCES (RUSKOLEUM) ----
-  const pickupRadius = 10 + (upgrades.pickupRadius || 0) * 19; // base 10u, +19u per upgrade (max 200u at level 10)
-  const magneticThreshold = pickupRadius;  // Start magnetic pull at full pickup range
-  const collectionThreshold = 5;  // Only collect when gem reaches very close to ship
-  const magneticSpeed = 80;  // units/second speed toward player when magnetized
-  
+  // ====================================================================
+  // UPDATE RESOURCES (RUSKOLEUM CRYSTALS)
+  // ====================================================================
+  // Each crystal drifts with leftover spawn momentum, spins for visual flair,
+  // and is magnetically pulled toward the ship once within pickup range. We
+  // tally crystals collected this frame and write to localStorage ONCE at the
+  // end, instead of saving on every individual pickup — a single wave-10 kill
+  // can drop ~30 crystals that get vacuumed up in a fraction of a second, and
+  // 30 synchronous localStorage writes in quick succession can cause a stutter.
+  const pickupRadius = 10 + (upgrades.pickupRadius || 0) * 19; // base 10u, +19u per upgrade level (max 200u at lvl 10)
+  const magneticThreshold = pickupRadius;  // Distance at which the magnetic pull kicks in (= full pickup range)
+  const collectionThreshold = 5;           // Distance at which a crystal is actually collected (very close to ship)
+  const magneticSpeed = 80;                // Pull speed (units/second) once a crystal is being magnetized
+  let ruskoleumCollectedThisFrame = 0;     // Batch counter — flushed to storage after the loop
+
   resources = resources.filter((r) => {
-    // Apply velocity (spin momentum)
+    // Drift with spawn momentum, then bleed it off with gentle drag.
     r.position.addScaledVector(r.userData.velocity, dt);
-    r.userData.velocity.multiplyScalar(0.98); // gentle drag
-    
-    // Spin the crystal
-    const axis = r.userData.spinAxis;
-    r.rotateOnWorldAxis(axis, r.userData.spin);
-    
-    // Check distance to player for pickup and magnetic attraction
+    r.userData.velocity.multiplyScalar(0.98);
+
+    // Spin the crystal in place for a bit of visual life.
+    r.rotateOnWorldAxis(r.userData.spinAxis, r.userData.spin);
+
+    // Distance to the player — computed ONCE and reused below (was previously
+    // calculated twice, once for pickup and again for the age-out check).
     const d = r.position.distanceTo(player.position);
-    
-    // Magnetic attraction: gems within pickup range are pulled toward player
+
+    // MAGNETIC ATTRACTION: crystals inside pickup range (but not yet collected)
+    // are drawn steadily toward the ship.
     if (d < magneticThreshold && d > collectionThreshold) {
       const direction = new THREE.Vector3().subVectors(player.position, r.position).normalize();
       r.position.addScaledVector(direction, magneticSpeed * dt);
     }
-    
-    // Collection: only collect when gem is very close to ship
+
+    // COLLECTION: once a crystal reaches the ship, tally it and remove it.
     if (d < collectionThreshold) {
-      addRuskoleum(1);
+      ruskoleumCollectedThisFrame++;
       ruskoleumPickupSound();
-      scene.remove(r);
-      return false; // remove from array
-    }
-    
-    // Age out if too far from player (prevent infinite drifting)
-    const distance = r.position.distanceTo(player.position);
-    if (distance > 1500) {
-      scene.remove(r);
+      removeAndDispose(r);
       return false;
     }
-    
+
+    // AGE-OUT: discard crystals that have drifted absurdly far away, so they
+    // don't linger forever and waste memory. Reuses the same distance `d`.
+    if (d > 1500) {
+      removeAndDispose(r);
+      return false;
+    }
+
     return true;
   });
+
+  // Flush the frame's collected crystals to the running total in a single
+  // localStorage write (see batching note above).
+  if (ruskoleumCollectedThisFrame > 0) {
+    addRuskoleum(ruskoleumCollectedThisFrame);
+  }
   
   // Check if gameOver was queued during this update
   if (gameOverQueued) {
@@ -2045,14 +2674,7 @@ function resetGameOnly() {
   } catch (e) {}
   
   // Reset upgrades to defaults
-  upgrades = {
-    ruskoleum: 0,
-    bulletSpeed: 0,
-    pickupRadius: 0,
-    collisionRadius: 0,
-    shipSpeed: 0,
-    maxVelocity: 0
-  };
+  upgrades = { ...DEFAULT_UPGRADES };
   saveUpgrades();
   
   // Update UI
@@ -2087,6 +2709,11 @@ function resetHighScoresOnly() {
   alert('All high scores have been reset to defaults.');
 }
 
+function refreshTitleTop() {
+  // Title screen has no dynamic readout to refresh; safe no-op.
+  // Defined to prevent ReferenceError from reset/new-game handlers.
+}
+
 function newGameWithReset() {
   // Step 1: Ask if player wants to reset upgrades
   const resetUpgrades = window.confirm(
@@ -2111,16 +2738,7 @@ function newGameWithReset() {
     localStorage.removeItem(UPGRADE_KEY);
   } catch (e) {}
   
-  upgrades = {
-    ruskoleum: 0,
-    bulletSpeed: 0,
-    pickupRadius: 0,
-    collisionRadius: 0,
-    shipSpeed: 0,
-    maxVelocity: 0,
-    spaceMine: 0,
-    spaceLaser: 0
-  };
+  upgrades = { ...DEFAULT_UPGRADES };
   saveUpgrades();
   
   // Reset high scores if opted
@@ -2138,7 +2756,7 @@ function newGameWithReset() {
   // Update UI and start game
   updateUpgradeUI();
   refreshTitleTop();
-  startGame();
+  init();
 }
 
 function resetGame() {
@@ -2156,14 +2774,7 @@ function resetGame() {
   } catch (e) {}
   
   // Reset upgrades to defaults
-  upgrades = {
-    ruskoleum: 0,
-    bulletSpeed: 0,
-    pickupRadius: 0,
-    collisionRadius: 0,
-    shipSpeed: 0,
-    maxVelocity: 0
-  };
+  upgrades = { ...DEFAULT_UPGRADES };
   saveUpgrades();
   
   // Reset high scores to defaults (AAA 000000)
@@ -2430,24 +3041,23 @@ function draw() {
   }
   
   // ---- RENDER MINES ----
+  // Meshes are created at drop time in update(); here we only animate them.
   mines.forEach(mine => {
-    // Create visual for mine if it doesn't have one
-    if (!mine.mesh) {
-      const geom = new THREE.OctahedronGeometry(5, 0);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xff2d6f, wireframe: true });
-      mine.mesh = new THREE.Mesh(geom, mat);
-      mine.mesh.position.copy(mine.position);
-      scene.add(mine.mesh);
+    if (mine.mesh) {
+      mine.mesh.rotation.x += 0.05;
+      mine.mesh.rotation.y += 0.08;
     }
-    mine.mesh.rotation.x += 0.05;
-    mine.mesh.rotation.y += 0.08;
   });
   
   // ---- RENDER LASERS ----
   renderer.render(scene, camera);
 
-  hudCanvas.width = window.innerWidth;
-  hudCanvas.height = window.innerHeight;
+  // Clear the HUD for this frame. We clear rather than reassign width/height:
+  // assigning to canvas.width/height reallocates and wipes the entire backing
+  // buffer every frame (expensive and pointless when the size hasn't changed).
+  // The canvas is sized once at startup and on window resize (see the resize
+  // handler), so here we only need to wipe last frame's pixels.
+  hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
   if (!player) {
     return;
@@ -2463,7 +3073,14 @@ function draw() {
   hudCtx.fillText('HEALTH ' + Math.max(0, Math.floor(player.health)) + '/' + player.maxHealth, 12, 55);
   hudCtx.fillStyle = 'rgba(0, 255, 156, 0.8)';
   hudCtx.fillText('WAVE ' + wave, 12, 80);
-  hudCtx.fillText('ENEMIES LEFT ' + enemies.length, 12, 105);
+  // During a boss fight show living section count instead of a (zero) enemy count.
+  if (boss && boss.alive) {
+    const livingSections = boss.sections.filter(s => s.alive).length;
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.fillText('BOSS SECTIONS ' + livingSections + '/3', 12, 105);
+  } else {
+    hudCtx.fillText('ENEMIES LEFT ' + enemies.length, 12, 105);
+  }
   hudCtx.fillStyle = '#00ff88';
   hudCtx.fillText('RUSKOLEUM ' + upgrades.ruskoleum, 12, 130);
   hudCtx.fillStyle = '#28e0ff';
@@ -2499,10 +3116,13 @@ function draw() {
   }
 
   // ---- HIGH SCORE display (centered at top) ----
+  // highScores is always kept sorted descending by normalize(), so the top
+  // score is simply element [0] — no need to scan the whole list every frame.
   hudCtx.fillStyle = 'rgba(255, 176, 0, 0.9)';
   hudCtx.font = 'bold 24px VT323, monospace';
   hudCtx.textAlign = 'center';
-  hudCtx.fillText('HIGH SCORE = ' + String(Math.max(...highScores.map(s => s.sc))).padStart(6, '0'), window.innerWidth / 2, 40);
+  const topScore = (highScores.length > 0) ? highScores[0].sc : 0;
+  hudCtx.fillText('HIGH SCORE = ' + String(topScore).padStart(6, '0'), window.innerWidth / 2, 40);
 
   // ---- WAVE TIMER display (permanent) ----
   if (gameState === 'play' && waveStartTime > 0) {
@@ -2516,6 +3136,35 @@ function draw() {
     hudCtx.font = 'bold 18px VT323, monospace';
     hudCtx.textAlign = 'center';
     hudCtx.fillText('WAVE ' + wave + ' : ' + timerStr, window.innerWidth / 2, 65);
+  }
+
+  // ---- OVERALL BOSS HEALTH BAR (top center, during boss fight) ----
+  if (boss && boss.alive) {
+    let cur = 0, max = 0;
+    boss.sections.forEach(s => { cur += Math.max(0, s.health); max += s.maxHealth; });
+    const frac = max > 0 ? cur / max : 0;
+
+    const barW = Math.min(420, window.innerWidth * 0.5);
+    const barH = 16;
+    const barX = window.innerWidth / 2 - barW / 2;
+    const barY = 84;
+
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.font = 'bold 16px Orbitron, sans-serif';
+    hudCtx.textAlign = 'center';
+    hudCtx.fillText('◤ BOSS ◢', window.innerWidth / 2, barY - 6);
+
+    // Track + border.
+    hudCtx.fillStyle = 'rgba(0,0,0,0.6)';
+    hudCtx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
+    hudCtx.fillStyle = 'rgba(120, 30, 50, 0.85)';
+    hudCtx.fillRect(barX, barY, barW, barH);
+    // Fill.
+    hudCtx.fillStyle = '#ff2d6f';
+    hudCtx.fillRect(barX, barY, barW * frac, barH);
+    hudCtx.strokeStyle = 'rgba(255, 45, 111, 0.9)';
+    hudCtx.lineWidth = 1;
+    hudCtx.strokeRect(barX, barY, barW, barH);
   }
 
   const cxHud = window.innerWidth / 2;
@@ -2547,23 +3196,38 @@ function draw() {
   hudCtx.lineWidth = 1;
   hudCtx.strokeRect(12, window.innerHeight - 30, 200, 12);
 
-  // ---- ENEMY DIRECTION INDICATOR (nearest enemy pointer) ----
-  if (enemies.length > 0) {
-    // Find nearest enemy
-    let nearest = null;
-    let nearestDist = Infinity;
-    enemies.forEach(e => {
-      const d = player.position.distanceTo(e.position);
+  // ---- ENEMY DIRECTION INDICATOR (nearest target pointer) ----
+  // Tracks the nearest threat: any living enemy OR, during the boss fight, the
+  // nearest living boss section. We resolve a target POSITION (a THREE.Vector3)
+  // so the same projection/arrow code works for both.
+  let nearestPos = null;
+  let nearestDist = Infinity;
+  enemies.forEach(e => {
+    const d = player.position.distanceTo(e.position);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestPos = e.position;
+    }
+  });
+  // Consider boss sections (use each living section's world position).
+  if (boss && boss.alive) {
+    const _wp = new THREE.Vector3();
+    boss.sections.forEach(s => {
+      if (!s.alive) return;
+      s.mesh.getWorldPosition(_wp);
+      const d = player.position.distanceTo(_wp);
       if (d < nearestDist) {
         nearestDist = d;
-        nearest = e;
+        nearestPos = _wp.clone();
       }
     });
-    
-    if (nearest) {
-      // Project enemy position to screen space
+  }
+
+  if (nearestPos) {
+    {
+      // Project target position to screen space
       const enemyScreenPos = new THREE.Vector3();
-      enemyScreenPos.copy(nearest.position);
+      enemyScreenPos.copy(nearestPos);
       enemyScreenPos.project(camera);
       
       // Check if behind camera (z > 1 means behind far plane)
@@ -2621,15 +3285,53 @@ function draw() {
     }
   }
 
+  // ---- BOSS PER-SECTION HEALTH BARS (floating above each living section) ----
+  if (boss && boss.alive) {
+    const _wp = new THREE.Vector3();
+    boss.sections.forEach(s => {
+      if (!s.alive) return;
+      s.mesh.getWorldPosition(_wp);
+      const proj = _wp.clone();
+      proj.project(camera);
+      if (proj.z > 1) return;  // section is behind the camera; skip its bar
+
+      const sx = (proj.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-proj.y * 0.5 + 0.5) * window.innerHeight;
+
+      // Bar sits a fixed pixel offset above the section's projected center.
+      const barW = 70;
+      const barH = 7;
+      const barX = sx - barW / 2;
+      const barY = sy - 55;
+      const frac = Math.max(0, s.health / s.maxHealth);
+
+      // Background track.
+      hudCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      hudCtx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      // Empty portion.
+      hudCtx.fillStyle = 'rgba(120, 30, 50, 0.8)';
+      hudCtx.fillRect(barX, barY, barW, barH);
+      // Filled portion — green when healthy, amber mid, red when low.
+      let fillColor = '#00ff9c';
+      if (frac <= 0.34) fillColor = '#ff2d6f';
+      else if (frac <= 0.67) fillColor = '#ffb000';
+      hudCtx.fillStyle = fillColor;
+      hudCtx.fillRect(barX, barY, barW * frac, barH);
+
+      // Small label (CORE for center, POD for sides).
+      hudCtx.fillStyle = 'rgba(255,255,255,0.85)';
+      hudCtx.font = '11px VT323, monospace';
+      hudCtx.textAlign = 'center';
+      hudCtx.fillText(s.type === 'center' ? 'CORE' : 'POD', sx, barY - 4);
+    });
+  }
+
   // ---- RENDER FLOATING TEXT (points earned at death locations) ----
   floatingText.forEach((ft) => {
+    // Project the world-space kill location to screen space. (.project() does
+    // the full view+projection transform internally — no manual matrix math
+    // needed.)
     const worldPos = new THREE.Vector3(ft.x, ft.y, ft.z);
-    const screenPos = new THREE.Vector2();
-    const projectionMatrix = camera.projectionMatrix;
-    const viewMatrix = camera.matrixWorldInverse;
-    const modelViewMatrix = new THREE.Matrix4();
-    modelViewMatrix.multiplyMatrices(viewMatrix, new THREE.Matrix4().setPosition(worldPos));
-    
     worldPos.project(camera);
     const screenX = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
     const screenY = (-worldPos.y * 0.5 + 0.5) * window.innerHeight;
@@ -2664,17 +3366,29 @@ function draw() {
     hudCtx.fillStyle = `rgba(40, 224, 255, ${flashAlpha})`;
     hudCtx.fillRect(0, 0, w, h);
     
-    // Big bold "WAVE X!" text (scales and fades)
+    // Banner text scales and fades. The base size adapts to text length and is
+    // then capped to fit the screen width, so a long banner like "INTRUSION
+    // DETECTED!" shrinks to stay fully visible while short "WAVE 1!" stays big.
     const textScale = 1 + (1 - flashProgress) * 0.3;  // Grows initially then shrinks slightly
     const textAlpha = flashProgress;
     hudCtx.globalAlpha = textAlpha;
-    hudCtx.font = `bold ${Math.floor(140 * textScale)}px Orbitron, sans-serif`;
-    hudCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     hudCtx.textAlign = 'center';
     hudCtx.textBaseline = 'middle';
+
+    // Start from a length-aware base size, then shrink if it would overflow.
+    let baseSize = bannerText.length > 10 ? 80 : 140;
+    hudCtx.font = `bold ${Math.floor(baseSize * textScale)}px Orbitron, sans-serif`;
+    const maxWidth = w * 0.9;
+    let measured = hudCtx.measureText(bannerText).width;
+    if (measured > maxWidth) {
+      baseSize = baseSize * (maxWidth / measured);
+      hudCtx.font = `bold ${Math.floor(baseSize * textScale)}px Orbitron, sans-serif`;
+    }
+
+    hudCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
     hudCtx.shadowColor = 'rgba(40, 224, 255, 1)';
     hudCtx.shadowBlur = 40 * flashProgress;
-    hudCtx.fillText('WAVE ' + wave + '!', w / 2, h / 2 - 80);
+    hudCtx.fillText(bannerText, w / 2, h / 2 - 80);
     
     hudCtx.globalAlpha = 1;
     hudCtx.shadowBlur = 0;
@@ -2789,6 +3503,10 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  // Keep the HUD canvas backing buffer in sync with the window so HUD text
+  // stays crisp and correctly positioned after a resize.
+  hudCanvas.width = w;
+  hudCanvas.height = h;
 });
 </script>
 </body>
