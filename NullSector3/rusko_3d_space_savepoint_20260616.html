@@ -1142,7 +1142,7 @@ function createProjectile(pos, velocity, friendly) {
   proj.position.copy(pos);
   proj.velocity = velocity instanceof THREE.Vector3 ? velocity.clone() : velocity.clone().normalize().multiplyScalar(1.5);
   proj.friendly = friendly;
-  proj.life = friendly ? 16.67 : 10;  // enemy bullets: 10s (400u reach at 40 u/sec, exceeds 350u firing range); player bullets: 16.67s (was 1000 frames)
+  proj.life = friendly ? 16.67 : 4.17;  // enemy bullets: 4.17s (was 250 frames), player bullets: 16.67s (was 1000 frames)
   scene.add(proj);
   return proj;
 }
