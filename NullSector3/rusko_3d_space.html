@@ -350,6 +350,12 @@ const canvas = document.getElementById('canvas');
 const hudCanvas = document.getElementById('hud');
 const hudCtx = hudCanvas.getContext('2d');
 
+// Size the HUD canvas backing buffer to the window. A canvas with no explicit
+// width/height defaults to 300x150 and gets stretched by CSS (blurry, offset
+// HUD). We set it once here and again on resize, rather than every frame.
+hudCanvas.width = window.innerWidth;
+hudCanvas.height = window.innerHeight;
+
 let audioCtx = null;
 
 // Block message ports to prevent extension interference
@@ -2667,8 +2673,12 @@ function draw() {
   // ---- RENDER LASERS ----
   renderer.render(scene, camera);
 
-  hudCanvas.width = window.innerWidth;
-  hudCanvas.height = window.innerHeight;
+  // Clear the HUD for this frame. We clear rather than reassign width/height:
+  // assigning to canvas.width/height reallocates and wipes the entire backing
+  // buffer every frame (expensive and pointless when the size hasn't changed).
+  // The canvas is sized once at startup and on window resize (see the resize
+  // handler), so here we only need to wipe last frame's pixels.
+  hudCtx.clearRect(0, 0, hudCanvas.width, hudCanvas.height);
 
   if (!player) {
     return;
@@ -2847,13 +2857,10 @@ function draw() {
 
   // ---- RENDER FLOATING TEXT (points earned at death locations) ----
   floatingText.forEach((ft) => {
+    // Project the world-space kill location to screen space. (.project() does
+    // the full view+projection transform internally — no manual matrix math
+    // needed.)
     const worldPos = new THREE.Vector3(ft.x, ft.y, ft.z);
-    const screenPos = new THREE.Vector2();
-    const projectionMatrix = camera.projectionMatrix;
-    const viewMatrix = camera.matrixWorldInverse;
-    const modelViewMatrix = new THREE.Matrix4();
-    modelViewMatrix.multiplyMatrices(viewMatrix, new THREE.Matrix4().setPosition(worldPos));
-    
     worldPos.project(camera);
     const screenX = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
     const screenY = (-worldPos.y * 0.5 + 0.5) * window.innerHeight;
@@ -3013,6 +3020,10 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  // Keep the HUD canvas backing buffer in sync with the window so HUD text
+  // stays crisp and correctly positioned after a resize.
+  hudCanvas.width = w;
+  hudCanvas.height = h;
 });
 </script>
 </body>
