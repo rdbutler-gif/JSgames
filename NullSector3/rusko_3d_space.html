@@ -165,6 +165,11 @@
       <br>
       <i style="font-size: 13px; color: var(--neon-dim);">NEW: Xbox controller support &amp; end-of-wave boss fights!</i>
     </div>
+    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 18px; font-size: 15px; color: var(--cyan); letter-spacing: 1px;">
+      <span>Invert Y-Axis:</span>
+      <button class="btn" id="invertYBtn" onclick="toggleInvertY()" style="font-size: 16px; padding: 4px 18px; margin: 0; min-width: 64px;">ON</button>
+      <span style="font-size: 12px; color: var(--neon-dim);">(controller aim)</span>
+    </div>
     <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
       <button class="btn" id="newGameBtn" onclick="newGameWithReset()" style="flex: 1; max-width: 140px;">NEW GAME</button>
       <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">LAUNCH&nbsp;<span style="font-size: 14px; color: var(--bg); background: var(--amber); border-radius: 50%; padding: 1px 7px;">Ⓐ</span></button>
@@ -934,8 +939,10 @@ function updateEngineSounds(player) {
 // silently does nothing rather than throwing. The returned promise's rejection
 // is swallowed too, so a denied/interrupted effect can't surface as an error.
 function rumble(duration, weak, strong) {
-  if (padIndex === null || !navigator.getGamepads) return;
-  const gp = navigator.getGamepads()[padIndex];
+  if (padIndex === null) return;
+  const pads = safeGetGamepads();
+  if (!pads) return;
+  const gp = pads[padIndex];
   if (!gp || !gp.vibrationActuator) return;
   try {
     const effect = gp.vibrationActuator.playEffect('dual-rumble', {
@@ -1094,6 +1101,32 @@ document.addEventListener('mouseup', (e) => {
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 let padIndex = null;
+
+// ---- INVERT Y-AXIS SETTING (right stick pitch) ----
+// Persisted so the choice survives between sessions. Defaults to inverted
+// (true) since that's the preferred flight-stick feel for this game.
+const INVERT_Y_KEY = 'rusko_void_invertY_v1';
+let invertY = true;
+try {
+  const saved = localStorage.getItem(INVERT_Y_KEY);
+  if (saved !== null) invertY = (saved === 'true');
+} catch (e) {}
+
+function setInvertY(val) {
+  invertY = !!val;
+  try { localStorage.setItem(INVERT_Y_KEY, invertY ? 'true' : 'false'); } catch (e) {}
+  updateInvertYButton();
+}
+
+function toggleInvertY() {
+  setInvertY(!invertY);
+}
+
+// Reflect the current invertY state on the title-screen toggle button.
+function updateInvertYButton() {
+  const btn = document.getElementById('invertYBtn');
+  if (btn) btn.textContent = invertY ? 'ON' : 'OFF';
+}
 // Re-enabled gamepad support. The Gamepad API is well-supported in current
 // browsers; we read the pad fresh each frame in readPad() rather than caching
 // state on the connect event.
@@ -1101,6 +1134,37 @@ addEventListener('gamepadconnected', (e) => { padIndex = e.gamepad.index; });
 addEventListener('gamepaddisconnected', (e) => {
   if (padIndex === e.gamepad.index) padIndex = null;
 });
+
+// Some embedding contexts (e.g. sandboxed preview iframes) block the Gamepad
+// API via permissions policy, so navigator.getGamepads() throws a SecurityError
+// instead of returning a list. We call it every frame, so without guarding that
+// would throw every frame. This wrapper catches the failure once and latches
+// gamepad support off for the session; afterward all pad polling no-ops cleanly.
+// (On a normally-hosted page — like GitHub Pages — this never trips.)
+let gamepadBlocked = false;
+function safeGetGamepads() {
+  if (gamepadBlocked || !navigator.getGamepads) return null;
+  try {
+    return navigator.getGamepads();
+  } catch (e) {
+    gamepadBlocked = true;  // access denied — stop trying for this session
+    return null;
+  }
+}
+
+// The 'gamepadconnected' event only fires once the page sees gamepad activity,
+// so a controller that was already plugged in before page load won't be picked
+// up until then. This actively scans for a connected pad each time it's called
+// and adopts the first one found, so input works as soon as the user touches
+// the stick or a button — including on the very first title screen.
+function ensurePadIndex() {
+  if (padIndex !== null) return;
+  const pads = safeGetGamepads();
+  if (!pads) return;
+  for (let i = 0; i < pads.length; i++) {
+    if (pads[i]) { padIndex = i; break; }
+  }
+}
 
 // Read the current Xbox controller state and return a normalized input object.
 // Standard-mapping indices (Xbox):
@@ -1116,9 +1180,12 @@ addEventListener('gamepaddisconnected', (e) => {
 //   mine    = X button             -> mine
 function readPad() {
   const idle = { my: 0, ax: 0, ay: 0, roll: 0, fire: false, laser: false, mine: false };
-  if (padIndex === null || !navigator.getGamepads) return idle;
+  ensurePadIndex();  // adopt an already-connected pad if the event hasn't fired
+  if (padIndex === null) return idle;
 
-  const gp = navigator.getGamepads()[padIndex];
+  const pads = safeGetGamepads();
+  if (!pads) return idle;
+  const gp = pads[padIndex];
   if (!gp) return idle;
 
   // Deadzone helper — sticks rarely rest at exactly zero, so ignore small drift.
@@ -2115,10 +2182,11 @@ function update(dt) {
   if (Math.hypot(pad.ax, pad.ay) > 0.001) {
     const STICK_TURN = 0.045;  // max per-frame turn at full deflection
     yawInput   += pad.ax * STICK_TURN;
-    // Pitch: INVERTED (flight-stick style) — right stick UP points the nose
-    // DOWN, stick DOWN points the nose UP. To switch back to non-inverted
-    // (stick up = nose up), negate this term. A user setting may expose this later.
-    pitchInput += -pad.ay * STICK_TURN;
+    // Pitch direction is controlled by the invertY setting (toggled on the title
+    // screen). invertY = true  -> stick UP points the nose DOWN (flight-stick).
+    //                  = false -> stick UP points the nose UP (non-inverted).
+    const pitchSign = invertY ? -1 : 1;
+    pitchInput += pitchSign * pad.ay * STICK_TURN;
   }
 
   if (Math.abs(yawInput) > 0.002) {
@@ -3576,8 +3644,11 @@ let deltaTime = 0;
 // to let the player continue with A instead of clicking RETURN TO DOCK.
 let menuAButtonWasDown = false;
 function pollMenuGamepad() {
-  if (padIndex === null || !navigator.getGamepads) return;
-  const gp = navigator.getGamepads()[padIndex];
+  ensurePadIndex();  // adopt an already-connected pad if the event hasn't fired
+  if (padIndex === null) return;
+  const pads = safeGetGamepads();
+  if (!pads) return;
+  const gp = pads[padIndex];
   if (!gp) return;
 
   const aDown = gp.buttons[0] ? (gp.buttons[0].pressed || gp.buttons[0].value > 0.5) : false;
@@ -3622,6 +3693,16 @@ function loop() {
 
 document.getElementById('startBtn').onclick = init;
 document.getElementById('restartBtn').onclick = returnToTitle;
+updateInvertYButton();  // reflect the saved invert-Y setting on the title button
+
+// Start the render/poll loop immediately at page load (not only when a game
+// begins) so the title screen can listen for the controller — e.g. A-to-LAUNCH.
+// update() and draw() early-return when not in 'play'/'dying', so running the
+// loop on the title screen is cheap and safe.
+if (!loopRunning) {
+  loopRunning = true;
+  loop();
+}
 
 window.addEventListener('resize', () => {
   const w = window.innerWidth;
