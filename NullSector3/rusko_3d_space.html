@@ -926,9 +926,29 @@ function updateEngineSounds(player) {
   } catch (e) { }
 }
 
+// Trigger controller vibration via the Gamepad Vibration API.
+//   duration : milliseconds the effect lasts
+//   weak     : 0..1 intensity of the weak (high-frequency) motor
+//   strong   : 0..1 intensity of the strong (low-frequency) motor
+// Wrapped in guards so missing API support (or a pad that lacks an actuator)
+// silently does nothing rather than throwing. The returned promise's rejection
+// is swallowed too, so a denied/interrupted effect can't surface as an error.
 function rumble(duration, weak, strong) {
-  // Rumble disabled - can cause freezing
-  return;
+  if (padIndex === null || !navigator.getGamepads) return;
+  const gp = navigator.getGamepads()[padIndex];
+  if (!gp || !gp.vibrationActuator) return;
+  try {
+    const effect = gp.vibrationActuator.playEffect('dual-rumble', {
+      startDelay: 0,
+      duration: duration,
+      weakMagnitude: weak,
+      strongMagnitude: strong
+    });
+    // playEffect returns a promise on most browsers; ignore any rejection.
+    if (effect && typeof effect.then === 'function') {
+      effect.catch(() => {});
+    }
+  } catch (e) { /* no actuator / unsupported — ignore */ }
 }
 
 document.addEventListener('click', ensureAudio, { once: false });
