@@ -1704,6 +1704,7 @@ function createBoss() {
     group: group,
     sections: sections,
     struts: struts,                   // decorative connectors, tagged by side
+    freePods: [],                     // side pods that have detached after the core died
     alive: true,
     // Orbit-attack state (mirrors the small-enemy orbit pattern, but larger/slower).
     orbitAngle: Math.random() * Math.PI * 2,
@@ -1771,49 +1772,112 @@ function bossFire() {
 function updateBoss(dt) {
   if (!boss || !boss.alive) return;
 
-  // ---- Movement: orbit the player (same idea as the small-enemy attack) ----
-  // Advance the orbit angle and a slower vertical bob, then compute a target
-  // point on a circle around the player and ease toward it. This makes the boss
-  // circle and weave rather than just sit at a fixed standoff.
-  boss.orbitAngle += boss.orbitSpeed * dt;
-  boss.verticalPhase += boss.orbitSpeed * 0.5 * dt;
+  const centerSection = boss.sections.find(s => s.type === 'center');
+  const centerAlive = centerSection && centerSection.alive;
 
-  const targetX = Math.cos(boss.orbitAngle) * boss.orbitRadius;
-  const targetZ = Math.sin(boss.orbitAngle) * boss.orbitRadius;
-  const targetY = Math.sin(boss.verticalPhase) * 120;  // gentle vertical weave
-  const targetPos = player.position.clone().add(new THREE.Vector3(targetX, targetY, targetZ));
+  // ---- BOSS BODY MOVEMENT (only while the center core is alive) ----
+  // Once the core is destroyed the body is just hidden husks; we stop driving
+  // the group and let the detached free pods take over (handled below).
+  if (centerAlive) {
+    // ---- Movement: orbit the player (same idea as the small-enemy attack) ----
+    boss.orbitAngle += boss.orbitSpeed * dt;
+    boss.verticalPhase += boss.orbitSpeed * 0.5 * dt;
 
-  // Ease the boss toward the orbital target (slow, heavy feel).
-  const toTarget = targetPos.clone().sub(boss.group.position);
-  const MOVE_SPEED = 90;  // units/sec cap toward the orbit point
-  const step = Math.min(MOVE_SPEED * dt, toTarget.length());
-  if (toTarget.length() > 0.001) {
-    toTarget.normalize();
-    boss.group.position.addScaledVector(toTarget, step);
+    const targetX = Math.cos(boss.orbitAngle) * boss.orbitRadius;
+    const targetZ = Math.sin(boss.orbitAngle) * boss.orbitRadius;
+    const targetY = Math.sin(boss.verticalPhase) * 120;  // gentle vertical weave
+    const targetPos = player.position.clone().add(new THREE.Vector3(targetX, targetY, targetZ));
+
+    // Ease the boss toward the orbital target (slow, heavy feel).
+    const toTarget = targetPos.clone().sub(boss.group.position);
+    const MOVE_SPEED = 90;  // units/sec cap toward the orbit point
+    const step = Math.min(MOVE_SPEED * dt, toTarget.length());
+    if (toTarget.length() > 0.001) {
+      toTarget.normalize();
+      boss.group.position.addScaledVector(toTarget, step);
+    }
+
+    // Keep the boss inside the playfield boundary.
+    const BOUNDARY = 2300;
+    boss.group.position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.x));
+    boss.group.position.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.y));
+    boss.group.position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.z));
+
+    // ---- Facing: orient the whole craft along its actual movement heading ----
+    const heading = boss.group.position.clone().sub(boss.lastPos);
+    if (heading.lengthSq() > 0.0001) {
+      const lookTarget = boss.group.position.clone().add(heading);
+      boss.group.lookAt(lookTarget);
+    }
+    boss.lastPos.copy(boss.group.position);
+
+    // ---- Firing (from the core) ----
+    bossFireTimer -= dt;
+    if (bossFireTimer <= 0) {
+      bossFire();
+      bossFireTimer = 1.8;  // seconds between volleys
+    }
   }
 
-  // Keep the boss inside the playfield boundary.
+  // ---- FREE POD SWARM (detached pods after core death) ----
+  updateFreePods(dt);
+}
+
+// Drive each detached side pod: independent orbit around the player, face its
+// heading, and fire the boss's bright bullets on its own timer. A pod whose
+// section has been destroyed is skipped and pruned.
+function updateFreePods(dt) {
+  if (!boss.freePods || boss.freePods.length === 0) return;
   const BOUNDARY = 2300;
-  boss.group.position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.x));
-  boss.group.position.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.y));
-  boss.group.position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, boss.group.position.z));
 
-  // ---- Facing: orient the whole craft along its actual movement heading ----
-  // Use the frame's displacement (current minus last position) as the forward
-  // direction so the boss "noses" the way it's traveling instead of spinning.
-  const heading = boss.group.position.clone().sub(boss.lastPos);
-  if (heading.lengthSq() > 0.0001) {
-    const lookTarget = boss.group.position.clone().add(heading);
-    boss.group.lookAt(lookTarget);
-  }
-  boss.lastPos.copy(boss.group.position);
+  boss.freePods.forEach(pod => {
+    // Sync alive state with the underlying section (it may have just been shot).
+    if (!pod.section.alive) pod.alive = false;
+    if (!pod.alive) return;
 
-  // ---- Firing ----
-  bossFireTimer -= dt;
-  if (bossFireTimer <= 0) {
-    bossFire();
-    bossFireTimer = 1.8;  // seconds between volleys
-  }
+    // Independent orbit around the player.
+    pod.orbitAngle += pod.orbitSpeed * dt;
+    pod.verticalPhase += pod.orbitSpeed * 0.6 * dt;
+
+    const tx = Math.cos(pod.orbitAngle) * pod.orbitRadius;
+    const tz = Math.sin(pod.orbitAngle) * pod.orbitRadius;
+    const ty = Math.sin(pod.verticalPhase) * 90;
+    const targetPos = player.position.clone().add(new THREE.Vector3(tx, ty, tz));
+
+    const toTarget = targetPos.clone().sub(pod.mesh.position);
+    const POD_SPEED = 130;  // faster/twitchier than the heavy boss body
+    const step = Math.min(POD_SPEED * dt, toTarget.length());
+    if (toTarget.length() > 0.001) {
+      toTarget.normalize();
+      pod.mesh.position.addScaledVector(toTarget, step);
+    }
+
+    // Boundary clamp.
+    pod.mesh.position.x = Math.max(-BOUNDARY, Math.min(BOUNDARY, pod.mesh.position.x));
+    pod.mesh.position.y = Math.max(-BOUNDARY, Math.min(BOUNDARY, pod.mesh.position.y));
+    pod.mesh.position.z = Math.max(-BOUNDARY, Math.min(BOUNDARY, pod.mesh.position.z));
+
+    // Face heading.
+    const heading = pod.mesh.position.clone().sub(pod.lastPos);
+    if (heading.lengthSq() > 0.0001) {
+      pod.mesh.lookAt(pod.mesh.position.clone().add(heading));
+    }
+    pod.lastPos.copy(pod.mesh.position);
+
+    // Fire the boss's bright bullets from the pod toward the player.
+    pod.fireTimer -= dt;
+    if (pod.fireTimer <= 0) {
+      const origin = pod.mesh.position.clone();
+      const toPlayer = player.position.clone().sub(origin).normalize();
+      const vel = toPlayer.multiplyScalar(160);
+      enemies_projectiles.push(createBossProjectile(origin, vel));
+      enemyFireSound();
+      pod.fireTimer = 1.6 + Math.random() * 0.6;  // staggered, slightly random
+    }
+  });
+
+  // Prune dead pods from the list.
+  boss.freePods = boss.freePods.filter(p => p.alive);
 }
 
 // Handle the destruction of a single boss section (called from the bullet
@@ -1832,25 +1896,76 @@ function destroyBossSection(section) {
   // invisible and non-collidable via its alive flag).
   section.mesh.visible = false;
 
-  // ---- Strut handling ----
+  // ---- Strut handling + center-death detach ----
   // A side pod's death removes only the strut connecting it to the center.
-  // The center's death removes BOTH struts (nothing left to connect to), which
-  // visually frees the side pods. (Independent pod swarming comes in a later step.)
+  // The center's death removes BOTH struts AND detaches every surviving side
+  // pod into a free-flying, independently-swarming, still-firing unit.
   if (boss.struts) {
     if (section.type === 'left' || section.type === 'right') {
       boss.struts.forEach(st => { if (st.side === section.type) st.mesh.visible = false; });
     } else if (section.type === 'center') {
       boss.struts.forEach(st => { st.mesh.visible = false; });
+      detachSidePods();
     }
   }
 
   // Award points for the section.
   score += 1000;
 
-  // If every section is dead, finish the boss.
-  if (boss.sections.every(s => !s.alive)) {
+  // If every piece is dead (sections AND any detached free pods), finish.
+  if (allBossPiecesDead()) {
     finishBoss();
   }
+}
+
+// True when no boss piece remains. Every piece — center, attached pods, and
+// detached free pods — is backed by an entry in boss.sections, and section.alive
+// is the authoritative flag (set the instant a piece is destroyed). The free pod
+// objects carry their own .alive flag too, but it only syncs once per frame in
+// updateFreePods, so checking it here would miss the just-killed final pod and
+// leave the fight hanging. Checking sections alone is both sufficient and correct.
+function allBossPiecesDead() {
+  return boss.sections.every(s => !s.alive);
+}
+
+// Detach every still-living side pod from the boss group when the center dies.
+// Each pod is reparented from the group to the scene while PRESERVING its world
+// position and orientation (so it doesn't jump/flip), then given its own orbit
+// and fire state so the pair swarms the player independently.
+function detachSidePods() {
+  boss.sections.forEach(section => {
+    if (!section.alive) return;
+    if (section.type !== 'left' && section.type !== 'right') return;
+
+    const mesh = section.mesh;
+
+    // Capture the pod's CURRENT world transform before reparenting.
+    const worldPos = new THREE.Vector3();
+    const worldQuat = new THREE.Quaternion();
+    mesh.getWorldPosition(worldPos);
+    mesh.getWorldQuaternion(worldQuat);
+
+    // Move the mesh from the boss group to the scene, then restore its world
+    // transform explicitly (reparenting is otherwise interpreted in local space).
+    boss.group.remove(mesh);
+    scene.add(mesh);
+    mesh.position.copy(worldPos);
+    mesh.quaternion.copy(worldQuat);
+
+    // Independent swarm state — same orbit math as the boss, but each pod gets
+    // its own angle/radius/speed so they don't fly in lockstep.
+    boss.freePods.push({
+      section: section,                                  // keep the section ref (health/alive/collision)
+      mesh: mesh,
+      orbitAngle: Math.random() * Math.PI * 2,
+      orbitRadius: 220 + Math.random() * 80,             // closer & tighter than the whole boss
+      orbitSpeed: 0.45 + Math.random() * 0.25,           // faster than the boss body
+      verticalPhase: Math.random() * Math.PI * 2,
+      lastPos: worldPos.clone(),
+      fireTimer: 0.6 + Math.random() * 0.8,              // staggered first shot
+      alive: true
+    });
+  });
 }
 
 // Final boss death: a large multi-explosion, big score, cleanup, then resume
@@ -1859,9 +1974,16 @@ function finishBoss() {
   if (!boss) return;
   boss.alive = false;
 
-  // A cluster of large explosions across the boss body for a dramatic finish.
+  // Choose the finale's center: if pods detached, the action ended wherever the
+  // last pod was, not at the abandoned group origin. Prefer a free pod's mesh
+  // position; otherwise fall back to the boss group.
   const center = new THREE.Vector3();
-  boss.group.getWorldPosition(center);
+  if (boss.freePods && boss.freePods.length > 0) {
+    boss.freePods[boss.freePods.length - 1].mesh.getWorldPosition(center);
+  } else {
+    boss.group.getWorldPosition(center);
+  }
+
   for (let i = 0; i < 6; i++) {
     const off = new THREE.Vector3(
       (Math.random() - 0.5) * 200,
@@ -1880,6 +2002,13 @@ function finishBoss() {
     resources.push(createRuskoleum(center.clone().add(
       new THREE.Vector3((Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80, (Math.random() - 0.5) * 80)
     )));
+  }
+
+  // Dispose any detached free pods (they live in the scene, not the boss group,
+  // so removeAndDispose(group) below won't reach them).
+  if (boss.freePods) {
+    boss.freePods.forEach(pod => removeAndDispose(pod.mesh));
+    boss.freePods = [];
   }
 
   // Remove the boss group from the scene and dispose it.
@@ -2540,9 +2669,9 @@ function update(dt) {
 
     // ---- PLAYER BULLET vs BOSS SECTIONS ----
     // Check each living boss section. A hit costs the bullet and damages the
-    // section; at zero health the section explodes (and the boss dies once all
-    // sections are gone). Uses the section's world position since sections live
-    // inside the moving boss group.
+    // section; at zero health the section explodes. Uses the section's WORLD
+    // position via getWorldPosition, which is correct whether the section is
+    // still inside the boss group or has detached into a free-flying pod.
     if (!hit && boss && boss.alive) {
       const _wp = new THREE.Vector3();
       for (const section of boss.sections) {
