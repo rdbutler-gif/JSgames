@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LENIA</title>
+<style>
+  :root {
+    --bg: #0a0e0d;
+    --panel: #111816;
+    --phosphor: #36e07a;
+    --phosphor-dim: #1a6b3c;
+    --bezel: #1c2622;
+    --text: #6f8a7e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(circle at 50% 0%, #0d1411 0%, var(--bg) 70%);
+    color: var(--text);
+    font-family: 'SFMono-Regular','Consolas','Liberation Mono',monospace;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 1rem;
+    padding: 1rem 1.4rem 0.8rem; border-bottom: 1px solid var(--bezel);
+  }
+  h1 {
+    font-size: 1.05rem; letter-spacing: 0.45em; color: var(--phosphor);
+    font-weight: 600; text-shadow: 0 0 12px var(--phosphor-dim);
+  }
+  .sub { font-size: 0.7rem; letter-spacing: 0.2em; opacity: 0.7; }
+  .scope-wrap {
+    flex: 1; position: relative; margin: 0.9rem 1.4rem;
+    border: 1px solid var(--bezel); border-radius: 6px; background: var(--panel);
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.6), 0 0 0 1px #000;
+    overflow: hidden; min-height: 360px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    image-rendering: pixelated;
+    width: min(78vh, 100%); height: min(78vh, 100%);
+    aspect-ratio: 1 / 1;
+  }
+  .vignette { position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 120px rgba(0,0,0,0.7); }
+  .readout {
+    position: absolute; top: 10px; left: 14px; font-size: 0.65rem;
+    letter-spacing: 0.15em; color: var(--phosphor-dim); pointer-events: none; line-height: 1.6;
+  }
+  .readout b { color: var(--phosphor); }
+  .controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.9rem 1.2rem;
+    padding: 0 1.4rem 1.2rem;
+  }
+  button {
+    background: var(--bezel); color: var(--phosphor);
+    border: 1px solid var(--phosphor-dim); padding: 0.5rem 0.9rem;
+    font-family: inherit; font-size: 0.72rem; letter-spacing: 0.12em;
+    border-radius: 4px; cursor: pointer; transition: all 0.15s ease;
+  }
+  button:hover { background: var(--phosphor-dim); color: #d9ffe9; box-shadow: 0 0 10px var(--phosphor-dim); }
+  button.active { background: var(--phosphor); color: #06140c; box-shadow: 0 0 14px var(--phosphor); }
+  .knob { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.6rem; letter-spacing: 0.1em; }
+  .knob label { display: flex; justify-content: space-between; gap: 0.6rem; }
+  .knob b { color: var(--phosphor); }
+  input[type=range] { width: 130px; accent-color: var(--phosphor); }
+  .seed { display: flex; gap: 0.3rem; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>LENIA</h1>
+    <span class="sub">CONTINUOUS CELLULAR AUTOMATON</span>
+  </header>
+
+  <div class="scope-wrap">
+    <canvas id="field" width="192" height="192"></canvas>
+    <div class="readout" id="readout"></div>
+    <div class="vignette"></div>
+  </div>
+
+  <div class="controls">
+    <button id="playBtn" class="active">RUNNING</button>
+    <div class="seed">
+      <button data-seed="orbium">ORBIUM</button>
+      <button data-seed="random">SOUP</button>
+      <button data-seed="clear">CLEAR</button>
+    </div>
+    <div class="knob">
+      <label>GROWTH μ <b id="muVal">0.150</b></label>
+      <input type="range" id="mu" min="0.05" max="0.40" step="0.005" value="0.15">
+    </div>
+    <div class="knob">
+      <label>GROWTH σ <b id="sigmaVal">0.015</b></label>
+      <input type="range" id="sigma" min="0.005" max="0.060" step="0.001" value="0.015">
+    </div>
+    <div class="knob">
+      <label>KERNEL R <b id="radiusVal">13</b></label>
+      <input type="range" id="radius" min="6" max="20" step="1" value="13">
+    </div>
+    <div class="knob">
+      <label>RATE Δt <b id="dtVal">0.10</b></label>
+      <input type="range" id="dt" min="0.02" max="0.30" step="0.01" value="0.10">
+    </div>
+  </div>
+
+<script>
+// ---- Lenia core --------------------------------------------------------
+// Grid of continuous values in [0,1]. Each step:
+//   1. convolve the field with a ring-shaped kernel -> neighbourhood density U
+//   2. map U through a Gaussian growth function G centred on mu, width sigma
+//   3. add G*dt to the field, clamp to [0,1]
+// Orbium (the swimming glider) lives near mu=0.15, sigma=0.017, R=13.
+
+const W = 192, H = 192;
+const cvs = document.getElementById('field');
+const ctx = cvs.getContext('2d');
+const img = ctx.createImageData(W, H);
+const readout = document.getElementById('readout');
+
+let field = new Float32Array(W * H);
+let next  = new Float32Array(W * H);
+
+let mu = 0.15, sigma = 0.015, R = 13, dt = 0.10;
+let running = true;
+let kernel = [];      // {dx,dy,w} offsets with precomputed weights
+let kernelSum = 0;
+let step = 0;
+
+// --- kernel: Gaussian ring, canonical Orbium shape (muK=0.5, sigmaK=0.15) -
+// normalised to sum 1. This exact shape is what makes Orbium stable.
+const KMU = 0.5, KSIGMA = 0.15;
+function buildKernel() {
+  kernel = [];
+  kernelSum = 0;
+  for (let dy = -R; dy <= R; dy++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const dist = Math.hypot(dx, dy) / R;     // 0..1 across the kernel
+      if (dist > 1 || (dx === 0 && dy === 0)) continue;
+      const w = Math.exp(-Math.pow((dist - KMU) / KSIGMA, 2) / 2);
+      kernel.push({ dx, dy, w });
+      kernelSum += w;
+    }
+  }
+}
+
+// --- growth function: Gaussian bump, returns -1..+1 ----------------------
+function growth(u) {
+  return 2 * Math.exp(-Math.pow((u - mu) / sigma, 2) / 2) - 1;
+}
+
+function stepSim() {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let sum = 0;
+      for (let k = 0; k < kernel.length; k++) {
+        const kk = kernel[k];
+        // wrap-around (toroidal) edges so creatures can swim off and back on
+        const nx = (x + kk.dx + W) % W;
+        const ny = (y + kk.dy + H) % H;
+        sum += field[ny * W + nx] * kk.w;
+      }
+      const u = sum / kernelSum;            // neighbourhood density 0..1
+      let v = field[y * W + x] + dt * growth(u);
+      next[y * W + x] = v < 0 ? 0 : v > 1 ? 1 : v;
+    }
+  }
+  [field, next] = [next, field];
+  step++;
+}
+
+// --- rendering: value -> phosphor green ----------------------------------
+function draw() {
+  const d = img.data;
+  let mass = 0;
+  for (let i = 0; i < field.length; i++) {
+    const v = field[i];
+    mass += v;
+    const j = i * 4;
+    d[j]     = Math.floor(v * 60);          // R
+    d[j + 1] = Math.floor(v * 235 + v * v * 20); // G — the phosphor
+    d[j + 2] = Math.floor(v * 110);         // B
+    d[j + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  readout.innerHTML =
+    `STEP <b>${step}</b> &nbsp; MASS <b>${(mass | 0)}</b><br>` +
+    `μ <b>${mu.toFixed(3)}</b> σ <b>${sigma.toFixed(3)}</b> R <b>${R}</b> Δt <b>${dt.toFixed(2)}</b>`;
+}
+
+// --- seeds ---------------------------------------------------------------
+// Orbium pattern (the canonical Lenia glider), a 20x20 normalised cell map.
+const ORBIUM = [
+[0,0,0,0,0,0,0.1,0.14,0.1,0,0,0.03,0.03,0,0,0.3,0,0,0,0],
+[0,0,0,0,0,0.08,0.24,0.3,0.3,0.18,0.14,0.15,0.16,0.15,0.09,0.2,0,0,0,0],
+[0,0,0,0,0,0.15,0.34,0.44,0.46,0.38,0.18,0.14,0.11,0.13,0.19,0.18,0.45,0,0,0],
+[0,0,0,0,0.06,0.13,0.39,0.5,0.5,0.37,0.06,0,0,0,0.02,0.16,0.68,0,0,0],
+[0,0,0,0.11,0.17,0.17,0.33,0.4,0.38,0.28,0.14,0,0,0,0,0,0.18,0.42,0,0],
+[0,0,0.09,0.18,0.13,0.06,0.08,0.26,0.32,0.32,0.27,0,0,0,0,0,0,0.82,0,0],
+[0.27,0,0.16,0.12,0,0,0,0.25,0.38,0.44,0.45,0.34,0,0,0,0,0,0.22,0.17,0],
+[0,0.07,0.2,0.02,0,0,0,0.31,0.48,0.57,0.6,0.57,0,0,0,0,0,0,0.49,0],
+[0,0.59,0.19,0,0,0,0,0.2,0.57,0.69,0.76,0.76,0.49,0,0,0,0,0,0.36,0],
+[0,0.58,0.19,0,0,0,0,0,0.67,0.83,0.9,0.92,0.87,0.12,0,0,0,0,0.22,0.07],
+[0,0,0.46,0,0,0,0,0,0.7,0.93,1,1,1,0.61,0,0,0,0,0.18,0.11],
+[0,0,0.82,0,0,0,0,0,0.47,1,1,0.98,1,0.96,0.27,0,0,0,0.19,0.1],
+[0,0,0.46,0,0,0,0,0,0.25,0.78,0.9,0.83,0.91,0.88,0.5,0.05,0,0,0.21,0.05],
+[0,0,0,0.4,0,0,0,0,0.09,0.42,0.62,0.66,0.73,0.74,0.55,0.21,0,0.02,0.3,0],
+[0,0,0,0.36,0.1,0,0,0,0,0.16,0.36,0.5,0.59,0.6,0.51,0.31,0.13,0.12,0.34,0],
+[0,0,0,0,0.45,0.12,0,0,0,0,0.13,0.32,0.45,0.5,0.47,0.38,0.29,0.29,0.13,0],
+[0,0,0,0,0.18,0.46,0.22,0,0,0,0,0.13,0.3,0.4,0.43,0.42,0.39,0.27,0,0],
+[0,0,0,0,0,0.21,0.56,0.32,0.07,0,0.05,0.15,0.27,0.36,0.41,0.41,0.31,0.1,0,0],
+[0,0,0,0,0,0,0.22,0.51,0.44,0.36,0.36,0.39,0.42,0.43,0.4,0.31,0.15,0,0,0],
+[0,0,0,0,0,0,0,0.15,0.36,0.43,0.44,0.44,0.41,0.34,0.24,0.11,0,0,0,0]
+];
+
+function seedOrbium() {
+  field.fill(0);
+  // The canonical Orbium bitmap is authored for R=13. To keep it stable at
+  // any R, resample it so the creature's physical size tracks the kernel.
+  const scale = R / 13;
+  const ph = ORBIUM.length, pw = ORBIUM[0].length;
+  const dh = Math.round(ph * scale), dw = Math.round(pw * scale);
+  const ox = (W >> 1) - (dw >> 1), oy = (H >> 1) - (dh >> 1);
+  for (let y = 0; y < dh; y++) {
+    for (let x = 0; x < dw; x++) {
+      // nearest-neighbour sample back into the source bitmap
+      const sy = Math.min(ph - 1, Math.floor(y / scale));
+      const sx = Math.min(pw - 1, Math.floor(x / scale));
+      const v = ORBIUM[sy][sx];
+      if (v > 0) field[(oy + y) * W + (ox + x)] = v;
+    }
+  }
+  setParams(0.15, 0.015, R, 0.10);  // keep current R, restore growth/rate
+  step = 0;
+}
+
+function seedRandom() {
+  field.fill(0);
+  // Following Chan: noise patches (full-range random) surrounded by zeros.
+  // A few large square patches of uniform [0,1] noise give structures room
+  // to coalesce. Soup needs a wider growth window than Orbium's knife-edge,
+  // so nudge sigma up where varied patterns survive instead of dying out.
+  setParams(0.15, 0.030, R, 0.10);
+  const patches = 4;
+  for (let p = 0; p < patches; p++) {
+    const size = Math.floor(R * (1.6 + Math.random() * 1.4));
+    const cx = (Math.random() * W) | 0, cy = (Math.random() * H) | 0;
+    for (let dy = -size; dy <= size; dy++)
+      for (let dx = -size; dx <= size; dx++) {
+        const nx = (cx + dx + W) % W, ny = (cy + dy + H) % H;
+        field[ny * W + nx] = Math.random();   // full-range noise
+      }
+  }
+  step = 0;
+}
+
+// --- knob wiring ---------------------------------------------------------
+function setParams(m, s, r, t) {
+  mu = m; sigma = s; R = r; dt = t;
+  document.getElementById('mu').value = m;
+  document.getElementById('sigma').value = s;
+  document.getElementById('radius').value = r;
+  document.getElementById('dt').value = t;
+  document.getElementById('muVal').textContent = m.toFixed(3);
+  document.getElementById('sigmaVal').textContent = s.toFixed(3);
+  document.getElementById('radiusVal').textContent = r;
+  document.getElementById('dtVal').textContent = t.toFixed(2);
+  buildKernel();
+}
+
+document.getElementById('mu').addEventListener('input', e => {
+  mu = +e.target.value; document.getElementById('muVal').textContent = mu.toFixed(3);
+});
+document.getElementById('sigma').addEventListener('input', e => {
+  sigma = +e.target.value; document.getElementById('sigmaVal').textContent = sigma.toFixed(3);
+});
+document.getElementById('radius').addEventListener('input', e => {
+  R = +e.target.value; document.getElementById('radiusVal').textContent = R; buildKernel();
+});
+document.getElementById('dt').addEventListener('input', e => {
+  dt = +e.target.value; document.getElementById('dtVal').textContent = dt.toFixed(2);
+});
+
+document.querySelectorAll('.seed button').forEach(b =>
+  b.addEventListener('click', () => {
+    if (b.dataset.seed === 'orbium') seedOrbium();
+    else if (b.dataset.seed === 'random') seedRandom();
+    else { field.fill(0); step = 0; }
+  })
+);
+
+const playBtn = document.getElementById('playBtn');
+playBtn.addEventListener('click', () => {
+  running = !running;
+  playBtn.textContent = running ? 'RUNNING' : 'PAUSED';
+  playBtn.classList.toggle('active', running);
+});
+
+// paint cells with the mouse — drag to inject life
+let painting = false;
+function paintAt(ev) {
+  const r = cvs.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / r.width * W);
+  const y = Math.floor((ev.clientY - r.top) / r.height * H);
+  for (let dy = -3; dy <= 3; dy++)
+    for (let dx = -3; dx <= 3; dx++) {
+      const nx = (x + dx + W) % W, ny = (y + dy + H) % H;
+      if (Math.hypot(dx, dy) <= 3) field[ny * W + nx] = 1;
+    }
+}
+cvs.addEventListener('mousedown', e => { painting = true; paintAt(e); });
+cvs.addEventListener('mousemove', e => { if (painting) paintAt(e); });
+window.addEventListener('mouseup', () => painting = false);
+
+// --- main loop -----------------------------------------------------------
+function loop() {
+  if (running) stepSim();
+  draw();
+  requestAnimationFrame(loop);
+}
+buildKernel();
+seedOrbium();
+loop();
+</script>
+</body>
+</html>
