@@ -5,436 +5,887 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ghost Patrol</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
-    canvas { display: block; width: 100%; height: 100vh; }
+    body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+    canvas { display: block; }
     #hud {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: #0f0;
-      font-family: monospace;
-      font-size: 12px;
-      background: rgba(0,0,0,0.8);
-      padding: 12px;
-      border: 2px solid #0f0;
-      pointer-events: none;
-      z-index: 10;
-      line-height: 1.6;
+      position: absolute; top: 10px; left: 10px;
+      color: #0f0; font-size: 12px; line-height: 1.6;
+      background: rgba(0,0,0,0.8); padding: 12px;
+      border: 2px solid #0f0; pointer-events: none; z-index: 10;
     }
-    #interaction {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: #fff;
-      background: rgba(0,0,0,0.9);
-      padding: 10px 20px;
-      border: 2px solid #ff9900;
-      text-align: center;
-      pointer-events: none;
-      z-index: 10;
-      display: none;
-      font-size: 14px;
+    #hud .hearts { color: #f44; font-size: 14px; }
+    #message {
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+      color: #fff; background: rgba(0,0,0,0.9); padding: 10px 20px;
+      border: 2px solid #ff9900; z-index: 10; display: none; font-size: 14px;
+    }
+    #overlay {
+      position: absolute; inset: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.78); color: #0f0; font-size: 16px;
+      text-align: center; cursor: pointer; line-height: 2;
+    }
+    #vignette {
+      position: absolute; inset: 0; z-index: 15; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,0.55) 100%);
+      opacity: 0; transition: opacity 0.15s;
     }
     #crosshair {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 20px;
-      height: 20px;
-      border: 2px solid rgba(0,255,0,0.3);
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: 5;
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 6px; height: 6px; border-radius: 50%;
+      background: rgba(0,255,0,0.6); pointer-events: none; z-index: 5;
     }
   </style>
 </head>
 <body>
   <div id="crosshair"></div>
+  <div id="vignette"></div>
   <div id="hud">
-    FLOOR: <span id="floor">1</span><br>
-    COINS: <span id="coins">0</span><br>
-    KEYS: <span id="keys">0</span><br>
+    FLOOR: <span id="floor">1</span> / <span id="floorMax">3</span><br>
+    COINS: <span id="coins">0</span> / <span id="coinTotal">0</span><br>
+    GHOSTS: <span id="ghostsBusted">0</span> / <span id="ghostTotal">0</span><br>
+    HEALTH: <span class="hearts" id="hearts">&#9829;&#9829;&#9829;</span><br>
     ---<br>
-    WASD: Move | Right-click: Look<br>
-    Left-click: Use
+    WASD: Move | Mouse: Look<br>
+    Click: Shoot | R: New dungeon<br>
+    Stairs: walk up | Ladders: hold W
   </div>
-  <div id="interaction"></div>
+  <div id="message"></div>
+  <div id="overlay">GHOST PATROL<br><br>Ghosts phase through walls. You don't.<br>Bust them before they get you.<br><br>Click to enter the dungeon</div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
-    let scene, camera, renderer;
-    let playerPos = { x: -2.5, y: 1.7, z: -2.5 };
-    let currentFloor = 0;
-    let controls = {};
-    let inventory = { coins: 0, keys: 0 };
-    let rightMouseDown = false;
-    let interactables = [];
-    let coins = [];
-    let doorColliders = [];
+    // ==================================================================
+    // TEXTURE CONFIG
+    // Drop your image files next to this HTML (or in a subfolder) and
+    // point these paths at them. Set a path to null to use the built-in
+    // procedural texture. If a file fails to load, the procedural
+    // fallback kicks in automatically.
+    //
+    // NOTE: image textures require serving over HTTP (Live Server or
+    // GitHub Pages). Opening the file directly via file:// will fail
+    // CORS and you'll see the fallback textures instead.
+    //
+    // Seamless/tileable images look best. 512x512 or 1024x1024 is plenty.
+    // ==================================================================
+    const TEXTURES = {
+      wall:  'textures/wall.jpg',
+      floor: 'textures/floor.jpg'
+    };
+    const TEX_WORLD_SIZE = 2;     // one texture tile covers 2x2 world units
+    const PIXELATED = false;      // true = crunchy retro filtering, false = smooth
 
-    const ROOM_SIZE = 8;
-    const GRID_SIZE = 5;
-    const DOOR_WIDTH = 1.6;
-    const DOOR_HEIGHT = 3.3;
+    // ---------- Constants ----------
+    const GRID = 5;
+    const ROOM = 8;
+    const FLOORS = 3;
+    const LEVEL_H = 4.5;
+    const WALL_T = 0.4;
+    const DOOR_W = 2.2;
+    const DOOR_H = 3.2;
+    const EYE = 1.7;
+    const RADIUS = 0.45;
+    const SPEED = 0.12;
+    const CLIMB_SPEED = 0.07;
+    const GHOST_SPEED = 0.055;
+    const GHOSTS_PER_FLOOR = 2;
+    const STEP = 0.5;
+    const HALF = (GRID * ROOM) / 2;
+    const SHRINK = 0.02;
+    const S_RUN = 3.8;
 
-    function createWallTexture() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#666';
-      ctx.fillRect(0, 0, 256, 256);
-      for (let i = 0; i < 100; i++) {
-        ctx.fillStyle = `rgba(100,100,100,${Math.random() * 0.5})`;
-        ctx.fillRect(Math.random() * 256, Math.random() * 256, Math.random() * 40 + 10, Math.random() * 40 + 10);
+    // ---------- State ----------
+    let scene, camera, renderer, headlamp;
+    let wallTexture, floorTexture;      // shared, loaded once, never disposed
+    let yaw = 0, pitch = 0;
+    let keys = {};
+    let player = { x: 0, y: 0, z: 0 };
+    let vy = 0;
+    let lastFloorIdx = 0;
+    let colliders = [];
+    let holes = [];
+    let ramps = [];
+    let ladders = [];
+    let coins = [], ghosts = [], projectiles = [];
+    let coinCount = 0, coinTotal = 0, ghostsBusted = 0, ghostTotal = 0;
+    let health = 3, invulnUntil = 0, gameOver = false;
+    let worldGroup = null;
+    let actx = null;
+
+    // ---------- Audio ----------
+    function sfx(freq, dur = 0.08, type = 'square', vol = 0.12, slide = 0) {
+      if (!actx) return;
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, actx.currentTime);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), actx.currentTime + dur);
+      g.gain.setValueAtTime(vol, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+      o.connect(g).connect(actx.destination);
+      o.start();
+      o.stop(actx.currentTime + dur);
+    }
+    const sndCoin  = () => sfx(988, 0.09, 'sine', 0.10, 350);
+    const sndShoot = () => sfx(320, 0.07, 'square', 0.07, -180);
+    const sndHit   = () => sfx(150, 0.12, 'sawtooth', 0.12, -60);
+    const sndBust  = () => sfx(540, 0.30, 'triangle', 0.12, -420);
+    const sndHurt  = () => sfx(90, 0.25, 'sawtooth', 0.16, -40);
+
+    // ---------- Maze generation ----------
+    function generateMaze(n) {
+      const cells = [];
+      for (let x = 0; x < n; x++) {
+        cells[x] = [];
+        for (let y = 0; y < n; y++) cells[x][y] = { E: false, S: false, visited: false };
       }
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.magFilter = THREE.NearestFilter;
-      texture.minFilter = THREE.NearestFilter;
-      return texture;
+      const stack = [[Math.floor(Math.random() * n), Math.floor(Math.random() * n)]];
+      cells[stack[0][0]][stack[0][1]].visited = true;
+      while (stack.length) {
+        const [cx, cy] = stack[stack.length - 1];
+        const nbrs = [];
+        if (cx > 0     && !cells[cx-1][cy].visited) nbrs.push(['W', cx-1, cy]);
+        if (cx < n - 1 && !cells[cx+1][cy].visited) nbrs.push(['E', cx+1, cy]);
+        if (cy > 0     && !cells[cx][cy-1].visited) nbrs.push(['N', cx, cy-1]);
+        if (cy < n - 1 && !cells[cx][cy+1].visited) nbrs.push(['S', cx, cy+1]);
+        if (!nbrs.length) { stack.pop(); continue; }
+        const [dir, nx, ny] = nbrs[Math.floor(Math.random() * nbrs.length)];
+        if (dir === 'E') cells[cx][cy].E = true;
+        if (dir === 'S') cells[cx][cy].S = true;
+        if (dir === 'W') cells[nx][ny].E = true;
+        if (dir === 'N') cells[nx][ny].S = true;
+        cells[nx][ny].visited = true;
+        stack.push([nx, ny]);
+      }
+      const extra = Math.floor(n * n * 0.15);
+      for (let i = 0; i < extra; i++) {
+        const x = Math.floor(Math.random() * (n - 1));
+        const y = Math.floor(Math.random() * (n - 1));
+        if (Math.random() < 0.5) cells[x][y].E = true; else cells[x][y].S = true;
+      }
+      return cells;
     }
 
-    function createFloorTexture() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#8B4513';
+    // ---------- Procedural fallback textures ----------
+    function makeWallCanvas() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#5a5a62';
       ctx.fillRect(0, 0, 256, 256);
-      const brickH = 20;
-      const brickW = 40;
-      for (let y = 0; y < 256; y += brickH) {
-        for (let x = 0; x < 256; x += brickW) {
-          const offset = (y / brickH) % 2 === 0 ? 0 : brickW / 2;
-          ctx.fillStyle = `rgba(139,69,19,${Math.random() * 0.4})`;
-          ctx.fillRect(x + offset, y, brickW - 2, brickH - 2);
-          ctx.strokeStyle = '#4A2511';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x + offset, y, brickW - 2, brickH - 2);
+      const bh = 32, bw = 64;
+      for (let y = 0; y < 256; y += bh) {
+        const off = (y / bh) % 2 ? bw / 2 : 0;
+        for (let x = -bw; x < 256; x += bw) {
+          const s = 70 + Math.random() * 40;
+          ctx.fillStyle = `rgb(${s},${s},${s + 8})`;
+          ctx.fillRect(x + off + 2, y + 2, bw - 4, bh - 4);
         }
       }
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.magFilter = THREE.NearestFilter;
-      texture.minFilter = THREE.NearestFilter;
-      return texture;
+      return c;
     }
 
-    function createWallWithDoorOpening(roomX, roomZ, roomY, side, hasDoor) {
-      const wallTex = createWallTexture();
-      const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
-      const h = 6;
-      const w = ROOM_SIZE;
-      const group = new THREE.Group();
-
-      if (!hasDoor) {
-        const wallGeom = new THREE.PlaneGeometry(w, h);
-        const wall = new THREE.Mesh(wallGeom, wallMat);
-        group.add(wall);
-        return group;
+    function makeFloorCanvas() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#3d2b1f';
+      ctx.fillRect(0, 0, 256, 256);
+      for (let y = 0; y < 256; y += 32) {
+        for (let x = 0; x < 256; x += 32) {
+          const s = 45 + Math.random() * 25;
+          ctx.fillStyle = `rgb(${s + 20},${s},${Math.max(0, s - 15)})`;
+          ctx.fillRect(x + 1, y + 1, 30, 30);
+        }
       }
-
-      // Create wall sections around door opening
-      const doorX = (DOOR_WIDTH) / 2;
-      const doorTop = h - DOOR_HEIGHT;
-
-      if (side === 'E' || side === 'W') {
-        // East or West wall - door opening is vertical
-        // Bottom section
-        const bottomGeom = new THREE.PlaneGeometry(w, DOOR_HEIGHT / 2);
-        const bottom = new THREE.Mesh(bottomGeom, wallMat);
-        bottom.position.y = DOOR_HEIGHT / 4;
-        group.add(bottom);
-
-        // Top section
-        const topGeom = new THREE.PlaneGeometry(w, h - DOOR_HEIGHT);
-        const top = new THREE.Mesh(topGeom, wallMat);
-        top.position.y = DOOR_HEIGHT + (h - DOOR_HEIGHT) / 2;
-        group.add(top);
-
-        // Left section
-        const leftGeom = new THREE.PlaneGeometry(w / 2 - DOOR_WIDTH / 2, DOOR_HEIGHT);
-        const left = new THREE.Mesh(leftGeom, wallMat);
-        left.position.y = DOOR_HEIGHT / 2;
-        left.position.x = -(w / 4 - DOOR_WIDTH / 4);
-        group.add(left);
-
-        // Right section
-        const right = new THREE.Mesh(leftGeom, wallMat);
-        right.position.y = DOOR_HEIGHT / 2;
-        right.position.x = w / 4 - DOOR_WIDTH / 4;
-        group.add(right);
-      } else {
-        // North or South wall - door opening is also vertical
-        const bottomGeom = new THREE.PlaneGeometry(w, DOOR_HEIGHT / 2);
-        const bottom = new THREE.Mesh(bottomGeom, wallMat);
-        bottom.position.y = DOOR_HEIGHT / 4;
-        group.add(bottom);
-
-        const topGeom = new THREE.PlaneGeometry(w, h - DOOR_HEIGHT);
-        const top = new THREE.Mesh(topGeom, wallMat);
-        top.position.y = DOOR_HEIGHT + (h - DOOR_HEIGHT) / 2;
-        group.add(top);
-
-        const leftGeom = new THREE.PlaneGeometry(w / 2 - DOOR_WIDTH / 2, DOOR_HEIGHT);
-        const left = new THREE.Mesh(leftGeom, wallMat);
-        left.position.y = DOOR_HEIGHT / 2;
-        left.position.x = -(w / 4 - DOOR_WIDTH / 4);
-        group.add(left);
-
-        const right = new THREE.Mesh(leftGeom, wallMat);
-        right.position.y = DOOR_HEIGHT / 2;
-        right.position.x = w / 4 - DOOR_WIDTH / 4;
-        group.add(right);
-      }
-
-      return group;
+      return c;
     }
 
-    function createRoom(gridX, gridY, floorNum) {
-      const roomX = gridX * ROOM_SIZE - (GRID_SIZE / 2) * ROOM_SIZE;
-      const roomZ = gridY * ROOM_SIZE - (GRID_SIZE / 2) * ROOM_SIZE;
-      const roomY = floorNum * -12;
-      
-      const group = new THREE.Group();
-      group.position.y = roomY;
-      scene.add(group);
-
-      const floorTex = createFloorTexture();
-      const w = ROOM_SIZE;
-      const h = 6;
-
-      // Floor
-      const floorGeom = new THREE.PlaneGeometry(w, w);
-      const floorMat = new THREE.MeshLambertMaterial({ map: floorTex });
-      const floor = new THREE.Mesh(floorGeom, floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.set(roomX, 0.05, roomZ);
-      group.add(floor);
-
-      // Ceiling
-      const ceilMat = new THREE.MeshLambertMaterial({ color: 0x333 });
-      const ceil = new THREE.Mesh(floorGeom, ceilMat);
-      ceil.rotation.x = Math.PI / 2;
-      ceil.position.set(roomX, h, roomZ);
-      group.add(ceil);
-
-      // Walls with door openings
-      const hasEastDoor = gridX < GRID_SIZE - 1;
-      const hasSouthDoor = gridY < GRID_SIZE - 1;
-
-      const northWall = createWallWithDoorOpening(roomX, roomZ, roomY, 'N', false);
-      northWall.position.set(roomX, h/2, roomZ - w/2);
-      group.add(northWall);
-
-      const southWall = createWallWithDoorOpening(roomX, roomZ, roomY, 'S', hasSouthDoor);
-      southWall.position.set(roomX, h/2, roomZ + w/2);
-      group.add(southWall);
-
-      const eastWall = createWallWithDoorOpening(roomX, roomZ, roomY, 'E', hasEastDoor);
-      eastWall.position.set(roomX + w/2, h/2, roomZ);
-      eastWall.rotation.y = Math.PI / 2;
-      group.add(eastWall);
-
-      const westWall = createWallWithDoorOpening(roomX, roomZ, roomY, 'W', false);
-      westWall.position.set(roomX - w/2, h/2, roomZ);
-      westWall.rotation.y = Math.PI / 2;
-      group.add(westWall);
-
-      return { x: roomX, z: roomZ, y: roomY, gridX, gridY, floorNum };
-    }
-
-    function addCoin(room, offsetX, offsetZ) {
-      const coinGeom = new THREE.SphereGeometry(0.3, 16, 16);
-      const coinMat = new THREE.MeshStandardMaterial({ 
-        color: 0xFFD700,
-        emissive: 0xFFFF00,
-        emissiveIntensity: 0.8,
-        metalness: 0.6
-      });
-      const coin = new THREE.Mesh(coinGeom, coinMat);
-      coin.position.set(room.x + offsetX, room.y + 1.2, room.z + offsetZ);
-      scene.add(coin);
-
-      const time = Math.random() * Math.PI * 2;
-      coins.push({
-        mesh: coin,
-        baseY: coin.position.y,
-        time,
-        collected: false
-      });
-    }
-
-    function addChest(room, offsetX, offsetZ, hasKey) {
-      const chestGeom = new THREE.BoxGeometry(1, 0.7, 0.7);
-      const chestMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-      const chest = new THREE.Mesh(chestGeom, chestMat);
-      chest.position.set(room.x + offsetX, room.y + 0.4, room.z + offsetZ);
-      scene.add(chest);
-
-      interactables.push({
-        mesh: chest,
-        action: () => {
-          if (hasKey) {
-            inventory.keys++;
-            showInteraction('Found a key!');
-          } else {
-            inventory.coins += 5;
-            showInteraction('Found 5 coins!');
+    // ---------- Texture loading with fallback ----------
+    function loadTexture(url, fallbackCanvasFn) {
+      let tex;
+      if (url) {
+        tex = new THREE.TextureLoader().load(
+          url,
+          undefined,
+          undefined,
+          () => {
+            // load failed: swap the procedural canvas in place
+            console.warn(`Texture "${url}" failed to load; using procedural fallback.`);
+            tex.image = fallbackCanvasFn();
+            tex.needsUpdate = true;
           }
-          updateHUD();
-          chest.visible = false;
-        }
-      });
+        );
+      } else {
+        tex = new THREE.CanvasTexture(fallbackCanvasFn());
+      }
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      if (PIXELATED) {
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+      }
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return tex;
     }
 
-    function addStairs(room) {
-      const stairsGeom = new THREE.BoxGeometry(2, 0.3, 3);
-      const stairsMat = new THREE.MeshLambertMaterial({ color: 0x654321 });
-      const stairs = new THREE.Mesh(stairsGeom, stairsMat);
-      stairs.position.set(room.x, room.y + 0.3, room.z);
-      scene.add(stairs);
-
-      interactables.push({
-        mesh: stairs,
-        action: () => {
-          currentFloor = currentFloor === 0 ? 1 : 0;
-          playerPos.y = 1.7;
-          showInteraction(`Floor ${currentFloor + 1}`);
-          updateHUD();
+    // ---------- UV scaling: consistent texture density everywhere ----------
+    // Boxes and planes come with UVs mapped 0..1 across each face, which
+    // stretches the image differently on every differently-sized piece.
+    // Scaling UVs by physical size makes one texture tile cover
+    // TEX_WORLD_SIZE x TEX_WORLD_SIZE world units on every surface.
+    function scaleBoxUV(geom, sx, sy, sz) {
+      const uv = geom.attributes.uv;
+      // BoxGeometry face order: +x, -x, +y, -y, +z, -z (4 verts each).
+      // Each face's (u,v) maps to different world axes:
+      const faceScale = [
+        [sz, sy], [sz, sy],   // east/west faces
+        [sx, sz], [sx, sz],   // top/bottom faces
+        [sx, sy], [sx, sy]    // north/south faces
+      ];
+      for (let f = 0; f < 6; f++) {
+        const [su, sv] = faceScale[f];
+        for (let v = 0; v < 4; v++) {
+          const i = f * 4 + v;
+          uv.setXY(i, uv.getX(i) * su / TEX_WORLD_SIZE, uv.getY(i) * sv / TEX_WORLD_SIZE);
         }
-      });
+      }
     }
 
+    function scalePlaneUV(geom, w, h) {
+      const uv = geom.attributes.uv;
+      for (let i = 0; i < uv.count; i++) {
+        uv.setXY(i, uv.getX(i) * w / TEX_WORLD_SIZE, uv.getY(i) * h / TEX_WORLD_SIZE);
+      }
+    }
+
+    // ---------- Generic box ----------
+    function addBox(cx, cz, sx, sz, y0, y1, mat, solid) {
+      const geom = new THREE.BoxGeometry(sx, y1 - y0, sz);
+      if (mat.map) scaleBoxUV(geom, sx, y1 - y0, sz);
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.set(cx, (y0 + y1) / 2, cz);
+      worldGroup.add(mesh);
+      if (solid) colliders.push({
+        minX: cx - sx / 2, maxX: cx + sx / 2,
+        minY: y0, maxY: y1,
+        minZ: cz - sz / 2, maxZ: cz + sz / 2
+      });
+      return mesh;
+    }
+
+    // ---------- Walls ----------
+    function buildWall(floor, cx, cz, axis, hasDoor, mat) {
+      const y0 = floor * LEVEL_H + SHRINK;
+      const y1 = (floor + 1) * LEVEL_H - SHRINK;
+      const segLen = ROOM - WALL_T;
+      if (!hasDoor) {
+        if (axis === 'x') addBox(cx, cz, segLen, WALL_T, y0, y1, mat, true);
+        else              addBox(cx, cz, WALL_T, segLen, y0, y1, mat, true);
+        return;
+      }
+      const sideLen = (segLen - DOOR_W) / 2;
+      const sideOff = DOOR_W / 2 + sideLen / 2;
+      const lintelY0 = floor * LEVEL_H + DOOR_H;
+      if (axis === 'x') {
+        addBox(cx - sideOff, cz, sideLen, WALL_T, y0, y1, mat, true);
+        addBox(cx + sideOff, cz, sideLen, WALL_T, y0, y1, mat, true);
+        addBox(cx, cz, DOOR_W, WALL_T, lintelY0, y1, mat, false);
+      } else {
+        addBox(cx, cz - sideOff, WALL_T, sideLen, y0, y1, mat, true);
+        addBox(cx, cz + sideOff, WALL_T, sideLen, y0, y1, mat, true);
+        addBox(cx, cz, WALL_T, DOOR_W, lintelY0, y1, mat, false);
+      }
+    }
+
+    function buildPosts(floor, mat) {
+      const y0 = floor * LEVEL_H + SHRINK;
+      const y1 = (floor + 1) * LEVEL_H - SHRINK;
+      for (let i = 0; i <= GRID; i++) {
+        for (let j = 0; j <= GRID; j++) {
+          addBox(-HALF + i * ROOM, -HALF + j * ROOM, WALL_T, WALL_T, y0, y1, mat, true);
+        }
+      }
+    }
+
+    // ---------- Slabs ----------
+    function buildSlab(y, hole, dark) {
+      const rects = hole ? [
+        [-HALF, HALF, -HALF, hole.minZ],
+        [-HALF, HALF, hole.maxZ, HALF],
+        [-HALF, hole.minX, hole.minZ, hole.maxZ],
+        [hole.maxX, HALF, hole.minZ, hole.maxZ]
+      ] : [[-HALF, HALF, -HALF, HALF]];
+      for (const [x0, x1, z0, z1] of rects) {
+        const w = x1 - x0, h = z1 - z0;
+        if (w <= 0.01 || h <= 0.01) continue;
+        let mat;
+        const geom = new THREE.PlaneGeometry(w, h);
+        if (dark) {
+          mat = new THREE.MeshLambertMaterial({ color: 0x1c1c22, side: THREE.DoubleSide });
+        } else {
+          mat = new THREE.MeshLambertMaterial({ map: floorTexture, side: THREE.DoubleSide });
+          scalePlaneUV(geom, w, h);
+        }
+        const m = new THREE.Mesh(geom, mat);
+        m.rotation.x = -Math.PI / 2;
+        m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+        worldGroup.add(m);
+      }
+    }
+
+    // ---------- Stairs ----------
+    function buildStairs(floor, gx, gy, wallMat) {
+      const c = roomCenter(gx, gy);
+      const yBase = floor * LEVEL_H;
+      const zBottom = c.z + S_RUN / 2;
+      const slopeTop = c.z - S_RUN / 2;
+      ramps.push({ minX: c.x - 1.45, maxX: c.x + 1.45, slopeTop, footTop: slopeTop - 0.25, zBottom, yBase });
+      holes[floor + 1] = { minX: c.x - 1.45, maxX: c.x + 1.45, minZ: slopeTop - 0.1, maxZ: c.z - 0.05 };
+
+      const stepMat = new THREE.MeshLambertMaterial({ color: 0x6b6b73 });
+      const nSteps = 12;
+      for (let i = 0; i < nSteps; i++) {
+        const z = zBottom - (i + 0.5) * (S_RUN / nSteps);
+        const topY = ((i + 1) / nSteps) * LEVEL_H;
+        addBox(c.x, z, 2.7, S_RUN / nSteps, yBase + SHRINK, yBase + topY, stepMat, false);
+      }
+
+      const y0 = yBase + SHRINK;
+      const y1 = yBase + LEVEL_H - 0.05;
+      const endZ = slopeTop - 0.4;
+      const shaftLen = zBottom - (endZ - 0.1);
+      addBox(c.x - 1.55, (zBottom + endZ - 0.1) / 2, 0.2, shaftLen, y0, y1, wallMat, true);
+      addBox(c.x + 1.55, (zBottom + endZ - 0.1) / 2, 0.2, shaftLen, y0, y1, wallMat, true);
+      // end wall: full-height MESH, but the COLLIDER caps at 3.4 so a climber
+      // near the ramp top (feet ~4.3+) passes over it. Its only job is to stop
+      // ground-level entry from behind the shaft; full-height collision was
+      // deadlocking the climb 0.03 units below the step-over threshold.
+      addBox(c.x, endZ, 2.9, 0.2, y0, y1, wallMat, false);
+      colliders.push({
+        minX: c.x - 1.45, maxX: c.x + 1.45,
+        minY: y0, maxY: yBase + 3.4,
+        minZ: endZ - 0.1, maxZ: endZ + 0.1
+      });
+
+      const lo = new THREE.PointLight(0x44ff88, 0.9, 7);
+      lo.position.set(c.x, yBase + 2.5, zBottom + 0.5);
+      worldGroup.add(lo);
+      const hi = new THREE.PointLight(0xff8844, 0.9, 7);
+      hi.position.set(c.x, yBase + LEVEL_H + 2.5, slopeTop);
+      worldGroup.add(hi);
+    }
+
+    // ---------- Ladders ----------
+    function buildLadder(floor, gx, gy) {
+      const c = roomCenter(gx, gy);
+      const yBase = floor * LEVEL_H;
+      holes[floor + 1] = { minX: c.x - 0.65, maxX: c.x + 0.65, minZ: c.z - 0.65, maxZ: c.z + 0.65 };
+      ladders.push({ x: c.x, z: c.z, yBase });
+
+      const mat = new THREE.MeshLambertMaterial({ color: 0x8a6a3a });
+      for (const s of [-1, 1]) {
+        addBox(c.x + s * 0.3, c.z - 0.5, 0.09, 0.09, yBase + SHRINK, yBase + LEVEL_H + 0.9, mat, false);
+      }
+      for (let y = yBase + 0.4; y < yBase + LEVEL_H + 0.5; y += 0.45) {
+        addBox(c.x, c.z - 0.5, 0.68, 0.06, y, y + 0.06, mat, false);
+      }
+
+      const lo = new THREE.PointLight(0x44ff88, 0.9, 7);
+      lo.position.set(c.x, yBase + 2.5, c.z + 1.2);
+      worldGroup.add(lo);
+      const hi = new THREE.PointLight(0xff8844, 0.9, 7);
+      hi.position.set(c.x, yBase + LEVEL_H + 2.5, c.z);
+      worldGroup.add(hi);
+    }
+
+    // ---------- Ground height ----------
+    function computeGround(x, z, curY) {
+      let g = 0;
+      for (let L = 1; L < FLOORS; L++) {
+        const y = L * LEVEL_H;
+        if (y > curY + STEP) continue;
+        const h = holes[L];
+        if (h && x > h.minX && x < h.maxX && z > h.minZ && z < h.maxZ) continue;
+        if (y > g) g = y;
+      }
+      for (const r of ramps) {
+        if (x < r.minX || x > r.maxX || z < r.footTop || z > r.zBottom) continue;
+        let t = (r.zBottom - z) / (r.zBottom - r.slopeTop);
+        t = Math.max(0, Math.min(1, t));
+        const y = r.yBase + t * LEVEL_H;
+        if (y <= curY + STEP && y > g) g = y;
+      }
+      return g;
+    }
+
+    function floorIndexOf(y) {
+      return Math.min(FLOORS - 1, Math.max(0, Math.floor(y / LEVEL_H + 0.5)));
+    }
+
+    // ---------- Coins ----------
+    function addCoin(floor, x, z) {
+      const geom = new THREE.CylinderGeometry(0.3, 0.3, 0.08, 20);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xFFD700, emissive: 0xAA8800, emissiveIntensity: 0.6, metalness: 0.8, roughness: 0.3
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.rotation.z = Math.PI / 2;
+      const baseY = floor * LEVEL_H + 1.2;
+      mesh.position.set(x, baseY, z);
+      worldGroup.add(mesh);
+      coins.push({ mesh, floor, baseY, t: Math.random() * Math.PI * 2, collected: false });
+      coinTotal++;
+    }
+
+    // ---------- Ghosts ----------
+    function makeGhostMesh() {
+      const group = new THREE.Group();
+      const bodyMat = new THREE.MeshLambertMaterial({
+        color: 0xd8f0ff, transparent: true, opacity: 0.55, emissive: 0x223344
+      });
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), bodyMat);
+      group.add(body);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.9, 12), bodyMat);
+      tail.position.y = -0.6;
+      tail.rotation.x = Math.PI;
+      group.add(tail);
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111122 });
+      for (const s of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), eyeMat);
+        eye.position.set(s * 0.2, 0.12, 0.45);
+        group.add(eye);
+      }
+      return { group, mats: [bodyMat] };
+    }
+
+    function addGhost(floor, x, z) {
+      const { group, mats } = makeGhostMesh();
+      group.position.set(x, floor * LEVEL_H + 1.6, z);
+      worldGroup.add(group);
+      ghosts.push({
+        group, mats, floor, x, z,
+        hp: 2, dir: Math.random() * Math.PI * 2,
+        dirTimer: 0, t: Math.random() * Math.PI * 2,
+        dead: false, fade: 1
+      });
+      ghostTotal++;
+    }
+
+    function updateGhosts(now) {
+      const pf = floorIndexOf(player.y);
+      for (const g of ghosts) {
+        if (g.dead) {
+          g.fade -= 0.03;
+          g.mats.forEach(m => m.opacity = Math.max(0, g.fade * 0.55));
+          g.group.position.y += 0.04;
+          if (g.fade <= 0) g.group.visible = false;
+          continue;
+        }
+        g.t += 0.04;
+        const dx = player.x - g.x, dz = player.z - g.z;
+        const dist = Math.hypot(dx, dz);
+        const hunting = (g.floor === pf && dist < 9);
+
+        if (hunting) {
+          g.x += (dx / dist) * GHOST_SPEED;
+          g.z += (dz / dist) * GHOST_SPEED;
+          g.group.rotation.y = Math.atan2(dx, dz);
+        } else {
+          g.dirTimer -= 1;
+          if (g.dirTimer <= 0) { g.dir = Math.random() * Math.PI * 2; g.dirTimer = 120 + Math.random() * 180; }
+          g.x += Math.sin(g.dir) * 0.02;
+          g.z += Math.cos(g.dir) * 0.02;
+          g.x = Math.max(-HALF + 1, Math.min(HALF - 1, g.x));
+          g.z = Math.max(-HALF + 1, Math.min(HALF - 1, g.z));
+          g.group.rotation.y = g.dir;
+        }
+        g.group.position.set(g.x, g.floor * LEVEL_H + 1.6 + Math.sin(g.t) * 0.2, g.z);
+
+        if (hunting && dist < 1.1 && now > invulnUntil && !gameOver) {
+          health--;
+          invulnUntil = now + 1500;
+          sndHurt();
+          flashVignette();
+          g.x -= (dx / dist) * 4;
+          g.z -= (dz / dist) * 4;
+          updateHUD();
+          if (health <= 0) doGameOver();
+        }
+      }
+    }
+
+    function hitGhost(g) {
+      g.hp--;
+      sndHit();
+      g.mats.forEach(m => { m.emissive.setHex(0xff4444); });
+      setTimeout(() => g.mats.forEach(m => m.emissive.setHex(0x223344)), 120);
+      if (g.hp <= 0) {
+        g.dead = true;
+        ghostsBusted++;
+        sndBust();
+        updateHUD();
+        if (ghostsBusted === ghostTotal) showMessage('Dungeon cleared of ghosts!');
+      }
+    }
+
+    // ---------- Shooting ----------
+    function shoot() {
+      if (gameOver) return;
+      sndShoot();
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0x66ffcc })
+      );
+      mesh.position.copy(camera.position);
+      worldGroup.add(mesh);
+      projectiles.push({ mesh, vx: dir.x * 0.6, vy: dir.y * 0.6, vz: dir.z * 0.6, life: 90 });
+    }
+
+    function updateProjectiles() {
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        p.mesh.position.x += p.vx;
+        p.mesh.position.y += p.vy;
+        p.mesh.position.z += p.vz;
+        p.life--;
+        let dead = p.life <= 0;
+
+        if (!dead) {
+          const px = p.mesh.position.x, py = p.mesh.position.y, pz = p.mesh.position.z;
+          for (const b of colliders) {
+            if (px > b.minX && px < b.maxX && py > b.minY && py < b.maxY &&
+                pz > b.minZ && pz < b.maxZ) { dead = true; break; }
+          }
+          if (py < 0 || py > FLOORS * LEVEL_H) dead = true;
+        }
+        if (!dead) {
+          for (const g of ghosts) {
+            if (g.dead) continue;
+            if (p.mesh.position.distanceTo(g.group.position) < 0.85) {
+              hitGhost(g);
+              dead = true;
+              break;
+            }
+          }
+        }
+        if (dead) {
+          worldGroup.remove(p.mesh);
+          p.mesh.geometry.dispose();
+          p.mesh.material.dispose();
+          projectiles.splice(i, 1);
+        }
+      }
+    }
+
+    // ---------- Dungeon construction ----------
+    function roomCenter(gx, gy) {
+      return { x: gx * ROOM - HALF + ROOM / 2, z: gy * ROOM - HALF + ROOM / 2 };
+    }
+
+    function buildDungeon() {
+      if (worldGroup) {
+        scene.remove(worldGroup);
+        worldGroup.traverse(o => {
+          if (o.geometry) o.geometry.dispose();
+          // dispose materials but NOT the shared loaded textures --
+          // they survive rebuilds (R key) and are reused
+          if (o.material && o.material.map !== wallTexture && o.material.map !== floorTexture) {
+            if (o.material.map) o.material.map.dispose();
+          }
+          if (o.material) o.material.dispose();
+        });
+      }
+      worldGroup = new THREE.Group();
+      scene.add(worldGroup);
+
+      colliders = [];
+      holes = new Array(FLOORS).fill(null);
+      ramps = [];
+      ladders = [];
+      coins = []; ghosts = []; projectiles = [];
+      coinCount = 0; coinTotal = 0; ghostsBusted = 0; ghostTotal = 0;
+      health = 3; invulnUntil = 0; gameOver = false;
+
+      const wallMat = new THREE.MeshLambertMaterial({ map: wallTexture });
+
+      const connections = [];
+      for (let f = 0; f < FLOORS - 1; f++) {
+        connections.push({
+          floor: f,
+          gx: Math.floor(Math.random() * GRID),
+          gy: Math.floor(Math.random() * GRID),
+          kind: Math.random() < 0.5 ? 'stairs' : 'ladder'
+        });
+      }
+      const reserved = new Set(['0,0,0']);
+      for (const s of connections) {
+        reserved.add(`${s.floor},${s.gx},${s.gy}`);
+        reserved.add(`${s.floor + 1},${s.gx},${s.gy}`);
+      }
+
+      for (const s of connections) {
+        if (s.kind === 'stairs') buildStairs(s.floor, s.gx, s.gy, wallMat);
+        else buildLadder(s.floor, s.gx, s.gy);
+      }
+
+      buildSlab(0, null, false);
+      for (let L = 1; L < FLOORS; L++) buildSlab(L * LEVEL_H, holes[L], false);
+      buildSlab(FLOORS * LEVEL_H, null, true);
+
+      for (let floor = 0; floor < FLOORS; floor++) {
+        const maze = generateMaze(GRID);
+        buildPosts(floor, wallMat);
+
+        for (let i = 0; i < GRID; i++) {
+          const c = roomCenter(i, 0);
+          buildWall(floor, c.x, -HALF, 'x', false, wallMat);
+          buildWall(floor, c.x, HALF, 'x', false, wallMat);
+          const c2 = roomCenter(0, i);
+          buildWall(floor, -HALF, c2.z, 'z', false, wallMat);
+          buildWall(floor, HALF, c2.z, 'z', false, wallMat);
+        }
+        for (let gx = 0; gx < GRID; gx++) {
+          for (let gy = 0; gy < GRID; gy++) {
+            const c = roomCenter(gx, gy);
+            if (gx < GRID - 1) buildWall(floor, c.x + ROOM / 2, c.z, 'z', maze[gx][gy].E, wallMat);
+            if (gy < GRID - 1) buildWall(floor, c.x, c.z + ROOM / 2, 'x', maze[gx][gy].S, wallMat);
+          }
+        }
+
+        for (let gx = 0; gx < GRID; gx++) {
+          for (let gy = 0; gy < GRID; gy++) {
+            if (reserved.has(`${floor},${gx},${gy}`)) continue;
+            const c = roomCenter(gx, gy);
+            if (Math.random() < 0.6) {
+              const n = 1 + Math.floor(Math.random() * 2);
+              for (let k = 0; k < n; k++)
+                addCoin(floor, c.x + (Math.random() * 4 - 2), c.z + (Math.random() * 4 - 2));
+            }
+            if (Math.random() < 0.3) {
+              const torch = new THREE.PointLight(0xff9944, 0.7, 8);
+              torch.position.set(c.x, floor * LEVEL_H + 3, c.z);
+              worldGroup.add(torch);
+            }
+          }
+        }
+
+        let placed = 0, guard = 0;
+        while (placed < GHOSTS_PER_FLOOR && guard++ < 100) {
+          const gx = Math.floor(Math.random() * GRID);
+          const gy = Math.floor(Math.random() * GRID);
+          if (reserved.has(`${floor},${gx},${gy}`)) continue;
+          const c = roomCenter(gx, gy);
+          addGhost(floor, c.x + (Math.random() * 2 - 1), c.z + (Math.random() * 2 - 1));
+          placed++;
+        }
+      }
+
+      const spawn = roomCenter(0, 0);
+      player = { x: spawn.x, y: 0, z: spawn.z };
+      vy = 0;
+      yaw = 0; pitch = 0;
+      lastFloorIdx = 0;
+      updateHUD();
+    }
+
+    // ---------- Collision ----------
+    function collides(x, z, feetY) {
+      const top = feetY + EYE;
+      for (const b of colliders) {
+        if (feetY < b.maxY - 0.1 && top > b.minY + 0.1 &&
+            x > b.minX - RADIUS && x < b.maxX + RADIUS &&
+            z > b.minZ - RADIUS && z < b.maxZ + RADIUS) return true;
+      }
+      return false;
+    }
+
+    function movePlayer(dx, dz) {
+      if (collides(player.x, player.z, player.y)) {
+        player.x += dx;
+        player.z += dz;
+        return;
+      }
+      if (!collides(player.x + dx, player.z, player.y)) player.x += dx;
+      if (!collides(player.x, player.z + dz, player.y)) player.z += dz;
+    }
+
+    // ---------- Input ----------
+    function setupControls() {
+      const overlay = document.getElementById('overlay');
+      overlay.addEventListener('click', () => {
+        if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        if (gameOver) buildDungeon();
+        renderer.domElement.requestPointerLock();
+      });
+      document.addEventListener('pointerlockchange', () => {
+        if (document.pointerLockElement) {
+          overlay.style.display = 'none';
+        } else {
+          overlay.style.display = 'flex';
+          overlay.innerHTML = gameOver
+            ? 'YOU GOT SPOOKED<br><br>Click to try a new dungeon'
+            : 'PAUSED<br><br>Click to resume';
+        }
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!document.pointerLockElement) return;
+        yaw -= e.movementX * 0.0025;
+        pitch -= e.movementY * 0.0025;
+        pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
+      });
+      document.addEventListener('mousedown', (e) => {
+        if (e.button === 0 && document.pointerLockElement) shoot();
+      });
+      document.addEventListener('keydown', (e) => {
+        keys[e.key.toLowerCase()] = true;
+        if (e.key.toLowerCase() === 'r' && !gameOver) {
+          buildDungeon();
+          showMessage('New dungeon generated');
+        }
+      });
+      document.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+      document.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
+    // ---------- HUD / feedback ----------
+    function updateHUD() {
+      document.getElementById('coins').textContent = coinCount;
+      document.getElementById('coinTotal').textContent = coinTotal;
+      document.getElementById('ghostsBusted').textContent = ghostsBusted;
+      document.getElementById('ghostTotal').textContent = ghostTotal;
+      document.getElementById('floor').textContent = floorIndexOf(player.y) + 1;
+      document.getElementById('floorMax').textContent = FLOORS;
+      document.getElementById('hearts').innerHTML =
+        '&#9829;'.repeat(Math.max(0, health)) + '&#9825;'.repeat(Math.max(0, 3 - health));
+    }
+
+    function showMessage(text) {
+      const el = document.getElementById('message');
+      el.textContent = text;
+      el.style.display = 'block';
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => el.style.display = 'none', 2200);
+    }
+
+    function flashVignette() {
+      const v = document.getElementById('vignette');
+      v.style.opacity = 1;
+      setTimeout(() => v.style.opacity = 0, 250);
+    }
+
+    function doGameOver() {
+      gameOver = true;
+      document.exitPointerLock();
+    }
+
+    // ---------- Main loop ----------
+    function animate() {
+      requestAnimationFrame(animate);
+      const now = performance.now();
+
+      if (!gameOver) {
+        let lad = null;
+        for (const l of ladders) {
+          if (Math.hypot(player.x - l.x, player.z - l.z) < 0.95 &&
+              player.y > l.yBase - 0.1 && player.y < l.yBase + LEVEL_H + 0.1) { lad = l; break; }
+        }
+
+        let dx = 0, dz = 0;
+        const sin = Math.sin(yaw), cos = Math.cos(yaw);
+        if (keys['w']) { dx += -sin; dz += -cos; }
+        if (keys['s']) { dx +=  sin; dz +=  cos; }
+        if (keys['a']) { dx += -cos; dz +=  sin; }
+        if (keys['d']) { dx +=  cos; dz += -sin; }
+        const len = Math.hypot(dx, dz);
+
+        let climbing = false;
+        if (lad) {
+          const topY = lad.yBase + LEVEL_H;
+          if (keys['w'] && player.y < topY - 0.001) {
+            player.y = Math.min(topY, player.y + CLIMB_SPEED);
+            climbing = true;
+          } else if (keys['s'] && player.y > computeGround(player.x, player.z, player.y) + 0.001) {
+            player.y = Math.max(lad.yBase, player.y - CLIMB_SPEED);
+            climbing = true;
+          }
+          vy = 0;
+        }
+
+        if (!climbing && len > 0) movePlayer(dx / len * SPEED, dz / len * SPEED);
+
+        if (!lad) {
+          const ground = computeGround(player.x, player.z, player.y);
+          if (player.y > ground + 0.01) {
+            vy -= 0.018;
+            player.y = Math.max(ground, player.y + vy);
+            if (player.y === ground) vy = 0;
+          } else {
+            player.y = ground;
+            vy = 0;
+          }
+        }
+
+        const fi = floorIndexOf(player.y);
+        if (fi !== lastFloorIdx) {
+          lastFloorIdx = fi;
+          showMessage('Floor ' + (fi + 1));
+          updateHUD();
+        }
+      }
+
+      camera.position.set(player.x, player.y + EYE, player.z);
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
+      headlamp.position.copy(camera.position);
+      headlamp.intensity = (now < invulnUntil && Math.floor(now / 100) % 2 === 0) ? 0.4 : 1.0;
+
+      const pf = floorIndexOf(player.y);
+      for (const c of coins) {
+        if (c.collected) continue;
+        c.t += 0.03;
+        c.mesh.position.y = c.baseY + Math.sin(c.t) * 0.25;
+        c.mesh.rotation.y += 0.04;
+        if (c.floor === pf && !gameOver &&
+            Math.hypot(player.x - c.mesh.position.x, player.z - c.mesh.position.z) < 1.2) {
+          c.collected = true;
+          c.mesh.visible = false;
+          coinCount++;
+          sndCoin();
+          updateHUD();
+          if (coinCount === coinTotal) showMessage('All coins collected! Press R for a new dungeon.');
+        }
+      }
+
+      updateGhosts(now);
+      updateProjectiles();
+      renderer.render(scene, camera);
+    }
+
+    // ---------- Init ----------
     function init() {
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x0a0a0a);
-      scene.fog = new THREE.Fog(0x0a0a0a, 40, 100);
+      scene.background = new THREE.Color(0x08080c);
+      scene.fog = new THREE.Fog(0x08080c, 12, 45);
 
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.set(playerPos.x, playerPos.y, playerPos.z);
+      camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 100);
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
 
-      const ambient = new THREE.AmbientLight(0xffffff, 0.6);
-      scene.add(ambient);
+      // shared textures: loaded once, reused across dungeon rebuilds
+      wallTexture = loadTexture(TEXTURES.wall, makeWallCanvas);
+      floorTexture = loadTexture(TEXTURES.floor, makeFloorCanvas);
 
-      const light = new THREE.PointLight(0xffff99, 1.5, 60);
-      light.position.set(0, 5, 0);
-      scene.add(light);
+      scene.add(new THREE.AmbientLight(0x556677, 0.45));
+      headlamp = new THREE.PointLight(0xffeecc, 1.0, 16);
+      scene.add(headlamp);
 
-      // Create rooms for both floors
-      for (let floor = 0; floor < 2; floor++) {
-        for (let gx = 0; gx < GRID_SIZE; gx++) {
-          for (let gy = 0; gy < GRID_SIZE; gy++) {
-            const room = createRoom(gx, gy, floor);
-            
-            // Add coins
-            if (Math.random() < 0.7) addCoin(room, Math.random() * 3 - 1.5, Math.random() * 3 - 1.5);
-            if (Math.random() < 0.5) addCoin(room, Math.random() * 3 - 1.5, Math.random() * 3 - 1.5);
-            
-            // Add chests
-            if (Math.random() < 0.3) addChest(room, 2, 2, Math.random() < 0.2);
-            if (Math.random() < 0.3) addChest(room, -2, -2, false);
-            
-            // Add stairs only to floor 0, room 0,0
-            if (floor === 0 && gx === 0 && gy === 0) addStairs(room);
-          }
-        }
-      }
-
+      buildDungeon();
       setupControls();
       animate();
-    }
-
-    function setupControls() {
-      document.addEventListener('keydown', (e) => {
-        controls[e.key.toLowerCase()] = true;
-      });
-      document.addEventListener('keyup', (e) => {
-        controls[e.key.toLowerCase()] = false;
-      });
-      document.addEventListener('mousemove', (e) => {
-        if (rightMouseDown) {
-          camera.rotation.order = 'YXZ';
-          camera.rotation.y -= e.movementX * 0.005;
-          camera.rotation.x -= e.movementY * 0.005;
-          camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-        }
-      });
-      document.addEventListener('mousedown', (e) => {
-        if (e.button === 2) rightMouseDown = true;
-        if (e.button === 0) interact();
-      });
-      document.addEventListener('mouseup', (e) => {
-        if (e.button === 2) rightMouseDown = false;
-      });
-      document.addEventListener('contextmenu', (e) => e.preventDefault());
-    }
-
-    function interact() {
-      let closest = null;
-      let closestDist = 3;
-      for (let obj of interactables) {
-        const dist = camera.position.distanceTo(obj.mesh.position);
-        if (dist < closestDist) {
-          closest = obj;
-          closestDist = dist;
-        }
-      }
-      if (closest) closest.action();
-    }
-
-    function updateCoins() {
-      coins.forEach(c => {
-        c.time += 0.02;
-        c.mesh.position.y = c.baseY + Math.sin(c.time) * 0.5;
-        c.mesh.rotation.x += 0.02;
-        
-        if (!c.collected && camera.position.distanceTo(c.mesh.position) < 1.5) {
-          c.collected = true;
-          c.mesh.visible = false;
-          inventory.coins++;
-          updateHUD();
-        }
-      });
-    }
-
-    function updateHUD() {
-      document.getElementById('coins').textContent = inventory.coins;
-      document.getElementById('keys').textContent = inventory.keys;
-      document.getElementById('floor').textContent = currentFloor + 1;
-    }
-
-    function showInteraction(text) {
-      const el = document.getElementById('interaction');
-      el.textContent = text;
-      el.style.display = 'block';
-      setTimeout(() => el.style.display = 'none', 2000);
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-
-      const speed = 0.1;
-      const forward = new THREE.Vector3();
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize();
-
-      if (controls['w']) { playerPos.x += forward.x * speed; playerPos.z += forward.z * speed; }
-      if (controls['s']) { playerPos.x -= forward.x * speed; playerPos.z -= forward.z * speed; }
-      if (controls['a']) { playerPos.x -= right.x * speed; playerPos.z -= right.z * speed; }
-      if (controls['d']) { playerPos.x += right.x * speed; playerPos.z += right.z * speed; }
-
-      camera.position.set(playerPos.x, playerPos.y, playerPos.z);
-      
-      updateCoins();
-      renderer.render(scene, camera);
     }
 
     window.addEventListener('resize', () => {
