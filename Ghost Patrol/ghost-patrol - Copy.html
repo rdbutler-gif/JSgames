@@ -41,6 +41,34 @@
       width: 6px; height: 6px; border-radius: 50%;
       background: rgba(0,255,0,0.6); pointer-events: none; z-index: 5;
     }
+    #shop {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      min-width: 340px; z-index: 25; display: none;
+      background: rgba(6,10,20,0.96); color: #cfe;
+      border: 2px solid #3af; border-radius: 6px;
+      padding: 18px 22px; font-size: 14px; line-height: 1.5;
+    }
+    #shop h2 { margin: 0 0 4px; color: #6cf; font-size: 18px; letter-spacing: 1px; }
+    #shop .sub { color: #89a; font-size: 12px; margin-bottom: 12px; }
+    #shop .item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 10px; margin: 5px 0; border: 1px solid #245; border-radius: 4px;
+      cursor: pointer;
+    }
+    #shop .item:hover { background: rgba(60,120,180,0.25); border-color: #4af; }
+    #shop .item.owned { opacity: 0.45; cursor: default; }
+    #shop .item.owned:hover { background: none; border-color: #245; }
+    #shop .item .key { color: #fd6; font-weight: bold; margin-right: 10px; }
+    #shop .item .cost { color: #6f9; }
+    #shop .item.cant .cost { color: #f66; }
+    #shop .leave {
+      display: block; margin: 14px auto 0; padding: 7px 18px; cursor: pointer;
+      background: rgba(80,40,40,0.5); color: #fcc; border: 1px solid #a55; border-radius: 4px;
+      font-family: monospace; font-size: 13px;
+    }
+    #shop .leave:hover { background: rgba(120,50,50,0.7); }
+    #shop .foot { margin-top: 12px; color: #89a; font-size: 12px; text-align: center; }
+    #shop .wallet { color: #fd6; text-align: center; margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -50,6 +78,7 @@
   <div id="hud">
     FLOOR: <span id="floor">1</span> / <span id="floorMax">3</span><br>
     COINS: <span id="coins">0</span> / <span id="coinTotal">0</span><br>
+    AMMO: <span id="ammo">20</span> | <span id="weapon">Pistol</span><br>
     GHOSTS: <span id="ghostsBusted">0</span> / <span id="ghostTotal">0</span><br>
     HEALTH: <span class="hearts" id="hearts">&#9829;&#9829;&#9829;</span><br>
     ---<br>
@@ -59,6 +88,9 @@
     R: New dungeon
   </div>
   <div id="message"></div>
+  <div id="shop">
+    <div id="shopInner"></div>
+  </div>
   <div id="overlay">GHOST PATROL<br><br>Ghosts phase through walls. You don't.<br>Bust them all and their King will come for you.<br><br>Click to enter the dungeon</div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -100,15 +132,51 @@
 
     // Ghost tuning
     const GHOSTS_PER_FLOOR = 8;
-    const GHOST_HP = 5;
+    const GHOST_HP = 3;
     const GHOST_SPEED = 0.07;
     const GHOST_AWARE = 13;
-    const HEART_DROP_CHANCE = 0.2;
+    const HEART_DROP_CHANCE = 0.30;
 
     // Boss tuning
     const BOSS_HP = 18;
     const BOSS_SPEED = 0.085;
     const BOSS_ORB_SPEED = 0.16;
+    const BOSS_BERSERK_SPEED = 0.16;   // when player is out of ammo vs the King
+
+    // Weapons & ammo economy
+    const START_AMMO = 20;
+    const PISTOL_COOLDOWN = 22;        // frames between shots (slow)
+    const AUTO_COOLDOWN = 7;           // frames between shots with autofire
+    const AMMO_BOX_BASE = 1;           // bullets per box before upgrades
+    // ammoDropBonus (0/+2/+5 from shop) is ADDED to the base, so an upgraded box
+    // gives 3 (ammo2) or 6 (mega). Base is deliberately stingy: starting ammo
+    // plus careful aim clears the early floors; the shop upgrades are what make
+    // ammo cans genuinely worth collecting.
+    const AMMO_BOXES_PER_FLOOR = 6;
+
+    // Shop: per-floor fountain catalogs. Prices scale by floor (20/30/40).
+    // id's map to purchase effects in buyItem(). Each fountain lists what it sells.
+    const FLOOR_PRICE = [15, 25, 35];
+    const SHOP_CATALOG = [
+      // Floor 1 fountain
+      [
+        { id: 'hp',     name: '+1 Max Heart' },
+        { id: 'rifle',  name: 'Rifle (2 dmg/shot)' },
+        { id: 'ammo2',  name: 'Ammo Boxes give +2' }
+      ],
+      // Floor 2 fountain
+      [
+        { id: 'hp',     name: '+1 Max Heart' },
+        { id: 'rifle',  name: 'Rifle (2 dmg/shot)' },
+        { id: 'auto',   name: 'Autofire (hold to spray)' }
+      ],
+      // Floor 3 fountain (premium)
+      [
+        { id: 'hp',     name: '+1 Max Heart' },
+        { id: 'auto',   name: 'Autofire (hold to spray)' },
+        { id: 'ammo5',  name: 'Mega Ammo: Boxes give +5' }
+      ]
+    ];
 
     // ---------- State ----------
     let scene, camera, renderer, headlamp;
@@ -127,17 +195,27 @@
     let holes = [];
     let ramps = [];
     let ladders = [];
-    let coins = [], ghosts = [], projectiles = [], hearts = [], bossOrbs = [];
+    let coins = [], ghosts = [], projectiles = [], hearts = [], bossOrbs = [], ammoBoxes = [], fountains = [];
     let boss = null;
     let coinCount = 0, coinTotal = 0, ghostsBusted = 0, ghostTotal = 0;
-    let health = 3, invulnUntil = 0, gameOver = false, won = false;
+    let health = 3, maxHealth = 3, invulnUntil = 0, gameOver = false, won = false;
     let active = false;   // true only during live play: gates ALL actor motion
+    // economy / weapons
+    let ammo = START_AMMO;
+    let ammoDropBonus = 0;        // +2 or +5 from shop upgrades (best owned wins)
+    let hasRifle = false, hasAuto = false;
+    let fireCooldown = 0;         // frames until next shot allowed
+    let berserk = false;         // King goes berserk when player is dry during boss fight
+    // shop
+    let shopOpen = false, shopFountain = null, shopItems = [], shopJustLeft = null;
     let shotsFired = 0, shotsHit = 0, startTime = 0;
     let worldGroup = null;
     let actx = null;
 
     // ---------- Gamepad ----------
     let prevXButton = false;    // for edge detection (shoot/start fire once per press)
+    let mouseHeld = false, padShootHeld = false;
+    let prevPadButtons = [];    // edge detection for shop face buttons
     const STICK_DEADZONE = 0.18;
     const PAD_LOOK_SPEED = 0.045;
     function dz(v) { return Math.abs(v) < STICK_DEADZONE ? 0 : v; }
@@ -164,6 +242,11 @@
     const sndBoss  = () => sfx(55, 0.8, 'sawtooth', 0.2, -15);
     const sndOrb   = () => sfx(200, 0.15, 'triangle', 0.1, -120);
     const sndWin   = () => { sfx(523, 0.15, 'square', 0.1); setTimeout(() => sfx(659, 0.15, 'square', 0.1), 150); setTimeout(() => sfx(784, 0.3, 'square', 0.12), 300); };
+    const sndAmmo  = () => sfx(440, 0.1, 'square', 0.1, 160);
+    const sndBuy   = () => { sfx(600, 0.1, 'square', 0.1, 200); setTimeout(() => sfx(900, 0.12, 'square', 0.1), 90); };
+    const sndDeny  = () => sfx(160, 0.18, 'sawtooth', 0.1, -40);
+    const sndDry   = () => sfx(120, 0.05, 'square', 0.08);
+    const sndBerserk = () => { sfx(60, 0.5, 'sawtooth', 0.2, -20); setTimeout(() => sfx(45, 0.6, 'sawtooth', 0.22, -15), 200); };
 
     // ---------- Maze generation ----------
     function generateMaze(n) {
@@ -554,6 +637,53 @@
       hearts.push({ mesh, floor, baseY, t: Math.random() * Math.PI * 2, collected: false });
     }
 
+    // ---------- Ammo boxes ----------
+    function addAmmoBox(floor, x, z) {
+      const group = new THREE.Group();
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.4, 0.35),
+        new THREE.MeshStandardMaterial({ color: 0x3a6a3a, emissive: 0x113311, emissiveIntensity: 0.4, metalness: 0.5, roughness: 0.5 })
+      );
+      group.add(box);
+      // little brass "bullets" marker on top
+      const tip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.05, 0.18, 8),
+        new THREE.MeshStandardMaterial({ color: 0xd4a017, emissive: 0x554400, metalness: 0.8, roughness: 0.3 })
+      );
+      tip.position.y = 0.28;
+      group.add(tip);
+      const baseY = floor * LEVEL_H + 0.5;
+      group.position.set(x, baseY, z);
+      worldGroup.add(group);
+      ammoBoxes.push({ group, floor, baseY, t: Math.random() * Math.PI * 2, collected: false });
+    }
+
+    // ---------- Fountains (shop anchors, one per floor) ----------
+    function addFountain(floor, gx, gy) {
+      const c = roomCenter(gx, gy);
+      const yBase = floor * LEVEL_H;
+      const stone = new THREE.MeshStandardMaterial({ color: 0x4a5a6a, roughness: 0.8, metalness: 0.2 });
+      // basin
+      const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.2, 0.5, 20), stone);
+      basin.position.set(c.x, yBase + 0.25, c.z);
+      worldGroup.add(basin);
+      // pedestal
+      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.8, 12), stone);
+      ped.position.set(c.x, yBase + 0.7, c.z);
+      worldGroup.add(ped);
+      // glowing water
+      const water = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.9, 0.9, 0.1, 20),
+        new THREE.MeshStandardMaterial({ color: 0x33bbff, emissive: 0x2299dd, emissiveIntensity: 0.8, transparent: true, opacity: 0.8 })
+      );
+      water.position.set(c.x, yBase + 0.52, c.z);
+      worldGroup.add(water);
+      const glow = new THREE.PointLight(0x44bbff, 1.1, 9);
+      glow.position.set(c.x, yBase + 1.4, c.z);
+      worldGroup.add(glow);
+      fountains.push({ x: c.x, z: c.z, floor });
+    }
+
     // ---------- Ghosts ----------
     function makeGhostMesh(bodyColor, emissive, eyeColor, opacity) {
       const group = new THREE.Group();
@@ -636,8 +766,8 @@
       }
     }
 
-    function hitGhost(g) {
-      g.hp--;
+    function hitGhost(g, dmg) {
+      g.hp -= (dmg || 1);
       shotsHit++;
       sndHit();
       g.mats.forEach(m => { m.emissive.setHex(0xff4444); });
@@ -695,8 +825,8 @@
       document.getElementById('bossbar').innerHTML = 'GHOST KING&nbsp;&nbsp;' + bar;
     }
 
-    function hitBoss() {
-      boss.hp--;
+    function hitBoss(dmg) {
+      boss.hp -= (dmg || 1);
       shotsHit++;
       sndHit();
       boss.mats.forEach(m => { m.emissive.setHex(0xff4444); });
@@ -741,10 +871,23 @@
       boss.t += 0.04;
       const pf = floorIndexOf(player.y);
 
+      // Berserk: no ammo AND no ammo boxes left on the King's floor means the
+      // player can't win the fight -> the King smells blood and runs them down.
+      if (!berserk && ammo <= 0) {
+        const boxesLeft = ammoBoxes.some(b => !b.collected);
+        if (!boxesLeft) {
+          berserk = true;
+          boss.mats.forEach(m => m.emissive.setHex(0xff0000));
+          showMessage('The Ghost King goes BERSERK!');
+          sndBerserk();
+        }
+      }
+      const bspeed = berserk ? BOSS_BERSERK_SPEED : BOSS_SPEED;
+
       // the King phases through floors to follow you after a short delay
       if (boss.floor !== pf) {
         boss.phaseTimer++;
-        if (boss.phaseTimer > 150) {
+        if (boss.phaseTimer > (berserk ? 60 : 150)) {
           boss.floor = pf;
           boss.phaseTimer = 0;
           showMessage('The Ghost King phases through the floor!');
@@ -755,8 +898,8 @@
         const dx = player.x - boss.x, dz = player.z - boss.z;
         const dist = Math.hypot(dx, dz);
         if (dist > 0.01) {
-          boss.x += (dx / dist) * BOSS_SPEED;
-          boss.z += (dz / dist) * BOSS_SPEED;
+          boss.x += (dx / dist) * bspeed;
+          boss.z += (dz / dist) * bspeed;
           boss.group.rotation.y = Math.atan2(dx, dz);
         }
         if (dist < 1.4 && now > invulnUntil && !gameOver) {
@@ -767,7 +910,7 @@
         boss.shootTimer--;
         if (boss.shootTimer <= 0 && dist < 16 && dist > 2) {
           fireOrb();
-          boss.shootTimer = 140 + Math.random() * 60;
+          boss.shootTimer = (berserk ? 70 : 140) + Math.random() * 60;
         }
       }
       boss.group.position.set(boss.x, boss.floor * LEVEL_H + 1.8 + Math.sin(boss.t) * 0.25, boss.z);
@@ -808,20 +951,104 @@
       }
     }
 
+    // ---------- Shop ----------
+    function openShop(f) {
+      shopOpen = true;
+      shopFountain = f;
+      shopItems = SHOP_CATALOG[f.floor];
+      active = false;                 // freeze the world while shopping
+      document.exitPointerLock();     // release so the cursor returns for clicking
+      renderShop();
+      document.getElementById('shop').style.display = 'block';
+    }
+
+    function closeShop() {
+      shopOpen = false;
+      shopJustLeft = shopFountain;   // block reopen until player walks away
+      shopFountain = null;
+      document.getElementById('shop').style.display = 'none';
+      renderer.domElement.requestPointerLock();   // re-lock resumes play
+    }
+
+    function isOwned(id) {
+      if (id === 'rifle') return hasRifle;
+      if (id === 'auto') return hasAuto;
+      if (id === 'ammo2') return ammoDropBonus >= 2;
+      if (id === 'ammo5') return ammoDropBonus >= 5;
+      return false;   // hp is repeatable
+    }
+
+    function renderShop() {
+      const f = shopFountain;
+      const price = FLOOR_PRICE[f.floor];
+      let html = `<h2>FOUNTAIN &mdash; Floor ${f.floor + 1}</h2>`;
+      html += `<div class="sub">Click an item or press its number &bull; ESC to leave</div>`;
+      html += `<div class="wallet">Coins: ${coinCount}</div>`;
+      shopItems.forEach((item, i) => {
+        const owned = isOwned(item.id);
+        const canAfford = coinCount >= price;
+        const cls = owned ? 'item owned' : (canAfford ? 'item' : 'item cant');
+        const right = owned ? 'OWNED' : `<span class="cost">${price} coins</span>`;
+        html += `<div class="${cls}" data-slot="${i}"><span><span class="key">${i + 1}</span>${item.name}</span>${right}</div>`;
+      });
+      html += `<button class="leave" data-leave="1">Leave (ESC)</button>`;
+      const inner = document.getElementById('shopInner');
+      inner.innerHTML = html;
+      // wire clicks: items buy, leave button closes
+      inner.querySelectorAll('.item').forEach(el => {
+        el.addEventListener('click', () => buyItem(parseInt(el.getAttribute('data-slot'), 10)));
+      });
+      inner.querySelector('.leave').addEventListener('click', () => closeShop());
+    }
+
+    function buyItem(slot) {
+      if (!shopOpen || slot < 0 || slot >= shopItems.length) return;
+      const item = shopItems[slot];
+      const price = FLOOR_PRICE[shopFountain.floor];
+      if (isOwned(item.id)) { sndDeny(); return; }
+      if (coinCount < price) { sndDeny(); return; }
+      coinCount -= price;
+      switch (item.id) {
+        case 'hp':    maxHealth++; health = Math.min(maxHealth, health + 1); break;
+        case 'rifle': hasRifle = true; break;
+        case 'auto':  hasAuto = true; break;
+        case 'ammo2': ammoDropBonus = Math.max(ammoDropBonus, 2); break;
+        case 'ammo5': ammoDropBonus = Math.max(ammoDropBonus, 5); break;
+      }
+      sndBuy();
+      updateHUD();
+      renderShop();
+    }
+
+    function weaponName() {
+      if (hasRifle && hasAuto) return 'Auto Rifle';
+      if (hasAuto) return 'Auto Pistol';
+      if (hasRifle) return 'Rifle';
+      return 'Pistol';
+    }
+
     // ---------- Shooting ----------
     function shoot() {
-      if (gameOver) return;
+      if (!active || gameOver) return;
+      if (fireCooldown > 0) return;
+      if (ammo <= 0) { sndDry(); fireCooldown = 10; return; }
+      ammo--;
       shotsFired++;
+      fireCooldown = hasAuto ? AUTO_COOLDOWN : PISTOL_COOLDOWN;
       sndShoot();
+      updateHUD();
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.09, 8, 8),
-        new THREE.MeshBasicMaterial({ color: 0x66ffcc })
+        new THREE.MeshBasicMaterial({ color: hasRifle ? 0xffcc44 : 0x66ffcc })
       );
       mesh.position.copy(camera.position);
       worldGroup.add(mesh);
-      projectiles.push({ mesh, vx: dir.x * 0.6, vy: dir.y * 0.6, vz: dir.z * 0.6, life: 90 });
+      projectiles.push({
+        mesh, vx: dir.x * 0.7, vy: dir.y * 0.7, vz: dir.z * 0.7,
+        life: 90, dmg: hasRifle ? 2 : 1
+      });
     }
 
     function updateProjectiles() {
@@ -845,7 +1072,7 @@
           for (const g of ghosts) {
             if (g.dead) continue;
             if (p.mesh.position.distanceTo(g.group.position) < 0.85) {
-              hitGhost(g);
+              hitGhost(g, p.dmg);
               dead = true;
               break;
             }
@@ -853,7 +1080,7 @@
         }
         if (!dead && boss && !boss.dead) {
           if (p.mesh.position.distanceTo(boss.group.position) < 1.3) {
-            hitBoss();
+            hitBoss(p.dmg);
             dead = true;
           }
         }
@@ -889,10 +1116,13 @@
       holes = new Array(FLOORS).fill(null);
       ramps = [];
       ladders = [];
-      coins = []; ghosts = []; projectiles = []; hearts = []; bossOrbs = [];
+      coins = []; ghosts = []; projectiles = []; hearts = []; bossOrbs = []; ammoBoxes = []; fountains = [];
       boss = null;
       coinCount = 0; coinTotal = 0; ghostsBusted = 0; ghostTotal = 0;
-      health = 3; invulnUntil = 0; gameOver = false; won = false;
+      health = 3; maxHealth = 3; invulnUntil = 0; gameOver = false; won = false;
+      ammo = START_AMMO; ammoDropBonus = 0; hasRifle = false; hasAuto = false;
+      fireCooldown = 0; berserk = false; shopOpen = false;
+      document.getElementById('shop').style.display = 'none';
       shotsFired = 0; shotsHit = 0; startTime = performance.now();
       document.getElementById('bossbar').style.display = 'none';
 
@@ -901,19 +1131,42 @@
       artMats = [];
       shuffleArtDeck();
 
+      // Connection rooms (stairs/ladders between floors). Constraints:
+      //  - never the spawn room 0,0 (player would spawn inside the shaft)
+      //  - never stacked over/under the connection below it: a floor-f shaft
+      //    cuts a hole in the slab above (floor f+1's floor), so if floor f+1's
+      //    own connection shared that room the two shafts would overlap and you
+      //    get lost inside the block.
       const connections = [];
       for (let f = 0; f < FLOORS - 1; f++) {
-        connections.push({
-          floor: f,
-          gx: Math.floor(Math.random() * GRID),
-          gy: Math.floor(Math.random() * GRID),
-          kind: Math.random() < 0.5 ? 'stairs' : 'ladder'
-        });
+        let gx, gy, guard = 0;
+        do {
+          gx = Math.floor(Math.random() * GRID);
+          gy = Math.floor(Math.random() * GRID);
+          guard++;
+        } while (guard < 200 && (
+          (gx === 0 && gy === 0) ||                       // not the spawn room
+          (f > 0 && gx === connections[f - 1].gx && gy === connections[f - 1].gy) // not stacked
+        ));
+        connections.push({ floor: f, gx, gy, kind: Math.random() < 0.5 ? 'stairs' : 'ladder' });
       }
       const reserved = new Set(['0,0,0']);
       for (const s of connections) {
         reserved.add(`${s.floor},${s.gx},${s.gy}`);
         reserved.add(`${s.floor + 1},${s.gx},${s.gy}`);
+      }
+
+      // one fountain room per floor (kept clear of ghosts/coins, distinct from
+      // stair/ladder rooms and the spawn)
+      const fountainRooms = [];
+      for (let floor = 0; floor < FLOORS; floor++) {
+        let gx, gy, guard = 0;
+        do {
+          gx = Math.floor(Math.random() * GRID);
+          gy = Math.floor(Math.random() * GRID);
+        } while (reserved.has(`${floor},${gx},${gy}`) && guard++ < 100);
+        fountainRooms.push({ floor, gx, gy });
+        reserved.add(`${floor},${gx},${gy}`);
       }
 
       for (const s of connections) {
@@ -949,10 +1202,12 @@
           for (let gy = 0; gy < GRID; gy++) {
             if (reserved.has(`${floor},${gx},${gy}`)) continue;
             const c = roomCenter(gx, gy);
-            if (Math.random() < 0.6) {
-              const n = 1 + Math.floor(Math.random() * 2);
+            // Coins: aim ~4 per room on average so collecting the whole floor
+            // funds the fountain. Most rooms get a cluster; a few get none.
+            if (Math.random() < 0.85) {
+              const n = 3 + Math.floor(Math.random() * 4);   // 3-6 coins
               for (let k = 0; k < n; k++)
-                addCoin(floor, c.x + (Math.random() * 4 - 2), c.z + (Math.random() * 4 - 2));
+                addCoin(floor, c.x + (Math.random() * 5 - 2.5), c.z + (Math.random() * 5 - 2.5));
             }
             if (Math.random() < 0.3) {
               const torch = new THREE.PointLight(0xff9944, 0.7, 8);
@@ -970,6 +1225,22 @@
           const c = roomCenter(gx, gy);
           addGhost(floor, c.x + (Math.random() * 4 - 2), c.z + (Math.random() * 4 - 2));
           placed++;
+        }
+
+        // fountain for this floor
+        const fr = fountainRooms[floor];
+        addFountain(floor, fr.gx, fr.gy);
+
+        // ammo boxes: a fixed handful per floor. Base value is low on purpose;
+        // the shop's ammo upgrades are what make them worth collecting.
+        let bplaced = 0, bguard = 0;
+        while (bplaced < AMMO_BOXES_PER_FLOOR && bguard++ < 400) {
+          const gx = Math.floor(Math.random() * GRID);
+          const gy = Math.floor(Math.random() * GRID);
+          if (reserved.has(`${floor},${gx},${gy}`)) continue;
+          const c = roomCenter(gx, gy);
+          addAmmoBox(floor, c.x + (Math.random() * 4 - 2), c.z + (Math.random() * 4 - 2));
+          bplaced++;
         }
       }
 
@@ -1016,6 +1287,7 @@
           overlay.style.display = 'none';
         } else {
           active = false;       // start screen / pause / game over: everything freezes
+          if (shopOpen) return; // shop released the lock on purpose; its own panel is showing
           overlay.style.display = 'flex';
           if (won) {
             const secs = Math.floor((performance.now() - startTime) / 1000);
@@ -1041,14 +1313,27 @@
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
       });
       document.addEventListener('mousedown', (e) => {
-        if (e.button === 0 && document.pointerLockElement) shoot();
+        if (e.button === 0 && document.pointerLockElement) {
+          mouseHeld = true;
+          shoot();   // first shot immediate; autofire loop continues if hasAuto
+        }
+      });
+      document.addEventListener('mouseup', (e) => {
+        if (e.button === 0) mouseHeld = false;
       });
       // WASD write to shadow keys (_kw etc.) so the gamepad poll, which
       // rewrites keys['w'] every frame, can OR the two sources together
       // instead of clobbering the keyboard. Other keys pass through directly.
-      const shadow = { w: '_kw', a: '_ka', s: '_ks', d: '_kd' };
+      const shadow = { w: '_kw', a: '_ka', s: '_ks', d: '_kd', shift: '_kshift' };
       document.addEventListener('keydown', (e) => {
         const k = e.key.toLowerCase();
+        // shop input takes priority
+        if (shopOpen) {
+          if (k === 'escape') { closeShop(); return; }
+          const n = parseInt(k, 10);
+          if (!isNaN(n) && n >= 1) buyItem(n - 1);
+          return;
+        }
         keys[shadow[k] || k] = true;
         if (k === 'r' && !gameOver) {
           buildDungeon();
@@ -1066,12 +1351,14 @@
     function updateHUD() {
       document.getElementById('coins').textContent = coinCount;
       document.getElementById('coinTotal').textContent = coinTotal;
+      document.getElementById('ammo').textContent = ammo;
+      document.getElementById('weapon').textContent = weaponName();
       document.getElementById('ghostsBusted').textContent = ghostsBusted;
       document.getElementById('ghostTotal').textContent = ghostTotal;
       document.getElementById('floor').textContent = floorIndexOf(player.y) + 1;
       document.getElementById('floorMax').textContent = FLOORS;
       document.getElementById('hearts').innerHTML =
-        '&#9829;'.repeat(Math.max(0, health)) + '&#9825;'.repeat(Math.max(0, 3 - health));
+        '&#9829;'.repeat(Math.max(0, health)) + '&#9825;'.repeat(Math.max(0, maxHealth - health));
     }
 
     function showMessage(text) {
@@ -1107,12 +1394,30 @@
       // real movement flags every frame. Without this, WASD does nothing until
       // a gamepad appears and runs the merge below (the original bug).
       let w = !!keys['_kw'], s = !!keys['_ks'], a = !!keys['_ka'], d = !!keys['_kd'];
+      keys['shift'] = !!keys['_kshift'];   // gamepad may OR sprint on below
 
       const pads = navigator.getGamepads ? navigator.getGamepads() : [];
       let gp = null;
       for (const p of pads) if (p) { gp = p; break; }
 
       if (gp) {
+        // ----- Shop mode: face buttons pick items, B/circle or Start leaves -----
+        if (shopOpen) {
+          const btn = (i) => gp.buttons[i] && gp.buttons[i].pressed;
+          for (let i = 0; i < 4; i++) {
+            const pressed = btn(i);
+            if (pressed && !prevPadButtons[i]) {
+              if (i === 0) buyItem(0);        // A/cross -> item 1
+              else if (i === 3) buyItem(1);   // Y/triangle -> item 2
+              else if (i === 2) buyItem(2);   // X/square -> item 3
+              else if (i === 1) closeShop();  // B/circle -> leave
+            }
+            prevPadButtons[i] = pressed;
+          }
+          keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
+          return;
+        }
+
         // Left stick -> movement, OR'd with the keyboard. Up (negative Y) = forward.
         const lx = dz(gp.axes[0] || 0);
         const ly = dz(gp.axes[1] || 0);
@@ -1128,8 +1433,14 @@
         pitch += ry * PAD_LOOK_SPEED;   // inverted Y
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
 
-        // X (button 0) -> shoot in-game, or start/restart from an overlay. Edge-detected.
+        // Sprint on left-stick click (button 10) or left bumper (button 4),
+        // OR'd with keyboard shift (tracked via shadow key)
+        const padSprint = (gp.buttons[10] && gp.buttons[10].pressed) || (gp.buttons[4] && gp.buttons[4].pressed);
+        keys['shift'] = !!keys['_kshift'] || padSprint;
+
+        // X/cross (button 0) -> shoot / start / restart. Held for autofire.
         const xNow = gp.buttons[0] && gp.buttons[0].pressed;
+        padShootHeld = xNow && document.pointerLockElement && !gameOver;
         if (xNow && !prevXButton) {
           if (document.pointerLockElement && !gameOver) {
             shoot();
@@ -1235,7 +1546,7 @@
           h.mesh.position.y = h.baseY + Math.sin(h.t) * 0.25;
           h.mesh.rotation.y += 0.05;
         }
-        if (active && health < 3 &&
+        if (active && health < maxHealth &&
             Math.hypot(player.x - h.mesh.position.x, player.z - h.mesh.position.z) < 1.2 &&
             h.floor === pf) {
           h.collected = true;
@@ -1245,6 +1556,44 @@
           updateHUD();
         }
       }
+
+      // ammo boxes
+      for (const b of ammoBoxes) {
+        if (b.collected) continue;
+        if (active) {
+          b.t += 0.03;
+          b.group.position.y = b.baseY + Math.sin(b.t) * 0.15;
+          b.group.rotation.y += 0.02;
+        }
+        if (active &&
+            Math.hypot(player.x - b.group.position.x, player.z - b.group.position.z) < 1.2 &&
+            b.floor === pf) {
+          b.collected = true;
+          b.group.visible = false;
+          ammo += AMMO_BOX_BASE + ammoDropBonus;
+          sndAmmo();
+          const gain = AMMO_BOX_BASE + ammoDropBonus;
+          showMessage('+' + gain + ' ammo');
+          updateHUD();
+        }
+      }
+
+      // fountain -> open shop on contact
+      if (active && !shopOpen) {
+        for (const f of fountains) {
+          if (f.floor !== pf) continue;
+          const near = Math.hypot(player.x - f.x, player.z - f.z) < 1.9;
+          if (f === shopJustLeft) {
+            if (!near) shopJustLeft = null;   // walked away; fountain is armed again
+            continue;
+          }
+          if (near) { openShop(f); break; }
+        }
+      }
+
+      // fire-rate cooldown + autofire (hold mouse/X to spray once owned)
+      if (fireCooldown > 0) fireCooldown--;
+      if (active && hasAuto && (mouseHeld || padShootHeld) && fireCooldown === 0) shoot();
 
       if (active) {
         updateGhosts(now);
