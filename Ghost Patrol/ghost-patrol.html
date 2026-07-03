@@ -440,6 +440,7 @@
     let outro = false;   // non-interactive pause after win/lose before the result screen
     let menuState = 'title';   // 'title' | 'help' | 'result' | null (in-play/pause)
     let helpPage = 0;
+    const HELP_PAGES = 3;
     let worldGroup = null;
     let actx = null;
 
@@ -1625,8 +1626,8 @@
 
         // explicit button actions
         if (act === 'help')     { showHelpScreen(); return; }
-        if (act === 'helpnext') { helpPage = 1; renderHelp(); return; }
-        if (act === 'helpprev') { helpPage = 0; renderHelp(); return; }
+        if (act === 'helpnext') { helpPage = Math.min(helpPage + 1, HELP_PAGES - 1); renderHelp(); return; }
+        if (act === 'helpprev') { helpPage = Math.max(helpPage - 1, 0); renderHelp(); return; }
         if (act === 'tomenu')   { showTitleScreen(); return; }
         if (act === 'new')      { showConfirm('This will erase all previous scores. Are you sure?', startNewGame, showTitleScreen); return; }
         if (act === 'again')    { buildDungeon(); menuState = null; renderer.domElement.requestPointerLock(); return; }
@@ -2285,7 +2286,7 @@
           '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed paintings</b> smolder on the walls &mdash; one per floor. Right-click up close to cleanse them for a coin bounty.</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div>Busted ghosts sometimes drop <b>hearts</b>. Play aggressive to stay healed.</div></div>' +
           '</div>';
-      } else {
+      } else if (helpPage === 1) {
         body =
           '<div class="help-h">Your HUD</div>' +
           '<div class="help-grid">' +
@@ -2316,14 +2317,25 @@
           '<div class="help-k"><b>Square</b> cleanse art</div>' +
           '<div class="help-k">Fountain: face buttons buy</div></div>' +
           '</div>';
+      } else {
+        body =
+          '<div class="help-h">The art on these walls</div>' +
+          '<div class="help-p">Every painting you pass &mdash; and every cursed one you cleanse &mdash; is a real hand-drawn original by <span class="hot">D. Butler</span>. One hundred of her doodles and mandalas hang throughout the gallery. None were generated; each was drawn by hand.</div>' +
+          '<div class="help-p">Her work is surreal and meditative, folding geometry into nature: tessellated petals, spiraling mandalas, organic forms that resolve into pattern the longer you look. It\'s a strange and fitting thing to wander past while ghost-busting &mdash; which is exactly why it\'s here.</div>' +
+          '<div class="help-p">D. Butler is an unknown local artist. If the gallery catches your eye, the source does far more justice than any game wall can &mdash; her albums are on Facebook:</div>' +
+          '<div style="text-align:center;margin-top:4px">' +
+          '<a href="https://www.facebook.com/shininggoober/photos_albums" target="_blank" rel="noopener" ' +
+          'style="color:var(--cyan);font-family:var(--font-display);font-weight:600;font-size:15px;text-decoration:none;border-bottom:1px solid rgba(127,233,255,0.5);padding-bottom:1px">' +
+          '&#9673; D. Butler&rsquo;s Doodles on Facebook &#8599;</a>' +
+          '</div>';
       }
       overlay.innerHTML =
         '<div class="panel help-panel">' +
         body +
         '<div class="menu-row">' +
-        (helpPage === 1 ? '<button class="minipill" data-act="helpprev">&#8592; Back</button>' : '<span style="width:70px"></span>') +
-        `<div class="help-dots"><span class="${helpPage===0?'on':''}"></span><span class="${helpPage===1?'on':''}"></span></div>` +
-        (helpPage === 0 ? '<button class="minipill" data-act="helpnext">Next &#8594;</button>' : '<button class="minipill" data-act="tomenu">Main Menu</button>') +
+        (helpPage > 0 ? '<button class="minipill" data-act="helpprev">&#8592; Back</button>' : '<span style="width:70px"></span>') +
+        `<div class="help-dots"><span class="${helpPage===0?'on':''}"></span><span class="${helpPage===1?'on':''}"></span><span class="${helpPage===2?'on':''}"></span></div>` +
+        (helpPage < HELP_PAGES - 1 ? '<button class="minipill" data-act="helpnext">Next &#8594;</button>' : '<button class="minipill" data-act="tomenu">Main Menu</button>') +
         '</div>' +
         '</div>';
     }
