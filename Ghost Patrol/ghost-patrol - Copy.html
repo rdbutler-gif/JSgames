@@ -27,14 +27,24 @@
     }
     #overlay {
       position: absolute; inset: 0; z-index: 20;
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(0,0,0,0.78); color: #0f0; font-size: 16px;
-      text-align: center; cursor: pointer; line-height: 2;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.85); color: #0f0; font-size: 16px;
+      text-align: center; cursor: pointer; line-height: 1.6;
+      padding: 24px; box-sizing: border-box; overflow-y: auto;
+    }
+    #overlay .panel {
+      max-width: 460px; width: 100%;
     }
     #vignette {
       position: absolute; inset: 0; z-index: 15; pointer-events: none;
       background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,0.55) 100%);
       opacity: 0; transition: opacity 0.15s;
+    }
+    #cleanse {
+      position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+      color: #ffdd66; background: rgba(30,15,0,0.85); padding: 8px 18px;
+      border: 2px solid #ffcc22; border-radius: 4px; z-index: 10; display: none;
+      font-size: 14px; pointer-events: none; text-shadow: 0 0 6px #ff8800;
     }
     #crosshair {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -69,6 +79,24 @@
     #shop .leave:hover { background: rgba(120,50,50,0.7); }
     #shop .foot { margin-top: 12px; color: #89a; font-size: 12px; text-align: center; }
     #shop .wallet { color: #fd6; text-align: center; margin-bottom: 10px; }
+    table.hs { border-collapse: collapse; margin: 8px auto; font-size: 13px; color: #cde; }
+    table.hs th { color: #6cf; padding: 2px 10px; border-bottom: 1px solid #345; font-weight: normal; }
+    table.hs td { padding: 2px 10px; text-align: center; }
+    table.hs tr.me td { color: #fd6; font-weight: bold; }
+    .initrow { margin: 6px 0 4px; }
+    .initbox {
+      display: inline-block; width: 42px; height: 52px; line-height: 52px;
+      margin: 0 6px; font-size: 32px; color: #cfe;
+      border: 2px solid #456; border-radius: 6px; background: rgba(20,30,50,0.6);
+      vertical-align: middle;
+    }
+    .confirm {
+      display: block; margin: 16px auto 4px; padding: 9px 28px; cursor: pointer;
+      background: rgba(30,90,50,0.6); color: #cfe; border: 2px solid #4a9;
+      border-radius: 5px; font-family: monospace; font-size: 15px; letter-spacing: 2px;
+    }
+    .confirm:hover { background: rgba(40,130,70,0.8); }
+    .confirm.off { opacity: 0.35; cursor: default; border-color: #456; background: rgba(40,50,60,0.4); }
   </style>
 </head>
 <body>
@@ -80,14 +108,17 @@
     COINS: <span id="coins">0</span> / <span id="coinTotal">0</span><br>
     AMMO: <span id="ammo">20</span> | <span id="weapon">Pistol</span><br>
     GHOSTS: <span id="ghostsBusted">0</span> / <span id="ghostTotal">0</span><br>
+    CURSED: <span id="cursed">0</span> / <span id="cursedTotal">0</span><br>
     HEALTH: <span class="hearts" id="hearts">&#9829;&#9829;&#9829;</span><br>
     ---<br>
     WASD: Move | Shift: Sprint<br>
-    Mouse: Look | Click: Shoot<br>
-    Stairs: walk up | Ladders: hold W<br>
-    R: New dungeon
+    Mouse: Look | L-Click: Shoot<br>
+    R-Click: Frame cursed art<br>
+    Space: Dash | Stairs: walk up<br>
+    Ladders: hold W | R: New dungeon
   </div>
   <div id="message"></div>
+  <div id="cleanse">Right-click to cleanse the cursed painting</div>
   <div id="shop">
     <div id="shopInner"></div>
   </div>
@@ -154,6 +185,14 @@
     // ammo cans genuinely worth collecting.
     const AMMO_BOXES_PER_FLOOR = 6;
 
+    // New upgrades
+    const SPREAD_ANGLE = 15 * Math.PI / 180;   // ± offset for spread shot
+    const DASH_SPEED = 0.55;        // burst velocity
+    const DASH_FRAMES = 10;         // how long the burst lasts
+    const DASH_COOLDOWN = 90;       // frames before you can dash again
+    const CURSED_PER_FLOOR = 1;     // one cursed painting per floor
+    const CURSED_BOUNTY = [25, 40, 60];  // coin reward by floor
+
     // Shop: per-floor fountain catalogs. Prices scale by floor (20/30/40).
     // id's map to purchase effects in buyItem(). Each fountain lists what it sells.
     const FLOOR_PRICE = [15, 25, 35];
@@ -162,19 +201,22 @@
       [
         { id: 'hp',     name: '+1 Max Heart' },
         { id: 'rifle',  name: 'Rifle (2 dmg/shot)' },
-        { id: 'ammo2',  name: 'Ammo Boxes give +2' }
+        { id: 'ammo2',  name: 'Ammo Boxes give +2' },
+        { id: 'pierce', name: 'Piercing Shot' }
       ],
       // Floor 2 fountain
       [
         { id: 'hp',     name: '+1 Max Heart' },
         { id: 'rifle',  name: 'Rifle (2 dmg/shot)' },
-        { id: 'auto',   name: 'Autofire (hold to spray)' }
+        { id: 'auto',   name: 'Autofire (hold to spray)' },
+        { id: 'spread', name: 'Spread Shot (3-way)' }
       ],
       // Floor 3 fountain (premium)
       [
         { id: 'hp',     name: '+1 Max Heart' },
         { id: 'auto',   name: 'Autofire (hold to spray)' },
-        { id: 'ammo5',  name: 'Mega Ammo: Boxes give +5' }
+        { id: 'ammo5',  name: 'Mega Ammo: Boxes give +5' },
+        { id: 'dash',   name: 'Dash Roll (Space / R1)' }
       ]
     ];
 
@@ -203,18 +245,24 @@
     // economy / weapons
     let ammo = START_AMMO;
     let ammoDropBonus = 0;        // +2 or +5 from shop upgrades (best owned wins)
-    let hasRifle = false, hasAuto = false;
+    let hasRifle = false, hasAuto = false, hasPierce = false, hasSpread = false, hasDash = false;
     let fireCooldown = 0;         // frames until next shot allowed
+    let dashCooldown = 0, dashFrames = 0, dashVX = 0, dashVZ = 0;
     let berserk = false;         // King goes berserk when player is dry during boss fight
+    let cursedPaintings = [], cursedFramed = 0, cursedTotal = 0;
     // shop
     let shopOpen = false, shopFountain = null, shopItems = [], shopJustLeft = null;
     let shotsFired = 0, shotsHit = 0, startTime = 0;
+    let highScores = [];
+    let victoryHTML = '';
+    let enteringInitials = false, initials = '', pendingRun = null;
+    let outro = false;   // non-interactive pause after win/lose before the result screen
     let worldGroup = null;
     let actx = null;
 
     // ---------- Gamepad ----------
     let prevXButton = false;    // for edge detection (shoot/start fire once per press)
-    let mouseHeld = false, padShootHeld = false;
+    let mouseHeld = false, padShootHeld = false, padDash = false;
     let prevPadButtons = [];    // edge detection for shop face buttons
     const STICK_DEADZONE = 0.18;
     const PAD_LOOK_SPEED = 0.045;
@@ -247,6 +295,8 @@
     const sndDeny  = () => sfx(160, 0.18, 'sawtooth', 0.1, -40);
     const sndDry   = () => sfx(120, 0.05, 'square', 0.08);
     const sndBerserk = () => { sfx(60, 0.5, 'sawtooth', 0.2, -20); setTimeout(() => sfx(45, 0.6, 'sawtooth', 0.22, -15), 200); };
+    const sndDash  = () => sfx(300, 0.12, 'sine', 0.1, 220);
+    const sndFrame = () => { sfx(660, 0.1, 'triangle', 0.12, 120); setTimeout(() => sfx(880, 0.1, 'triangle', 0.12, 120), 90); setTimeout(() => sfx(1180, 0.22, 'sine', 0.13, 200), 180); };
 
     // ---------- Maze generation ----------
     function generateMaze(n) {
@@ -417,8 +467,48 @@
         }
         m.scale.x = sx;
         m.userData.artIndex = idx;
+        m.userData.floor = floor;
         worldGroup.add(m);
         artDecals.push(m);
+      }
+    }
+
+    // After all wall art is placed, mark one painting per floor as "cursed":
+    // give it a glowing gold frame + light and register it for right-click framing.
+    function designateCursedPaintings() {
+      cursedPaintings = [];
+      cursedFramed = 0;
+      cursedTotal = 0;
+      for (let floor = 0; floor < FLOORS; floor++) {
+        const onFloor = artDecals.filter(m => m.userData.floor === floor && m.visible);
+        if (!onFloor.length) continue;
+        for (let n = 0; n < CURSED_PER_FLOOR && onFloor.length; n++) {
+          const pick = onFloor[Math.floor(Math.random() * onFloor.length)];
+          const frame = new THREE.Mesh(
+            new THREE.PlaneGeometry(ART_H * pick.scale.x + 0.4, ART_H + 0.4),
+            new THREE.MeshBasicMaterial({ color: 0xffcc22, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+          );
+          frame.position.copy(pick.position);
+          frame.rotation.copy(pick.rotation);
+          const nx = Math.sin(pick.rotation.y), nz = Math.cos(pick.rotation.y);
+          frame.position.x -= nx * 0.01;
+          frame.position.z -= nz * 0.01;
+          worldGroup.add(frame);
+          const glow = new THREE.PointLight(0xffcc44, 0.8, 4);
+          glow.position.set(pick.position.x + nx * 0.5, pick.position.y, pick.position.z + nz * 0.5);
+          worldGroup.add(glow);
+          cursedPaintings.push({
+            mesh: pick, frame, glow, floor,
+            x: pick.position.x, y: pick.position.y, z: pick.position.z,
+            nx, nz, framed: false, phase: Math.random() * Math.PI * 2, baseGlow: 0.8
+          });
+          cursedTotal++;
+          const px = pick.position.x, pz = pick.position.z;
+          for (let k = onFloor.length - 1; k >= 0; k--) {
+            if (Math.abs(onFloor[k].position.x - px) < 0.5 && Math.abs(onFloor[k].position.z - pz) < 0.5)
+              onFloor.splice(k, 1);
+          }
+        }
       }
     }
 
@@ -661,7 +751,7 @@
     // ---------- Fountains (shop anchors, one per floor) ----------
     function addFountain(floor, gx, gy) {
       const c = roomCenter(gx, gy);
-      const yBase = floor * LEVEL_H;
+      const yBase = floor * LEVEL_H + SHRINK;   // lift off the slab: no coplanar bottom face
       const stone = new THREE.MeshStandardMaterial({ color: 0x4a5a6a, roughness: 0.8, metalness: 0.2 });
       // basin
       const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.2, 0.5, 20), stone);
@@ -973,6 +1063,9 @@
     function isOwned(id) {
       if (id === 'rifle') return hasRifle;
       if (id === 'auto') return hasAuto;
+      if (id === 'pierce') return hasPierce;
+      if (id === 'spread') return hasSpread;
+      if (id === 'dash') return hasDash;
       if (id === 'ammo2') return ammoDropBonus >= 2;
       if (id === 'ammo5') return ammoDropBonus >= 5;
       return false;   // hp is repeatable
@@ -1009,15 +1102,47 @@
       if (coinCount < price) { sndDeny(); return; }
       coinCount -= price;
       switch (item.id) {
-        case 'hp':    maxHealth++; health = Math.min(maxHealth, health + 1); break;
-        case 'rifle': hasRifle = true; break;
-        case 'auto':  hasAuto = true; break;
-        case 'ammo2': ammoDropBonus = Math.max(ammoDropBonus, 2); break;
-        case 'ammo5': ammoDropBonus = Math.max(ammoDropBonus, 5); break;
+        case 'hp':     maxHealth++; health = Math.min(maxHealth, health + 1); break;
+        case 'rifle':  hasRifle = true; break;
+        case 'auto':   hasAuto = true; break;
+        case 'pierce': hasPierce = true; break;
+        case 'spread': hasSpread = true; break;
+        case 'dash':   hasDash = true; break;
+        case 'ammo2':  ammoDropBonus = Math.max(ammoDropBonus, 2); break;
+        case 'ammo5':  ammoDropBonus = Math.max(ammoDropBonus, 5); break;
       }
       sndBuy();
       updateHUD();
       renderShop();
+    }
+
+    function tryFrameCursed() {
+      if (!active) return;
+      const pf = floorIndexOf(player.y);
+      for (const c of cursedPaintings) {
+        if (c.framed || c.floor !== pf) continue;
+        const d = Math.hypot(player.x - c.x, player.z - c.z);
+        if (d > 3) continue;
+        // must be roughly facing the painting
+        const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+        const tx = c.x - player.x, tz = c.z - player.z;
+        const tl = Math.hypot(tx, tz) || 1;
+        if ((fx * tx + fz * tz) / tl < 0.4) continue;
+        c.framed = true;
+        cursedFramed++;
+        const bounty = CURSED_BOUNTY[c.floor];
+        coinCount += bounty;
+        // settle to a calm framed state: no more pulse
+        c.frame.material.opacity = 0.85;
+        c.frame.material.color.setHex(0x8a5a2a);   // ominous amber -> tame wood frame
+        c.glow.color.setHex(0x66ffaa);
+        c.glow.intensity = 0.5;
+        document.getElementById('cleanse').style.display = 'none';
+        sndFrame();
+        showMessage('Painting cleansed! +' + bounty + ' coins');
+        updateHUD();
+        return;
+      }
     }
 
     function weaponName() {
@@ -1028,27 +1153,45 @@
     }
 
     // ---------- Shooting ----------
+    function spawnProjectile(dir) {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09, 8, 8),
+        new THREE.MeshBasicMaterial({ color: hasPierce ? 0xff66ff : (hasRifle ? 0xffcc44 : 0x66ffcc) })
+      );
+      mesh.position.copy(camera.position);
+      worldGroup.add(mesh);
+      projectiles.push({
+        mesh, vx: dir.x * 0.7, vy: dir.y * 0.7, vz: dir.z * 0.7,
+        life: 90, dmg: hasRifle ? 2 : 1,
+        pierce: hasPierce, hit: hasPierce ? new Set() : null
+      });
+    }
+
     function shoot() {
       if (!active || gameOver) return;
       if (fireCooldown > 0) return;
       if (ammo <= 0) { sndDry(); fireCooldown = 10; return; }
-      ammo--;
+      ammo--;                          // one press = one bullet even with spread
       shotsFired++;
       fireCooldown = hasAuto ? AUTO_COOLDOWN : PISTOL_COOLDOWN;
       sndShoot();
       updateHUD();
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.09, 8, 8),
-        new THREE.MeshBasicMaterial({ color: hasRifle ? 0xffcc44 : 0x66ffcc })
-      );
-      mesh.position.copy(camera.position);
-      worldGroup.add(mesh);
-      projectiles.push({
-        mesh, vx: dir.x * 0.7, vy: dir.y * 0.7, vz: dir.z * 0.7,
-        life: 90, dmg: hasRifle ? 2 : 1
-      });
+      spawnProjectile(dir);
+      if (hasSpread) {
+        // two extra bullets at +/- SPREAD_ANGLE around the vertical axis
+        for (const sign of [1, -1]) {
+          const a = sign * SPREAD_ANGLE;
+          const cos = Math.cos(a), sin = Math.sin(a);
+          const d2 = new THREE.Vector3(
+            dir.x * cos - dir.z * sin,
+            dir.y,
+            dir.x * sin + dir.z * cos
+          );
+          spawnProjectile(d2);
+        }
+      }
     }
 
     function updateProjectiles() {
@@ -1072,16 +1215,22 @@
           for (const g of ghosts) {
             if (g.dead) continue;
             if (p.mesh.position.distanceTo(g.group.position) < 0.85) {
-              hitGhost(g, p.dmg);
-              dead = true;
-              break;
+              if (p.pierce) {
+                // pass through, but damage each ghost only once
+                if (!p.hit.has(g)) { p.hit.add(g); hitGhost(g, p.dmg); }
+              } else {
+                hitGhost(g, p.dmg);
+                dead = true;
+                break;
+              }
             }
           }
         }
         if (!dead && boss && !boss.dead) {
           if (p.mesh.position.distanceTo(boss.group.position) < 1.3) {
-            hitBoss(p.dmg);
-            dead = true;
+            // boss is massive; a pierce round still only tags him once, then stops
+            if (!p.pierce || !p.hit.has(boss)) { if (p.pierce) p.hit.add(boss); hitBoss(p.dmg); }
+            dead = true;   // boss body stops the round regardless
           }
         }
         if (dead) {
@@ -1120,8 +1269,11 @@
       boss = null;
       coinCount = 0; coinTotal = 0; ghostsBusted = 0; ghostTotal = 0;
       health = 3; maxHealth = 3; invulnUntil = 0; gameOver = false; won = false;
+      outro = false; enteringInitials = false; pendingRun = null;
       ammo = START_AMMO; ammoDropBonus = 0; hasRifle = false; hasAuto = false;
-      fireCooldown = 0; berserk = false; shopOpen = false;
+      hasPierce = false; hasSpread = false; hasDash = false;
+      fireCooldown = 0; dashCooldown = 0; dashFrames = 0; berserk = false; shopOpen = false;
+      cursedPaintings = []; cursedFramed = 0; cursedTotal = 0;
       document.getElementById('shop').style.display = 'none';
       shotsFired = 0; shotsHit = 0; startTime = performance.now();
       document.getElementById('bossbar').style.display = 'none';
@@ -1222,6 +1374,8 @@
           const gx = Math.floor(Math.random() * GRID);
           const gy = Math.floor(Math.random() * GRID);
           if (reserved.has(`${floor},${gx},${gy}`)) continue;
+          // don't spawn ghosts adjacent to the player's start (floor 0, room 0,0)
+          if (floor === 0 && gx <= 1 && gy <= 1) continue;
           const c = roomCenter(gx, gy);
           addGhost(floor, c.x + (Math.random() * 4 - 2), c.z + (Math.random() * 4 - 2));
           placed++;
@@ -1243,6 +1397,8 @@
           bplaced++;
         }
       }
+
+      designateCursedPaintings();
 
       const spawn = roomCenter(0, 0);
       player = { x: spawn.x, y: 0, z: spawn.z };
@@ -1277,33 +1433,23 @@
     function setupControls() {
       const overlay = document.getElementById('overlay');
       overlay.addEventListener('click', () => {
+        if (enteringInitials || outro) return;   // finish entry / wait out the pause
         if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
         if (gameOver) buildDungeon();
         renderer.domElement.requestPointerLock();
       });
       document.addEventListener('pointerlockchange', () => {
         if (document.pointerLockElement) {
-          active = !gameOver;   // live only if we're not on an end screen
+          active = !gameOver;
           overlay.style.display = 'none';
         } else {
-          active = false;       // start screen / pause / game over: everything freezes
-          if (shopOpen) return; // shop released the lock on purpose; its own panel is showing
+          active = false;
+          if (shopOpen) return;   // shop panel is showing its own UI
+          // win/lose/outro screens are owned by doVictory/doGameOver/commitInitials;
+          // don't overwrite them here. Only the in-play pause is handled below.
+          if (won || gameOver || outro || enteringInitials) return;
           overlay.style.display = 'flex';
-          if (won) {
-            const secs = Math.floor((performance.now() - startTime) / 1000);
-            const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, '0');
-            const acc = shotsFired ? Math.round(shotsHit / shotsFired * 100) : 0;
-            overlay.innerHTML =
-              'DUNGEON CLEARED!<br><br>' +
-              `Time: ${mm}:${ss}<br>` +
-              `Coins: ${coinCount} / ${coinTotal}<br>` +
-              `Shots: ${shotsFired} | Accuracy: ${acc}%<br><br>` +
-              'Click for a new dungeon';
-          } else if (gameOver) {
-            overlay.innerHTML = 'YOU GOT SPOOKED<br><br>Click to try a new dungeon';
-          } else {
-            overlay.innerHTML = 'PAUSED<br><br>Click to resume';
-          }
+          overlay.innerHTML = '<div class="panel">PAUSED<br><br>Click to resume</div>';
         }
       });
       document.addEventListener('mousemove', (e) => {
@@ -1317,6 +1463,9 @@
           mouseHeld = true;
           shoot();   // first shot immediate; autofire loop continues if hasAuto
         }
+        if (e.button === 2 && document.pointerLockElement) {
+          tryFrameCursed();   // right-click frames a nearby cursed painting
+        }
       });
       document.addEventListener('mouseup', (e) => {
         if (e.button === 0) mouseHeld = false;
@@ -1327,6 +1476,17 @@
       const shadow = { w: '_kw', a: '_ka', s: '_ks', d: '_kd', shift: '_kshift' };
       document.addEventListener('keydown', (e) => {
         const k = e.key.toLowerCase();
+        // initials entry captures everything first
+        if (enteringInitials) {
+          if (e.key === 'Enter') { if (initials.length === 3) commitInitials(); return; }
+          if (e.key === 'Backspace') { initials = initials.slice(0, -1); renderInitialsScreen(); e.preventDefault(); return; }
+          if (/^[a-z0-9]$/.test(k) && initials.length < 3) {
+            initials += k.toUpperCase();
+            renderInitialsScreen();
+          }
+          e.preventDefault();
+          return;
+        }
         // shop input takes priority
         if (shopOpen) {
           if (k === 'escape') { closeShop(); return; }
@@ -1335,6 +1495,7 @@
           return;
         }
         keys[shadow[k] || k] = true;
+        if (k === ' ') e.preventDefault();   // dash key shouldn't scroll the page
         if (k === 'r' && !gameOver) {
           buildDungeon();
           showMessage('New dungeon generated');
@@ -1355,6 +1516,8 @@
       document.getElementById('weapon').textContent = weaponName();
       document.getElementById('ghostsBusted').textContent = ghostsBusted;
       document.getElementById('ghostTotal').textContent = ghostTotal;
+      document.getElementById('cursed').textContent = cursedFramed;
+      document.getElementById('cursedTotal').textContent = cursedTotal;
       document.getElementById('floor').textContent = floorIndexOf(player.y) + 1;
       document.getElementById('floorMax').textContent = FLOORS;
       document.getElementById('hearts').innerHTML =
@@ -1377,15 +1540,111 @@
 
     function doGameOver() {
       gameOver = true;
-      document.exitPointerLock();
+      outro = true;
+      document.getElementById('bossbar').style.display = 'none';
+      document.getElementById('cleanse').style.display = 'none';
+      const overlay = document.getElementById('overlay');
+      // release lock so the message shows, but nothing is interactive yet
+      setTimeout(() => document.exitPointerLock(), 400);
+      overlay.style.display = 'flex';
+      overlay.innerHTML =
+        '<div class="panel">' +
+        '<div style="font-size:26px;color:#f55;margin-bottom:12px">YOU GOT SPOOKED</div>' +
+        '<div style="color:#fd6;font-size:18px">Beat the Ghost King to Win!</div>' +
+        '</div>';
+      // after the pause, show the leaderboard (no score recorded on a loss)
+      setTimeout(() => {
+        outro = false;
+        overlay.innerHTML =
+          '<div class="panel">' +
+          '<div style="font-size:22px;color:#f55;margin-bottom:10px">GAME OVER</div>' +
+          '<div style="font-size:12px;color:#89a">TOP RUNS</div>' +
+          highScoreTableHTML(0) +
+          '<br>Click to try a new dungeon' +
+          '</div>';
+      }, 3000);
     }
 
     function doVictory() {
       won = true;
       gameOver = true;
+      outro = true;
       sndWin();
       document.getElementById('bossbar').style.display = 'none';
-      setTimeout(() => document.exitPointerLock(), 800);
+      document.getElementById('cleanse').style.display = 'none';
+
+      // compute the run's stats now; record happens after initials are entered
+      const secs = Math.floor((performance.now() - startTime) / 1000);
+      const acc = shotsFired ? Math.round(shotsHit / shotsFired * 100) : 0;
+      const score = computeScore(secs, coinCount, acc, cursedFramed);
+      pendingRun = { score, secs, acc, coins: coinCount, cursed: cursedFramed };
+
+      const overlay = document.getElementById('overlay');
+      setTimeout(() => document.exitPointerLock(), 400);
+      overlay.style.display = 'flex';
+      overlay.innerHTML =
+        '<div class="panel">' +
+        '<div style="font-size:30px;color:#c9a0e8;margin-bottom:10px">THE GHOST KING FALLS</div>' +
+        `<div style="font-size:24px;color:#6f9;margin:10px 0">SCORE ${score}</div>` +
+        '<div class="sub">tallying your run...</div>' +
+        '</div>';
+
+      // buffer before the interactive initials screen so leftover fire-button
+      // mashing from the kill can't blow through the entry
+      setTimeout(() => {
+        outro = false;
+        enteringInitials = true;
+        initials = '';
+        renderInitialsScreen();
+      }, 2500);
+    }
+
+    function renderInitialsScreen() {
+      const r = pendingRun;
+      const mm = Math.floor(r.secs / 60), ss = String(r.secs % 60).padStart(2, '0');
+      const boxes = [0, 1, 2].map(i => {
+        const ch = initials[i] || '_';
+        const cur = (i === initials.length) ? ' style="color:#fd6;border-color:#fd6"' : '';
+        return `<span class="initbox"${cur}>${ch}</span>`;
+      }).join('');
+      const ready = initials.length === 3;
+      victoryHTML =
+        '<div class="panel">' +
+        'DUNGEON CLEARED!<br>' +
+        `<div style="font-size:26px;color:#6f9;margin:10px 0">SCORE ${r.score}</div>` +
+        `<div class="sub">Time ${mm}:${ss} &bull; ${r.acc}% acc &bull; ${r.coins} coins &bull; ${r.cursed}/${cursedTotal} cursed</div>` +
+        '<div style="margin:18px 0 8px;color:#6cf">ENTER YOUR INITIALS</div>' +
+        `<div class="initrow">${boxes}</div>` +
+        `<button class="confirm${ready ? '' : ' off'}" data-confirm="1"${ready ? '' : ' disabled'}>CONFIRM</button>` +
+        '<div class="sub">Type 3 letters &bull; Backspace to fix &bull; Enter or Confirm to accept</div>' +
+        '</div>';
+      const overlay = document.getElementById('overlay');
+      overlay.style.display = 'flex';
+      overlay.innerHTML = victoryHTML;
+      const btn = overlay.querySelector('.confirm');
+      if (btn && ready) btn.addEventListener('click', () => commitInitials());
+    }
+
+    function commitInitials() {
+      const name = (initials || 'AAA').padEnd(3, 'A').slice(0, 3);
+      pendingRun.name = name;
+      const rank = recordScore(pendingRun);
+      enteringInitials = false;
+      const r = pendingRun;
+      const mm = Math.floor(r.secs / 60), ss = String(r.secs % 60).padStart(2, '0');
+      victoryHTML =
+        '<div class="panel">' +
+        'DUNGEON CLEARED!<br>' +
+        `<div style="font-size:26px;color:#6f9;margin:10px 0">SCORE ${r.score}</div>` +
+        (rank ? `<div style="color:#fd6">New #${rank} on the leaderboard!</div>` : '') +
+        `<div class="sub">Time ${mm}:${ss} &bull; ${r.acc}% acc &bull; ${r.coins} coins &bull; ${r.cursed}/${cursedTotal} cursed</div>` +
+        '<div style="font-size:12px;color:#89a;margin-top:14px">TOP RUNS</div>' +
+        highScoreTableHTML(rank) +
+        '<br>Click for a new dungeon' +
+        '</div>';
+      const overlay = document.getElementById('overlay');
+      overlay.innerHTML = victoryHTML;
+      pendingRun = null;
     }
 
     // ---------- Main loop ----------
@@ -1399,18 +1658,20 @@
       const pads = navigator.getGamepads ? navigator.getGamepads() : [];
       let gp = null;
       for (const p of pads) if (p) { gp = p; break; }
+      if (!gp) { padShootHeld = false; padDash = false; }
 
       if (gp) {
-        // ----- Shop mode: face buttons pick items, B/circle or Start leaves -----
+        // ----- Shop mode: 4 items on the 4 face buttons; L1/R1 or Options leaves -----
         if (shopOpen) {
           const btn = (i) => gp.buttons[i] && gp.buttons[i].pressed;
-          for (let i = 0; i < 4; i++) {
+          // face button -> item slot mapping (PS layout):
+          //  cross(0)->1, circle(1)->2, square(2)->3, triangle(3)->4
+          const faceToSlot = { 0: 0, 1: 1, 2: 2, 3: 3 };
+          for (let i = 0; i < 16; i++) {
             const pressed = btn(i);
             if (pressed && !prevPadButtons[i]) {
-              if (i === 0) buyItem(0);        // A/cross -> item 1
-              else if (i === 3) buyItem(1);   // Y/triangle -> item 2
-              else if (i === 2) buyItem(2);   // X/square -> item 3
-              else if (i === 1) closeShop();  // B/circle -> leave
+              if (i in faceToSlot) buyItem(faceToSlot[i]);
+              else if (i === 9 || i === 4 || i === 5) closeShop();  // Options / L1 / R1 leaves
             }
             prevPadButtons[i] = pressed;
           }
@@ -1438,16 +1699,56 @@
         const padSprint = (gp.buttons[10] && gp.buttons[10].pressed) || (gp.buttons[4] && gp.buttons[4].pressed);
         keys['shift'] = !!keys['_kshift'] || padSprint;
 
+        // Dash on right bumper (R1 / button 5)
+        padDash = gp.buttons[5] && gp.buttons[5].pressed;
+
+        // Square (button 2) -> frame a cursed painting (edge-detected)
+        const sqNow = gp.buttons[2] && gp.buttons[2].pressed;
+        if (sqNow && !prevPadButtons[2] && document.pointerLockElement) tryFrameCursed();
+        prevPadButtons[2] = sqNow;
+
+        // Initials entry: D-pad up/down cycles the next letter, X locks it in,
+        // Triangle confirms (only when all 3 are entered) -- mirrors keyboard.
+        if (enteringInitials) {
+          const up = gp.buttons[12] && gp.buttons[12].pressed;
+          const down = gp.buttons[13] && gp.buttons[13].pressed;
+          const xBtn = gp.buttons[0] && gp.buttons[0].pressed;
+          const triBtn = gp.buttons[3] && gp.buttons[3].pressed;
+          if ((up && !prevPadButtons[12]) || (down && !prevPadButtons[13])) {
+            const pos = Math.min(initials.length, 2);
+            let code = (initials.charCodeAt(pos) || 64);   // 64 so first up-press lands on A
+            if (initials.length <= pos) {
+              code = up ? 65 : 90;   // seed a fresh slot at A or Z
+              initials = (initials.slice(0, pos) + String.fromCharCode(code));
+            } else {
+              code = up ? (code === 90 ? 65 : code + 1) : (code === 65 ? 90 : code - 1);
+              initials = (initials.slice(0, pos) + String.fromCharCode(code)).slice(0, 3);
+            }
+            renderInitialsScreen();
+          }
+          if (xBtn && !prevXButton && initials.length < 3) {
+            // lock current letter and open the next slot (defaults to A)
+            if (initials.length === Math.min(initials.length, 2)) initials = initials.padEnd(initials.length + 1, 'A');
+            renderInitialsScreen();
+          }
+          if (triBtn && !prevPadButtons[3] && initials.length === 3) commitInitials();
+          prevPadButtons[12] = up; prevPadButtons[13] = down; prevPadButtons[3] = triBtn; prevXButton = xBtn;
+          keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
+          return;
+        }
+
         // X/cross (button 0) -> shoot / start / restart. Held for autofire.
         const xNow = gp.buttons[0] && gp.buttons[0].pressed;
         padShootHeld = xNow && document.pointerLockElement && !gameOver;
         if (xNow && !prevXButton) {
-          if (document.pointerLockElement && !gameOver) {
+          if (outro) {
+            // non-interactive pause after win/lose; swallow the press
+          } else if (document.pointerLockElement && !gameOver) {
             shoot();
           } else {
             if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-            if (gameOver) buildDungeon();
-            renderer.domElement.requestPointerLock();
+            if (gameOver && !enteringInitials) buildDungeon();
+            else if (!gameOver) renderer.domElement.requestPointerLock();
           }
         }
         prevXButton = xNow;
@@ -1477,6 +1778,19 @@
         const len = Math.hypot(dx, dz);
         const spd = keys['shift'] ? SPRINT : SPEED;
 
+        // Dash: quick burst on Space/R1 in the direction of movement (or facing
+        // if standing still). Uses movePlayer per-frame so walls still stop you.
+        if (dashCooldown > 0) dashCooldown--;
+        if (hasDash && dashFrames === 0 && dashCooldown === 0 && (keys[' '] || padDash)) {
+          let ddx = dx, ddz = dz;
+          if (len < 0.01) { ddx = -sin; ddz = -cos; }   // facing dir if no input
+          const dl = Math.hypot(ddx, ddz) || 1;
+          dashVX = ddx / dl; dashVZ = ddz / dl;
+          dashFrames = DASH_FRAMES;
+          dashCooldown = DASH_COOLDOWN;
+          sndDash();
+        }
+
         let climbing = false;
         if (lad) {
           const topY = lad.yBase + LEVEL_H;
@@ -1490,7 +1804,12 @@
           vy = 0;
         }
 
-        if (!climbing && len > 0) movePlayer(dx / len * spd, dz / len * spd);
+        if (dashFrames > 0) {
+          movePlayer(dashVX * DASH_SPEED, dashVZ * DASH_SPEED);
+          dashFrames--;
+        } else if (!climbing && len > 0) {
+          movePlayer(dx / len * spd, dz / len * spd);
+        }
 
         if (!lad) {
           const ground = computeGround(player.x, player.z, player.y);
@@ -1578,6 +1897,29 @@
         }
       }
 
+      // cursed paintings: pulse the unframed ones, show prompt when in range
+      let showCleanse = false;
+      for (const c of cursedPaintings) {
+        if (c.framed) continue;
+        if (active) {
+          c.phase += 0.08;
+          const pulse = 0.5 + 0.5 * Math.sin(c.phase);
+          c.glow.intensity = c.baseGlow + pulse * 1.6;          // smolder
+          c.frame.material.opacity = 0.35 + pulse * 0.45;       // breathe
+          c.frame.material.color.setHSL(0.11, 1, 0.4 + pulse * 0.2); // amber flicker
+        }
+        if (active && c.floor === pf) {
+          const d = Math.hypot(player.x - c.x, player.z - c.z);
+          if (d < 3) {
+            const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+            const tx = c.x - player.x, tz = c.z - player.z;
+            const tl = Math.hypot(tx, tz) || 1;
+            if ((fx * tx + fz * tz) / tl > 0.4) showCleanse = true;
+          }
+        }
+      }
+      document.getElementById('cleanse').style.display = showCleanse ? 'block' : 'none';
+
       // fountain -> open shop on contact
       if (active && !shopOpen) {
         for (const f of fountains) {
@@ -1604,6 +1946,49 @@
       renderer.render(scene, camera);
     }
 
+    // ---------- High scores (persistent, localStorage) ----------
+    // NOTE: localStorage is blocked in some sandboxed preview panes; scores will
+    // work on a real deploy (GitHub Pages) and simply won't persist otherwise.
+    const HS_KEY = 'ghostPatrolHighScores';
+    function loadHighScores() {
+      try {
+        const raw = localStorage.getItem(HS_KEY);
+        highScores = raw ? JSON.parse(raw) : [];
+      } catch (e) { highScores = []; }
+    }
+    function saveHighScores() {
+      try { localStorage.setItem(HS_KEY, JSON.stringify(highScores)); } catch (e) {}
+    }
+    function computeScore(secs, coins, acc, cursed) {
+      const base = 1000;
+      const speed = Math.max(0, 600 - secs) * 3;
+      const accBonus = Math.round(acc * 10);
+      const coinBonus = coins * 2;
+      const cursedBonus = cursed * 250;
+      return Math.round(base + speed + accBonus + coinBonus + cursedBonus);
+    }
+    // returns the 1-based rank if it made the top 10, else 0
+    function recordScore(entry) {
+      highScores.push(entry);
+      highScores.sort((a, b) => b.score - a.score);
+      const rank = highScores.indexOf(entry) + 1;
+      highScores = highScores.slice(0, 10);
+      saveHighScores();
+      return rank <= 10 ? rank : 0;
+    }
+    function highScoreTableHTML(highlightRank) {
+      if (!highScores.length) return '<div class="sub">No scores yet &mdash; be the first.</div>';
+      let h = '<table class="hs"><tr><th>#</th><th>Name</th><th>Score</th><th>Time</th><th>Acc</th><th>Cursed</th></tr>';
+      highScores.forEach((s, i) => {
+        const mm = Math.floor(s.secs / 60), ss = String(s.secs % 60).padStart(2, '0');
+        const hl = (i + 1 === highlightRank) ? ' class="me"' : '';
+        const nm = s.name || 'AAA';
+        h += `<tr${hl}><td>${i + 1}</td><td>${nm}</td><td>${s.score}</td><td>${mm}:${ss}</td><td>${s.acc}%</td><td>${s.cursed}</td></tr>`;
+      });
+      h += '</table>';
+      return h;
+    }
+
     // ---------- Init ----------
     function init() {
       scene = new THREE.Scene();
@@ -1627,6 +2012,16 @@
 
       buildDungeon();
       setupControls();
+      loadHighScores();
+      // show the leaderboard on the start overlay
+      const startOverlay = document.getElementById('overlay');
+      if (highScores.length) {
+        startOverlay.innerHTML =
+          '<div class="panel">GHOST PATROL<br><br>Ghosts phase through walls. You don\'t.<br>' +
+          'Bust them all and their King will come for you.<br><br>' +
+          '<div style="font-size:12px;color:#89a">TOP RUNS</div>' + highScoreTableHTML(0) +
+          '<br>Click to enter the dungeon</div>';
+      }
       animate();
     }
 
