@@ -196,43 +196,6 @@
         margin-top: 6px;
     }
 
-    /* ---------- plain link button ---------- */
-    .link-btn {
-        display: block;
-        padding: 14px 16px;
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 4px;
-        text-decoration: none;
-        color: var(--amber);
-        font-family: 'VT323', monospace;
-        font-size: 1.4rem;
-        letter-spacing: 0.04em;
-        position: relative;
-        transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease, color 0.18s ease;
-    }
-    .link-btn::before {
-        content: "";
-        position: absolute;
-        left: 0; top: 0; bottom: 0;
-        width: 3px;
-        background: var(--amber-dim);
-        border-radius: 4px 0 0 4px;
-        transition: background 0.18s ease, box-shadow 0.18s ease;
-    }
-    .link-btn .arrow { color: var(--cyan); margin-right: 8px; }
-    .link-btn:hover, .link-btn:focus-visible {
-        border-color: var(--amber-dim);
-        transform: translateX(4px);
-        background: #131b18;
-        color: #ffc670;
-        outline: none;
-    }
-    .link-btn:hover::before, .link-btn:focus-visible::before {
-        background: var(--amber);
-        box-shadow: 0 0 12px rgba(255,179,71,0.6);
-    }
-
     /* ---------- footer ---------- */
     footer {
         margin-top: 60px;
@@ -367,11 +330,6 @@
                     <p class="desc">Artificial life. Continuous cellular automata in motion.</p>
                     <span class="tag">[ SIM &middot; A-LIFE ]</span>
                 </div>
-            </a>
-        </li>
-        <li>
-            <a class="link-btn" href="./Allegations/allegations_ledger.html">
-                <span class="arrow">&gt;</span>Allegations Ledger
             </a>
         </li>
     </ul>
