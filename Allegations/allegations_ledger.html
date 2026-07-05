@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Allegation Ledger</title>
+<style>
+  :root {
+    --ink: #14181c;
+    --paper: #f6f4ee;
+    --panel: #ffffff;
+    --rule: #d5cfc2;
+    --muted: #47433a;
+    --accent: #2f5d50;      /* deep evidentiary green */
+    --convict: #7a2e2e;     /* oxblood - criminal conviction */
+    --civil: #b5711f;       /* amber - civil liability */
+    --untested: #4a5a6a;    /* slate - untested allegation */
+    --clean: #3a6b4f;       /* green - no allegations */
+    --convict-bg: #f3e3e1;
+    --civil-bg: #f6ecd9;
+    --untested-bg: #e6ebef;
+    --clean-bg: #e2ede5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    line-height: 1.55;
+    font-size: 18px;
+    padding: clamp(1rem, 4vw, 3rem);
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+  }
+  h1 {
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    line-height: 1.02;
+    letter-spacing: -0.015em;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+  .standfirst {
+    max-width: 62ch;
+    font-size: clamp(0.98rem, 2.2vw, 1.12rem);
+    color: #33302a;
+  }
+  .standfirst strong { color: var(--accent); }
+
+  .rule-heavy { height: 2px; background: var(--ink); margin: 1.4rem 0; }
+  .rule-hair { height: 1px; background: var(--rule); margin: 1.4rem 0; }
+
+  /* legend */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 0.6rem 1.5rem;
+    margin: 1.2rem 0 0.4rem;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+  .legend .k { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--ink); }
+  .dot { width: 11px; height: 11px; border-radius: 2px; display: inline-block; flex: none; }
+  .dot.convict { background: var(--convict); }
+  .dot.civil { background: var(--civil); }
+  .dot.untested { background: var(--untested); }
+  .dot.clean { background: var(--clean); }
+
+  .hint {
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.82rem; font-weight: 700; color: var(--muted); letter-spacing: 0.03em;
+    margin-bottom: 0.9rem;
+  }
+
+  /* table */
+  .tablecard {
+    background: var(--panel);
+    border: 1.5px solid var(--ink);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; }
+  thead th {
+    text-align: left;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.82rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--paper);
+    background: var(--ink);
+    padding: 0.7rem 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: relative;
+  }
+  thead th:hover { background: #262c31; }
+  thead th .arrow { opacity: 0.35; font-size: 0.7rem; margin-left: 0.3rem; }
+  thead th.sorted .arrow { opacity: 1; color: #e9c46a; }
+  thead th.num { text-align: right; }
+
+  tbody td {
+    padding: 0.8rem 0.95rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    font-size: 1.02rem;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #faf8f2; }
+
+  .name { font-weight: 700; font-size: 1.12rem; letter-spacing: -0.01em; }
+  .role { display: block; font-family: "Courier New", ui-monospace, monospace;
+          font-size: 0.78rem; font-weight: 700; color: var(--muted); letter-spacing: 0.03em;
+          text-transform: uppercase; margin-top: 0.2rem; }
+
+  td.num {
+    text-align: right;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-weight: 700;
+    font-size: 1.15rem;
+    white-space: nowrap;
+  }
+  td.num .approx { color: var(--muted); font-weight: 400; font-size: 0.8rem; }
+  td.num.zero { color: var(--clean); }
+
+  .badge {
+    display: inline-block;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.76rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 0.22rem 0.55rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .badge.convict { color: var(--convict); background: var(--convict-bg); }
+  .badge.civil { color: var(--civil); background: var(--civil-bg); }
+  .badge.untested { color: var(--untested); background: var(--untested-bg); }
+  .badge.clean { color: var(--clean); background: var(--clean-bg); }
+
+  .outcome { font-size: 0.96rem; color: #33302a; }
+  .party { font-family: "Courier New", ui-monospace, monospace; font-size: 0.88rem;
+           font-weight: 700; letter-spacing: 0.03em; }
+
+  .footnotes {
+    margin-top: 1.6rem;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: #3a372f;
+    max-width: 74ch;
+  }
+  .footnotes h3 {
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 0.84rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 0.6rem;
+  }
+  .footnotes p { margin-bottom: 0.7rem; }
+  .footnotes strong { color: var(--ink); }
+
+  .takeaway {
+    margin-top: 1.4rem;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 1.2rem 1.4rem;
+    border-left: 5px solid var(--accent);
+  }
+  .takeaway .eyebrow { color: #e9c46a; }
+  .takeaway p { font-size: 1.05rem; line-height: 1.55; max-width: 70ch; }
+  .takeaway em { color: #e9c46a; font-style: normal; font-weight: 700; }
+
+  @media (max-width: 560px) {
+    .role { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Exhibit &middot; Sexual-misconduct allegations against high-profile men</div>
+  <h1>The Allegation Ledger</h1>
+  <p class="standfirst">A raw accuser count is a blunt instrument. This table pairs it with the <strong>legal outcome</strong> and the <strong>political exposure</strong> of each figure &mdash; because the real question isn't who has the biggest number, it's whether the numbers track <strong>behavior</strong> or track <strong>power and partisanship</strong>. Tap any column header to sort.</p>
+
+  <div class="rule-heavy"></div>
+
+  <div class="legend">
+    <span class="k"><span class="dot convict"></span>Criminal conviction (incl. later overturned)</span>
+    <span class="k"><span class="dot civil"></span>Civil liability, no criminal conviction</span>
+    <span class="k"><span class="dot untested"></span>Untested / denied allegations</span>
+    <span class="k"><span class="dot clean"></span>No credible allegations on record</span>
+  </div>
+  <p class="hint">&#9650;&#9660; click headers to sort &middot; scroll table sideways on mobile</p>
+
+  <div class="tablecard">
+    <table id="ledger">
+      <thead>
+        <tr>
+          <th data-key="name" data-type="str">Figure <span class="arrow">&#8645;</span></th>
+          <th data-key="count" data-type="num" class="num">Accusers <span class="arrow">&#8645;</span></th>
+          <th data-key="tierRank" data-type="num">Legal outcome <span class="arrow">&#8645;</span></th>
+          <th data-key="party" data-type="str">Lean <span class="arrow">&#8645;</span></th>
+          <th data-key="detail" data-type="str">Status &amp; notes <span class="arrow">&#8645;</span></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="takeaway">
+    <div class="eyebrow">What the sort reveals</div>
+    <p>Sort by <em>Accusers</em>, then look at the <em>Lean</em> column. The counts don't line up with party. They don't line up with wealth. Clinton and Trump &mdash; two of the most investigated men alive, hunted for decades by the opposing side &mdash; sit far below Cosby and Weinstein, who weren't primarily political targets at all. Bush 43, Obama, Bezos, and Zuckerberg hold the same offices and fortunes as the men above them, with essentially <em>zero</em>. If allegations were simply weapons aimed at power or party, this distribution would be impossible.</p>
+  </div>
+
+  <div class="footnotes">
+    <h3>Reading notes &amp; caveats</h3>
+    <p><strong>&ldquo;Accusers&rdquo; is not &ldquo;proven acts.&rdquo;</strong> The count reflects people who publicly came forward, not court findings. Cosby (~60) and Weinstein (80+) both had marquee convictions <em>overturned on procedural grounds</em> &mdash; the number and the legal result are different facts. Epstein&rsquo;s figure is a settlement count (women paid), different again from adjudicated guilt.</p>
+    <p><strong>Low counts can reflect no dam breaking, not innocence.</strong> #MeToo gave dozens of Cosby/Weinstein accusers permission to come forward at once. A single credible account can matter more than twenty thin ones. This table rebuts the <em>motive</em> claim (&ldquo;it&rsquo;s all political or financial&rdquo;) &mdash; it is not a guilt-ranking.</p>
+    <p><strong>Watch the wrong-Bush trap.</strong> The eight photo-op groping allegations belong to George <strong>H.W.</strong> Bush (41), late in life. George <strong>W.</strong> Bush (43), listed here, has no such record.</p>
+    <p><strong>Contested figures.</strong> Trump&rsquo;s ~26 is a press tally, not a court number, and floats by definition of &ldquo;accuser&rdquo;; his one <em>legal</em> result is the 2023 Carroll civil verdict. Weinstein&rsquo;s &ldquo;100+&rdquo; appears in some coverage but &ldquo;80+&rdquo; is the consistently sourced figure. Zuckerberg is the one row I did not run a dedicated search on; no credible sexual-misconduct allegations are known, but treat it as &ldquo;none on record&rdquo; rather than a verified audit.</p>
+    <p><strong>Statutes of limitations distort counts both ways</strong> &mdash; many Cosby accusers were legally barred from ever suing, so litigation totals understate accusation totals.</p>
+    <p style="color:var(--muted);font-family:'Courier New',monospace;font-size:0.84rem;letter-spacing:0.02em;line-height:1.5;">Sources: Wikipedia case pages, NPR, Time, CNN, NBC News, Washington Post, PBS, TechCrunch (Blue Origin), Poynter (Obama fact-check). Figures current to mid-2026 and subject to ongoing litigation.</p>
+  </div>
+</div>
+
+<script>
+  // tierRank orders the legal-outcome axis for sorting: higher = more serious finding
+  const DATA = [
+    { name:"Bill Cosby", role:"Entertainer", count:60, approx:true,
+      tier:"convict", tierLabel:"Convicted (overturned)", tierRank:4, party:"—",
+      detail:"Convicted 2018; overturned 2021 on due process. Civilly liable 2022 (Huth)." },
+    { name:"Harvey Weinstein", role:"Film producer", count:80, approx:true,
+      tier:"convict", tierLabel:"Convicted (overturned/retried)", tierRank:4, party:"Dem donor",
+      detail:"Convicted 2020 (23 yrs); NY conviction overturned 2024; retried & convicted on counts 2025." },
+    { name:"Jeffrey Epstein", role:"Financier", count:200, approx:true,
+      tier:"convict", tierLabel:"Pled guilty; died awaiting trial", tierRank:4, party:"—",
+      detail:"Settlements to 200+ women; 36 girls (14–17) in original probe. Died in custody 2019." },
+    { name:"Donald Trump", role:"President / businessman", count:26, approx:true,
+      tier:"civil", tierLabel:"Civilly liable", tierRank:3, party:"Rep",
+      detail:"~26 accusers (press tally). Civilly liable 2023 (E. Jean Carroll). Denies all." },
+    { name:"Bill Clinton", role:"President", count:4, approx:false,
+      tier:"untested", tierLabel:"Settled suit; no conviction", tierRank:2, party:"Dem",
+      detail:"4 assault/harassment accusers (Jones, Willey, Broaddrick, Millwee). Jones suit settled ~$850K, no admission. Denies assault claims." },
+    { name:"Roy Moore", role:"Judge / Senate candidate", count:9, approx:true,
+      tier:"untested", tierLabel:"No conviction; denied", tierRank:2, party:"Rep",
+      detail:"~9 accusers, several alleging conduct when teens. Lost 2017 Senate race. Mutual defamation suits." },
+    { name:"Prince Andrew", role:"Royal", count:1, approx:false,
+      tier:"civil", tierLabel:"Settled civil suit", tierRank:3, party:"—",
+      detail:"1 named accuser (Giuffre). Settled 2022, no admission. Lost royal titles 2025. Denies." },
+    { name:"George W. Bush", role:"President", count:0, approx:false,
+      tier:"clean", tierLabel:"None on record", tierRank:1, party:"Rep",
+      detail:"No credible sexual-misconduct allegations. (Note: the groping claims are against his father, H.W. Bush.)" },
+    { name:"Barack Obama", role:"President", count:0, approx:false,
+      tier:"clean", tierLabel:"None on record", tierRank:1, party:"Dem",
+      detail:"No credible accusers despite intense scrutiny. Only claims trace to a discredited fabulist and a satire piece." },
+    { name:"Jeff Bezos", role:"Amazon / Blue Origin founder", count:0, approx:false,
+      tier:"clean", tierLabel:"None on record", tierRank:1, party:"—",
+      detail:"No personal misconduct allegations. Blue Origin harassment claims concern company culture & a different exec." },
+    { name:"Mark Zuckerberg", role:"Meta founder", count:0, approx:false,
+      tier:"clean", tierLabel:"None on record", tierRank:1, party:"—",
+      detail:"No credible sexual-misconduct allegations known. (Not individually search-audited.)" }
+  ];
+
+  const tbody = document.querySelector("#ledger tbody");
+  function render(rows){
+    tbody.innerHTML = rows.map(r => {
+      const cnum = r.count === 0
+        ? '<td class="num zero">0</td>'
+        : `<td class="num">${r.approx ? '<span class="approx">~</span>' : ''}${r.count}${r.count>=80?'<span class="approx">+</span>':''}</td>`;
+      return `<tr>
+        <td><span class="name">${r.name}</span><span class="role">${r.role}</span></td>
+        ${cnum}
+        <td><span class="badge ${r.tier}">${r.tierLabel}</span></td>
+        <td class="party">${r.party}</td>
+        <td class="outcome">${r.detail}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  let sortKey = "count", sortDir = -1, sortType = "num";
+  function sortAndRender(){
+    const rows = [...DATA].sort((a,b)=>{
+      let av=a[sortKey], bv=b[sortKey];
+      if(sortType==="num"){ av=+av; bv=+bv; return (av-bv)*sortDir; }
+      av=(""+av).toLowerCase(); bv=(""+bv).toLowerCase();
+      return av<bv?-1*sortDir:av>bv?1*sortDir:0;
+    });
+    render(rows);
+    document.querySelectorAll("thead th").forEach(th=>{
+      th.classList.toggle("sorted", th.dataset.key===sortKey);
+      const ar=th.querySelector(".arrow");
+      if(th.dataset.key===sortKey) ar.textContent = sortDir===1?"\u25B2":"\u25BC";
+      else ar.textContent="\u21C5";
+    });
+  }
+
+  document.querySelectorAll("thead th").forEach(th=>{
+    th.addEventListener("click", ()=>{
+      const key=th.dataset.key, type=th.dataset.type;
+      if(sortKey===key){ sortDir*=-1; }
+      else { sortKey=key; sortType=type; sortDir = (type==="num") ? -1 : 1; }
+      sortAndRender();
+    });
+  });
+
+  sortAndRender();
+</script>
+</body>
+</html>
