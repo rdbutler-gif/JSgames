@@ -64,9 +64,10 @@
     }
     .toolbar {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px 16px;
       margin-bottom: 1.5rem;
+      align-items: start;
     }
     .control-group {
       display: flex;
@@ -170,6 +171,7 @@
       display: flex !important;
     }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
 </head>
 <body>
   <div class="container">
@@ -212,8 +214,9 @@
         <input type="range" id="maxIter" min="32" max="512" step="16" value="256" onchange="updateRender()" style="width: 100%;">
         <span id="iterCount" style="font-size: 12px; color: var(--text-tertiary);">256</span>
       </div>
-      <div class="control-group" style="justify-content: flex-end;">
+      <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center;">
         <button onclick="toggleDarkMode()" style="padding: 8px 12px; font-size: 13px; background: #666;">🌙 Dark Mode</button>
+        <button id="captureButton" onclick="openCaptureDialog()" style="padding: 8px 12px; white-space: nowrap;">Capture</button>
       </div>
     </div>
 
@@ -328,6 +331,62 @@
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <button onclick="closeHiResVideoDialog()" style="background:#666;">Cancel</button>
         <div id="hiResVideoStatus" style="display:none; grid-column:1/-1; font-size:13px; color:var(--text-secondary); padding:10px; background:var(--bg-secondary); border-radius:4px;">Rendering...</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="captureModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-container); padding:2rem; border-radius:8px; color:var(--text-primary); max-width:420px; width:90%;">
+      <h2 style="margin-bottom:0.5rem; text-align:center;">Capture Color Cycle GIF</h2>
+      <p style="margin-bottom:1.25rem; color:var(--text-secondary); font-size:14px; text-align:center;">Renders one full color rotation of the current view as an animated GIF.</p>
+
+      <div style="display:grid; gap:14px; margin-bottom:1.5rem; text-align:left; font-size:13px;">
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary);">Filename</label>
+          <input type="text" id="capFilename" value="fractal_cycle.gif" style="width:100%; padding:6px 8px; box-sizing:border-box;">
+        </div>
+
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary);">Size</label>
+          <select id="capSize" onchange="capUpdateEstimate()" style="width:100%; padding:6px 8px;">
+            <option value="full">Full canvas size</option>
+            <option value="half">Half size</option>
+            <option value="500">Fixed 500px wide</option>
+            <option value="custom">Custom width…</option>
+          </select>
+          <div id="capCustomWrap" style="display:none; margin-top:6px;">
+            <input type="number" id="capCustomWidth" value="800" min="64" max="4000" onchange="capUpdateEstimate()" style="width:100%; padding:6px 8px; box-sizing:border-box;">
+          </div>
+        </div>
+
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary);">Smoothness (frames per rotation)</label>
+          <select id="capStep" onchange="capUpdateEstimate()" style="width:100%; padding:6px 8px;">
+            <option value="2">Smooth — step 2 (most frames)</option>
+            <option value="4" selected>Balanced — step 4</option>
+            <option value="8">Small — step 8 (fewest frames)</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary);">GIF quality <span id="capQualVal" style="color:var(--text-tertiary);">(10)</span></label>
+          <input type="range" id="capQuality" min="1" max="20" value="10" oninput="document.getElementById('capQualVal').textContent='('+this.value+')'" style="width:100%;">
+          <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-tertiary);"><span>Best (slow)</span><span>Fastest (rough)</span></div>
+        </div>
+
+        <div>
+          <label style="display:block; margin-bottom:4px; color:var(--text-secondary);">Frame delay <span id="capDelayVal" style="color:var(--text-tertiary);">(60ms)</span></label>
+          <input type="range" id="capDelay" min="20" max="200" step="10" value="60" oninput="document.getElementById('capDelayVal').textContent='('+this.value+'ms)'" style="width:100%;">
+        </div>
+
+        <div id="capEstimate" style="font-size:12px; color:var(--text-tertiary); padding:8px; background:var(--bg-secondary); border-radius:4px;"></div>
+      </div>
+
+      <div id="capStatus" style="display:none; font-size:13px; color:var(--text-secondary); padding:10px; margin-bottom:1rem; background:var(--bg-secondary); border-radius:4px; text-align:center;">Working…</div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <button onclick="closeCaptureDialog()" style="background:#666;">Cancel</button>
+        <button id="capStartBtn" onclick="startCapture()">Capture GIF</button>
       </div>
     </div>
   </div>
@@ -931,6 +990,153 @@
       ctx.putImageData(imageData, 0, 0);
       cycleOffset = (cycleOffset + 2) % (maxIter + 1);
       requestAnimationFrame(cycleTick);
+    }
+
+    // ---- GIF capture of one full color rotation ----
+    function capOutputWidth() {
+      if (!lastIterationData) return 0;
+      const mode = document.getElementById('capSize').value;
+      const w = lastIterationData.width;
+      if (mode === 'full') return w;
+      if (mode === 'half') return Math.round(w / 2);
+      if (mode === '500') return 500;
+      return Math.max(64, parseInt(document.getElementById('capCustomWidth').value) || 800);
+    }
+
+    function capFrameCount() {
+      if (!lastIterationData) return 0;
+      const step = parseInt(document.getElementById('capStep').value);
+      return Math.ceil((lastIterationData.maxIter + 1) / step);
+    }
+
+    function capUpdateEstimate() {
+      document.getElementById('capCustomWrap').style.display =
+        document.getElementById('capSize').value === 'custom' ? 'block' : 'none';
+      const est = document.getElementById('capEstimate');
+      if (!lastIterationData) { est.textContent = 'Render a fractal first.'; return; }
+      const outW = capOutputWidth();
+      const outH = Math.round(outW * (lastIterationData.height / lastIterationData.width));
+      const frames = capFrameCount();
+      const delay = parseInt(document.getElementById('capDelay').value);
+      const secs = ((frames * delay) / 1000).toFixed(1);
+      est.textContent = `${frames} frames @ ${outW}×${outH}  •  loops in ~${secs}s`;
+    }
+
+    function openCaptureDialog() {
+      if (isCycling) stopCycling();
+      if (!lastIterationData) {
+        alert('Render a fractal first, then Capture.');
+        return;
+      }
+      const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      document.getElementById('capFilename').value = `${currentFractal}_cycle_${ts}.gif`;
+      document.getElementById('capStatus').style.display = 'none';
+      document.getElementById('capStartBtn').disabled = false;
+      capUpdateEstimate();
+      document.getElementById('captureModal').style.display = 'flex';
+    }
+
+    function closeCaptureDialog() {
+      document.getElementById('captureModal').style.display = 'none';
+    }
+
+    async function startCapture() {
+      if (!lastIterationData) return;
+      const { data: iterationData, width, height, maxIter } = lastIterationData;
+      const step = parseInt(document.getElementById('capStep').value);
+      const quality = parseInt(document.getElementById('capQuality').value);
+      const delay = parseInt(document.getElementById('capDelay').value);
+      const outW = capOutputWidth();
+      const outH = Math.round(outW * (height / width));
+      let filename = document.getElementById('capFilename').value.trim() || 'fractal_cycle.gif';
+      if (!filename.toLowerCase().endsWith('.gif')) filename += '.gif';
+
+      const status = document.getElementById('capStatus');
+      const startBtn = document.getElementById('capStartBtn');
+      startBtn.disabled = true;
+      status.style.display = 'block';
+      status.textContent = 'Loading encoder…';
+
+      // Fetch the gif.js worker as a blob so it works from file:// too.
+      let workerUrl;
+      try {
+        const res = await fetch('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');
+        workerUrl = URL.createObjectURL(await res.blob());
+      } catch (e) {
+        status.textContent = 'Could not load encoder (need internet). ' + e.message;
+        startBtn.disabled = false;
+        return;
+      }
+
+      const colorFunc = colorPalettes[document.getElementById('colorPalette').value];
+      const full = document.createElement('canvas');
+      full.width = width; full.height = height;
+      const fctx = full.getContext('2d');
+
+      const scaled = document.createElement('canvas');
+      scaled.width = outW; scaled.height = outH;
+      const sctx = scaled.getContext('2d');
+
+      const gif = new GIF({ workers: 2, quality: quality, width: outW, height: outH, workerScript: workerUrl });
+
+      const total = maxIter + 1;
+      for (let off = 0; off < total; off += step) {
+        const imageData = fctx.createImageData(width, height);
+        const cd = imageData.data;
+        for (let pixel = 0; pixel < width * height; pixel++) {
+          const it = (iterationData[pixel] + off) % total;
+          const [r, g, b] = colorFunc(it, maxIter);
+          const idx = pixel * 4;
+          cd[idx] = r; cd[idx + 1] = g; cd[idx + 2] = b; cd[idx + 3] = 255;
+        }
+        fctx.putImageData(imageData, 0, 0);
+        if (outW === width && outH === height) {
+          gif.addFrame(full, { copy: true, delay: delay });
+        } else {
+          sctx.drawImage(full, 0, 0, outW, outH);
+          gif.addFrame(sctx, { copy: true, delay: delay });
+        }
+        const done = Math.floor(off / step) + 1;
+        status.textContent = `Rendering frames… ${done}/${capFrameCount()}`;
+        await new Promise(r => setTimeout(r, 0)); // yield so UI updates
+      }
+
+      gif.on('progress', function (p) {
+        status.textContent = `Encoding GIF… ${Math.round(p * 100)}%`;
+      });
+
+      gif.on('finished', async function (blob) {
+        URL.revokeObjectURL(workerUrl);
+        status.textContent = 'Saving…';
+        // Native Save As when available (served over https/localhost); else normal download.
+        if (window.showSaveFilePicker) {
+          try {
+            const handle = await window.showSaveFilePicker({
+              suggestedName: filename,
+              types: [{ description: 'GIF image', accept: { 'image/gif': ['.gif'] } }]
+            });
+            const w = await handle.createWritable();
+            await w.write(blob);
+            await w.close();
+            status.textContent = 'Saved!';
+            setTimeout(closeCaptureDialog, 1200);
+            return;
+          } catch (e) {
+            if (e.name === 'AbortError') { status.textContent = 'Save cancelled.'; startBtn.disabled = false; return; }
+            // fall through to download on other errors
+          }
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url; link.download = filename;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        status.textContent = 'Downloaded to your browser\u2019s download folder.';
+        setTimeout(closeCaptureDialog, 1600);
+      });
+
+      status.textContent = 'Encoding GIF…';
+      gif.render();
     }
 
     function setStartView() {
