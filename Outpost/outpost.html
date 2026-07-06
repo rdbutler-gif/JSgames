@@ -83,6 +83,7 @@
   }
 
   const NEED_WOOD = 15, NEED_STONE = 10;   // tower cost (pre-placed, off-menu)
+  const TOWER_BUILD_MS = 6000;             // effort for ONE worker; N workers finish in TOWER_BUILD_MS/N (linear)
   const GOLD_SEC = 90, SILVER_SEC = 140;   // time thresholds (tuned for slower pace)
 
   // ---- Buildable types (build menu) -------------------------------------
@@ -176,6 +177,11 @@
 
   // Tile types
   const EMPTY = 0, TREE = 1, ROCK = 2, RUBBLE = 3, TOWER = 4, STOCK = 5, BUILDING = 6;
+  // STOCK is a historical name — this tile type actually means "a house sits here."
+  // The real stockpile is res.wood/res.stone in the HUD, not a tile. HOUSE is the
+  // honest alias; both point at the same value so existing code keeps working and
+  // new code can read clearly. Prefer HOUSE going forward.
+  const HOUSE = STOCK;
 
   // Yields / work durations (ms)
   // For resource nodes: hp == total units the node holds, and `amount` (units
@@ -197,7 +203,7 @@
     nodes = new Map(); // key "x,y" -> {type, hp, x, y}
 
     stockpile = { x: 2, y: 6 };
-    tower     = { x: 13, y: 6, built: false };
+    tower     = { x: 13, y: 6, built: false, building: false, progress: 0 };
     grid[stockpile.y][stockpile.x] = STOCK;
     grid[tower.y][tower.x] = TOWER;
 
@@ -229,7 +235,12 @@
     startTime = performance.now();
     updateHUD();
     rollGround();
-    setMsg("Click a tree, rock, or the wall — the nearest free worker goes. Build a house at the marked site for a 2nd worker.");
+    introBanner = {
+      text: "Click a tree or rock to send your nearest free worker to gather it. " +
+            "Use the BUILD bar below to place a house (more workers) or a workshop " +
+            "(unlocks stone, then wall-breaking). Gather 15 wood + 10 stone, then " +
+            "click the TOWER to raise it and win."
+    };
   }
 
   // ---- Houses & workers -------------------------------------------------
@@ -250,8 +261,15 @@
     flash = { text, color: color || "#e8ddc8", born: performance.now() };
   }
 
+  // Sticky intro banner: unlike a flash, it does NOT fade — it stays until the
+  // player's first real action (clicking a worker/node/tower/build button), so
+  // there's time to read the how-to-play text. Word-wrapped so it never runs off
+  // the canvas edges. Set in resetState, cleared by dismissIntro().
+  let introBanner = null;   // { text } or null
+  function dismissIntro() { introBanner = null; }
+
   function addHouse(x, y, isStart) {
-    grid[y][x] = STOCK;         // houses use the store tile
+    grid[y][x] = HOUSE;         // this cell now holds a house structure
     houses.push({ x, y, level: 1 });
     return houses[houses.length - 1];
   }
@@ -266,7 +284,7 @@
       carry: null, carryAmt: 0, workUntil: 0, moveT: 0,
       facing: 1, animT: 0,
       _node: null, _repeatNode: null, _depositOnArrive: false, _targetNodeKey: null,
-      _buildType: null, _upgradeWorkshop: null, _buildAt: null, buildUntil: 0,
+      _buildType: null, _upgradeWorkshop: null, _buildAt: null, buildUntil: 0, _towerBuild: false,
     });
   }
 
@@ -356,6 +374,11 @@
 
     const region = regionAt(my);
 
+    // First real interaction clears the sticky intro banner. Grid and build-bar
+    // clicks dismiss it; HUD clicks (handled below, display-only) do not, since
+    // they'd otherwise wipe the instructions without doing anything.
+    if (introBanner && region !== "hud") dismissIntro();
+
     // --- Build bar clicks ---
     if (region === "build") {
       for (const btn of buildButtons) {
@@ -404,14 +427,26 @@
       return;
     }
 
-    // Click the tower with enough materials -> nearest idle worker builds
+    // Click the tower: start a timed build (charge resources once), or send
+    // another idle worker to join an in-progress build (speeds it up linearly).
     if (t === TOWER) {
-      if (res.wood >= NEED_WOOD && res.stone >= NEED_STONE) {
+      if (tower.built) return;
+      if (!tower.building) {
+        if (res.wood < NEED_WOOD || res.stone < NEED_STONE) {
+          setMsg(`Need ${NEED_WOOD}w + ${NEED_STONE}s`);
+          return;
+        }
         const w = nearestIdleTo(gx, gy);
         if (!w) { setMsg(dispatchFailMsg(gx, gy)); return; }
-        dispatch(w, gx, gy);
+        res.wood -= NEED_WOOD; res.stone -= NEED_STONE; updateHUD();
+        tower.building = true; tower.progress = 0;
+        dispatch(w, gx, gy, { tower: true });
+        setMsg("Building the watchtower — click it again to add more workers.");
       } else {
-        setMsg(`Need ${NEED_WOOD}w + ${NEED_STONE}s`);
+        const w = nearestIdleTo(gx, gy);
+        if (!w) { setMsg(anyIdleWorker() ? "Can't reach the tower." : "No free worker to add. Wait for one."); return; }
+        dispatch(w, gx, gy, { tower: true });
+        setMsg("Another builder joins the tower.");
       }
       return;
     }
@@ -522,9 +557,10 @@
     w.carry = null; w.carryAmt = 0;
     w._buildType = opts.build || null;   // building key to construct on arrival, or null
     w._upgradeWorkshop = opts.upgrade || null;   // workshop object to upgrade on arrival
+    w._towerBuild = opts.tower || false;   // heading to the tower to contribute build progress
     // is the destination a live harvest node? (tree/rock/wall) — used to abort
     // the walk if it gets depleted before the worker arrives.
-    w._targetNodeKey = (!w._buildType && !w._upgradeWorkshop && nodes.has(key(gx, gy))) ? key(gx, gy) : null;
+    w._targetNodeKey = (!w._buildType && !w._upgradeWorkshop && !w._towerBuild && nodes.has(key(gx, gy))) ? key(gx, gy) : null;
     w.path = path;
     w.target = {x: gx, y: gy};
     w.state = "moving";
@@ -584,10 +620,26 @@
       if (now >= w.workUntil) finishWork(w, now);
     } else if (w.state === "building") {
       if (now >= w.buildUntil) finishBuild(w, now);
+    } else if (w.state === "tower") {
+      // Each parked worker contributes one frame of effort. N workers => N x
+      // progress per frame => finishes in TOWER_BUILD_MS / N (linear).
+      if (tower.built) { w._towerBuild = false; w.state = "idle"; return; }
+      tower.progress += 16 / TOWER_BUILD_MS;
+      if (tower.progress >= 1) {
+        tower.progress = 1;
+        tower.built = true;
+        tower.building = false;
+        grid[tower.y][tower.x] = TOWER;
+        // release everyone parked on the tower back to idle
+        for (const o of workers) if (o.state === "tower") { o._towerBuild = false; o.state = "idle"; o.target = null; }
+        updateHUD();
+        win(now);
+      }
     }
   }
 
   const BUILD_MS = 2600;   // time to construct a house/workshop
+  const UPGRADE_MS = 4200;  // upgrading an existing workshop — longer than a fresh build
 
   function finishBuild(w, now) {
     const key_ = w._buildType;
@@ -596,7 +648,15 @@
     if (!at) { w.state = "idle"; return; }
     const bx = at.x, by = at.y;
 
-    if (key_ === "house") {
+    // Workshop upgrade completing (no _buildType — it's an upgrade payload).
+    if (w._upgradeWorkshop) {
+      const ws = w._upgradeWorkshop;
+      w._upgradeWorkshop = null;
+      ws.level = 2;
+      workshopLevel = Math.max(workshopLevel, 2);
+      addFloater(bx, by, "Upgraded!", "#cfe6c0");
+      setMsg("Workshop upgraded to Level 2! Workers can now break the wall.");
+    } else if (key_ === "house") {
       const newHome = addHouse(bx, by, false);
       spawnWorker(newHome);
       addFloater(bx, by, "House!", "#cfe6c0");
@@ -624,14 +684,14 @@
     const tgt = w.target;
     const t = grid[tgt.y][tgt.x];
 
-    // Upgrading an existing workshop from L1 to L2.
+    // Upgrading an existing workshop from L1 to L2. Enter the timed "building"
+    // state (same machinery as a fresh build) but with UPGRADE_MS and the
+    // workshop reference carried through; finishBuild applies the level bump.
     if (w._upgradeWorkshop) {
-      const ws = w._upgradeWorkshop;
-      w._upgradeWorkshop = null;
-      ws.level = 2;
-      workshopLevel = Math.max(workshopLevel, 2);
-      setMsg("Workshop upgraded to Level 2! Workers can now break the wall.");
-      w.state = "idle"; w.target = null;
+      w.state = "building";
+      w.buildUntil = now + UPGRADE_MS;
+      w._buildAt = { x: tgt.x, y: tgt.y };
+      w.target = null;
       return;
     }
 
@@ -646,18 +706,14 @@
       return;
     }
 
-    const t2 = grid[tgt.y][tgt.x];
-    if (t2 === TOWER) {
-      if (res.wood >= NEED_WOOD && res.stone >= NEED_STONE) {
-        res.wood -= NEED_WOOD; res.stone -= NEED_STONE;
-        tower.built = true;
-        grid[tower.y][tower.x] = TOWER;
-        updateHUD();
-        win(now);
-      }
-      w.state = "idle"; w.target = null;
+    // Arrived adjacent to the tower to contribute build progress. Park in the
+    // "tower" state; stepWorker accumulates progress every frame while here.
+    if (w._towerBuild && !tower.built) {
+      w.state = "tower";
+      w.target = null;
       return;
     }
+    if (w._towerBuild) { w._towerBuild = false; w.state = "idle"; w.target = null; return; }
 
     const node = nodes.get(key(tgt.x, tgt.y));
     if (!node) { w.state = "idle"; w.target = null; w._targetNodeKey = null; return; }
@@ -784,7 +840,7 @@
       else if (t === ROCK)   has("rock")  ? blit(TILEMAP.rock, x, y)  : drawRock(cx, cy, nodes.get(key(x,y)));
       else if (t === RUBBLE) has("wall") ? blit(TILEMAP.wall, x, y) : drawRubble(cx, cy, nodes.get(key(x,y)));
       else if (t === STOCK)  {
-        has("store") ? blit(TILEMAP.store, x, y) : drawStock(x*TILE, y*TILE);
+        has("store") ? blit(TILEMAP.store, x, y) : drawHouse(x*TILE, y*TILE);
         // house level badge (all houses L1 for now; upgrade mechanics come later)
         const h = houses.find(hh => hh.x === x && hh.y === y);
         if (h) levelBadge(x, y, h.level || 1);
@@ -827,6 +883,18 @@
           ctx.fillStyle = "#e6b422";
           ctx.font = "8px sans-serif"; ctx.textAlign = "center";
           ctx.fillText("TOWER", x*TILE+TILE/2, y*TILE+TILE-4);
+
+          // build progress bar — same style/position as node health bars, but
+          // it FILLS as work accumulates (health bars drain). Green throughout
+          // since this is progress toward done, not damage.
+          if (tower.building) {
+            const frac = Math.max(0, Math.min(1, tower.progress));
+            const bx = x*TILE + 6, by = y*TILE + 3, bw = TILE - 12, bh = 4;
+            ctx.fillStyle = "rgba(0,0,0,.55)";
+            ctx.fillRect(bx-1, by-1, bw+2, bh+2);
+            ctx.fillStyle = "#6fae5f";
+            ctx.fillRect(bx, by, bw * frac, bh);
+          }
         }
       }
     }
@@ -893,6 +961,38 @@
     // ==== UI (screen space) ====
     drawHUD();
     drawBuildBar();
+
+    // Sticky intro banner — wrapped, boxed, no fade. Sits at the top of the play
+    // field until the player's first real action clears it.
+    if (introBanner) {
+      ctx.save();
+      ctx.font = "bold 14px 'Trebuchet MS', sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const maxTextW = VIEW_W - 80;         // keep well inside both canvas edges
+      const lines = wrapLines(introBanner.text, maxTextW);
+      const lineH = 20, padX = 18, padY = 12;
+      let boxW = 0;
+      for (const ln of lines) boxW = Math.max(boxW, ctx.measureText(ln).width);
+      boxW = Math.min(boxW + padX*2, VIEW_W - 24);
+      const boxH = lines.length * lineH + padY*2;
+      const cx = VIEW_W / 2, top = VIEW_Y + 12;
+      // plate
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#141e28";
+      roundRect(ctx, cx - boxW/2, top, boxW, boxH, 10);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(125,224,125,.35)"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.globalAlpha = 1;
+      // text lines
+      ctx.fillStyle = "#dbe6f0";
+      let ly = top + padY + lineH/2;
+      for (const ln of lines) { ctx.fillText(ln, cx, ly); ly += lineH; }
+      // dismiss hint
+      ctx.font = "10px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = "#7de07d";
+      ctx.fillText("— click anything to begin —", cx, top + boxH - 2);
+      ctx.restore();
+    }
 
     // Centered notification flash — fades over ~2.4s, holding solid for first half.
     if (flash) {
@@ -1137,12 +1237,19 @@
       return { text: `Upgrade for ${u.wood}w ${u.stone}s`, color: "#ffcf3f" };
     }
 
+    // Houses (the starting home and any built via the menu). The stockpile is
+    // the ethereal resource total in the HUD, not a tile — these are all houses.
+    const ho = houses.find(hh => hh.x === gx && hh.y === gy);
+    if (ho) return { text: `House · Level ${ho.level || 1}`, color: "#cfe6c0" };
+
     const t = grid[gy][gx];
     if (t === TREE) return { text: "Wood", color: "#e09a4a" };
     if (t === ROCK) return { text: "Stone", color: "#9fb0c0" };
     if (t === RUBBLE) return { text: "Break Wall", color: "#c9a06a" };
-    if (t === TOWER && !tower.built)
+    if (t === TOWER && !tower.built) {
+      if (tower.building) return { text: "Add builder to the tower", color: "#7de07d" };
       return { text: `Build Tower for ${NEED_WOOD}w ${NEED_STONE}s`, color: "#ffcf3f" };
+    }
     return null;
   }
 
@@ -1259,11 +1366,11 @@
       ctx.fillRect(cx+ox-4, cy+oy-4, 8, 8);
     }
   }
-  function drawStock(x, y) {
+  function drawHouse(x, y) {
     ctx.fillStyle = "#3a2c1c"; ctx.fillRect(x+6, y+6, TILE-12, TILE-12);
     ctx.strokeStyle = "#6b5236"; ctx.lineWidth=2; ctx.strokeRect(x+6, y+6, TILE-12, TILE-12);
     ctx.fillStyle = "#9a8b73"; ctx.font="8px sans-serif"; ctx.textAlign="center";
-    ctx.fillText("STORE", x+TILE/2, y+TILE-4);
+    ctx.fillText("HOME", x+TILE/2, y+TILE-4);
   }
   function drawTower(x, y) {
     const built = tower.built;
@@ -1284,7 +1391,7 @@
     if (w.state === "moving") {
       // walk-bob: hop on a sine wave, ~5 hops/sec
       bob = -Math.abs(Math.sin(w.animT / 90)) * 3;
-    } else if (w.state === "working" || w.state === "building") {
+    } else if (w.state === "working" || w.state === "building" || w.state === "tower") {
       // work-wiggle: quick side-to-side while chopping/mining/building
       wiggle = Math.sin(w.animT / 45) * 2;
     }
@@ -1436,6 +1543,24 @@
       }
     }
     if (line) ctx.fillText(line, cx, ly);
+  }
+
+  // Like wrapText, but RETURNS the array of lines instead of drawing — used to
+  // size a box before rendering (caller must set ctx.font first for measuring).
+  function wrapLines(text, maxWidth) {
+    const words = text.split(" ");
+    const lines = [];
+    let line = "";
+    for (const word of words) {
+      const test = line ? line + " " + word : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        lines.push(line); line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
   }
 
   function start() {
