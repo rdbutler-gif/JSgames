@@ -315,7 +315,7 @@
       trees: [[3,6],[4,8],[2,10],[5,11],[3,13],[6,5],[4,2],[7,9],[5,15],[8,13]],
       rocks: [[6,7], [4,5], [8,10], [3,15]],   // 4 rocks = 24 stone: 6 for the workshop upgrade, 10 for the tower, buffer to spare
       cost:  { wood: 15, stone: 10 },   // tower cost
-      stars: { gold: 180, silver: 300 },
+      stars: { gold: 160, silver: 210 },   // 2:40 gold, 3:30 silver
       // Tower is gated: settle the outpost (5 houses) and clear the whole wall
       // before it will accept builders.
       objectives: { houses: 5, clearWalls: true },
@@ -467,6 +467,7 @@
     addHouse(L.startHouse.x, L.startHouse.y, true);   // house 0 = starting home
 
     // Destructible wall — a full-height column (levels without a wall use -1).
+    wallBreached = false;   // announce "the way is open" only the first time the wall clears
     if (L.wallCol >= 0) for (let y = 0; y < worldRows; y++) place(L.wallCol, y, RUBBLE);
 
     // Resource nodes from data.
@@ -526,6 +527,7 @@
   function spawnWorker(home) {
     const sprite = WORKER_SPRITES[workers.length % WORKER_SPRITES.length];
     const name = WORKER_NAMES[workers.length % WORKER_NAMES.length];
+    home.name = name;   // label the house with its resident's name
     workers.push({
       home,                                   // this worker's house {x,y}
       name,                                   // Bobby, Sammy, Tommy, Mindy, Freddy
@@ -540,6 +542,7 @@
   }
 
   let nodeHpMult = 1;   // per-level: scales tree/rock hp (longer to harvest). Keep integer so hp stays divisible by amount.
+  let wallBreached = false;   // set true the first time the wall is fully cleared, so the breach message fires once
   function place(x, y, type) { grid[y][x] = type; if (JOB[type]) nodes.set(key(x,y), {type, hp: JOB[type].hp * (JOB[type].res ? nodeHpMult : 1), x, y}); }
   function remove(x, y) { grid[y][x] = EMPTY; nodes.delete(key(x,y)); }
   const key = (x,y) => x + "," + y;
@@ -643,7 +646,14 @@
       }
       clearArmed = false;   // any other click disarms the confirm
       for (const cell of selectCells) {
-        if (cell.clickable && pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) { sfx.click(); gotoLevel(cell.i); return; }
+        if (!pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) continue;
+        if (cell.clickable) { sfx.click(); gotoLevel(cell.i); return; }
+        if (cell.locked)    {
+          sfx.blocked();
+          const text = cell.exists ? "Unlock Prior Level First!" : "Coming Soon!";
+          selectMsg = { text, born: performance.now() };
+          return;
+        }
       }
       if (selectBackBtn && pointInRect(mx, my, selectBackBtn.x, selectBackBtn.y, selectBackBtn.w, selectBackBtn.h)) { sfx.click(); screen = "mainMenu"; }
       return;
@@ -1086,7 +1096,7 @@
       const newHome = addHouse(bx, by, false);
       spawnWorker(newHome);
       addFloater(bx, by, "House!", "#cfe6c0");
-      setMsg(`House built — worker ${workers.length} moved in`);
+      setMsg(`${newHome.name} has moved in`);
     } else if (key_ === "workshop") {
       grid[by][bx] = BUILDING;
       workshops.push({ x: bx, y: by, level: 1 });
@@ -1200,8 +1210,18 @@
 
     if (node.hp <= 0) {
       remove(node.x, node.y);
-      if (job.label === "wall") sfx.wallBreak();
-      setMsg(job.label === "wall" ? "Wall breached — the way is open." : `Depleted a ${job.label}.`);
+      if (job.label === "wall") {
+        sfx.wallBreak();
+        // Announce the breach only the first time the wall is fully cleared.
+        // (Level 1's single-tile wall clears on the first break, so it still
+        // fires once there; Level 2's long wall waits until the last section.)
+        if (!wallBreached && wallsRemaining() === 0) {
+          wallBreached = true;
+          setMsg("Wall breached — the way is open.");
+        }
+      } else {
+        setMsg(`Depleted a ${job.label}.`);
+      }
     }
 
     if (job.res) {
@@ -1303,6 +1323,16 @@
         // house level badge (all houses L1 for now; upgrade mechanics come later)
         const h = houses.find(hh => hh.x === x && hh.y === y);
         if (h) levelBadge(x, y, h.level || 1);
+        // resident name above the house
+        if (h && h.name) {
+          ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+          ctx.font = "bold 11px 'Trebuchet MS', sans-serif";
+          const ny = y*TILE - 3;
+          ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.75)";
+          ctx.strokeText(h.name, x*TILE + TILE/2, ny);
+          ctx.fillStyle = "#ffe9b0";
+          ctx.fillText(h.name, x*TILE + TILE/2, ny);
+        }
       }
       else if (t === BUILDING) {
         const ws = workshops.find(s => s.x === x && s.y === y);
@@ -2252,7 +2282,7 @@
         ctx.fillText("\uD83D\uDD12", x+cellW-18, y+18);
       }
 
-      selectCells.push({ i, x, y, w: cellW, h: cellH, clickable: unlocked });
+      selectCells.push({ i, x, y, w: cellW, h: cellH, clickable: unlocked, locked: !unlocked, exists });
     }
     ctx.textBaseline = "alphabetic";
 
@@ -2276,7 +2306,21 @@
     ctx.fillText(clearArmed ? "Tap again to confirm" : "Clear Progress", cX+bW/2, rowY+bH/2);
     clearProgressBtn = { x: cX, y: rowY, w: bW, h: bH };
     ctx.textBaseline = "alphabetic";
+
+    // Transient toast when a subdued level is tapped: "Coming Soon!" for empty
+    // future slots, "Unlock Prior Level First!" for a real but still-locked level.
+    if (selectMsg) {
+      const age = performance.now() - selectMsg.born, DUR = 1600;
+      if (age < DUR) {
+        ctx.globalAlpha = age > DUR*0.6 ? 1 - (age - DUR*0.6)/(DUR*0.4) : 1;
+        ctx.fillStyle = "#ffcf3f"; ctx.textAlign = "center";
+        ctx.font = "bold 22px 'Trebuchet MS', sans-serif";
+        ctx.fillText(selectMsg.text, W/2, rowY - 14);
+        ctx.globalAlpha = 1;
+      } else selectMsg = null;
+    }
   }
+  let selectMsg = null;   // { text, born } — brief toast on the level-select screen
 
   // simple canvas word-wrap, centered
   function wrapText(text, cx, y, maxWidth, lineHeight) {
