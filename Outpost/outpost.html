@@ -207,6 +207,7 @@
     {
       name: "The Clearing",
       subtitle: "LEVEL 1",
+      clearText: "Level Cleared",   // shown on the level-complete screen
       cols: 16, rows: 12,
       startHouse: { x: 2, y: 6 },     // worker 1's home (also the stockpile cell)
       tower:      { x: 13, y: 6 },    // build target / win goal
@@ -228,6 +229,7 @@
     {
       name: "Wide Test",
       subtitle: "LEVEL 2 (camera test)",
+      clearText: "Test Complete",
       cols: 24, rows: 18,
       startHouse: { x: 2, y: 9 },
       tower:      { x: 21, y: 9 },
@@ -484,7 +486,7 @@
     // --- Level intro ---
     if (screen === "levelIntro") {
       if (introStartBtn && pointInRect(mx, my, introStartBtn.x, introStartBtn.y, introStartBtn.w, introStartBtn.h)) { beginPlay(); }
-      else if (introBackBtn && pointInRect(mx, my, introBackBtn.x, introBackBtn.y, introBackBtn.w, introBackBtn.h)) { screen = "levelSelect"; }
+      else if (introBackBtn && pointInRect(mx, my, introBackBtn.x, introBackBtn.y, introBackBtn.w, introBackBtn.h)) { screen = "mainMenu"; }
       return;
     }
 
@@ -493,7 +495,7 @@
       if (continueBtn && pointInRect(mx, my, continueBtn.x, continueBtn.y, continueBtn.w, continueBtn.h)) {
         gotoLevel(currentLevel + 1);
       } else if (completeSelectBtn && pointInRect(mx, my, completeSelectBtn.x, completeSelectBtn.y, completeSelectBtn.w, completeSelectBtn.h)) {
-        screen = "levelSelect";
+        screen = "mainMenu";
       }
       return;
     }
@@ -1512,7 +1514,7 @@
     ctx.textBaseline = "alphabetic";
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 26px 'Trebuchet MS', sans-serif";
-    ctx.fillText("OUTPOST SECURED", cx+cw/2, cy+52);
+    ctx.fillText((LEVELS[currentLevel].clearText || "LEVEL CLEARED").toUpperCase(), cx+cw/2, cy+52);
 
     ctx.font = "34px sans-serif";
     ctx.fillStyle = "#ffcf3f";
@@ -1541,7 +1543,7 @@
           { stroke: "rgba(255,255,255,.18)", strokeW: 2 });
     ctx.fillStyle = "#dceaf5";
     ctx.font = "bold 14px 'Trebuchet MS', sans-serif";
-    ctx.fillText("Level Select", sbX+sbW/2, sbY+sbH/2);
+    ctx.fillText("Main Menu", sbX+sbW/2, sbY+sbH/2);
     completeSelectBtn = { x: sbX, y: sbY, w: sbW, h: sbH };
     ctx.textBaseline = "alphabetic";
   }
@@ -1702,8 +1704,8 @@
     hoverCell = null;
     if (buildMode) {
       const b = BUILDINGS[buildMode];
-      buildHint = `Placing ${b.label} — left-click a tile · right-click cancels`;
-      setMsg(`Placing a ${b.label}. Green = valid, red = blocked.`);
+      buildHint = "";   // in-bar text removed — it overlapped the quit/retry buttons; the canvas flash below covers it
+      setMsg(`Placing a ${b.label} — right click to cancel.`);
     } else {
       buildHint = "";
     }
@@ -1778,7 +1780,7 @@
           { stroke: "rgba(255,255,255,.15)", strokeW: 1.5 });
     ctx.fillStyle = "#cfe0ee";
     ctx.font = "bold 13px 'Trebuchet MS', sans-serif";
-    ctx.fillText("‹  Level Select", bbX+bbW/2, bbY+bbH/2);
+    ctx.fillText("‹  Back", bbX+bbW/2, bbY+bbH/2);
     introBackBtn = { x: bbX, y: bbY, w: bbW, h: bbH };
     ctx.textBaseline = "alphabetic";
   }
