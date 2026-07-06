@@ -276,6 +276,10 @@
       name: "The Clearing",
       subtitle: "LEVEL 1",
       clearText: "Level Cleared",   // shown on the level-complete screen
+      blurb: "The frontier has gone quiet, and the old watchtower lies in ruin. " +
+             "Clear the wilderness, gather timber and stone, and put your settlers " +
+             "to work. Raise a workshop, break through the ridge, and rebuild the " +
+             "watchtower to reclaim the clearing.",
       cols: 16, rows: 12,
       startHouse: { x: 2, y: 6 },     // worker 1's home (also the stockpile cell)
       tower:      { x: 13, y: 6 },    // build target / win goal
@@ -294,6 +298,10 @@
       name: "The Expanse",
       subtitle: "LEVEL 2",
       clearText: "The Expanse Settled",
+      blurb: "Word of the reclaimed clearing has spread, and villagers are moving " +
+             "in to help tame the wider expanse. Put the whole crew to work — raise " +
+             "homes for the newcomers, break down the long wall that splits the land, " +
+             "and rebuild a watchtower on the far side to keep the growing settlement safe.",
       cols: 24, rows: 18,
       startHouse: { x: 2, y: 3 },
       tower:      { x: 20, y: 12 },     // far side, beyond the wall
@@ -1928,17 +1936,22 @@
     const _L = LEVELS[currentLevel];
     ctx.fillText(`${_L.subtitle}  ·  ${_L.name.toUpperCase()}`, W/2, H*0.24 + 36);
 
-    // Blurb (word-wrapped) on a panel
-    const bx = W*0.14, bw = W*0.72, by = H*0.36, bh = 130;
-    panel(bx, by, bw, bh, 12, "rgba(20,30,40,.55)", { shadow:false, highlight:false, stroke:"rgba(255,255,255,.1)", strokeW:1 });
-    ctx.fillStyle = "#dbe6f0";
-    ctx.font = "15px 'Trebuchet MS', sans-serif";
-    const blurb =
+    // Blurb (word-wrapped) on a panel sized to fit — robust to per-level length.
+    const blurb = _L.blurb ||
       "The frontier has gone quiet, and the old watchtower lies in ruin. " +
       "Clear the wilderness, gather timber and stone, and put your settlers " +
       "to work. Raise a workshop, break through the ridge, and rebuild the " +
       "watchtower to reclaim the clearing.";
-    wrapText(blurb, W/2, by + 30, bw - 40, 23);
+    const bx = W*0.14, bw = W*0.72, by = H*0.36;
+    ctx.font = "15px 'Trebuchet MS', sans-serif";
+    const blurbLines = wrapLines(blurb, bw - 40);
+    const lineH = 23, bh = 30 + blurbLines.length * lineH + 12;
+    panel(bx, by, bw, bh, 12, "rgba(20,30,40,.55)", { shadow:false, highlight:false, stroke:"rgba(255,255,255,.1)", strokeW:1 });
+    ctx.fillStyle = "#dbe6f0";
+    ctx.font = "15px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = "center";
+    let bly = by + 30;
+    for (const ln of blurbLines) { ctx.fillText(ln, W/2, bly); bly += lineH; }
 
     // Objective line
     ctx.fillStyle = "#5fc55f";
