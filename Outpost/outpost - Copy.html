@@ -335,7 +335,6 @@
     res = { wood: 0, stone: 0 };
     done = false;
     startTime = performance.now();
-    simNow = 0; simAccum = 0;    // reset the simulation clock for the new level
     updateHUD();
     rollGround();
     introBanner = { text: L.intro };
@@ -465,7 +464,10 @@
     // --- Main menu ---
     if (screen === "mainMenu") {
       if (menuPlayBtn && pointInRect(mx, my, menuPlayBtn.x, menuPlayBtn.y, menuPlayBtn.w, menuPlayBtn.h)) {
-        gotoLevel(nextPlayLevel());
+        // jump to the furthest unlocked level the player hasn't cleared, else 0
+        let target = 0;
+        for (let i = 0; i < LEVELS.length; i++) { if (isUnlocked(i)) target = i; if (!isCompleted(i)) break; }
+        gotoLevel(target);
       } else if (menuSelectBtn && pointInRect(mx, my, menuSelectBtn.x, menuSelectBtn.y, menuSelectBtn.w, menuSelectBtn.h)) {
         screen = "levelSelect";
       }
@@ -512,11 +514,6 @@
         if (pointInRect(mx, my, btn.x, btn.y, btn.w, btn.h)) { toggleBuildMode(btn.key); return; }
       }
       if (restartBtn && pointInRect(mx, my, restartBtn.x, restartBtn.y, restartBtn.w, restartBtn.h)) { start(); return; }
-      if (quitBtn && pointInRect(mx, my, quitBtn.x, quitBtn.y, quitBtn.w, quitBtn.h)) {
-        resetState(currentLevel);   // clear in-progress play state
-        screen = "mainMenu";        // back to the overall title screen
-        return;
-      }
       return;
     }
     if (region === "hud") return;   // HUD is display-only for now
@@ -643,7 +640,7 @@
       return;
     }
     const w = nearestIdleTo(gx, gy);
-    if (!w) { setMsg(dispatchFailMsg(gx, gy)); return; }
+    if (!w) { setMsg("No free worker to build it. Wait for one to finish."); return; }
     // pay now, construct on arrival
     res.wood -= b.wood; res.stone -= b.stone; updateHUD();
     dispatch(w, gx, gy, { build: buildMode });
@@ -736,52 +733,25 @@
   // ---- Update loop ------------------------------------------------------
   const MOVE_MS = 260; // per tile
 
-  // Fixed-step simulation. The world advances in whole TICK_MS steps regardless
-  // of the display's refresh rate, so gameplay runs at identical speed on a
-  // 60Hz and a 120Hz screen (fairness: a faster machine can't win). Rendering
-  // still happens every animation frame. simNow is the accumulated sim time in
-  // ms — ALL gameplay timing (movement, gather/build durations, tower progress,
-  // the win timer) is measured against it, never against the wall clock.
-  const TICK_MS = 16;                 // one simulation step
-  const MAX_CATCHUP = 6;              // cap ticks/frame so a stalled tab can't flood catch-up
-  let simNow = 0;                     // sim clock (ms of accumulated ticks)
-  let simAccum = 0;                   // leftover real ms waiting to become ticks
-  let lastFrame = 0;                  // wall-clock timestamp of previous frame
-
   function update(now) {
-    // Non-play screens are static — draw and yield. Keep the frame clock fresh
-    // so re-entering play doesn't see a huge first delta.
-    if (screen !== "play" && screen !== "levelComplete") {
-      lastFrame = now;
-      if (screen === "mainMenu")    { drawMainMenu();    raf = requestAnimationFrame(update); return; }
-      if (screen === "levelSelect") { drawLevelSelect(); raf = requestAnimationFrame(update); return; }
-      if (screen === "levelIntro")  { drawTitle();       raf = requestAnimationFrame(update); return; }
-    }
-    if (screen === "levelComplete") { lastFrame = now; draw(); drawWinBanner(); raf = requestAnimationFrame(update); return; }
+    // Non-play screens are static — draw and yield.
+    if (screen === "mainMenu")      { drawMainMenu();    raf = requestAnimationFrame(update); return; }
+    if (screen === "levelSelect")   { drawLevelSelect(); raf = requestAnimationFrame(update); return; }
+    if (screen === "levelIntro")    { drawTitle();       raf = requestAnimationFrame(update); return; }
+    if (screen === "levelComplete") { draw(); drawWinBanner(); raf = requestAnimationFrame(update); return; }
 
-    // screen === "play": drain accumulated real time into fixed sim ticks.
-    let dt = now - lastFrame;
-    lastFrame = now;
-    if (dt < 0) dt = 0;
-    if (dt > 250) dt = 250;           // first frame / tab-return guard
+    // screen === "play"
     if (!done) {
-      simAccum += dt;
-      let steps = 0;
-      while (simAccum >= TICK_MS && steps < MAX_CATCHUP) {
-        simNow += TICK_MS;
-        for (const w of workers) stepWorker(w, simNow);
-        simAccum -= TICK_MS;
-        steps++;
-      }
-      if (steps === MAX_CATCHUP) simAccum = 0;   // dropped ticks after a stall; don't hoard them
-      timerStr = fmt(Math.floor(simNow / 1000));
+      for (const w of workers) stepWorker(w, now);
+      const t = Math.floor((now - startTime) / 1000);
+      timerStr = fmt(t);
     }
     draw();
     raf = requestAnimationFrame(update);
   }
 
   function stepWorker(w, now) {
-    w.animT += TICK_MS;
+    w.animT += 16;
     if (w.state === "moving") {
       // If the worker is walking to a harvest node that got depleted mid-transit,
       // stop now instead of walking to an empty tile. (_targetNodeKey is set only
@@ -797,7 +767,7 @@
         else { w.state = "idle"; }
         return;
       }
-      w.moveT += TICK_MS;
+      w.moveT += 16;
       const next = w.path[0];
       if (next.x > Math.round(w.px)) w.facing = 1;
       else if (next.x < Math.round(w.px)) w.facing = -1;
@@ -809,7 +779,7 @@
         w.path.shift();
         w.moveT = 0;
         w.startX = w.px; w.startY = w.py;
-      } else if (w.moveT === TICK_MS) {
+      } else if (w.moveT === 16) {
         w.startX = Math.round(w.px); w.startY = Math.round(w.py);
       }
     } else if (w.state === "working") {
@@ -817,10 +787,10 @@
     } else if (w.state === "building") {
       if (now >= w.buildUntil) finishBuild(w, now);
     } else if (w.state === "tower") {
-      // Each parked worker contributes one fixed tick of effort. N workers => N x
-      // progress per tick => finishes in TOWER_BUILD_MS / N (linear).
+      // Each parked worker contributes one frame of effort. N workers => N x
+      // progress per frame => finishes in TOWER_BUILD_MS / N (linear).
       if (tower.built) { w._towerBuild = false; w.state = "idle"; return; }
-      tower.progress += TICK_MS / TOWER_BUILD_MS;
+      tower.progress += 16 / TOWER_BUILD_MS;
       if (tower.progress >= 1) {
         tower.progress = 1;
         tower.built = true;
@@ -911,15 +881,6 @@
     }
     if (w._towerBuild) { w._towerBuild = false; w.state = "idle"; w.target = null; return; }
 
-    // A hauler carrying goods has arrived at its own home tile. Deposit here and
-    // re-arm the gather loop directly — this must happen in arriveAtTarget (same
-    // sim tick as arrival), not in a separate render-time pass, or the node
-    // lookup below would idle the worker before any deposit fired.
-    if (w._depositOnArrive && tgt.x === w.home.x && tgt.y === w.home.y) {
-      depositAndRepeat(w);
-      return;
-    }
-
     const node = nodes.get(key(tgt.x, tgt.y));
     if (!node) { w.state = "idle"; w.target = null; w._targetNodeKey = null; return; }
 
@@ -974,34 +935,38 @@
     }
   }
 
-  // Deposit a hauler's load at home and either resume gathering the same node
-  // (if it still has resources) or go idle. Called from arriveAtTarget the moment
-  // the worker reaches home, on the sim clock.
-  function depositAndRepeat(w) {
-    if (w.carry) {
-      res[w.carry] += w.carryAmt;
-      const col = w.carry === "wood" ? "#d69a4c" : "#aab4c0";
-      addFloater(w.home.x, w.home.y, `+${w.carryAmt}`, col);
-    }
-    w.carry = null; w.carryAmt = 0;
-    w._depositOnArrive = false;
-    updateHUD();
-    checkReady();
+  // Deposit for every worker that has reached its own home carrying goods.
+  function maybeDeposit() {
+    for (const w of workers) {
+      if (w._depositOnArrive && w.path.length === 0 && w.target &&
+          w.target.x === w.home.x && w.target.y === w.home.y &&
+          Math.round(w.px) === w.home.x && Math.round(w.py) === w.home.y) {
+        if (w.carry) {
+          res[w.carry] += w.carryAmt;
+          const col = w.carry === "wood" ? "#d69a4c" : "#aab4c0";
+          addFloater(w.home.x, w.home.y, `+${w.carryAmt}`, col);
+        }
+        w.carry = null; w.carryAmt = 0;
+        w._depositOnArrive = false;
+        updateHUD();
+        checkReady();
 
-    // Repeat: return to the same node if it still has resources.
-    const rn = w._repeatNode;
-    if (rn && nodes.has(key(rn.x, rn.y))) {
-      const path = astar(Math.round(w.px), Math.round(w.py), rn.x, rn.y);
-      if (path) {
-        w.path = path;
-        w.target = {x: rn.x, y: rn.y};
-        w._targetNodeKey = key(rn.x, rn.y);   // enable mid-transit abort on return
-        w.state = "moving";
-        return;
+        // Repeat: return to the same node if it still has resources.
+        const rn = w._repeatNode;
+        if (rn && nodes.has(key(rn.x, rn.y))) {
+          const path = astar(Math.round(w.px), Math.round(w.py), rn.x, rn.y);
+          if (path) {
+            w.path = path;
+            w.target = {x: rn.x, y: rn.y};
+            w._targetNodeKey = key(rn.x, rn.y);   // enable mid-transit abort on return
+            w.state = "moving";
+            continue;
+          }
+        }
+        w._repeatNode = null;
+        w.state = "idle"; w.target = null;
       }
     }
-    w._repeatNode = null;
-    w.state = "idle"; w.target = null;
   }
 
   function checkReady() {
@@ -1012,6 +977,7 @@
 
   // ---- Rendering --------------------------------------------------------
   function draw() {
+    maybeDeposit();
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
     // ==== WORLD (clipped to the play viewport, offset by camera) ====
@@ -1318,8 +1284,7 @@
     ctx.fillText("OUTPOST", x, cy-9);
     ctx.font = "10px 'Trebuchet MS', sans-serif";
     ctx.fillStyle = "#8fb0d0";
-    const _hudL = LEVELS[currentLevel];
-    ctx.fillText(`${_hudL.subtitle} · ${_hudL.name.toUpperCase()}`, x, cy+8);
+    ctx.fillText("LVL 1 · THE CLEARING", x, cy+8);
     x += 150;
 
     // resource pills
@@ -1334,8 +1299,8 @@
     ctx.font = "bold 16px 'Trebuchet MS', sans-serif";
     ctx.fillStyle = "#ffffff";
     ctx.fillText(timerStr, VIEW_W - 14, cy - 8);
-    // live star preview based on current SIM time (matches the timer above)
-    const sec = done ? null : Math.floor(simNow / 1000);
+    // live star preview based on current elapsed time
+    const sec = done ? null : Math.floor((performance.now()-startTime)/1000);
     const liveStars = done ? winStars : starsFor(sec ?? 0);
     ctx.font = "12px sans-serif";
     let starStr = "";
@@ -1432,15 +1397,6 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillText("↻ Restart", rbX + rbW/2, rbY + rbH/2);
     restartBtn = { x: rbX, y: rbY, w: rbW, h: rbH };
-
-    // quit button (left of restart) — back to the level's title/intro screen
-    const qbW = 72, qbX = rbX - qbW - 8, qbY = rbY, qbH = rbH;
-    const qbHover = pointInRect(mouse.x, mouse.y, qbX, qbY, qbW, qbH);
-    panel(qbX, qbY, qbW, qbH, 8, qbHover ? "#6a3a3a" : "#553030",
-          { stroke: "rgba(255,255,255,.12)", strokeW: 1 });
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText("✕ Quit", qbX + qbW/2, qbY + qbH/2);
-    quitBtn = { x: qbX, y: qbY, w: qbW, h: qbH };
   }
 
   function pointInRect(px, py, x, y, w, h) {
@@ -1667,7 +1623,7 @@
 
   function win(now) {
     done = true;
-    const sec = Math.floor(simNow / 1000);   // pure sim time — device-independent
+    const sec = Math.floor((now - startTime)/1000);
     winStars = starsFor(sec);
     winTimeStr = `Finished in ${fmt(sec)}  ·  Gold ≤ ${fmt(GOLD_SEC)}, Silver ≤ ${fmt(SILVER_SEC)}`;
     setMsg("Watchtower complete. Outpost secured.");
@@ -1691,7 +1647,7 @@
   // Button rectangles are computed each frame in drawBuildBar() and cached here
   // for hit-testing. Each entry: { key, x, y, w, h }.
   let buildButtons = [];
-  let restartBtn = null, quitBtn = null;
+  let restartBtn = null;
   let continueBtn = null, completeSelectBtn = null;   // levelComplete screen
   let menuPlayBtn = null, menuSelectBtn = null;        // mainMenu screen
   let introStartBtn = null, introBackBtn = null;       // levelIntro screen
@@ -1768,7 +1724,7 @@
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
     ctx.font = "bold 18px 'Trebuchet MS', sans-serif";
-    ctx.fillText("▶  Begin", W/2, pbY + pbH/2);
+    ctx.fillText("▶  Click to Begin", W/2, pbY + pbH/2);
     introStartBtn = { x: pbX, y: pbY, w: pbW, h: pbH };
 
     // Back to level select
@@ -1814,14 +1770,14 @@
     ctx.font = "16px 'Trebuchet MS', sans-serif";
     ctx.fillText("A frontier resource game", W/2, H*0.30 + 34);
 
-    // Play button — names the level it will actually load (see nextPlayLevel).
+    // Play button (jumps to the first uncompleted unlocked level, else level 0)
     const pW = 240, pH = 52, pX = (W-pW)/2;
     let pY = H*0.52;
     const pHover = pointInRect(mouse.x, mouse.y, pX, pY, pW, pH);
     panel(pX, pY, pW, pH, 12, pHover ? "#5fc55f" : "#4fb54f", { stroke:"rgba(255,255,255,.25)", strokeW:2 });
     ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
     ctx.font = "bold 20px 'Trebuchet MS', sans-serif";
-    ctx.fillText(`▶  Begin ${LEVELS[nextPlayLevel()].subtitle}`, W/2, pY+pH/2);
+    ctx.fillText("▶  Play", W/2, pY+pH/2);
     menuPlayBtn = { x: pX, y: pY, w: pW, h: pH };
 
     // Level Select button
@@ -1964,18 +1920,6 @@
   }
   // True if there's a next level after the current one that exists in LEVELS.
   function hasNextLevel() { return currentLevel + 1 < LEVELS.length; }
-
-  // Which level the main-menu Play button targets: the furthest unlocked level
-  // the player hasn't cleared yet (else the last unlocked). Shared by the button
-  // LABEL and the CLICK so they can never name one level and load another.
-  function nextPlayLevel() {
-    let target = 0;
-    for (let i = 0; i < LEVELS.length; i++) {
-      if (isUnlocked(i)) target = i;
-      if (!isCompleted(i)) break;
-    }
-    return target;
-  }
 
   // First-ever load: main menu. Progress is restored from localStorage.
   function boot() {
