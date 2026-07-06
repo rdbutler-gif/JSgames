@@ -221,31 +221,30 @@
              "(unlocks stone, then wall-breaking). Gather 15 wood + 10 stone, then " +
              "click the TOWER to raise it and win.",
     },
-    // ===== CAMERA TEST STUB (2b-i) =====================================
-    // Placeholder only — a bigger-than-viewport 24x18 world with sparse content,
-    // here solely to exercise scrolling/clamping/drag. Real level-2 design lands
-    // in 2b-ii and will replace this. Node positions are spread to the far edges
-    // on purpose so you can confirm the camera reaches every corner.
+    // ===== LEVEL 2 =====================================================
     {
-      name: "Wide Test",
-      subtitle: "LEVEL 2 (camera test)",
-      clearText: "Test Complete",
+      name: "The Expanse",
+      subtitle: "LEVEL 2",
+      clearText: "The Expanse Settled",
       cols: 24, rows: 18,
-      startHouse: { x: 2, y: 9 },
-      tower:      { x: 21, y: 9 },
-      wallCol: 12,
-      trees: [[4,2],[6,3],[3,15],[5,16],[9,1],[10,16],[2,6],[7,9]],
-      rocks: [[16,2],[18,4],[20,15],[17,16],[15,9],[22,6],[19,11]],
-      cost:  { wood: 15, stone: 10 },
-      stars: { gold: 120, silver: 200 },
-      intro: "CAMERA TEST LEVEL. Drag anywhere on the map to pan around the larger " +
-             "world. Confirm you can reach all four corners and that the view stops " +
-             "cleanly at the edges. Gameplay here is placeholder.",
+      startHouse: { x: 2, y: 3 },
+      tower:      { x: 20, y: 12 },     // far side, beyond the wall
+      wallCol: 11,                      // full-height wall dividing the map
+      // West of the wall: wood to build houses + the workshop, and one rock so
+      // the workshop can be upgraded to L2 (needed to break the wall).
+      trees: [[3,6],[4,8],[2,10],[5,11],[3,13],[6,5],[4,2],[7,9],[5,15],[8,13]],
+      rocks: [[6,7], [4,5], [8,10], [3,15]],   // 4 rocks = 24 stone: 6 for the workshop upgrade, 10 for the tower, buffer to spare
+      cost:  { wood: 15, stone: 10 },   // tower cost
+      stars: { gold: 180, silver: 300 },
+      // Tower is gated: settle the outpost (5 houses) and clear the whole wall
+      // before it will accept builders.
+      objectives: { houses: 5, clearWalls: true },
+      intro: "THE EXPANSE — click and drag the map to explore new area. " +
+             "Settlers are moving in: build 5 houses (one per worker — meet all " +
+             "five!), upgrade a workshop to break through the wall, clear every " +
+             "wall section, then raise a new watchtower on the far side to win.",
     },
   ];
-  // DEV: unlock every level regardless of progress, so the camera-test level is
-  // reachable without beating level 1 first. REMOVE before shipping 2b-ii.
-  const DEV_UNLOCK_ALL = true;
   let currentLevel = 0;   // index into LEVELS; the level currently loaded
 
   // ---- Progress persistence --------------------------------------------
@@ -269,9 +268,13 @@
   function saveProgress() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); } catch (e) {}
   }
+  function clearProgress() {
+    progress = { v: 1, stars: {} };
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  }
   function starsForLevel(idx) { return progress.stars[idx] || 0; }
   function isCompleted(idx) { return starsForLevel(idx) >= 1; }
-  function isUnlocked(idx) { return DEV_UNLOCK_ALL || idx === 0 || isCompleted(idx - 1); }
+  function isUnlocked(idx) { return idx === 0 || isCompleted(idx - 1); }
   function recordStars(idx, stars) {
     // best-ever: never let a sloppy replay lower an earned score
     if (stars > (progress.stars[idx] || 0)) { progress.stars[idx] = stars; saveProgress(); }
@@ -347,6 +350,7 @@
   const MAX_WORKERS = 5;        // practical ceiling on this small map
   // Each worker gets its own sprite from dungeon.png, in spawn order.
   const WORKER_SPRITES = [85, 86, 88, 99, 112];
+  const WORKER_NAMES = ["Bobby", "Sammy", "Tommy", "Mindy", "Freddy"];
 
   // Floating "+N" popups over houses on deposit. Ephemeral, no gameplay effect.
   let floaters = [];
@@ -376,8 +380,10 @@
 
   function spawnWorker(home) {
     const sprite = WORKER_SPRITES[workers.length % WORKER_SPRITES.length];
+    const name = WORKER_NAMES[workers.length % WORKER_NAMES.length];
     workers.push({
       home,                                   // this worker's house {x,y}
+      name,                                   // Bobby, Sammy, Tommy, Mindy, Freddy
       sprite,                                 // its own tile on dungeon.png
       px: home.x, py: home.y,
       path: [], target: null, state: "idle",
@@ -469,13 +475,19 @@
       if (menuPlayBtn && pointInRect(mx, my, menuPlayBtn.x, menuPlayBtn.y, menuPlayBtn.w, menuPlayBtn.h)) {
         gotoLevel(nextPlayLevel());
       } else if (menuSelectBtn && pointInRect(mx, my, menuSelectBtn.x, menuSelectBtn.y, menuSelectBtn.w, menuSelectBtn.h)) {
-        screen = "levelSelect";
+        screen = "levelSelect"; clearArmed = false;
       }
       return;
     }
 
     // --- Level select ---
     if (screen === "levelSelect") {
+      if (clearProgressBtn && pointInRect(mx, my, clearProgressBtn.x, clearProgressBtn.y, clearProgressBtn.w, clearProgressBtn.h)) {
+        if (clearArmed) { clearProgress(); clearArmed = false; }
+        else { clearArmed = true; }   // first tap arms, second confirms
+        return;
+      }
+      clearArmed = false;   // any other click disarms the confirm
       for (const cell of selectCells) {
         if (cell.clickable && pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) { gotoLevel(cell.i); return; }
       }
@@ -552,7 +564,7 @@
       if (!w) { setMsg("No free worker to upgrade the workshop. Wait for one."); return; }
       res.wood -= u.wood; res.stone -= u.stone; updateHUD();
       dispatch(w, gx, gy, { upgrade: ws });
-      setMsg("Worker heading out to upgrade the workshop...");
+      setMsg(`${w.name} is heading out to upgrade the workshop.`);
       return;
     }
 
@@ -569,6 +581,10 @@
       const w = nearestIdleTo(gx, gy);
       if (!w) { setMsg(dispatchFailMsg(gx, gy)); return; }
       dispatch(w, gx, gy);
+      const action = t === TREE ? "is cutting trees"
+                   : t === ROCK ? "is mining stone"
+                   : "is breaking the wall";
+      setMsg(`${w.name} ${action}.`);
       return;
     }
 
@@ -576,7 +592,11 @@
     // another idle worker to join an in-progress build (speeds it up linearly).
     if (t === TOWER) {
       if (tower.built) return;
+      // Objective gate: some levels require houses/walls done before the tower
+      // will accept any workers.
       if (!tower.building) {
+        const gate = towerGate();
+        if (!gate.ok) { setMsg(gate.why); return; }
         if (res.wood < NEED_WOOD || res.stone < NEED_STONE) {
           setMsg(`Need ${NEED_WOOD}w + ${NEED_STONE}s`);
           return;
@@ -586,12 +606,12 @@
         res.wood -= NEED_WOOD; res.stone -= NEED_STONE; updateHUD();
         tower.building = true; tower.progress = 0;
         dispatch(w, gx, gy, { tower: true });
-        setMsg("Building the watchtower — click it again to add more workers.");
+        setMsg(`${w.name} is building the watchtower — click it again to add more workers.`);
       } else {
         const w = nearestIdleTo(gx, gy);
         if (!w) { setMsg(anyIdleWorker() ? "Can't reach the tower." : "No free worker to add. Wait for one."); return; }
         dispatch(w, gx, gy, { tower: true });
-        setMsg("Another builder joins the tower.");
+        setMsg(`${w.name} joins the tower build.`);
       }
       return;
     }
@@ -649,7 +669,7 @@
     // pay now, construct on arrival
     res.wood -= b.wood; res.stone -= b.stone; updateHUD();
     dispatch(w, gx, gy, { build: buildMode });
-    setMsg(`Worker heading out to build the ${b.label}...`);
+    setMsg(`${w.name} is heading out to build the ${b.label}.`);
     toggleBuildMode(buildMode);   // exit build mode after placing
   }
 
@@ -1176,6 +1196,7 @@
     // ==== UI (screen space) ====
     drawHUD();
     drawBuildBar();
+    drawExploreArrows();
 
     // Sticky intro banner — wrapped, boxed, no fade. Sits at the top of the play
     // field until the player's first real action clears it.
@@ -1340,10 +1361,14 @@
     const sec = done ? null : Math.floor(simNow / 1000);
     const liveStars = done ? winStars : starsFor(sec ?? 0);
     ctx.font = "12px sans-serif";
-    let starStr = "";
-    for (let i=0;i<3;i++) starStr += (i < liveStars) ? "★" : "☆";
-    ctx.fillStyle = "#ffcf3f";
-    ctx.fillText(starStr, VIEW_W - 14, cy + 9);
+    const gW = 12, rightX = VIEW_W - 14;
+    ctx.textAlign = "center";
+    for (let i=0;i<3;i++) {
+      ctx.fillStyle = i < liveStars ? STAR_COLORS[i] : EMPTY_STAR;
+      // draw right-aligned block: rightmost star at rightX
+      ctx.fillText(i < liveStars ? "★" : "☆", rightX - (2-i)*gW - gW/2, cy + 9);
+    }
+    ctx.textAlign = "left";
   }
 
   function drawResourcePill(x, cy, tileIdx, color, value, label, glyph) {
@@ -1366,6 +1391,32 @@
     ctx.fillStyle = color;
     ctx.fillText(label.toUpperCase(), x+36, cy+8);
     return x + w + 8;
+  }
+
+  // Bouncing arrows on the right/bottom edges of the play viewport, shown only
+  // when there's more world to scroll to that direction. Cue for larger maps.
+  function drawExploreArrows() {
+    const canRight = camera.x < worldPxW() - VIEW_W - 1;
+    const canDown  = camera.y < worldPxH() - VIEW_H - 1;
+    if (!canRight && !canDown) return;
+    const t = performance.now() / 1000;
+    const bounce = Math.sin(t * 4) * 5;   // px of travel
+    ctx.save();
+    ctx.fillStyle = "#ffcf3f";
+    ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 2;
+    if (canRight) { arrowTri(VIEW_W - 16 + bounce, VIEW_Y + VIEW_H/2, 1, 0); }
+    if (canDown)  { arrowTri(VIEW_W/2, VIEW_Y + VIEW_H - 16 + bounce, 0, 1); }
+    ctx.restore();
+  }
+  // Filled triangle arrow at (cx,cy) pointing along unit (dx,dy).
+  function arrowTri(cx, cy, dx, dy) {
+    const s = 12, px = -dy, py = dx;
+    ctx.beginPath();
+    ctx.moveTo(cx + dx*s, cy + dy*s);
+    ctx.lineTo(cx - dx*s + px*s, cy - dy*s + py*s);
+    ctx.lineTo(cx - dx*s - px*s, cy - dy*s - py*s);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
   }
 
   // ---- Bottom build bar ----
@@ -1517,8 +1568,12 @@
     ctx.fillText((LEVELS[currentLevel].clearText || "LEVEL CLEARED").toUpperCase(), cx+cw/2, cy+52);
 
     ctx.font = "34px sans-serif";
-    ctx.fillStyle = "#ffcf3f";
-    ctx.fillText("★".repeat(winStars) + "☆".repeat(3-winStars), cx+cw/2, cy+100);
+    // per-star tier colors: bronze, silver, gold; empty stars greyed
+    const glyphW = 30, total = glyphW*3, sx0 = cx+cw/2 - total/2 + glyphW/2;
+    for (let i=0;i<3;i++) {
+      ctx.fillStyle = i < winStars ? STAR_COLORS[i] : EMPTY_STAR;
+      ctx.fillText(i < winStars ? "★" : "☆", sx0 + i*glyphW, cy+100);
+    }
 
     ctx.font = "12px 'Trebuchet MS', sans-serif";
     ctx.fillStyle = "#b8c9d9";
@@ -1666,6 +1721,33 @@
   // ---- HUD / win --------------------------------------------------------
   function updateHUD() { /* HUD is drawn each frame from res.* — nothing to push */ }
   function starsFor(sec) { return sec <= GOLD_SEC ? 3 : sec <= SILVER_SEC ? 2 : 1; }
+  // Star tier colors by POSITION: 1st bronze, 2nd silver, 3rd gold. Used wherever
+  // earned stars are shown so the tiers read consistently.
+  const STAR_COLORS = ["#c77b3c", "#c8d2dc", "#ffcf3f"];   // bronze, silver, gold
+  const EMPTY_STAR = "#4a5866";
+
+  // ---- Tower objective gate --------------------------------------------
+  // A level may require objectives (houses built, all walls cleared) BEFORE the
+  // tower will accept workers. Defined per-level in LEVELS[].objectives; a level
+  // with no objectives (like L1) is ungated. Returns { ok, why } where `why` is
+  // a player-facing message naming what's still missing.
+  function wallsRemaining() {
+    let n = 0;
+    for (const [, nd] of nodes) if (nd.type === RUBBLE) n++;
+    return n;
+  }
+  function towerGate() {
+    const obj = LEVELS[currentLevel].objectives;
+    if (!obj) return { ok: true };
+    if (obj.houses && houses.length < obj.houses) {
+      const need = obj.houses - houses.length;
+      return { ok: false, why: `Build ${need} more house${need>1?"s":""} first (${houses.length}/${obj.houses}).` };
+    }
+    if (obj.clearWalls && wallsRemaining() > 0) {
+      return { ok: false, why: `Clear the wall first — ${wallsRemaining()} section${wallsRemaining()>1?"s":""} left.` };
+    }
+    return { ok: true };
+  }
 
   function win(now) {
     done = true;
@@ -1698,6 +1780,7 @@
   let menuPlayBtn = null, menuSelectBtn = null;        // mainMenu screen
   let introStartBtn = null, introBackBtn = null;       // levelIntro screen
   let selectCells = [], selectBackBtn = null;          // levelSelect screen
+  let clearProgressBtn = null, clearArmed = false;      // levelSelect: destructive clear w/ 2-tap confirm
 
   function toggleBuildMode(key) {
     buildMode = (buildMode === key) ? null : key;
@@ -1883,7 +1966,7 @@
         ctx.font = "18px sans-serif";
         const glyphW = 18, totalW = glyphW*3, startX = x+cellW/2 - totalW/2 + glyphW/2;
         for (let s = 0; s < 3; s++) {
-          ctx.fillStyle = s < stars ? "#ffcf3f" : "#4a5866";
+          ctx.fillStyle = s < stars ? STAR_COLORS[s] : EMPTY_STAR;
           ctx.fillText(s < stars ? "★" : "☆", startX + s*glyphW, y+cellH - 26);
         }
       }
@@ -1898,14 +1981,25 @@
     }
     ctx.textBaseline = "alphabetic";
 
-    // Back to main menu
-    const bW = 160, bH = 40, bX = (W-bW)/2, bY = gridY + rows*(cellH+gapY) + 6;
-    const bHover = pointInRect(mouse.x, mouse.y, bX, bY, bW, bH);
-    panel(bX, bY, bW, bH, 10, bHover ? "#4a6076" : "#3c5064", { stroke:"rgba(255,255,255,.18)", strokeW:2 });
+    // Bottom row: Main Menu + Clear Progress, side by side.
+    const bW = 160, bH = 40, gap = 16;
+    const rowY = gridY + rows*(cellH+gapY) + 6;
+    const bX = (W - (bW*2 + gap))/2;
+    const bHover = pointInRect(mouse.x, mouse.y, bX, rowY, bW, bH);
+    panel(bX, rowY, bW, bH, 10, bHover ? "#4a6076" : "#3c5064", { stroke:"rgba(255,255,255,.18)", strokeW:2 });
     ctx.fillStyle = "#dceaf5"; ctx.textBaseline = "middle";
     ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
-    ctx.fillText("‹  Main Menu", bX+bW/2, bY+bH/2);
-    selectBackBtn = { x: bX, y: bY, w: bW, h: bH };
+    ctx.fillText("‹  Main Menu", bX+bW/2, rowY+bH/2);
+    selectBackBtn = { x: bX, y: rowY, w: bW, h: bH };
+
+    // Clear Progress — destructive (red), wipes all stars/unlocks. Also handy
+    // for testing. Two-click confirm so it isn't fired by accident.
+    const cX = bX + bW + gap;
+    const cHover = pointInRect(mouse.x, mouse.y, cX, rowY, bW, bH);
+    panel(cX, rowY, bW, bH, 10, cHover ? "#6a3a3a" : "#553030", { stroke:"rgba(255,255,255,.15)", strokeW:2 });
+    ctx.fillStyle = clearArmed ? "#ffd0d0" : "#e8c4c4";
+    ctx.fillText(clearArmed ? "Tap again to confirm" : "Clear Progress", cX+bW/2, rowY+bH/2);
+    clearProgressBtn = { x: cX, y: rowY, w: bW, h: bH };
     ctx.textBaseline = "alphabetic";
   }
 
