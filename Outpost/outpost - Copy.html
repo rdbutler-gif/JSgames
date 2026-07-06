@@ -92,74 +92,6 @@
     return "grid";
   }
 
-  // ---- Audio (Web Audio API synthesis) ---------------------------------
-  // One AudioContext, a library of named effects built from oscillators + noise
-  // with shaped envelopes. No files — clean and portable. Browsers start the
-  // context "suspended" until a user gesture, so we resume it on first click.
-  // Real recorded music cues can be added later alongside these without touching
-  // the call sites. Effects are called as sfx.chop(), sfx.deposit(), etc.
-  const sfx = (() => {
-    let ctx = null, master = null, muted = false;
-    function ensure() {
-      if (!ctx) {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return null;
-        ctx = new AC();
-        master = ctx.createGain();
-        master.gain.value = 0.35;         // overall headroom
-        master.connect(ctx.destination);
-      }
-      if (ctx.state === "suspended") ctx.resume();
-      return ctx;
-    }
-    // A single enveloped oscillator voice.
-    function tone(freq, t0, dur, { type="sine", gain=0.5, glideTo=null, attack=0.005, release=null } = {}) {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = type; o.frequency.setValueAtTime(freq, t0);
-      if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur);
-      const rel = release ?? dur;
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(gain, t0 + attack);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + rel);
-      o.connect(g); g.connect(master);
-      o.start(t0); o.stop(t0 + rel + 0.02);
-    }
-    // A short filtered noise burst (for impacts: chops, breaks, mining).
-    function noise(t0, dur, { gain=0.5, type="lowpass", freq=1200, q=1 } = {}) {
-      const n = Math.floor(ctx.sampleRate * dur);
-      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i=0;i<n;i++) d[i] = (Math.random()*2-1) * (1 - i/n); // decaying
-      const src = ctx.createBufferSource(); src.buffer = buf;
-      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
-      const g = ctx.createGain(); g.gain.value = gain;
-      src.connect(f); f.connect(g); g.connect(master);
-      src.start(t0); src.stop(t0 + dur + 0.02);
-    }
-    // Wrap each effect so a suspended/absent context never throws at a call site.
-    function play(fn) {
-      if (muted) return;
-      const c = ensure(); if (!c) return;
-      try { fn(c.currentTime); } catch (e) {}
-    }
-    return {
-      resume() { if (!muted) ensure(); },
-      toggleMute() { muted = !muted; if (muted && ctx) master.gain.value = 0; else if (ctx) master.gain.value = 0.35; return muted; },
-      isMuted() { return muted; },
-      // ---- gameplay effects ----
-      chop()    { play(t => { noise(t, 0.12, { gain:0.5, type:"lowpass", freq:800, q:2 }); tone(180, t, 0.10, { type:"triangle", gain:0.25, glideTo:90 }); }); },
-      mine()    { play(t => { noise(t, 0.10, { gain:0.55, type:"bandpass", freq:2200, q:3 }); tone(320, t, 0.06, { type:"square", gain:0.15, glideTo:160 }); }); },
-      wallHit() { play(t => { noise(t, 0.14, { gain:0.5, type:"lowpass", freq:500, q:1 }); tone(120, t, 0.12, { type:"square", gain:0.2, glideTo:70 }); }); },
-      wallBreak(){ play(t => { noise(t, 0.45, { gain:0.7, type:"lowpass", freq:1400, q:0.7 }); tone(90, t, 0.4, { type:"sawtooth", gain:0.25, glideTo:45 }); }); },
-      deposit() { play(t => { tone(523, t, 0.08, { type:"sine", gain:0.3 }); tone(784, t+0.06, 0.10, { type:"sine", gain:0.3 }); }); },
-      place()   { play(t => { tone(300, t, 0.07, { type:"square", gain:0.25, glideTo:420 }); }); },
-      build()   { play(t => { tone(440, t, 0.10, { type:"triangle", gain:0.3 }); tone(660, t+0.09, 0.12, { type:"triangle", gain:0.3 }); tone(880, t+0.2, 0.14, { type:"triangle", gain:0.3 }); }); },
-      win()     { play(t => { [523,659,784,1047].forEach((f,i)=> tone(f, t+i*0.12, 0.22, { type:"triangle", gain:0.32 })); }); },
-      click()   { play(t => { tone(660, t, 0.04, { type:"square", gain:0.18 }); }); },
-      blocked() { play(t => { tone(200, t, 0.12, { type:"sawtooth", gain:0.22, glideTo:140 }); }); },
-    };
-  })();
-
   let NEED_WOOD = 15, NEED_STONE = 10;   // tower cost — set per-level from LEVELS[currentLevel].cost
   const TOWER_BUILD_MS = 6000;             // effort for ONE worker; N workers finish in TOWER_BUILD_MS/N (linear)
   let GOLD_SEC = 90, SILVER_SEC = 140;   // star time thresholds — set per-level from LEVELS[currentLevel].stars
@@ -532,7 +464,6 @@
 
   canvas.addEventListener("pointerdown", (e) => {
     const { mx, my } = eventPos(e);
-    sfx.resume();   // browsers require a user gesture before audio can play
     if (e.button !== 0) {
       // right-click still cancels build mode during play
       if (screen === "play" && buildMode) { toggleBuildMode(null); }
@@ -542,9 +473,9 @@
     // --- Main menu ---
     if (screen === "mainMenu") {
       if (menuPlayBtn && pointInRect(mx, my, menuPlayBtn.x, menuPlayBtn.y, menuPlayBtn.w, menuPlayBtn.h)) {
-        sfx.click(); gotoLevel(nextPlayLevel());
+        gotoLevel(nextPlayLevel());
       } else if (menuSelectBtn && pointInRect(mx, my, menuSelectBtn.x, menuSelectBtn.y, menuSelectBtn.w, menuSelectBtn.h)) {
-        sfx.click(); screen = "levelSelect"; clearArmed = false;
+        screen = "levelSelect"; clearArmed = false;
       }
       return;
     }
@@ -552,32 +483,31 @@
     // --- Level select ---
     if (screen === "levelSelect") {
       if (clearProgressBtn && pointInRect(mx, my, clearProgressBtn.x, clearProgressBtn.y, clearProgressBtn.w, clearProgressBtn.h)) {
-        sfx.click();
         if (clearArmed) { clearProgress(); clearArmed = false; }
         else { clearArmed = true; }   // first tap arms, second confirms
         return;
       }
       clearArmed = false;   // any other click disarms the confirm
       for (const cell of selectCells) {
-        if (cell.clickable && pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) { sfx.click(); gotoLevel(cell.i); return; }
+        if (cell.clickable && pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) { gotoLevel(cell.i); return; }
       }
-      if (selectBackBtn && pointInRect(mx, my, selectBackBtn.x, selectBackBtn.y, selectBackBtn.w, selectBackBtn.h)) { sfx.click(); screen = "mainMenu"; }
+      if (selectBackBtn && pointInRect(mx, my, selectBackBtn.x, selectBackBtn.y, selectBackBtn.w, selectBackBtn.h)) { screen = "mainMenu"; }
       return;
     }
 
     // --- Level intro ---
     if (screen === "levelIntro") {
-      if (introStartBtn && pointInRect(mx, my, introStartBtn.x, introStartBtn.y, introStartBtn.w, introStartBtn.h)) { sfx.click(); beginPlay(); }
-      else if (introBackBtn && pointInRect(mx, my, introBackBtn.x, introBackBtn.y, introBackBtn.w, introBackBtn.h)) { sfx.click(); screen = "mainMenu"; }
+      if (introStartBtn && pointInRect(mx, my, introStartBtn.x, introStartBtn.y, introStartBtn.w, introStartBtn.h)) { beginPlay(); }
+      else if (introBackBtn && pointInRect(mx, my, introBackBtn.x, introBackBtn.y, introBackBtn.w, introBackBtn.h)) { screen = "mainMenu"; }
       return;
     }
 
     // --- Level complete ---
     if (screen === "levelComplete") {
       if (continueBtn && pointInRect(mx, my, continueBtn.x, continueBtn.y, continueBtn.w, continueBtn.h)) {
-        sfx.click(); gotoLevel(currentLevel + 1);
+        gotoLevel(currentLevel + 1);
       } else if (completeSelectBtn && pointInRect(mx, my, completeSelectBtn.x, completeSelectBtn.y, completeSelectBtn.w, completeSelectBtn.h)) {
-        sfx.click(); screen = "mainMenu";
+        screen = "mainMenu";
       }
       return;
     }
@@ -593,16 +523,14 @@
     // --- Build bar clicks ---
     if (region === "build") {
       for (const btn of buildButtons) {
-        if (pointInRect(mx, my, btn.x, btn.y, btn.w, btn.h)) { sfx.click(); toggleBuildMode(btn.key); return; }
+        if (pointInRect(mx, my, btn.x, btn.y, btn.w, btn.h)) { toggleBuildMode(btn.key); return; }
       }
-      if (restartBtn && pointInRect(mx, my, restartBtn.x, restartBtn.y, restartBtn.w, restartBtn.h)) { sfx.click(); start(); return; }
+      if (restartBtn && pointInRect(mx, my, restartBtn.x, restartBtn.y, restartBtn.w, restartBtn.h)) { start(); return; }
       if (quitBtn && pointInRect(mx, my, quitBtn.x, quitBtn.y, quitBtn.w, quitBtn.h)) {
-        sfx.click();
         resetState(currentLevel);   // clear in-progress play state
         screen = "mainMenu";        // back to the overall title screen
         return;
       }
-      if (muteBtn && pointInRect(mx, my, muteBtn.x, muteBtn.y, muteBtn.w, muteBtn.h)) { sfx.toggleMute(); return; }
       return;
     }
     if (region === "hud") return;   // HUD is display-only for now
@@ -746,7 +674,6 @@
     // pay now, construct on arrival
     res.wood -= b.wood; res.stone -= b.stone; updateHUD();
     dispatch(w, gx, gy, { build: buildMode });
-    sfx.place();
     setMsg(`${w.name} is heading out to build the ${b.label}.`);
     toggleBuildMode(buildMode);   // exit build mode after placing
   }
@@ -964,7 +891,6 @@
       addFloater(bx, by, "Workshop!", "#cfe6c0");
       setMsg("Workshop built — rock mining unlocked");
     }
-    sfx.build();   // construction/upgrade complete
 
     // Builder walks back to its OWN home instead of standing on the new build.
     const path = astar(Math.round(w.px), Math.round(w.py), w.home.x, w.home.y);
@@ -1050,11 +976,6 @@
     const swingHp = job.res ? Math.min(job.amount, node.hp) : Math.min(3, node.hp);
     node.hp -= swingHp;
 
-    // swing sound by node type
-    if (node.type === TREE) sfx.chop();
-    else if (node.type === ROCK) sfx.mine();
-    else if (node.type === RUBBLE) sfx.wallHit();
-
     if (job.res && swingHp > 0) {
       w.carry = job.res;
       w.carryAmt = (w.carryAmt || 0) + swingHp;   // 1 hp == 1 unit
@@ -1062,7 +983,6 @@
 
     if (node.hp <= 0) {
       remove(node.x, node.y);
-      if (job.label === "wall") sfx.wallBreak();
       setMsg(job.label === "wall" ? "Wall breached — the way is open." : `Depleted a ${job.label}.`);
     }
 
@@ -1089,7 +1009,6 @@
       res[w.carry] += w.carryAmt;
       const col = w.carry === "wood" ? "#d69a4c" : "#aab4c0";
       addFloater(w.home.x, w.home.y, `+${w.carryAmt}`, col);
-      sfx.deposit();
     }
     w.carry = null; w.carryAmt = 0;
     w._depositOnArrive = false;
@@ -1584,15 +1503,6 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillText("✕ Quit", qbX + qbW/2, qbY + qbH/2);
     quitBtn = { x: qbX, y: qbY, w: qbW, h: qbH };
-
-    // mute toggle (left of quit)
-    const mbW = 40, mbX = qbX - mbW - 8, mbY = rbY, mbH = rbH;
-    const mbHover = pointInRect(mouse.x, mouse.y, mbX, mbY, mbW, mbH);
-    panel(mbX, mbY, mbW, mbH, 8, mbHover ? "#3a5a78" : "#2f4a63",
-          { stroke: "rgba(255,255,255,.12)", strokeW: 1 });
-    ctx.fillStyle = "#ffffff"; ctx.font = "14px sans-serif";
-    ctx.fillText(sfx.isMuted() ? "🔇" : "🔊", mbX + mbW/2, mbY + mbH/2);
-    muteBtn = { x: mbX, y: mbY, w: mbW, h: mbH };
   }
 
   function pointInRect(px, py, x, y, w, h) {
@@ -1850,7 +1760,6 @@
 
   function win(now) {
     done = true;
-    sfx.win();
     const sec = Math.floor(simNow / 1000);   // pure sim time — device-independent
     winStars = starsFor(sec);
     winTimeStr = `Finished in ${fmt(sec)}  ·  Gold ≤ ${fmt(GOLD_SEC)}, Silver ≤ ${fmt(SILVER_SEC)}`;
@@ -1875,7 +1784,7 @@
   // Button rectangles are computed each frame in drawBuildBar() and cached here
   // for hit-testing. Each entry: { key, x, y, w, h }.
   let buildButtons = [];
-  let restartBtn = null, quitBtn = null, muteBtn = null;
+  let restartBtn = null, quitBtn = null;
   let continueBtn = null, completeSelectBtn = null;   // levelComplete screen
   let menuPlayBtn = null, menuSelectBtn = null;        // mainMenu screen
   let introStartBtn = null, introBackBtn = null;       // levelIntro screen
