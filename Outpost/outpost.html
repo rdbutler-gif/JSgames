@@ -82,9 +82,9 @@
     return "grid";
   }
 
-  const NEED_WOOD = 15, NEED_STONE = 10;   // tower cost (pre-placed, off-menu)
+  let NEED_WOOD = 15, NEED_STONE = 10;   // tower cost — set per-level from LEVELS[currentLevel].cost
   const TOWER_BUILD_MS = 6000;             // effort for ONE worker; N workers finish in TOWER_BUILD_MS/N (linear)
-  const GOLD_SEC = 90, SILVER_SEC = 140;   // time thresholds (tuned for slower pace)
+  let GOLD_SEC = 90, SILVER_SEC = 140;   // star time thresholds — set per-level from LEVELS[currentLevel].stars
 
   // ---- Buildable types (build menu) -------------------------------------
   // Tower is intentionally NOT here — it's pre-placed and is the win goal.
@@ -183,6 +183,61 @@
   // new code can read clearly. Prefer HOUSE going forward.
   const HOUSE = STOCK;
 
+  // ---- Level definitions ------------------------------------------------
+  // A level is DATA, not code — the engine below reads one of these to build a
+  // playable map. LEVELS[0] is the original hardcoded level 1, lifted verbatim;
+  // adding a level = adding an entry here (no new code paths). cols/rows are
+  // carried per-level now so a future bigger/scrolling map only flips data, but
+  // the canvas still uses the global COLS/ROWS this pass (level 0 matches them).
+  const LEVELS = [
+    {
+      name: "The Clearing",
+      subtitle: "LEVEL 1",
+      cols: 16, rows: 12,
+      startHouse: { x: 2, y: 6 },     // worker 1's home (also the stockpile cell)
+      tower:      { x: 13, y: 6 },    // build target / win goal
+      wallCol: 8,                     // full-height destructible wall column
+      trees: [[5,2],[6,3],[4,4],[3,3],[11,2],[12,4],[10,9]],
+      rocks: [[11,9],[12,8],[5,9],[6,10],[13,3]],
+      cost:  { wood: 15, stone: 10 }, // tower cost
+      stars: { gold: 90, silver: 140 }, // second thresholds: <=gold -> 3, <=silver -> 2
+      intro: "Click a tree or rock to send your nearest free worker to gather it. " +
+             "Use the BUILD bar below to place a house (more workers) or a workshop " +
+             "(unlocks stone, then wall-breaking). Gather 15 wood + 10 stone, then " +
+             "click the TOWER to raise it and win.",
+    },
+  ];
+  let currentLevel = 0;   // index into LEVELS; the level currently loaded
+
+  // ---- Progress persistence --------------------------------------------
+  // Namespaced + versioned so it can't collide with Ghost Patrol's localStorage
+  // on the same GitHub Pages origin, and so a future schema change can migrate
+  // or reset cleanly instead of choking on an old save. Shape:
+  //   { v:1, stars: { "0": 3, "1": 2, ... } }  — best stars ever per level index.
+  // A level is "completed" iff it has a stars entry >= 1. Unlock is linear:
+  // level N is playable iff N===0 or level N-1 is completed.
+  const SAVE_KEY = "outpost.progress.v1";
+  let progress = { v: 1, stars: {} };
+
+  function loadProgress() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      if (p && p.v === 1 && p.stars && typeof p.stars === "object") progress = p;
+    } catch (e) { /* corrupt or unavailable — start fresh, don't crash */ }
+  }
+  function saveProgress() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); } catch (e) {}
+  }
+  function starsForLevel(idx) { return progress.stars[idx] || 0; }
+  function isCompleted(idx) { return starsForLevel(idx) >= 1; }
+  function isUnlocked(idx) { return idx === 0 || isCompleted(idx - 1); }
+  function recordStars(idx, stars) {
+    // best-ever: never let a sloppy replay lower an earned score
+    if (stars > (progress.stars[idx] || 0)) { progress.stars[idx] = stars; saveProgress(); }
+  }
+
   // Yields / work durations (ms)
   // For resource nodes: hp == total units the node holds, and `amount` (units
   // per swing) must divide hp evenly so a worker never carries a partial load.
@@ -195,34 +250,41 @@
   };
 
   let grid, nodes, workers, houses, workshops, res, stockpile, tower, startTime, done, raf;
-  let screen = "title";   // "title" | "play"
+  let screen = "mainMenu";   // "mainMenu" | "levelSelect" | "levelIntro" | "play" | "levelComplete"
 
-  function resetState() {
-    // grid of tile types; nodes[] holds live objects w/ remaining hp
+  function resetState(levelIndex) {
+    if (typeof levelIndex === "number") currentLevel = levelIndex;
+    const L = LEVELS[currentLevel];
+
+    // Pull per-level tuning into the engine's working variables.
+    NEED_WOOD = L.cost.wood; NEED_STONE = L.cost.stone;
+    GOLD_SEC = L.stars.gold; SILVER_SEC = L.stars.silver;
+
+    // grid of tile types; nodes[] holds live objects w/ remaining hp.
+    // (COLS/ROWS still drive the canvas this pass; L.cols/L.rows match for L0
+    // and become load-bearing when the scrolling map lands.)
     grid = Array.from({length: ROWS}, () => Array(COLS).fill(EMPTY));
     nodes = new Map(); // key "x,y" -> {type, hp, x, y}
 
-    stockpile = { x: 2, y: 6 };
-    tower     = { x: 13, y: 6, built: false, building: false, progress: 0 };
-    grid[stockpile.y][stockpile.x] = STOCK;
+    stockpile = { x: L.startHouse.x, y: L.startHouse.y };
+    tower     = { x: L.tower.x, y: L.tower.y, built: false, building: false, progress: 0 };
+    grid[stockpile.y][stockpile.x] = HOUSE;
     grid[tower.y][tower.x] = TOWER;
 
-    // Houses: each is a home tile a worker lives in and hauls to.
-    // Worker 1 starts in the first house. More are built during play.
-    // A second buildable house site is pre-marked but not yet built.
+    // Houses: each is a home tile a worker lives in and hauls to. Worker 1 starts
+    // in the first house; more are built during play via the build menu.
     houses = [];
-    addHouse(2, 6, true);        // house 0 = starting home (shares the stockpile cell)
+    addHouse(L.startHouse.x, L.startHouse.y, true);   // house 0 = starting home
 
-    // Destructible wall down the middle — FULL height, no gaps.
-    const rx = 8;
-    for (let y = 0; y < ROWS; y++) place(rx, y, RUBBLE);
+    // Destructible wall — a full-height column, no gaps.
+    for (let y = 0; y < ROWS; y++) place(L.wallCol, y, RUBBLE);
 
-    // Resource nodes
-    [[5,2],[6,3],[4,4],[3,3],[11,2],[12,4],[10,9]].forEach(([x,y]) => place(x,y,TREE));
-    [[11,9],[12,8],[5,9],[6,10],[13,3]].forEach(([x,y]) => place(x,y,ROCK));
+    // Resource nodes from data.
+    L.trees.forEach(([x,y]) => place(x,y,TREE));
+    L.rocks.forEach(([x,y]) => place(x,y,ROCK));
 
-    // Additional houses & the workshop are now placed by the player via the
-    // build menu (see BUILDINGS). No pre-authored sites.
+    // Additional houses & the workshop are placed by the player via the build
+    // menu (see BUILDINGS). No pre-authored sites.
     workshops = [];
     workshopLevel = 0;
     buildMode = null; hoverCell = null; buildHint = "";
@@ -235,12 +297,7 @@
     startTime = performance.now();
     updateHUD();
     rollGround();
-    introBanner = {
-      text: "Click a tree or rock to send your nearest free worker to gather it. " +
-            "Use the BUILD bar below to place a house (more workers) or a workshop " +
-            "(unlocks stone, then wall-breaking). Gather 15 wood + 10 stone, then " +
-            "click the TOWER to raise it and win."
-    };
+    introBanner = { text: L.intro };
   }
 
   // ---- Houses & workers -------------------------------------------------
@@ -357,21 +414,53 @@
   }
 
   canvas.addEventListener("pointerdown", (e) => {
-    if (screen === "title") {
-      if (e.button === 0) { screen = "play"; startTime = performance.now(); }
+    const { mx, my } = eventPos(e);
+    if (e.button !== 0) {
+      // right-click still cancels build mode during play
+      if (screen === "play" && buildMode) { toggleBuildMode(null); }
       return;
     }
-    const { mx, my } = eventPos(e);
 
-    // Win banner intercepts everything
-    if (done) {
-      if (e.button === 0 && playAgainBtn && pointInRect(mx, my, playAgainBtn.x, playAgainBtn.y, playAgainBtn.w, playAgainBtn.h)) {
-        start();
+    // --- Main menu ---
+    if (screen === "mainMenu") {
+      if (menuPlayBtn && pointInRect(mx, my, menuPlayBtn.x, menuPlayBtn.y, menuPlayBtn.w, menuPlayBtn.h)) {
+        // jump to the furthest unlocked level the player hasn't cleared, else 0
+        let target = 0;
+        for (let i = 0; i < LEVELS.length; i++) { if (isUnlocked(i)) target = i; if (!isCompleted(i)) break; }
+        gotoLevel(target);
+      } else if (menuSelectBtn && pointInRect(mx, my, menuSelectBtn.x, menuSelectBtn.y, menuSelectBtn.w, menuSelectBtn.h)) {
+        screen = "levelSelect";
       }
       return;
     }
-    if (e.button !== 0) return;   // left-click only; right-click cancels build
 
+    // --- Level select ---
+    if (screen === "levelSelect") {
+      for (const cell of selectCells) {
+        if (cell.clickable && pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) { gotoLevel(cell.i); return; }
+      }
+      if (selectBackBtn && pointInRect(mx, my, selectBackBtn.x, selectBackBtn.y, selectBackBtn.w, selectBackBtn.h)) { screen = "mainMenu"; }
+      return;
+    }
+
+    // --- Level intro ---
+    if (screen === "levelIntro") {
+      if (introStartBtn && pointInRect(mx, my, introStartBtn.x, introStartBtn.y, introStartBtn.w, introStartBtn.h)) { beginPlay(); }
+      else if (introBackBtn && pointInRect(mx, my, introBackBtn.x, introBackBtn.y, introBackBtn.w, introBackBtn.h)) { screen = "levelSelect"; }
+      return;
+    }
+
+    // --- Level complete ---
+    if (screen === "levelComplete") {
+      if (continueBtn && pointInRect(mx, my, continueBtn.x, continueBtn.y, continueBtn.w, continueBtn.h)) {
+        gotoLevel(currentLevel + 1);
+      } else if (completeSelectBtn && pointInRect(mx, my, completeSelectBtn.x, completeSelectBtn.y, completeSelectBtn.w, completeSelectBtn.h)) {
+        screen = "levelSelect";
+      }
+      return;
+    }
+
+    // --- In play ---
     const region = regionAt(my);
 
     // First real interaction clears the sticky intro banner. Grid and build-bar
@@ -570,11 +659,13 @@
   const MOVE_MS = 260; // per tile
 
   function update(now) {
-    if (screen === "title") {
-      drawTitle();
-      raf = requestAnimationFrame(update);
-      return;
-    }
+    // Non-play screens are static — draw and yield.
+    if (screen === "mainMenu")      { drawMainMenu();    raf = requestAnimationFrame(update); return; }
+    if (screen === "levelSelect")   { drawLevelSelect(); raf = requestAnimationFrame(update); return; }
+    if (screen === "levelIntro")    { drawTitle();       raf = requestAnimationFrame(update); return; }
+    if (screen === "levelComplete") { draw(); drawWinBanner(); raf = requestAnimationFrame(update); return; }
+
+    // screen === "play"
     if (!done) {
       for (const w of workers) stepWorker(w, now);
       const t = Math.floor((now - startTime) / 1000);
@@ -1277,11 +1368,11 @@
     ctx.restore();
   }
 
-  // ---- Win banner (overlay) ----
+  // ---- Level-complete overlay ----
   function drawWinBanner() {
     ctx.fillStyle = "rgba(15,22,30,.78)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const cw = 360, ch = 220, cx = (canvas.width-cw)/2, cy = (canvas.height-ch)/2;
+    const cw = 380, ch = 260, cx = (canvas.width-cw)/2, cy = (canvas.height-ch)/2;
     panel(cx, cy, cw, ch, 16, "#2f4a63", { shadowBlur: 24, shadowOffsetY: 8,
            stroke: "rgba(255,255,255,.15)", strokeW: 2 });
 
@@ -1297,17 +1388,30 @@
 
     ctx.font = "12px 'Trebuchet MS', sans-serif";
     ctx.fillStyle = "#b8c9d9";
-    ctx.fillText(winTimeStr, cx+cw/2, cy+134);
+    ctx.fillText(winTimeStr, cx+cw/2, cy+130);
 
-    // play again button
-    const pbW = 160, pbH = 42, pbX = cx+(cw-pbW)/2, pbY = cy+ch-64;
-    const hover = pointInRect(mouse.x, mouse.y, pbX, pbY, pbW, pbH);
-    panel(pbX, pbY, pbW, pbH, 10, hover ? "#5fc55f" : "#4fb54f",
+    const next = hasNextLevel();
+    // Continue button — active only if a next level exists; otherwise greyed
+    // with a "coming soon" note.
+    const cbW = 200, cbH = 42, cbX = cx+(cw-cbW)/2, cbY = cy+152;
+    const cHover = next && pointInRect(mouse.x, mouse.y, cbX, cbY, cbW, cbH);
+    panel(cbX, cbY, cbW, cbH, 10, next ? (cHover ? "#5fc55f" : "#4fb54f") : "#3a4a55",
           { stroke: "rgba(255,255,255,.2)", strokeW: 2 });
-    ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
+    ctx.fillStyle = next ? "#12301a" : "#8fa0b0"; ctx.textBaseline = "middle";
     ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
-    ctx.fillText("▶  Play Again", pbX+pbW/2, pbY+pbH/2);
-    playAgainBtn = { x: pbX, y: pbY, w: pbW, h: pbH };
+    ctx.fillText(next ? "▶  Continue" : "Next Level Coming Soon!", cbX+cbW/2, cbY+cbH/2);
+    continueBtn = next ? { x: cbX, y: cbY, w: cbW, h: cbH } : null;
+
+    // Level Select button — always available
+    const sbW = 200, sbH = 38, sbX = cx+(cw-sbW)/2, sbY = cy+ch-52;
+    const sHover = pointInRect(mouse.x, mouse.y, sbX, sbY, sbW, sbH);
+    panel(sbX, sbY, sbW, sbH, 10, sHover ? "#4a6076" : "#3c5064",
+          { stroke: "rgba(255,255,255,.18)", strokeW: 2 });
+    ctx.fillStyle = "#dceaf5";
+    ctx.font = "bold 14px 'Trebuchet MS', sans-serif";
+    ctx.fillText("Level Select", sbX+sbW/2, sbY+sbH/2);
+    completeSelectBtn = { x: sbX, y: sbY, w: sbW, h: sbH };
+    ctx.textBaseline = "alphabetic";
   }
 
   // Full-sheet index picker. D toggles, T flips sheet. Reads indices straight off.
@@ -1435,6 +1539,8 @@
     winStars = starsFor(sec);
     winTimeStr = `Finished in ${fmt(sec)}  ·  Gold ≤ ${fmt(GOLD_SEC)}, Silver ≤ ${fmt(SILVER_SEC)}`;
     setMsg("Watchtower complete. Outpost secured.");
+    recordStars(currentLevel, winStars);   // persist best-ever; unlocks next level
+    screen = "levelComplete";
   }
 
   // ---- helpers ----------------------------------------------------------
@@ -1453,7 +1559,11 @@
   // Button rectangles are computed each frame in drawBuildBar() and cached here
   // for hit-testing. Each entry: { key, x, y, w, h }.
   let buildButtons = [];
-  let restartBtn = null, playAgainBtn = null;
+  let restartBtn = null;
+  let continueBtn = null, completeSelectBtn = null;   // levelComplete screen
+  let menuPlayBtn = null, menuSelectBtn = null;        // mainMenu screen
+  let introStartBtn = null, introBackBtn = null;       // levelIntro screen
+  let selectCells = [], selectBackBtn = null;          // levelSelect screen
 
   function toggleBuildMode(key) {
     buildMode = (buildMode === key) ? null : key;
@@ -1498,7 +1608,8 @@
     // Level line
     ctx.fillStyle = "#ffcf3f";
     ctx.font = "bold 19px 'Trebuchet MS', sans-serif";
-    ctx.fillText("LEVEL 1  ·  THE CLEARING", W/2, H*0.24 + 36);
+    const _L = LEVELS[currentLevel];
+    ctx.fillText(`${_L.subtitle}  ·  ${_L.name.toUpperCase()}`, W/2, H*0.24 + 36);
 
     // Blurb (word-wrapped) on a panel
     const bx = W*0.14, bw = W*0.72, by = H*0.36, bh = 130;
@@ -1517,7 +1628,7 @@
     ctx.font = "bold 16px 'Trebuchet MS', sans-serif";
     ctx.fillText("OBJECTIVE:  Rebuild the Watchtower", W/2, H*0.70);
 
-    // Start prompt (pulsing button)
+    // Start prompt (pulsing button) — now a registered hit-target.
     const pulse = 0.6 + 0.4*Math.abs(Math.sin(performance.now()/500));
     const pbW = 220, pbH = 48, pbX = (W-pbW)/2, pbY = H*0.78;
     ctx.globalAlpha = pulse;
@@ -1526,6 +1637,141 @@
     ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
     ctx.font = "bold 18px 'Trebuchet MS', sans-serif";
     ctx.fillText("▶  Click to Begin", W/2, pbY + pbH/2);
+    introStartBtn = { x: pbX, y: pbY, w: pbW, h: pbH };
+
+    // Back to level select
+    const bbW = 130, bbH = 34, bbX = 20, bbY = 18;
+    const bHover = pointInRect(mouse.x, mouse.y, bbX, bbY, bbW, bbH);
+    panel(bbX, bbY, bbW, bbH, 9, bHover ? "#3c5064" : "#2c3d4c",
+          { stroke: "rgba(255,255,255,.15)", strokeW: 1.5 });
+    ctx.fillStyle = "#cfe0ee";
+    ctx.font = "bold 13px 'Trebuchet MS', sans-serif";
+    ctx.fillText("‹  Level Select", bbX+bbW/2, bbY+bbH/2);
+    introBackBtn = { x: bbX, y: bbY, w: bbW, h: bbH };
+    ctx.textBaseline = "alphabetic";
+  }
+
+  // Shared backdrop for the menu/select screens — matches the title's palette.
+  function drawMenuBackdrop() {
+    const W = canvas.width, H = canvas.height;
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#3a5169"); g.addColorStop(1, "#243342");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (sheetReady) {
+      ctx.globalAlpha = 0.18;
+      const spots = [[1,1],[3,0],[14,1],[12,2],[0,13],[2,14],[15,12],[13,14],[7,0],[9,14]];
+      for (const [tx,ty] of spots) { const {sx,sy}=srcXY(28); ctx.drawImage(sheet, sx,sy,SRC,SRC, tx*TILE, ty*TILE, TILE, TILE); }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ---- Main menu --------------------------------------------------------
+  function drawMainMenu() {
+    const W = canvas.width, H = canvas.height;
+    drawMenuBackdrop();
+    ctx.textAlign = "center";
+
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 60px 'Trebuchet MS', sans-serif";
+    ctx.fillText("OUTPOST", W/2, H*0.30);
+    ctx.restore();
+
+    ctx.fillStyle = "#9fb3c6";
+    ctx.font = "16px 'Trebuchet MS', sans-serif";
+    ctx.fillText("A frontier resource game", W/2, H*0.30 + 34);
+
+    // Play button (jumps to the first uncompleted unlocked level, else level 0)
+    const pW = 240, pH = 52, pX = (W-pW)/2;
+    let pY = H*0.52;
+    const pHover = pointInRect(mouse.x, mouse.y, pX, pY, pW, pH);
+    panel(pX, pY, pW, pH, 12, pHover ? "#5fc55f" : "#4fb54f", { stroke:"rgba(255,255,255,.25)", strokeW:2 });
+    ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
+    ctx.font = "bold 20px 'Trebuchet MS', sans-serif";
+    ctx.fillText("▶  Play", W/2, pY+pH/2);
+    menuPlayBtn = { x: pX, y: pY, w: pW, h: pH };
+
+    // Level Select button
+    const sW = 240, sH = 46, sX = (W-sW)/2, sY = pY + 68;
+    const sHover = pointInRect(mouse.x, mouse.y, sX, sY, sW, sH);
+    panel(sX, sY, sW, sH, 12, sHover ? "#4a6076" : "#3c5064", { stroke:"rgba(255,255,255,.18)", strokeW:2 });
+    ctx.fillStyle = "#dceaf5";
+    ctx.font = "bold 17px 'Trebuchet MS', sans-serif";
+    ctx.fillText("Level Select", W/2, sY+sH/2);
+    menuSelectBtn = { x: sX, y: sY, w: sW, h: sH };
+    ctx.textBaseline = "alphabetic";
+  }
+
+  // ---- Level select -----------------------------------------------------
+  // A 5x2 grid with room for 10 levels. Completed levels show earned stars lit;
+  // locked levels are greyed. Only unlocked levels are clickable.
+  const SELECT_SLOTS = 10;
+  function drawLevelSelect() {
+    const W = canvas.width;
+    drawMenuBackdrop();
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 34px 'Trebuchet MS', sans-serif";
+    ctx.fillText("SELECT LEVEL", W/2, 70);
+
+    selectCells = [];
+    const cols = 5, rows = 2, cellW = 120, cellH = 120, gapX = 20, gapY = 28;
+    const gridW = cols*cellW + (cols-1)*gapX;
+    const gridX = (W - gridW)/2, gridY = 110;
+
+    for (let i = 0; i < SELECT_SLOTS; i++) {
+      const c = i % cols, r = Math.floor(i / cols);
+      const x = gridX + c*(cellW+gapX), y = gridY + r*(cellH+gapY);
+      const exists = i < LEVELS.length;
+      const unlocked = exists && isUnlocked(i);
+      const completed = exists && isCompleted(i);
+      const stars = starsForLevel(i);
+      const hover = unlocked && pointInRect(mouse.x, mouse.y, x, y, cellW, cellH);
+
+      // cell background: bright if unlocked, subdued if locked/absent
+      let fill;
+      if (!exists)          fill = "#232f3a";
+      else if (!unlocked)   fill = "#2a3846";
+      else if (completed)   fill = hover ? "#3f6a48" : "#35563d";
+      else                  fill = hover ? "#4a6076" : "#3c5064";
+      panel(x, y, cellW, cellH, 12, fill, { stroke: unlocked ? "rgba(255,255,255,.2)" : "rgba(255,255,255,.06)", strokeW: 2 });
+
+      // number
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = exists ? (unlocked ? "#ffffff" : "#5f7085") : "#3a4a58";
+      ctx.font = "bold 40px 'Trebuchet MS', sans-serif";
+      ctx.fillText(String(i+1), x+cellW/2, y+cellH/2 - 8);
+
+      // stars row (only for existing levels): three slots, earned ones gold
+      if (exists) {
+        ctx.font = "18px sans-serif";
+        const glyphW = 18, totalW = glyphW*3, startX = x+cellW/2 - totalW/2 + glyphW/2;
+        for (let s = 0; s < 3; s++) {
+          ctx.fillStyle = s < stars ? "#ffcf3f" : "#4a5866";
+          ctx.fillText(s < stars ? "★" : "☆", startX + s*glyphW, y+cellH - 26);
+        }
+      }
+
+      // lock glyph for locked existing levels
+      if (exists && !unlocked) {
+        ctx.font = "16px sans-serif"; ctx.fillStyle = "#5f7085";
+        ctx.fillText("\uD83D\uDD12", x+cellW-18, y+18);
+      }
+
+      selectCells.push({ i, x, y, w: cellW, h: cellH, clickable: unlocked });
+    }
+    ctx.textBaseline = "alphabetic";
+
+    // Back to main menu
+    const bW = 160, bH = 40, bX = (W-bW)/2, bY = gridY + rows*(cellH+gapY) + 6;
+    const bHover = pointInRect(mouse.x, mouse.y, bX, bY, bW, bH);
+    panel(bX, bY, bW, bH, 10, bHover ? "#4a6076" : "#3c5064", { stroke:"rgba(255,255,255,.18)", strokeW:2 });
+    ctx.fillStyle = "#dceaf5"; ctx.textBaseline = "middle";
+    ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
+    ctx.fillText("‹  Main Menu", bX+bW/2, bY+bH/2);
+    selectBackBtn = { x: bX, y: bY, w: bW, h: bH };
     ctx.textBaseline = "alphabetic";
   }
 
@@ -1571,10 +1817,27 @@
     if (!raf) raf = requestAnimationFrame(update);
   }
 
-  // First-ever load: show the title screen until the player clicks.
+  // Enter a level from the menu/select: show its intro screen first, then play.
+  function gotoLevel(idx) {
+    if (!isUnlocked(idx)) return;
+    currentLevel = idx;
+    resetState(idx);
+    screen = "levelIntro";
+    if (!raf) raf = requestAnimationFrame(update);
+  }
+  // From the intro screen, actually begin play.
+  function beginPlay() {
+    screen = "play";
+    startTime = performance.now();
+  }
+  // True if there's a next level after the current one that exists in LEVELS.
+  function hasNextLevel() { return currentLevel + 1 < LEVELS.length; }
+
+  // First-ever load: main menu. Progress is restored from localStorage.
   function boot() {
-    resetState();
-    screen = "title";
+    loadProgress();
+    resetState(0);
+    screen = "mainMenu";
     if (!raf) raf = requestAnimationFrame(update);
   }
 
