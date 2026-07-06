@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outpost — Level 1</title>
+<style>
+  :root {
+    --bg:        #2b3a4a;
+    --panel:     #3a5169;
+    --ink:       #ffffff;
+    --ink-dim:   #b8c9d9;
+    --line:      #24313f;
+    --wood:      #e09a4a;
+    --stone:     #9fb0c0;
+    --gold:      #ffcf3f;
+    --silver:    #d8e0e8;
+    --bronze:    #d98a48;
+    --accent:    #5fc55f;
+    --select:    #ffe08a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #1a2530;
+    color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    background: #1a2530; border-radius: 10px; image-rendering: pixelated;
+    max-width: 100%; touch-action: none; cursor: pointer;
+    box-shadow: 0 8px 40px rgba(0,0,0,.5);
+  }
+</style>
+</head>
+<body>
+  <canvas id="game" width="768" height="720"></canvas>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Grid / config ----------------------------------------------------
+  const TILE = 48;              // 16px source tile * 3 = clean 3x
+  const COLS = 16, ROWS = 12;
+
+  // ---- Canvas regions (frame for future scrolling levels) ---------------
+  const HUD_H = 60, BUILD_H = 84;
+  const VIEW_W = COLS * TILE;                 // 768 — level 1 fits exactly
+  const VIEW_H = ROWS * TILE;                 // 576
+  const VIEW_Y = HUD_H;                       // play viewport starts below HUD
+  const CANVAS_W = VIEW_W;
+  const CANVAS_H = HUD_H + VIEW_H + BUILD_H;  // 720
+
+  const canvas = document.getElementById("game");
+  canvas.width = CANVAS_W; canvas.height = CANVAS_H;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;   // crisp pixel-art scale-up
+
+  // ---- Camera (world<->screen). Level 1 map fits, so it stays at 0,0, but
+  // the machinery is here so future levels can have larger scrolling maps. ----
+  const camera = { x: 0, y: 0 };
+  const worldPxW = () => COLS * TILE;
+  const worldPxH = () => ROWS * TILE;
+  function clampCamera() {
+    camera.x = Math.max(0, Math.min(camera.x, worldPxW() - VIEW_W));
+    camera.y = Math.max(0, Math.min(camera.y, worldPxH() - VIEW_H));
+  }
+  // world tile (tx,ty) -> screen pixel (top-left of that tile)
+  const wsx = (tx) => tx*TILE - camera.x;
+  const wsy = (ty) => ty*TILE - camera.y + VIEW_Y;
+  // screen pixel -> world tile
+  function screenToTile(sx, sy) {
+    return { tx: Math.floor((sx + camera.x)/TILE),
+             ty: Math.floor((sy - VIEW_Y + camera.y)/TILE) };
+  }
+  function regionAt(sy) {
+    if (sy < HUD_H) return "hud";
+    if (sy >= HUD_H + VIEW_H) return "build";
+    return "grid";
+  }
+
+  const NEED_WOOD = 15, NEED_STONE = 10;   // tower cost (pre-placed, off-menu)
+  const GOLD_SEC = 90, SILVER_SEC = 140;   // time thresholds (tuned for slower pace)
+
+  // ---- Buildable types (build menu) -------------------------------------
+  // Tower is intentionally NOT here — it's pre-placed and is the win goal.
+  // Room left to add more types later.
+  const BUILDINGS = {
+    house:    { label: "House",    tile: 74,  wood: 8,  stone: 0, desc: "+1 worker" },
+    workshop: { label: "Workshop", tile: 57,  wood: 15, stone: 0, desc: "unlocks rock mining" },
+  };
+  // Upgrading an existing L1 workshop to L2 (enables wall-breaking).
+  const WORKSHOP_UPGRADE = { wood: 8, stone: 6, tile: 102 };
+  let buildMode = null;     // key into BUILDINGS while placing, else null
+  let hoverCell = null;     // {x,y} cell under cursor during build mode
+  let workshopLevel = 0;    // 0 = none, 1 = rock mining, 2 = wall breaking
+  let buildHint = "";       // instruction text shown in the build bar
+  let timerStr = "0:00";    // current elapsed time, formatted
+  let winStars = 0;         // stars earned on the win screen
+  let winTimeStr = "";      // finish time text for the win screen
+  let mouse = { x: -1, y: -1 };   // last-known mouse pos (screen px) for hover
+
+  // ---- Sprite sheet -----------------------------------------------------
+  // Tiny Town: 16x16 tiles, 1px spacing -> stride 17. Sheet is 12 cols x 11 rows.
+  const SRC = 16, GAP = 1, STRIDE = SRC + GAP;   // 17px per tile step
+  const SHEET_COLS = 12, SHEET_ROWS = 11, SHEET_N = SHEET_COLS * SHEET_ROWS;
+
+  const sheet = new Image();
+  let sheetReady = false;
+  sheet.onload  = () => { sheetReady = true; };
+  sheet.onerror = () => { sheetReady = false; console.warn("tilemap.png not found — using placeholder shapes"); };
+  sheet.src = "assets/tilemap.png";   // repo-relative; loads over https on Pages / localhost
+
+  // Second sheet: Tiny Dungeon (characters). Same 16px / 1px / 12-wide layout.
+  const charSheet = new Image();
+  let charReady = false;
+  charSheet.onload  = () => { charReady = true; };
+  charSheet.onerror = () => { charReady = false; console.warn("dungeon.png not found — worker stays primitive"); };
+  charSheet.src = "assets/dungeon.png";
+
+  // index (0..131) -> source pixel origin on the sheet
+  function srcXY(idx) {
+    const c = idx % SHEET_COLS, r = (idx / SHEET_COLS) | 0;
+    return { sx: c * STRIDE, sy: r * STRIDE };
+  }
+  // draw sheet tile `idx` into grid cell (gx,gy), scaled to TILE.
+  // img/ready default to the terrain sheet; pass charSheet/charReady for characters.
+  function blit(idx, gx, gy, img = sheet, ready = sheetReady) {
+    if (idx == null || !ready) return;
+    const { sx, sy } = srcXY(idx);
+    ctx.drawImage(img, sx, sy, SRC, SRC, gx*TILE, gy*TILE, TILE, TILE);
+  }
+
+  // ---- Tile index map (PLACEHOLDER — fill from debug picker) -------------
+  // Set any of these to a real sheet index (0..131) once you've read them
+  // off the picker. Leave as null to fall back to the drawn primitive.
+  const TILEMAP = {
+    ground: 0,      // grassempty
+    tree:   28,     // treegreensingle
+    rock:   43,     // rock pile
+    wall:   77,     // destructible wall — full-height barrier
+    store:  74,     // single-tile structure
+    tower:  102,    // single-tile structure
+    towerSite: null,
+    worker: 86,     // Tiny Dungeon character (on dungeon.png / charSheet)
+  };
+
+  // Ground: green grass everywhere, ~20% chance of a flower/plant accent.
+  // Rolled once per level so it doesn't flicker.
+  const GRASS = 0, PLANT = 1, FLOWER = 2;
+  let groundTiles = null;   // Map "x,y" -> tile idx, stable for the level
+
+  function rollGround() {
+    groundTiles = new Map();
+    for (let y=0; y<ROWS; y++) for (let x=0; x<COLS; x++) {
+      let t = GRASS;
+      if (Math.random() < 0.10) t = Math.random() < 0.5 ? PLANT : FLOWER;
+      groundTiles.set(key(x,y), t);
+    }
+  }
+
+  function groundTile(x, y) {
+    return (groundTiles && groundTiles.get(key(x,y))) ?? GRASS;
+  }
+
+  // Debug picker: D toggles it, T flips which sheet it shows.
+  let showPicker = false;
+  let pickerSheet = 0;   // 0 = terrain (tilemap), 1 = characters (dungeon)
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "d" || e.key === "D") { showPicker = !showPicker; }
+    if (e.key === "t" || e.key === "T") { pickerSheet = pickerSheet ? 0 : 1; }
+  });
+
+  // Tile types
+  const EMPTY = 0, TREE = 1, ROCK = 2, RUBBLE = 3, TOWER = 4, STOCK = 5, BUILDING = 6;
+
+  // Yields / work durations (ms)
+  // For resource nodes: hp == total units the node holds, and `amount` (units
+  // per swing) must divide hp evenly so a worker never carries a partial load.
+  // Tree: 9 wood = 3 swings of 3.  Rock: 6 stone = 2 swings of 3.
+  // Wall (RUBBLE) yields nothing; hp just sets how many swings to breach it.
+  const JOB = {
+    [TREE]:   { res: "wood",  amount: 3, work: 2100, hp: 9,  label: "tree"  },
+    [ROCK]:   { res: "stone", amount: 3, work: 2500, hp: 6,  label: "rock"  },
+    [RUBBLE]: { res: null,    amount: 0, work: 2000, hp: 12, label: "wall"},
+  };
+
+  let grid, nodes, workers, houses, workshops, res, stockpile, tower, startTime, done, raf;
+  let screen = "title";   // "title" | "play"
+
+  function resetState() {
+    // grid of tile types; nodes[] holds live objects w/ remaining hp
+    grid = Array.from({length: ROWS}, () => Array(COLS).fill(EMPTY));
+    nodes = new Map(); // key "x,y" -> {type, hp, x, y}
+
+    stockpile = { x: 2, y: 6 };
+    tower     = { x: 13, y: 6, built: false };
+    grid[stockpile.y][stockpile.x] = STOCK;
+    grid[tower.y][tower.x] = TOWER;
+
+    // Houses: each is a home tile a worker lives in and hauls to.
+    // Worker 1 starts in the first house. More are built during play.
+    // A second buildable house site is pre-marked but not yet built.
+    houses = [];
+    addHouse(2, 6, true);        // house 0 = starting home (shares the stockpile cell)
+
+    // Destructible wall down the middle — FULL height, no gaps.
+    const rx = 8;
+    for (let y = 0; y < ROWS; y++) place(rx, y, RUBBLE);
+
+    // Resource nodes
+    [[5,2],[6,3],[4,4],[3,3],[11,2],[12,4],[10,9]].forEach(([x,y]) => place(x,y,TREE));
+    [[11,9],[12,8],[5,9],[6,10],[13,3]].forEach(([x,y]) => place(x,y,ROCK));
+
+    // Additional houses & the workshop are now placed by the player via the
+    // build menu (see BUILDINGS). No pre-authored sites.
+    workshops = [];
+    workshopLevel = 0;
+    buildMode = null; hoverCell = null; buildHint = "";
+
+    workers = [];
+    spawnWorker(houses[0]);      // worker 1 for the starting house
+
+    res = { wood: 0, stone: 0 };
+    done = false;
+    startTime = performance.now();
+    updateHUD();
+    rollGround();
+    setMsg("Click a tree, rock, or the wall — the nearest free worker goes. Build a house at the marked site for a 2nd worker.");
+  }
+
+  // ---- Houses & workers -------------------------------------------------
+  const MAX_WORKERS = 5;        // practical ceiling on this small map
+  // Each worker gets its own sprite from dungeon.png, in spawn order.
+  const WORKER_SPRITES = [85, 86, 88, 99, 112];
+
+  // Floating "+N" popups over houses on deposit. Ephemeral, no gameplay effect.
+  let floaters = [];
+  function addFloater(x, y, text, color) {
+    floaters.push({ x, y, text, color, born: performance.now() });
+  }
+
+  // Centered notification flash in the play field (replaces the bottom text bar
+  // as the primary feedback channel). One at a time; a new flash replaces the old.
+  let flash = null;   // { text, color, born }
+  function flashMsg(text, color) {
+    flash = { text, color: color || "#e8ddc8", born: performance.now() };
+  }
+
+  function addHouse(x, y, isStart) {
+    grid[y][x] = STOCK;         // houses use the store tile
+    houses.push({ x, y, level: 1 });
+    return houses[houses.length - 1];
+  }
+
+  function spawnWorker(home) {
+    const sprite = WORKER_SPRITES[workers.length % WORKER_SPRITES.length];
+    workers.push({
+      home,                                   // this worker's house {x,y}
+      sprite,                                 // its own tile on dungeon.png
+      px: home.x, py: home.y,
+      path: [], target: null, state: "idle",
+      carry: null, carryAmt: 0, workUntil: 0, moveT: 0,
+      facing: 1, animT: 0,
+      _node: null, _repeatNode: null, _depositOnArrive: false, _targetNodeKey: null,
+      _buildType: null, _upgradeWorkshop: null, _buildAt: null, buildUntil: 0,
+    });
+  }
+
+  function place(x, y, type) { grid[y][x] = type; if (JOB[type]) nodes.set(key(x,y), {type, hp: JOB[type].hp, x, y}); }
+  function remove(x, y) { grid[y][x] = EMPTY; nodes.delete(key(x,y)); }
+  const key = (x,y) => x + "," + y;
+
+  // ---- A* pathfinding ---------------------------------------------------
+  // Walkable = EMPTY or STOCK or the tile adjacent target handled by caller.
+  function walkable(x, y) {
+    if (x < 0 || y < 0 || x >= COLS || y >= ROWS) return false;
+    const t = grid[y][x];
+    return t === EMPTY || t === STOCK;
+  }
+
+  function astar(sx, sy, tx, ty) {
+    // target tile itself may be non-walkable (a tree); we path to it and stop adjacent.
+    const goalAdjacent = !walkable(tx, ty);
+    const h = (x,y) => Math.abs(x-tx) + Math.abs(y-ty);
+    const open = new Map();      // key -> node
+    const came = new Map();
+    const g = new Map();
+    const startK = key(sx,sy);
+    open.set(startK, {x:sx, y:sy, f: h(sx,sy)});
+    g.set(startK, 0);
+
+    while (open.size) {
+      // node w/ lowest f
+      let curK, cur, best = Infinity;
+      for (const [k,n] of open) if (n.f < best) { best = n.f; curK = k; cur = n; }
+      open.delete(curK);
+
+      const reached = goalAdjacent
+        ? (Math.abs(cur.x-tx)+Math.abs(cur.y-ty) === 1)
+        : (cur.x === tx && cur.y === ty);
+      if (reached) return rebuild(came, curK, sx, sy);
+
+      for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = cur.x+dx, ny = cur.y+dy;
+        if (!walkable(nx, ny)) continue;
+        const nk = key(nx,ny);
+        const tentative = g.get(curK) + 1;
+        if (tentative < (g.get(nk) ?? Infinity)) {
+          came.set(nk, curK);
+          g.set(nk, tentative);
+          open.set(nk, {x:nx, y:ny, f: tentative + h(nx,ny)});
+        }
+      }
+    }
+    return null; // no path
+  }
+
+  function rebuild(came, endK, sx, sy) {
+    const path = [];
+    let k = endK;
+    while (k !== key(sx,sy)) {
+      const [x,y] = k.split(",").map(Number);
+      path.push({x,y});
+      k = came.get(k);
+      if (k === undefined) break;
+    }
+    return path.reverse();
+  }
+
+  // ---- Input ------------------------------------------------------------
+  function eventPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const scale = canvas.width / r.width;
+    return { mx: (e.clientX - r.left) * scale, my: (e.clientY - r.top) * scale };
+  }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    if (screen === "title") {
+      if (e.button === 0) { screen = "play"; startTime = performance.now(); }
+      return;
+    }
+    const { mx, my } = eventPos(e);
+
+    // Win banner intercepts everything
+    if (done) {
+      if (e.button === 0 && playAgainBtn && pointInRect(mx, my, playAgainBtn.x, playAgainBtn.y, playAgainBtn.w, playAgainBtn.h)) {
+        start();
+      }
+      return;
+    }
+    if (e.button !== 0) return;   // left-click only; right-click cancels build
+
+    const region = regionAt(my);
+
+    // --- Build bar clicks ---
+    if (region === "build") {
+      for (const btn of buildButtons) {
+        if (pointInRect(mx, my, btn.x, btn.y, btn.w, btn.h)) { toggleBuildMode(btn.key); return; }
+      }
+      if (restartBtn && pointInRect(mx, my, restartBtn.x, restartBtn.y, restartBtn.w, restartBtn.h)) { start(); return; }
+      return;
+    }
+    if (region === "hud") return;   // HUD is display-only for now
+
+    // --- Grid clicks (convert screen -> world tile via camera) ---
+    const { tx: gx, ty: gy } = screenToTile(mx, my);
+    if (gx < 0 || gy < 0 || gx >= COLS || gy >= ROWS) return;
+
+    if (buildMode) { tryPlaceBuilding(gx, gy); return; }
+
+    const t = grid[gy][gx];
+
+    // Click an existing L1 workshop -> upgrade it to L2 (enables wall-breaking)
+    const ws = workshops.find(s => s.x === gx && s.y === gy);
+    if (ws) {
+      if (ws.level >= 2) { setMsg("This workshop is already fully upgraded."); return; }
+      const u = WORKSHOP_UPGRADE;
+      if (res.wood < u.wood || res.stone < u.stone) { setMsg(`Need ${u.wood}w + ${u.stone}s`); return; }
+      const w = nearestIdleTo(gx, gy);
+      if (!w) { setMsg("No free worker to upgrade the workshop. Wait for one."); return; }
+      res.wood -= u.wood; res.stone -= u.stone; updateHUD();
+      dispatch(w, gx, gy, { upgrade: ws });
+      setMsg("Worker heading out to upgrade the workshop...");
+      return;
+    }
+
+    // Click a job (tree / rock / wall)
+    if (t === TREE || t === ROCK || t === RUBBLE) {
+      if (t === ROCK && workshopLevel < 1) {
+        setMsg("Your workers can't mine stone yet. Build a Workshop first.");
+        return;
+      }
+      if (t === RUBBLE && workshopLevel < 2) {
+        setMsg("The wall is too solid. Upgrade a Workshop to Level 2 to break it.");
+        return;
+      }
+      const w = nearestIdleTo(gx, gy);
+      if (!w) { setMsg(dispatchFailMsg(gx, gy)); return; }
+      dispatch(w, gx, gy);
+      return;
+    }
+
+    // Click the tower with enough materials -> nearest idle worker builds
+    if (t === TOWER) {
+      if (res.wood >= NEED_WOOD && res.stone >= NEED_STONE) {
+        const w = nearestIdleTo(gx, gy);
+        if (!w) { setMsg(dispatchFailMsg(gx, gy)); return; }
+        dispatch(w, gx, gy);
+      } else {
+        setMsg(`Need ${NEED_WOOD}w + ${NEED_STONE}s`);
+      }
+      return;
+    }
+  });
+
+  // Can a building go on (gx,gy)? Empty cell, and placing it must not seal
+  // off any resource / the tower from every worker.
+  // A placement is invalid only if it makes something WORSE — i.e. strands a
+  // node/target that is reachable RIGHT NOW. Things already blocked (e.g. by the
+  // wall) aren't this placement's fault, so we ignore them.
+  function reachableNow(tx, ty) {
+    for (const w of workers) {
+      if (astar(Math.round(w.px), Math.round(w.py), tx, ty)) return true;
+    }
+    return false;
+  }
+
+  function placementValid(gx, gy) {
+    if (grid[gy][gx] !== EMPTY) return { ok: false, why: "That tile is occupied." };
+
+    // Snapshot what's reachable BEFORE placing.
+    const nodesReachableBefore = [];
+    for (const [, n] of nodes) if (reachableNow(n.x, n.y)) nodesReachableBefore.push(n);
+    const towerReachableBefore = reachableNow(tower.x, tower.y);
+
+    // Temporarily place a non-walkable building and re-test only those.
+    grid[gy][gx] = BUILDING;
+    let stranded = null;
+    for (const n of nodesReachableBefore) {
+      if (!reachableNow(n.x, n.y)) { stranded = "a resource"; break; }
+    }
+    if (!stranded && towerReachableBefore && !reachableNow(tower.x, tower.y)) {
+      stranded = "the tower";
+    }
+    grid[gy][gx] = EMPTY;
+
+    if (stranded) return { ok: false, why: `Can't build there — it would cut off ${stranded}.` };
+    return { ok: true };
+  }
+
+  function tryPlaceBuilding(gx, gy) {
+    const b = BUILDINGS[buildMode];
+    if (buildMode === "house" && workers.length >= MAX_WORKERS) {
+      setMsg(`Outpost is full — ${MAX_WORKERS} workers is the max on this map.`);
+      return;
+    }
+    const valid = placementValid(gx, gy);
+    if (!valid.ok) { setMsg(valid.why); return; }
+    if (res.wood < b.wood || res.stone < b.stone) {
+      setMsg(`Need ${b.wood}w${b.stone?` + ${b.stone}s`:""}`);
+      return;
+    }
+    const w = nearestIdleTo(gx, gy);
+    if (!w) { setMsg("No free worker to build it. Wait for one to finish."); return; }
+    // pay now, construct on arrival
+    res.wood -= b.wood; res.stone -= b.stone; updateHUD();
+    dispatch(w, gx, gy, { build: buildMode });
+    setMsg(`Worker heading out to build the ${b.label}...`);
+    toggleBuildMode(buildMode);   // exit build mode after placing
+  }
+
+  // Right-click anywhere on the canvas cancels build mode (mouse-only design).
+  canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (screen !== "play") return;
+    if (buildMode) toggleBuildMode(buildMode);
+  });
+
+  // Track the cell under the cursor for the build-mode ghost preview.
+  canvas.addEventListener("pointermove", (e) => {
+    const { mx, my } = eventPos(e);
+    mouse.x = mx; mouse.y = my;
+    if (!buildMode || regionAt(my) !== "grid") { hoverCell = null; return; }
+    const { tx, ty } = screenToTile(mx, my);
+    hoverCell = (tx>=0 && ty>=0 && tx<COLS && ty<ROWS) ? {x:tx, y:ty} : null;
+  });
+  canvas.addEventListener("pointerleave", () => { hoverCell = null; mouse.x = -1; mouse.y = -1; });
+
+  // Find the idle worker with the SHORTEST PATH to (gx,gy).
+  function nearestIdleTo(gx, gy) {
+    let best = null, bestLen = Infinity;
+    for (const w of workers) {
+      if (w.state !== "idle") continue;
+      const path = astar(Math.round(w.px), Math.round(w.py), gx, gy);
+      if (!path) continue;                 // can't reach it at all
+      if (path.length < bestLen) { bestLen = path.length; best = w; best._pendingPath = path; }
+    }
+    return best;
+  }
+
+  const anyIdleWorker = () => workers.some(w => w.state === "idle");
+
+  // Given a target got no worker, return the right reason for the player.
+  function dispatchFailMsg(gx, gy) {
+    return anyIdleWorker()
+      ? "Can't reach that — clear a path first."
+      : "Every worker is busy. Wait for one to finish.";
+  }
+
+  function dispatch(w, gx, gy, opts = {}) {
+    // reuse the path nearestIdleTo already computed if present
+    const path = w._pendingPath || astar(Math.round(w.px), Math.round(w.py), gx, gy);
+    w._pendingPath = null;
+    if (!path) { setMsg("No path there — break through the wall first."); return; }
+    // cancel any stale repeat/haul state
+    w._repeatNode = null;
+    w._depositOnArrive = false;
+    w.carry = null; w.carryAmt = 0;
+    w._buildType = opts.build || null;   // building key to construct on arrival, or null
+    w._upgradeWorkshop = opts.upgrade || null;   // workshop object to upgrade on arrival
+    // is the destination a live harvest node? (tree/rock/wall) — used to abort
+    // the walk if it gets depleted before the worker arrives.
+    w._targetNodeKey = (!w._buildType && !w._upgradeWorkshop && nodes.has(key(gx, gy))) ? key(gx, gy) : null;
+    w.path = path;
+    w.target = {x: gx, y: gy};
+    w.state = "moving";
+  }
+
+  // ---- Update loop ------------------------------------------------------
+  const MOVE_MS = 260; // per tile
+
+  function update(now) {
+    if (screen === "title") {
+      drawTitle();
+      raf = requestAnimationFrame(update);
+      return;
+    }
+    if (!done) {
+      for (const w of workers) stepWorker(w, now);
+      const t = Math.floor((now - startTime) / 1000);
+      timerStr = fmt(t);
+    }
+    draw();
+    raf = requestAnimationFrame(update);
+  }
+
+  function stepWorker(w, now) {
+    w.animT += 16;
+    if (w.state === "moving") {
+      // If the worker is walking to a harvest node that got depleted mid-transit,
+      // stop now instead of walking to an empty tile. (_targetNodeKey is set only
+      // when the destination was a live tree/rock/wall at dispatch time.)
+      if (w._targetNodeKey && !nodes.has(w._targetNodeKey)) {
+        w._targetNodeKey = null;
+        w._repeatNode = null;
+        w.state = "idle"; w.target = null; w.path = [];
+        return;
+      }
+      if (w.path.length === 0) {
+        if (w.target) { arriveAtTarget(w, now); }
+        else { w.state = "idle"; }
+        return;
+      }
+      w.moveT += 16;
+      const next = w.path[0];
+      if (next.x > Math.round(w.px)) w.facing = 1;
+      else if (next.x < Math.round(w.px)) w.facing = -1;
+      const p = Math.min(1, w.moveT / MOVE_MS);
+      w.px = lerp(w.startX ?? w.px, next.x, p);
+      w.py = lerp(w.startY ?? w.py, next.y, p);
+      if (p >= 1) {
+        w.px = next.x; w.py = next.y;
+        w.path.shift();
+        w.moveT = 0;
+        w.startX = w.px; w.startY = w.py;
+      } else if (w.moveT === 16) {
+        w.startX = Math.round(w.px); w.startY = Math.round(w.py);
+      }
+    } else if (w.state === "working") {
+      if (now >= w.workUntil) finishWork(w, now);
+    } else if (w.state === "building") {
+      if (now >= w.buildUntil) finishBuild(w, now);
+    }
+  }
+
+  const BUILD_MS = 2600;   // time to construct a house/workshop
+
+  function finishBuild(w, now) {
+    const key_ = w._buildType;
+    const at = w._buildAt;
+    w._buildType = null; w._buildAt = null;
+    if (!at) { w.state = "idle"; return; }
+    const bx = at.x, by = at.y;
+
+    if (key_ === "house") {
+      const newHome = addHouse(bx, by, false);
+      spawnWorker(newHome);
+      addFloater(bx, by, "House!", "#cfe6c0");
+      setMsg(`House built — worker ${workers.length} moved in`);
+    } else if (key_ === "workshop") {
+      grid[by][bx] = BUILDING;
+      workshops.push({ x: bx, y: by, level: 1 });
+      workshopLevel = Math.max(workshopLevel, 1);
+      addFloater(bx, by, "Workshop!", "#cfe6c0");
+      setMsg("Workshop built — rock mining unlocked");
+    }
+
+    // Builder walks back to its OWN home instead of standing on the new build.
+    const path = astar(Math.round(w.px), Math.round(w.py), w.home.x, w.home.y);
+    if (path) {
+      w.path = path;
+      w.target = { x: w.home.x, y: w.home.y };
+      w.state = "moving";
+    } else {
+      w.state = "idle"; w.target = null;
+    }
+  }
+
+  function arriveAtTarget(w, now) {
+    const tgt = w.target;
+    const t = grid[tgt.y][tgt.x];
+
+    // Upgrading an existing workshop from L1 to L2.
+    if (w._upgradeWorkshop) {
+      const ws = w._upgradeWorkshop;
+      w._upgradeWorkshop = null;
+      ws.level = 2;
+      workshopLevel = Math.max(workshopLevel, 2);
+      setMsg("Workshop upgraded to Level 2! Workers can now break the wall.");
+      w.state = "idle"; w.target = null;
+      return;
+    }
+
+    // Constructing a building the player placed via the build menu.
+    // Enter a timed "building" state; the structure appears when it completes,
+    // then the builder walks back to its OWN home (no stacking on the new house).
+    if (w._buildType) {
+      w.state = "building";
+      w.buildUntil = now + BUILD_MS;
+      w._buildAt = { x: tgt.x, y: tgt.y };
+      w.target = null;
+      return;
+    }
+
+    const t2 = grid[tgt.y][tgt.x];
+    if (t2 === TOWER) {
+      if (res.wood >= NEED_WOOD && res.stone >= NEED_STONE) {
+        res.wood -= NEED_WOOD; res.stone -= NEED_STONE;
+        tower.built = true;
+        grid[tower.y][tower.x] = TOWER;
+        updateHUD();
+        win(now);
+      }
+      w.state = "idle"; w.target = null;
+      return;
+    }
+
+    const node = nodes.get(key(tgt.x, tgt.y));
+    if (!node) { w.state = "idle"; w.target = null; w._targetNodeKey = null; return; }
+
+    w.state = "working";
+    w.workUntil = now + JOB[node.type].work;
+    w._node = node;
+    w._targetNodeKey = null;   // arrived; no longer in transit
+  }
+
+  function finishWork(w, now) {
+    const node = w._node;
+    if (!node) { w.state = "idle"; return; }
+    const job = JOB[node.type];
+
+    // Double-spend guard: if another worker already finished this node off
+    // (gone from the map, or hp already <=0), this worker banks nothing.
+    const stillLive = nodes.has(key(node.x, node.y)) && node.hp > 0;
+    if (!stillLive) {
+      w._node = null; w._repeatNode = null;
+      w.state = "idle"; w.target = null;
+      return;
+    }
+
+    // Units per swing = job.amount (for resource nodes, 1 hp == 1 unit, and hp
+    // divides evenly by amount, so this is always a whole load — no partials).
+    // For the wall, amount is 0 and swingHp falls back to a fixed chunk.
+    const swingHp = job.res ? Math.min(job.amount, node.hp) : Math.min(3, node.hp);
+    node.hp -= swingHp;
+
+    if (job.res && swingHp > 0) {
+      w.carry = job.res;
+      w.carryAmt = (w.carryAmt || 0) + swingHp;   // 1 hp == 1 unit
+    }
+
+    if (node.hp <= 0) {
+      remove(node.x, node.y);
+      setMsg(job.label === "wall" ? "Wall breached — the way is open." : `Depleted a ${job.label}.`);
+    }
+
+    if (job.res) {
+      w._repeatNode = (node.hp > 0) ? {x: node.x, y: node.y} : null;
+      // haul back to THIS worker's own home
+      const path = astar(Math.round(w.px), Math.round(w.py), w.home.x, w.home.y);
+      w.path = path || [];
+      w.target = {x: w.home.x, y: w.home.y};
+      w.state = "moving";
+      w._depositOnArrive = true;
+      w._node = null;
+    } else {
+      if (node.hp > 0) { w.state = "working"; w.workUntil = now + job.work; }
+      else { w.state = "idle"; w.target = null; w._node = null; }
+    }
+  }
+
+  // Deposit for every worker that has reached its own home carrying goods.
+  function maybeDeposit() {
+    for (const w of workers) {
+      if (w._depositOnArrive && w.path.length === 0 && w.target &&
+          w.target.x === w.home.x && w.target.y === w.home.y &&
+          Math.round(w.px) === w.home.x && Math.round(w.py) === w.home.y) {
+        if (w.carry) {
+          res[w.carry] += w.carryAmt;
+          const col = w.carry === "wood" ? "#d69a4c" : "#aab4c0";
+          addFloater(w.home.x, w.home.y, `+${w.carryAmt}`, col);
+        }
+        w.carry = null; w.carryAmt = 0;
+        w._depositOnArrive = false;
+        updateHUD();
+        checkReady();
+
+        // Repeat: return to the same node if it still has resources.
+        const rn = w._repeatNode;
+        if (rn && nodes.has(key(rn.x, rn.y))) {
+          const path = astar(Math.round(w.px), Math.round(w.py), rn.x, rn.y);
+          if (path) {
+            w.path = path;
+            w.target = {x: rn.x, y: rn.y};
+            w._targetNodeKey = key(rn.x, rn.y);   // enable mid-transit abort on return
+            w.state = "moving";
+            continue;
+          }
+        }
+        w._repeatNode = null;
+        w.state = "idle"; w.target = null;
+      }
+    }
+  }
+
+  function checkReady() {
+    if (res.wood >= NEED_WOOD && res.stone >= NEED_STONE && !tower.built) {
+      setMsg("Enough materials! Click the Tower site — the nearest free worker will build it.");
+    }
+  }
+
+  // ---- Rendering --------------------------------------------------------
+  function draw() {
+    maybeDeposit();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // ==== WORLD (clipped to the play viewport, offset by camera) ====
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, VIEW_Y, VIEW_W, VIEW_H);
+    ctx.clip();
+    ctx.translate(-camera.x, VIEW_Y - camera.y);
+
+    // ground
+    for (let y=0; y<ROWS; y++) for (let x=0; x<COLS; x++) {
+      if (sheetReady) {
+        blit(groundTile(x, y), x, y);
+      } else {
+        ctx.fillStyle = ((x+y)&1) ? "#2a3f2a" : "#2f472f";
+        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+      }
+    }
+
+    // tiles
+    for (let y=0; y<ROWS; y++) for (let x=0; x<COLS; x++) {
+      const t = grid[y][x];
+      const cx = x*TILE + TILE/2, cy = y*TILE + TILE/2;
+      const has = (k) => sheetReady && TILEMAP[k] != null;
+      if (t === TREE)   has("tree")  ? blit(TILEMAP.tree, x, y)  : drawTree(cx, cy, nodes.get(key(x,y)));
+      else if (t === ROCK)   has("rock")  ? blit(TILEMAP.rock, x, y)  : drawRock(cx, cy, nodes.get(key(x,y)));
+      else if (t === RUBBLE) has("wall") ? blit(TILEMAP.wall, x, y) : drawRubble(cx, cy, nodes.get(key(x,y)));
+      else if (t === STOCK)  {
+        has("store") ? blit(TILEMAP.store, x, y) : drawStock(x*TILE, y*TILE);
+        // house level badge (all houses L1 for now; upgrade mechanics come later)
+        const h = houses.find(hh => hh.x === x && hh.y === y);
+        if (h) levelBadge(x, y, h.level || 1);
+      }
+      else if (t === BUILDING) {
+        const ws = workshops.find(s => s.x === x && s.y === y);
+        const tile = (ws && ws.level >= 2) ? WORKSHOP_UPGRADE.tile : BUILDINGS.workshop.tile;
+        blit(tile, x, y);
+        if (ws) levelBadge(x, y, ws.level);
+        // pulsing "up arrow" hint on an upgradeable L1 workshop you can afford
+        if (ws && ws.level === 1 &&
+            res.wood >= WORKSHOP_UPGRADE.wood && res.stone >= WORKSHOP_UPGRADE.stone) {
+          const pulse = 0.5 + 0.4*Math.abs(Math.sin(performance.now()/400));
+          ctx.globalAlpha = pulse;
+          ctx.fillStyle = "#ffcf3f";
+          ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+          ctx.fillText("▲", x*TILE + TILE/2, y*TILE + 12);
+          ctx.globalAlpha = 1;
+        }
+      }
+      else if (t === TOWER)  {
+        if (tower.built) {
+          has("tower") ? blit(TILEMAP.tower, x, y) : drawTower(x*TILE, y*TILE);
+        } else {
+          // Unbuilt site: ground is already drawn beneath; overlay a faded,
+          // pulsing preview of the tower (tile 7) so it reads as "build here",
+          // not a hole in the map.
+          const pulse = 0.35 + 0.30*Math.abs(Math.sin(performance.now()/600));
+          ctx.save();
+          ctx.globalAlpha = pulse;
+          if (charReady) blit(7, x, y, charSheet, charReady); else drawTower(x*TILE, y*TILE);
+          ctx.restore();
+          // "BUILD" tag + a solid outline so the target is unmistakable
+          ctx.strokeStyle = `rgba(230,180,34,${0.5+0.4*Math.abs(Math.sin(performance.now()/600))})`;
+          ctx.lineWidth = 2; ctx.setLineDash([5,4]);
+          ctx.strokeRect(x*TILE+3, y*TILE+3, TILE-6, TILE-6);
+          ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(0,0,0,.55)";
+          ctx.fillRect(x*TILE+4, y*TILE+TILE-13, TILE-8, 11);
+          ctx.fillStyle = "#e6b422";
+          ctx.font = "8px sans-serif"; ctx.textAlign = "center";
+          ctx.fillText("TOWER", x*TILE+TILE/2, y*TILE+TILE-4);
+        }
+      }
+    }
+
+    // health bars — only on damaged nodes (hidden when full)
+    for (const [, n] of nodes) {
+      const max = JOB[n.type].hp;
+      if (n.hp >= max) continue;               // full = no bar
+      const frac = Math.max(0, n.hp / max);
+      const bx = n.x*TILE + 6, by = n.y*TILE + 3, bw = TILE - 12, bh = 4;
+      ctx.fillStyle = "rgba(0,0,0,.55)";
+      ctx.fillRect(bx-1, by-1, bw+2, bh+2);
+      ctx.fillStyle = frac > 0.5 ? "#6fae5f" : frac > 0.25 ? "#e6b422" : "#c0503a";
+      ctx.fillRect(bx, by, bw * frac, bh);
+    }
+
+    // Build-mode ghost: highlight the cell under the cursor green (valid) or red.
+    if (buildMode && hoverCell) {
+      const { x, y } = hoverCell;
+      const valid = placementValid(x, y).ok && res.wood >= BUILDINGS[buildMode].wood
+                    && res.stone >= BUILDINGS[buildMode].stone;
+      const hx = x*TILE, hy = y*TILE;
+      // ghost sprite of the building, faded
+      ctx.globalAlpha = 0.5;
+      if (sheetReady) blit(BUILDINGS[buildMode].tile, x, y);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = valid ? "#6fae5f" : "#c0503a";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(hx+2, hy+2, TILE-4, TILE-4);
+    }
+
+    // path dots for every moving worker
+    ctx.fillStyle = "rgba(255,224,138,.30)";
+    for (const w of workers) {
+      for (const p of w.path) {
+        ctx.beginPath();
+        ctx.arc(p.x*TILE+TILE/2, p.y*TILE+TILE/2, 3, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    for (const w of workers) drawWorker(w);
+
+    // floating "+N" deposit popups — rise and fade over ~1s
+    const FLOAT_MS = 1000, nowT = performance.now();
+    for (const f of floaters) {
+      const age = nowT - f.born;
+      const p = age / FLOAT_MS;
+      const fx = f.x*TILE + TILE/2;
+      const fy = f.y*TILE + TILE/2 - 8 - p*22;   // drift upward
+      ctx.globalAlpha = Math.max(0, 1 - p);
+      ctx.font = "bold 13px 'Trebuchet MS', sans-serif";
+      ctx.textAlign = "center";
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.7)";
+      ctx.strokeText(f.text, fx, fy);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, fx, fy);
+      ctx.globalAlpha = 1;
+    }
+    floaters = floaters.filter(f => nowT - f.born < FLOAT_MS);
+
+    ctx.restore();   // ==== END WORLD (back to screen space) ====
+
+    // ==== UI (screen space) ====
+    drawHUD();
+    drawBuildBar();
+
+    // Centered notification flash — fades over ~2.4s, holding solid for first half.
+    if (flash) {
+      const FLASH_MS = 2400, age = performance.now() - flash.born;
+      if (age < FLASH_MS) {
+        const p = age / FLASH_MS;
+        const alpha = p < 0.6 ? 1 : Math.max(0, 1 - (p - 0.6) / 0.4);
+        ctx.save();
+        ctx.font = "bold 16px 'Trebuchet MS', sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        const tw = ctx.measureText(flash.text).width;
+        const cx = VIEW_W / 2, cy = VIEW_Y + 26;
+        ctx.globalAlpha = alpha * 0.82;
+        ctx.fillStyle = "#1a2530";
+        const pad = 14, ph = 30;
+        roundRect(ctx, cx - tw/2 - pad, cy - ph/2, tw + pad*2, ph, 8);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,.15)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = flash.color;
+        ctx.fillText(flash.text, cx, cy);
+        ctx.restore();
+      } else {
+        flash = null;
+      }
+    }
+
+    if (done) drawWinBanner();
+    drawTooltip();
+    if (showPicker) drawPicker();
+  }
+
+  // small "Ln" badge in a building tile's lower-left corner (world space)
+  function levelBadge(gx, gy, level) {
+    const bx = gx*TILE + 3, by = gy*TILE + TILE - 15;
+    ctx.save();
+    ctx.fillStyle = "rgba(20,30,40,.82)";
+    roundRect(ctx, bx, by, 20, 12, 3);
+    ctx.fill();
+    ctx.fillStyle = "#ffcf3f";
+    ctx.font = "bold 9px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("L" + level, bx + 10, by + 6);
+    ctx.restore();
+  }
+
+  // small rounded-rect helper for the flash plate
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  // shadowed rounded panel helper — the core of the "professional" look
+  function panel(x, y, w, h, r, fill, opts = {}) {
+    ctx.save();
+    if (opts.shadow !== false) {
+      ctx.shadowColor = "rgba(0,0,0,.45)";
+      ctx.shadowBlur = opts.shadowBlur ?? 8;
+      ctx.shadowOffsetY = opts.shadowOffsetY ?? 3;
+    }
+    roundRect(ctx, x, y, w, h, r);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.restore();
+    // top inner highlight for a raised feel
+    if (opts.highlight !== false) {
+      ctx.save();
+      roundRect(ctx, x+1.5, y+1.5, w-3, h-3, r-1);
+      ctx.clip();
+      const g = ctx.createLinearGradient(0, y, 0, y+h*0.5);
+      g.addColorStop(0, "rgba(255,255,255,.16)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, h*0.5);
+      ctx.restore();
+    }
+    if (opts.stroke) {
+      roundRect(ctx, x+.5, y+.5, w-1, h-1, r);
+      ctx.strokeStyle = opts.stroke; ctx.lineWidth = opts.strokeW ?? 2; ctx.stroke();
+    }
+  }
+
+  // draw a small resource icon (tile from a sheet) at a given screen box
+  function icon(tileIdx, dx, dy, size, img, ready) {
+    if (!ready) return;
+    const { sx, sy } = srcXY(tileIdx);
+    ctx.drawImage(img, sx, sy, SRC, SRC, dx, dy, size, size);
+  }
+
+  // ---- Top HUD bar ----
+  function drawHUD() {
+    // bar background
+    ctx.fillStyle = "#243342";
+    ctx.fillRect(0, 0, VIEW_W, HUD_H);
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    ctx.fillRect(0, HUD_H-3, VIEW_W, 3);
+
+    const cy = HUD_H/2;
+    let x = 14;
+
+    // Level label
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText("OUTPOST", x, cy-9);
+    ctx.font = "10px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#8fb0d0";
+    ctx.fillText("LVL 1 · THE CLEARING", x, cy+8);
+    x += 150;
+
+    // resource pills
+    x = drawResourcePill(x, cy, TILEMAP.tree, "#e09a4a", res.wood, "wood");
+    x = drawResourcePill(x, cy, TILEMAP.rock, "#9fb0c0", res.stone, "stone");
+
+    // worker count pill
+    x = drawResourcePill(x, cy, null, "#5fc55f", workers.length + "/" + MAX_WORKERS, "crew", "☺");
+
+    // timer + stars (right-aligned)
+    ctx.textAlign = "right";
+    ctx.font = "bold 16px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(timerStr, VIEW_W - 14, cy - 8);
+    // live star preview based on current elapsed time
+    const sec = done ? null : Math.floor((performance.now()-startTime)/1000);
+    const liveStars = done ? winStars : starsFor(sec ?? 0);
+    ctx.font = "12px sans-serif";
+    let starStr = "";
+    for (let i=0;i<3;i++) starStr += (i < liveStars) ? "★" : "☆";
+    ctx.fillStyle = "#ffcf3f";
+    ctx.fillText(starStr, VIEW_W - 14, cy + 9);
+  }
+
+  function drawResourcePill(x, cy, tileIdx, color, value, label, glyph) {
+    const w = 92, h = 38, y = cy - h/2;
+    panel(x, y, w, h, 9, "#1b2836", { shadowBlur: 5, shadowOffsetY: 2 });
+    // icon
+    if (tileIdx != null) {
+      icon(tileIdx, x+7, y+7, 24, sheet, sheetReady);
+    } else if (glyph) {
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "18px sans-serif"; ctx.fillStyle = color;
+      ctx.fillText(glyph, x+19, y+h/2);
+    }
+    // value + label
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.font = "bold 17px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(value, x+36, cy-6);
+    ctx.font = "9px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = color;
+    ctx.fillText(label.toUpperCase(), x+36, cy+8);
+    return x + w + 8;
+  }
+
+  // ---- Bottom build bar ----
+  function drawBuildBar() {
+    const by = HUD_H + VIEW_H;
+    ctx.fillStyle = "#243342";
+    ctx.fillRect(0, by, VIEW_W, BUILD_H);
+    ctx.fillStyle = "rgba(255,255,255,.06)";
+    ctx.fillRect(0, by, VIEW_W, 3);
+
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.font = "bold 11px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#8fb0d0";
+    ctx.fillText("BUILD", 16, by + 16);
+
+    // build buttons as cards
+    buildButtons = [];
+    const keys = Object.keys(BUILDINGS);
+    const cardW = 150, cardH = 54, gap = 12;
+    let cx = 16, cyTop = by + 24;
+    for (const key of keys) {
+      const b = BUILDINGS[key];
+      const affordable = res.wood >= b.wood && res.stone >= b.stone;
+      const active = buildMode === key;
+      const hover = pointInRect(mouse.x, mouse.y, cx, cyTop, cardW, cardH);
+
+      let fill = "#2f4a63";
+      if (active) fill = "#3f7a3f";
+      else if (hover && affordable) fill = "#3a5a78";
+      panel(cx, cyTop, cardW, cardH, 10, fill,
+            { stroke: active ? "#7de07d" : "rgba(255,255,255,.12)", strokeW: active?2:1 });
+
+      // icon
+      icon(b.tile, cx+8, cyTop+11, 32, sheet, sheetReady);
+      // label + cost + desc
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+      ctx.font = "bold 14px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = affordable ? "#ffffff" : "#8a9aa8";
+      ctx.fillText(b.label, cx+46, cyTop+20);
+      ctx.font = "11px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = affordable ? "#ffcf3f" : "#c07a5a";
+      ctx.fillText(costText(b), cx+46, cyTop+34);
+      ctx.font = "9px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = "#9fb8cc";
+      ctx.fillText(b.desc, cx+46, cyTop+47);
+
+      buildButtons.push({ key, x: cx, y: cyTop, w: cardW, h: cardH });
+      cx += cardW + gap;
+    }
+
+    // hint text to the right
+    if (buildHint) {
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.font = "12px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = "#7de07d";
+      ctx.fillText(buildHint, cx + 6, by + BUILD_H/2);
+    }
+
+    // restart button (bottom-right)
+    const rbW = 84, rbH = 30, rbX = VIEW_W - rbW - 14, rbY = by + BUILD_H - rbH - 12;
+    const rbHover = pointInRect(mouse.x, mouse.y, rbX, rbY, rbW, rbH);
+    panel(rbX, rbY, rbW, rbH, 8, rbHover ? "#3a5a78" : "#2f4a63",
+          { stroke: "rgba(255,255,255,.12)", strokeW: 1 });
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "bold 12px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText("↻ Restart", rbX + rbW/2, rbY + rbH/2);
+    restartBtn = { x: rbX, y: rbY, w: rbW, h: rbH };
+  }
+
+  function pointInRect(px, py, x, y, w, h) {
+    return px >= x && px <= x+w && py >= y && py <= y+h;
+  }
+
+  // ---- Hover tooltip ----
+  // Returns { text, color } for the tile under the cursor, or null.
+  function tileTooltip(gx, gy) {
+    if (gx < 0 || gy < 0 || gx >= COLS || gy >= ROWS) return null;
+
+    // Workshops (upgradeable buildings)
+    const ws = workshops.find(s => s.x === gx && s.y === gy);
+    if (ws) {
+      if (ws.level >= 2) return { text: "Workshop · Max Level", color: "#9fb8cc" };
+      const u = WORKSHOP_UPGRADE;
+      return { text: `Upgrade for ${u.wood}w ${u.stone}s`, color: "#ffcf3f" };
+    }
+
+    const t = grid[gy][gx];
+    if (t === TREE) return { text: "Wood", color: "#e09a4a" };
+    if (t === ROCK) return { text: "Stone", color: "#9fb0c0" };
+    if (t === RUBBLE) return { text: "Break Wall", color: "#c9a06a" };
+    if (t === TOWER && !tower.built)
+      return { text: `Build Tower for ${NEED_WOOD}w ${NEED_STONE}s`, color: "#ffcf3f" };
+    return null;
+  }
+
+  // Draw a small tooltip near the cursor (screen space).
+  function drawTooltip() {
+    if (screen !== "play" || done || buildMode) return;
+    if (regionAt(mouse.y) !== "grid") return;
+    const { tx, ty } = screenToTile(mouse.x, mouse.y);
+    const tip = tileTooltip(tx, ty);
+    if (!tip) return;
+
+    ctx.save();
+    ctx.font = "bold 12px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    const tw = ctx.measureText(tip.text).width;
+    const padX = 9, h = 24;
+    let bx = mouse.x + 14, by = mouse.y - h - 6;
+    // keep on-screen
+    if (bx + tw + padX*2 > VIEW_W) bx = mouse.x - tw - padX*2 - 14;
+    if (by < VIEW_Y) by = mouse.y + 16;
+    panel(bx, by, tw + padX*2, h, 7, "rgba(20,30,40,.92)",
+          { shadowBlur: 6, shadowOffsetY: 2, highlight: false, stroke: "rgba(255,255,255,.14)", strokeW: 1 });
+    ctx.fillStyle = tip.color;
+    ctx.fillText(tip.text, bx + padX, by + h/2);
+    ctx.restore();
+  }
+
+  // ---- Win banner (overlay) ----
+  function drawWinBanner() {
+    ctx.fillStyle = "rgba(15,22,30,.78)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const cw = 360, ch = 220, cx = (canvas.width-cw)/2, cy = (canvas.height-ch)/2;
+    panel(cx, cy, cw, ch, 16, "#2f4a63", { shadowBlur: 24, shadowOffsetY: 8,
+           stroke: "rgba(255,255,255,.15)", strokeW: 2 });
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 26px 'Trebuchet MS', sans-serif";
+    ctx.fillText("OUTPOST SECURED", cx+cw/2, cy+52);
+
+    ctx.font = "34px sans-serif";
+    ctx.fillStyle = "#ffcf3f";
+    ctx.fillText("★".repeat(winStars) + "☆".repeat(3-winStars), cx+cw/2, cy+100);
+
+    ctx.font = "12px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#b8c9d9";
+    ctx.fillText(winTimeStr, cx+cw/2, cy+134);
+
+    // play again button
+    const pbW = 160, pbH = 42, pbX = cx+(cw-pbW)/2, pbY = cy+ch-64;
+    const hover = pointInRect(mouse.x, mouse.y, pbX, pbY, pbW, pbH);
+    panel(pbX, pbY, pbW, pbH, 10, hover ? "#5fc55f" : "#4fb54f",
+          { stroke: "rgba(255,255,255,.2)", strokeW: 2 });
+    ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
+    ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
+    ctx.fillText("▶  Play Again", pbX+pbW/2, pbY+pbH/2);
+    playAgainBtn = { x: pbX, y: pbY, w: pbW, h: pbH };
+  }
+
+  // Full-sheet index picker. D toggles, T flips sheet. Reads indices straight off.
+  function drawPicker() {
+    const cell = 44, pad = 2, cols = SHEET_COLS;
+    const img   = pickerSheet ? charSheet : sheet;
+    const ready = pickerSheet ? charReady : sheetReady;
+    const name  = pickerSheet ? "dungeon.png (characters)" : "tilemap.png (terrain)";
+
+    ctx.fillStyle = "rgba(8,6,4,.94)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#e8ddc8";
+    ctx.font = "12px 'Trebuchet MS', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(`TILE PICKER — ${name}   ·   D close   ·   T flip sheet`, pad+2, 15);
+
+    if (!ready) {
+      ctx.fillText(`${pickerSheet ? "dungeon.png" : "tilemap.png"} not loaded — serve over http/https, not file://`, pad+2, 34);
+      return;
+    }
+
+    const ox = pad, oy = 22;
+    for (let i = 0; i < SHEET_N; i++) {
+      const c = i % cols, r = (i / cols) | 0;
+      const dx = ox + c*cell, dy = oy + r*cell;
+      const { sx, sy } = srcXY(i);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, sx, sy, SRC, SRC, dx, dy, cell-2, cell-2);
+      ctx.fillStyle = "rgba(0,0,0,.6)";
+      ctx.fillRect(dx, dy+cell-13, 20, 11);
+      ctx.fillStyle = "#ffe08a";
+      ctx.font = "9px monospace";
+      ctx.fillText(i, dx+2, dy+cell-4);
+    }
+  }
+
+  function drawTree(cx, cy, n) {
+    const hurt = n ? n.hp / JOB[TREE].hp : 1;
+    ctx.fillStyle = "#5a3a1e"; ctx.fillRect(cx-3, cy+4, 6, 10);
+    ctx.fillStyle = `rgb(${60+ (1-hurt)*40}, ${120*hurt+40}, 50)`;
+    ctx.beginPath(); ctx.arc(cx, cy-2, 12*Math.max(.5,hurt), 0, Math.PI*2); ctx.fill();
+  }
+  function drawRock(cx, cy, n) {
+    const hurt = n ? n.hp / JOB[ROCK].hp : 1;
+    ctx.fillStyle = `rgb(${130+ (1-hurt)*30}, ${140}, ${150})`;
+    ctx.beginPath();
+    ctx.moveTo(cx-11, cy+9); ctx.lineTo(cx-6, cy-9);
+    ctx.lineTo(cx+7, cy-7); ctx.lineTo(cx+12, cy+9);
+    ctx.closePath(); ctx.fill();
+  }
+  function drawRubble(cx, cy, n) {
+    ctx.fillStyle = "#4a3d2c";
+    for (let i=0;i<4;i++){
+      const ox=(i%2?6:-6), oy=(i<2?-5:6);
+      ctx.fillRect(cx+ox-4, cy+oy-4, 8, 8);
+    }
+  }
+  function drawStock(x, y) {
+    ctx.fillStyle = "#3a2c1c"; ctx.fillRect(x+6, y+6, TILE-12, TILE-12);
+    ctx.strokeStyle = "#6b5236"; ctx.lineWidth=2; ctx.strokeRect(x+6, y+6, TILE-12, TILE-12);
+    ctx.fillStyle = "#9a8b73"; ctx.font="8px sans-serif"; ctx.textAlign="center";
+    ctx.fillText("STORE", x+TILE/2, y+TILE-4);
+  }
+  function drawTower(x, y) {
+    const built = tower.built;
+    ctx.fillStyle = built ? "#7a6a4a" : "#2c2318";
+    ctx.fillRect(x+8, y+6, TILE-16, TILE-10);
+    ctx.strokeStyle = built ? "#e6b422" : "#5a4632";
+    ctx.lineWidth = 2; ctx.setLineDash(built ? [] : [4,3]);
+    ctx.strokeRect(x+8, y+6, TILE-16, TILE-10);
+    ctx.setLineDash([]);
+    if (built) { ctx.fillStyle="#e6b422"; ctx.fillRect(x+TILE/2-2, y+2, 4, 8); }
+  }
+  function drawWorker(w) {
+    const cx = w.px*TILE + TILE/2;      // sprite center x
+    const topY = w.py*TILE;             // cell top y
+
+    // ---- procedural motion offsets ----
+    let bob = 0, wiggle = 0, lift = 0;
+    if (w.state === "moving") {
+      // walk-bob: hop on a sine wave, ~5 hops/sec
+      bob = -Math.abs(Math.sin(w.animT / 90)) * 3;
+    } else if (w.state === "working" || w.state === "building") {
+      // work-wiggle: quick side-to-side while chopping/mining/building
+      wiggle = Math.sin(w.animT / 45) * 2;
+    }
+    if (w.carry) lift = -3;             // carry-lift: raised while hauling
+
+    const drawX = cx + wiggle;
+    const drawY = topY + bob + lift;
+
+    if (charReady && w.sprite != null) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      // translate to sprite center, flip horizontally by facing, draw centered
+      ctx.translate(drawX, drawY + TILE/2);
+      ctx.scale(w.facing, 1);
+      const { sx, sy } = srcXY(w.sprite);
+      ctx.drawImage(charSheet, sx, sy, SRC, SRC, -TILE/2, -TILE/2, TILE, TILE);
+      ctx.restore();
+    } else {
+      // primitive fallback (also gets bob/lift/wiggle so motion is visible pre-sprite)
+      const px = drawX, py = drawY + TILE/2;
+      ctx.fillStyle = "#e8ddc8";
+      ctx.beginPath(); ctx.arc(px, py-4, 6, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#6fae5f";
+      ctx.fillRect(px-5, py, 10, 12);
+    }
+
+    // carry indicator (drawn over the sprite so state is always readable)
+    if (w.carry) {
+      ctx.fillStyle = w.carry === "wood" ? "#b5763a" : "#8a94a0";
+      ctx.fillRect(drawX-4, drawY + 2, 8, 6);
+    }
+  }
+
+  // ---- HUD / win --------------------------------------------------------
+  function updateHUD() { /* HUD is drawn each frame from res.* — nothing to push */ }
+  function starsFor(sec) { return sec <= GOLD_SEC ? 3 : sec <= SILVER_SEC ? 2 : 1; }
+
+  function win(now) {
+    done = true;
+    const sec = Math.floor((now - startTime)/1000);
+    winStars = starsFor(sec);
+    winTimeStr = `Finished in ${fmt(sec)}  ·  Gold ≤ ${fmt(GOLD_SEC)}, Silver ≤ ${fmt(SILVER_SEC)}`;
+    setMsg("Watchtower complete. Outpost secured.");
+  }
+
+  // ---- helpers ----------------------------------------------------------
+  const lerp = (a,b,t) => a + (b-a)*t;
+  const fmt = (s) => Math.floor(s/60) + ":" + String(s%60).padStart(2,"0");
+  function setMsg(m){ flashMsg(m); }
+
+  // ---- Build menu (canvas buttons) ----
+  function costText(b) {
+    const parts = [];
+    if (b.wood)  parts.push(`${b.wood}w`);
+    if (b.stone) parts.push(`${b.stone}s`);
+    return parts.join(" + ");
+  }
+
+  // Button rectangles are computed each frame in drawBuildBar() and cached here
+  // for hit-testing. Each entry: { key, x, y, w, h }.
+  let buildButtons = [];
+  let restartBtn = null, playAgainBtn = null;
+
+  function toggleBuildMode(key) {
+    buildMode = (buildMode === key) ? null : key;
+    hoverCell = null;
+    if (buildMode) {
+      const b = BUILDINGS[buildMode];
+      buildHint = `Placing ${b.label} — left-click a tile · right-click cancels`;
+      setMsg(`Placing a ${b.label}. Green = valid, red = blocked.`);
+    } else {
+      buildHint = "";
+    }
+  }
+
+  // ---- Title screen -----------------------------------------------------
+  function drawTitle() {
+    const W = canvas.width, H = canvas.height;
+    // backdrop: bright sky-to-dusk gradient
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#3a5169");
+    g.addColorStop(1, "#243342");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // scattered pixel trees as decoration
+    if (sheetReady) {
+      ctx.globalAlpha = 0.22;
+      const spots = [[1,1],[3,0],[14,1],[12,2],[0,13],[2,14],[15,12],[13,14],[7,0],[9,14]];
+      for (const [tx,ty] of spots) { const {sx,sy}=srcXY(28); ctx.drawImage(sheet, sx,sy,SRC,SRC, tx*TILE, ty*TILE, TILE, TILE); }
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+
+    // Title with drop shadow
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 52px 'Trebuchet MS', sans-serif";
+    ctx.fillText("OUTPOST", W/2, H*0.24);
+    ctx.restore();
+
+    // Level line
+    ctx.fillStyle = "#ffcf3f";
+    ctx.font = "bold 19px 'Trebuchet MS', sans-serif";
+    ctx.fillText("LEVEL 1  ·  THE CLEARING", W/2, H*0.24 + 36);
+
+    // Blurb (word-wrapped) on a panel
+    const bx = W*0.14, bw = W*0.72, by = H*0.36, bh = 130;
+    panel(bx, by, bw, bh, 12, "rgba(20,30,40,.55)", { shadow:false, highlight:false, stroke:"rgba(255,255,255,.1)", strokeW:1 });
+    ctx.fillStyle = "#dbe6f0";
+    ctx.font = "15px 'Trebuchet MS', sans-serif";
+    const blurb =
+      "The frontier has gone quiet, and the old watchtower lies in ruin. " +
+      "Clear the wilderness, gather timber and stone, and put your settlers " +
+      "to work. Raise a workshop, break through the ridge, and rebuild the " +
+      "watchtower to reclaim the clearing.";
+    wrapText(blurb, W/2, by + 30, bw - 40, 23);
+
+    // Objective line
+    ctx.fillStyle = "#5fc55f";
+    ctx.font = "bold 16px 'Trebuchet MS', sans-serif";
+    ctx.fillText("OBJECTIVE:  Rebuild the Watchtower", W/2, H*0.70);
+
+    // Start prompt (pulsing button)
+    const pulse = 0.6 + 0.4*Math.abs(Math.sin(performance.now()/500));
+    const pbW = 220, pbH = 48, pbX = (W-pbW)/2, pbY = H*0.78;
+    ctx.globalAlpha = pulse;
+    panel(pbX, pbY, pbW, pbH, 12, "#4fb54f", { stroke:"rgba(255,255,255,.25)", strokeW:2 });
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
+    ctx.font = "bold 18px 'Trebuchet MS', sans-serif";
+    ctx.fillText("▶  Click to Begin", W/2, pbY + pbH/2);
+    ctx.textBaseline = "alphabetic";
+  }
+
+  // simple canvas word-wrap, centered
+  function wrapText(text, cx, y, maxWidth, lineHeight) {
+    const words = text.split(" ");
+    let line = "", ly = y;
+    for (const word of words) {
+      const test = line ? line + " " + word : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, cx, ly);
+        line = word; ly += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) ctx.fillText(line, cx, ly);
+  }
+
+  function start() {
+    done = false;
+    resetState();
+    screen = "play";              // Restart/Play Again skip the title
+    startTime = performance.now();
+    if (!raf) raf = requestAnimationFrame(update);
+  }
+
+  // First-ever load: show the title screen until the player clicks.
+  function boot() {
+    resetState();
+    screen = "title";
+    if (!raf) raf = requestAnimationFrame(update);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
