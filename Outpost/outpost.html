@@ -1075,11 +1075,14 @@
     if (screen === "levelComplete") { lastFrame = now; draw(); drawWinBanner(); raf = requestAnimationFrame(update); return; }
 
     // screen === "play": drain accumulated real time into fixed sim ticks.
+    // The intro banner PAUSES the sim — no ticks, no timer, no worker movement —
+    // so the star clock doesn't run while the player is still reading it. The
+    // clock starts the moment they dismiss the banner (click anything).
     let dt = now - lastFrame;
     lastFrame = now;
     if (dt < 0) dt = 0;
     if (dt > 250) dt = 250;           // first frame / tab-return guard
-    if (!done) {
+    if (!done && !introBanner) {
       simAccum += dt;
       let steps = 0;
       while (simAccum >= TICK_MS && steps < MAX_CATCHUP) {
@@ -1585,11 +1588,11 @@
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       const maxTextW = VIEW_W - 80;         // keep well inside both canvas edges
       const lines = wrapLines(introBanner.text, maxTextW);
-      const lineH = 20, padX = 18, padY = 12;
+      const lineH = 20, padX = 18, padY = 12, hintH = 18;
       let boxW = 0;
       for (const ln of lines) boxW = Math.max(boxW, ctx.measureText(ln).width);
       boxW = Math.min(boxW + padX*2, VIEW_W - 24);
-      const boxH = lines.length * lineH + padY*2;
+      const boxH = lines.length * lineH + padY*2 + hintH;   // reserve a row for the hint
       const cx = VIEW_W / 2, top = VIEW_Y + 12;
       // plate
       ctx.globalAlpha = 0.9;
@@ -1602,10 +1605,10 @@
       ctx.fillStyle = "#dbe6f0";
       let ly = top + padY + lineH/2;
       for (const ln of lines) { ctx.fillText(ln, cx, ly); ly += lineH; }
-      // dismiss hint
+      // dismiss hint — sits in its own reserved row, clear of the text
       ctx.font = "10px 'Trebuchet MS', sans-serif";
       ctx.fillStyle = "#7de07d";
-      ctx.fillText("— click anything to begin —", cx, top + boxH - 2);
+      ctx.fillText("— click anything to begin —", cx, top + boxH - hintH/2 - 2);
       ctx.restore();
     }
 
