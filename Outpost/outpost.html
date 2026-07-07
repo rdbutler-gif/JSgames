@@ -255,9 +255,35 @@
   // Debug picker: D toggles it, T flips which sheet it shows.
   let showPicker = false;
   let pickerSheet = 0;   // 0 = terrain (tilemap), 1 = characters (dungeon)
+  const _keysDown = new Set();   // track held keys so we can detect chords (O+P)
   window.addEventListener("keydown", (e) => {
     if (e.key === "d" || e.key === "D") { showPicker = !showPicker; }
     if (e.key === "t" || e.key === "T") { pickerSheet = pickerSheet ? 0 : 1; }
+
+    // Cheat: O + P held together = "overpowered" -> unlock every level for play.
+    // Keyboards fire one keydown per key, so we detect the chord by checking
+    // whether the other key is currently held. Toggles, so pressing again relocks.
+    const k = e.key.toLowerCase();
+    if (k === "o" || k === "p" || k === "x") {
+      _keysDown.add(k);
+      if (_keysDown.has("o") && _keysDown.has("p")) {
+        allUnlocked = !allUnlocked;
+        if (typeof setMsg === "function") {
+          setMsg(allUnlocked ? "OVERPOWERED — all levels unlocked" : "Cheat off — normal unlock rules");
+        }
+      }
+      // X + P on the level-select screen = arm "export level" mode: installed
+      // level cells highlight, and clicking one dumps its builder-ready data.
+      if (_keysDown.has("x") && _keysDown.has("p") && screen === "levelSelect") {
+        exportMode = !exportMode;
+        selectMsg = { text: exportMode ? "EXPORT MODE — click a level to copy its data"
+                                       : "Export mode off", born: performance.now() };
+      }
+    }
+  });
+  window.addEventListener("keyup", (e) => {
+    const k = e.key.toLowerCase();
+    if (k === "o" || k === "p" || k === "x") _keysDown.delete(k);
   });
 
   // Tile types
@@ -360,10 +386,43 @@
       cost:  { wood: 0, stone: 0 },
       stars: { gold: 300, silver: 480 },
       objectives: null,
+      // decoration layer (added in builder): border trim around the map edges.
+      // [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
+      deco: [[0,0,0,27],[1,0,0,27],[2,0,0,27],[3,0,0,27],[20,0,0,27],[21,0,0,27],[22,0,0,27],[23,0,0,27],[0,1,0,27],[1,1,0,27],[22,1,0,27],[23,1,0,27],[0,2,0,27],[23,2,0,27],[0,3,0,27],[23,3,0,27],[0,14,0,27],[23,14,0,27],[0,15,0,27],[23,15,0,27],[0,16,0,27],[1,16,0,27],[22,16,0,27],[23,16,0,27],[0,17,0,27],[1,17,0,27],[2,17,0,27],[3,17,0,27],[20,17,0,27],[21,17,0,27],[22,17,0,27],[23,17,0,27]],
       intro: "THE TOWN HALL — click and drag to explore. Chop the corner forests for " +
              "wood, build a workshop so your crew can mine the ring of stone, then click " +
              "each of the six shadowed Town Hall sections in the center to assemble it. " +
              "Every section is a long build — put your whole crew on it. Finish all six to win.",
+    },
+
+    // ---- LEVEL 4 — first import from the Outpost Level Builder ----
+    // A pathing test: buildings and fences (the solid mask) force the crew to
+    // wind through the settlement, and the tower sits in a pocket of rock they
+    // must harvest through to reach. Goal: gather enough to raise the tower.
+    {
+      name: "The Warren",
+      subtitle: "LEVEL 4",
+      clearText: "The Warren Cleared",
+      goal: "Build the Watchtower",
+      blurb: "The old settlement is a maze of walls and half-built structures. " +
+             "Somewhere past them, on a shelf of stone, the tower must rise.",
+      cols: 24, rows: 18,
+      startHouse: { x: 4, y: 16 },
+      tower:      { x: 3, y: 2 },
+      wallCol: -1,
+      trees: [[23,3],[22,7],[23,8],[21,10],[22,10],[22,11],[23,13],[23,14]],
+      rocks: [[3,1],[2,2],[4,2],[3,3],[22,9],[22,16],[23,17]],
+      cost:  { wood: 15, stone: 10 },
+      stars: { gold: 180, silver: 300 },
+      objectives: null,
+      // decoration layer: [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
+      deco: [[20,4,0,21],[21,4,0,11],[22,4,0,27],[21,5,0,34],[22,5,0,27],[7,6,0,52],[8,6,0,55],[9,6,0,53],[10,6,0,54],[20,6,0,9],[21,6,0,11],[7,7,0,64],[8,7,0,65],[9,7,0,67],[10,7,0,66],[18,7,0,3],[19,7,0,27],[20,7,0,34],[21,7,0,34],[7,8,0,76],[8,8,0,77],[9,8,0,89],[10,8,0,79],[17,8,0,21],[18,8,0,22],[19,8,0,11],[20,8,0,3],[21,8,0,27],[7,9,0,24],[8,9,0,25],[9,9,0,26],[10,9,0,1],[11,9,0,48],[12,9,0,51],[13,9,0,49],[14,9,0,49],[15,9,0,49],[16,9,0,50],[17,9,0,3],[18,9,0,15],[19,9,0,15],[20,9,0,15],[7,10,0,24],[8,10,0,41],[9,10,0,38],[10,10,0,1],[11,10,0,60],[12,10,0,61],[13,10,0,61],[14,10,0,61],[15,10,0,61],[16,10,0,62],[17,10,0,15],[19,10,0,12],[20,10,0,14],[3,11,0,12],[4,11,0,13],[5,11,0,13],[6,11,0,13],[7,11,0,39],[8,11,0,26],[9,11,0,1],[10,11,0,2],[11,11,0,72],[12,11,0,63],[13,11,0,63],[14,11,0,73],[15,11,0,63],[16,11,0,75],[17,11,0,9],[18,11,0,23],[19,11,0,24],[20,11,0,40],[21,11,0,14],[2,12,0,99],[3,12,0,100],[4,12,0,100],[5,12,0,100],[6,12,0,101],[8,12,0,26],[9,12,0,1],[10,12,0,1],[11,12,0,72],[12,12,0,86],[13,12,0,87],[14,12,0,84],[15,12,0,85],[16,12,0,75],[17,12,0,34],[18,12,0,27],[19,12,0,24],[20,12,0,25],[21,12,0,26],[2,13,1,57],[3,13,0,113],[4,13,0,39],[5,13,0,114],[6,13,1,59],[8,13,0,26],[9,13,0,2],[10,13,0,1],[11,13,0,24],[12,13,0,41],[13,13,0,37],[14,13,0,37],[15,13,0,42],[16,13,0,26],[17,13,0,9],[18,13,0,11],[19,13,0,24],[20,13,0,96],[21,13,0,98],[2,14,1,57],[3,14,0,123],[4,14,0,25],[5,14,0,124],[6,14,1,59],[8,14,0,26],[9,14,0,1],[10,14,0,1],[11,14,0,24],[12,14,0,26],[13,14,0,1],[14,14,0,2],[15,14,0,24],[16,14,0,26],[17,14,0,34],[18,14,0,34],[19,14,0,24],[20,14,0,108],[21,14,0,110],[2,15,0,56],[3,15,0,24],[4,15,0,25],[5,15,0,26],[6,15,0,56],[8,15,0,40],[9,15,0,13],[10,15,0,13],[11,15,0,39],[12,15,0,40],[13,15,0,13],[14,15,0,13],[15,15,0,39],[16,15,0,40],[17,15,0,13],[18,15,0,13],[19,15,0,39],[20,15,0,108],[21,15,0,110],[2,16,0,56],[3,16,0,24],[4,16,0,25],[5,16,0,26],[6,16,0,56],[9,16,0,99],[10,16,0,100],[11,16,0,100],[12,16,0,100],[13,16,0,100],[14,16,0,100],[15,16,0,100],[16,16,0,100],[17,16,0,100],[18,16,0,100],[19,16,0,100],[20,16,0,121],[21,16,0,122],[2,17,0,71],[3,17,0,36],[4,17,0,37],[5,17,0,38],[6,17,0,68],[7,17,0,81],[8,17,0,45],[9,17,1,57],[10,17,1,40],[11,17,1,8],[12,17,1,40],[13,17,1,7],[14,17,1,40],[15,17,1,40],[16,17,1,7],[17,17,1,40],[18,17,1,8],[19,17,1,40],[20,17,1,19],[21,17,1,59]],
+      // solid mask: [x, y] cells workers cannot walk through
+      solid: [[20,4],[21,4],[22,4],[21,5],[22,5],[7,6],[8,6],[9,6],[10,6],[20,6],[21,6],[7,7],[10,7],[18,7],[19,7],[20,7],[21,7],[7,8],[8,8],[9,8],[10,8],[17,8],[19,8],[20,8],[21,8],[6,9],[10,9],[11,9],[12,9],[13,9],[14,9],[15,9],[16,9],[17,9],[18,9],[19,9],[20,9],[2,10],[3,10],[4,10],[5,10],[6,10],[10,10],[17,10],[2,11],[9,11],[10,11],[17,11],[18,11],[2,12],[3,12],[5,12],[6,12],[9,12],[10,12],[11,12],[12,12],[13,12],[14,12],[15,12],[16,12],[17,12],[18,12],[2,13],[3,13],[5,13],[6,13],[9,13],[10,13],[17,13],[18,13],[20,13],[21,13],[2,14],[3,14],[5,14],[6,14],[9,14],[10,14],[17,14],[18,14],[20,14],[21,14],[2,15],[6,15],[20,15],[21,15],[2,16],[6,16],[9,16],[10,16],[11,16],[12,16],[13,16],[14,16],[15,16],[16,16],[17,16],[18,16],[19,16],[20,16],[21,16],[2,17],[6,17],[7,17],[8,17],[9,17],[10,17],[21,17]],
+      intro: "THE WARREN — a pathing test. The settlement is walled into a maze, " +
+             "so your crew has to find the way around. The watchtower sits top-left " +
+             "in a pocket of rock — harvest through it to reach the site. Gather 15 " +
+             "wood and 10 stone, then raise the tower to win.",
     },
   ];
   let currentLevel = 0;   // index into LEVELS; the level currently loaded
@@ -395,7 +454,9 @@
   }
   function starsForLevel(idx) { return progress.stars[idx] || 0; }
   function isCompleted(idx) { return starsForLevel(idx) >= 1; }
-  function isUnlocked(idx) { return idx === 0 || isCompleted(idx - 1); }
+  let allUnlocked = false;   // debug cheat (O+P chord): opens every level without faking star scores
+  let exportMode = false;    // level-select (X+P chord): click a level to copy its builder data
+  function isUnlocked(idx) { return allUnlocked || idx === 0 || isCompleted(idx - 1); }
   function recordStars(idx, stars) {
     // best-ever: never let a sloppy replay lower an earned score
     if (stars > (progress.stars[idx] || 0)) { progress.stars[idx] = stars; saveProgress(); }
@@ -413,6 +474,8 @@
   };
 
   let grid, nodes, workers, houses, workshops, res, stockpile, tower, townhall, startTime, done, raf;
+  let solidMask = null;   // Set of "x,y" keys the crew cannot walk through (from L.solid)
+  let decoTiles = null;   // Map "x,y" -> {s, i}: ground-layer art drawn under entities (from L.deco)
   let screen = "mainMenu";   // "mainMenu" | "levelSelect" | "levelIntro" | "play" | "levelComplete"
 
   function resetState(levelIndex) {
@@ -473,6 +536,17 @@
     // Resource nodes from data.
     L.trees.forEach(([x,y]) => place(x,y,TREE));
     L.rocks.forEach(([x,y]) => place(x,y,ROCK));
+
+    // Solid mask: cells the crew can't path through, independent of tile type
+    // (buildings, fences, cliffs painted in the level builder). Checked in
+    // walkable(). Harvestable barriers (trees/rocks/wall) are NOT here — they
+    // block via their tile type and clear when harvested.
+    solidMask = new Set((L.solid || []).map(([x,y]) => key(x,y)));
+
+    // Decoration: pure ground-layer art, drawn under entities, no gameplay role.
+    // [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
+    decoTiles = new Map();
+    (L.deco || []).forEach(([x,y,s,i]) => decoTiles.set(key(x,y), {s, i}));
 
     // Additional houses & the workshop are placed by the player via the build
     // menu (see BUILDINGS). No pre-authored sites.
@@ -551,6 +625,9 @@
   // Walkable = EMPTY or STOCK or the tile adjacent target handled by caller.
   function walkable(x, y) {
     if (x < 0 || y < 0 || x >= worldCols || y >= worldRows) return false;
+    // Solid mask blocks movement regardless of what tile sits here — it's the
+    // level builder's collision layer for buildings, fences, and terrain.
+    if (solidMask && solidMask.has(key(x,y))) return false;
     const t = grid[y][x];
     if (t === THALL) {
       // A town-hall cell blocks movement only once its part is built; ghosted
@@ -647,6 +724,19 @@
       clearArmed = false;   // any other click disarms the confirm
       for (const cell of selectCells) {
         if (!pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) continue;
+        // Export mode (X+P): clicking any INSTALLED level copies its data,
+        // regardless of lock state — you may want to edit a level you haven't
+        // unlocked for play yet.
+        if (exportMode) {
+          if (cell.exists) {
+            sfx.click();
+            showExportOverlay(levelToExportText(LEVELS[cell.i], cell.i), `Level ${cell.i + 1} — ${LEVELS[cell.i].name}`);
+          } else {
+            sfx.blocked();
+            selectMsg = { text: "No level in that slot to export", born: performance.now() };
+          }
+          return;
+        }
         if (cell.clickable) { sfx.click(); gotoLevel(cell.i); return; }
         if (cell.locked)    {
           sfx.blocked();
@@ -655,7 +745,7 @@
           return;
         }
       }
-      if (selectBackBtn && pointInRect(mx, my, selectBackBtn.x, selectBackBtn.y, selectBackBtn.w, selectBackBtn.h)) { sfx.click(); screen = "mainMenu"; }
+      if (selectBackBtn && pointInRect(mx, my, selectBackBtn.x, selectBackBtn.y, selectBackBtn.w, selectBackBtn.h)) { sfx.click(); exportMode = false; screen = "mainMenu"; }
       return;
     }
 
@@ -1307,6 +1397,17 @@
       } else {
         ctx.fillStyle = ((x+y)&1) ? "#2a3f2a" : "#2f472f";
         ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
+      }
+    }
+
+    // decoration layer — pure art painted in the builder, drawn over ground and
+    // under entities. Sheet 0 = terrain (tilemap), sheet 1 = characters (dungeon).
+    if (decoTiles && decoTiles.size) {
+      for (let y=y0; y<y1; y++) for (let x=x0; x<x1; x++) {
+        const d = decoTiles.get(key(x,y));
+        if (!d) continue;
+        if (d.s === 1) blit(d.i, x, y, charSheet, charReady);
+        else           blit(d.i, x, y, sheet, sheetReady);
       }
     }
 
@@ -2258,11 +2359,21 @@
       else if (!unlocked)   fill = "#2a3846";
       else if (completed)   fill = hover ? "#3f6a48" : "#35563d";
       else                  fill = hover ? "#4a6076" : "#3c5064";
-      panel(x, y, cellW, cellH, 12, fill, { stroke: unlocked ? "rgba(255,255,255,.2)" : "rgba(255,255,255,.06)", strokeW: 2 });
+      // Export mode: every INSTALLED level glows (gold), lock state aside, since
+      // you can export any level to edit it — even ones not yet unlocked to play.
+      let strokeCol = unlocked ? "rgba(255,255,255,.2)" : "rgba(255,255,255,.06)";
+      let strokeW = 2;
+      if (exportMode && exists) {
+        const eh = pointInRect(mouse.x, mouse.y, x, y, cellW, cellH);
+        fill = eh ? "#5a4a1e" : "#463a1a";
+        strokeCol = "#ffcf3f"; strokeW = 3;
+      }
+      panel(x, y, cellW, cellH, 12, fill, { stroke: strokeCol, strokeW });
 
       // number
       ctx.textBaseline = "middle";
-      ctx.fillStyle = exists ? (unlocked ? "#ffffff" : "#5f7085") : "#3a4a58";
+      if (exportMode && exists) ctx.fillStyle = "#ffe9b0";
+      else ctx.fillStyle = exists ? (unlocked ? "#ffffff" : "#5f7085") : "#3a4a58";
       ctx.font = "bold 40px 'Trebuchet MS', sans-serif";
       ctx.fillText(String(i+1), x+cellW/2, y+cellH/2 - 8);
 
@@ -2371,6 +2482,105 @@
     resetState(idx);
     screen = "levelIntro";
     if (!raf) raf = requestAnimationFrame(update);
+  }
+
+  // ---- Export a LEVELS[] entry back to builder-ready text --------------
+  // Emits the SAME format the Outpost Level Builder produces, so a level can be
+  // pasted straight back in, edited, and re-exported. Mirrors buildExport() over
+  // there: comment header, inline arrays, deco/solid rows, prose preserved.
+  function levelToExportText(L, idx) {
+    const q = (s) => '"' + String(s == null ? "" : s)
+      .replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n") + '"';
+    const pairs = (a) => "[" + (a || []).map(p => `[${p[0]},${p[1]}]`).join(",") + "]";
+    const house = L.startHouse || { x: 0, y: 0 };
+    const out = [];
+    out.push("{");
+    out.push(`  name: ${q(L.name || "New Level")},`);
+    out.push(`  subtitle: ${q(L.subtitle || "LEVEL N")},`);
+    out.push(`  clearText: ${q(L.clearText || "Level Cleared")},`);
+    out.push(`  goal: ${q(L.goal || "…objective…")},`);
+    out.push(`  blurb: ${q(L.blurb || "…intro-screen flavor text…")},`);
+    out.push(`  cols: ${L.cols}, rows: ${L.rows},`);
+    out.push(`  startHouse: { x: ${house.x}, y: ${house.y} },`);
+    if (L.tower) out.push(`  tower:      { x: ${L.tower.x}, y: ${L.tower.y} },`);
+    else         out.push(`  tower: null,`);
+    out.push(`  wallCol: ${Number.isInteger(L.wallCol) ? L.wallCol : -1},`);
+    if (L.nodeHpMult && L.nodeHpMult !== 1) out.push(`  nodeHpMult: ${L.nodeHpMult},`);
+    if (L.townhall) {
+      const t = L.townhall.tiles || [[100,100],[111,112],[123,124]];
+      out.push(`  townhall: {`);
+      out.push(`    anchor: { x: ${L.townhall.anchor.x}, y: ${L.townhall.anchor.y} },`);
+      out.push(`    tiles: [ ${t.map(r => `[${r.join(",")}]`).join(", ")} ],`);
+      out.push(`  },`);
+    }
+    out.push(`  trees: ${pairs(L.trees)},`);
+    out.push(`  rocks: ${pairs(L.rocks)},`);
+    out.push(`  cost:  { wood: ${L.cost.wood}, stone: ${L.cost.stone} },`);
+    out.push(`  stars: { gold: ${L.stars.gold}, silver: ${L.stars.silver} },`);
+    // objectives: emit verbatim if present, else null
+    if (L.objectives) out.push(`  objectives: ${JSON.stringify(L.objectives).replace(/"/g, "")},`);
+    else              out.push(`  objectives: null,`);
+    if (L.deco && L.deco.length) {
+      out.push(`  // decoration layer: [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]`);
+      out.push(`  deco: [${L.deco.map(d => `[${d[0]},${d[1]},${d[2]},${d[3]}]`).join(",")}],`);
+    }
+    if (L.solid && L.solid.length) {
+      out.push(`  // solid mask: [x, y] cells workers cannot walk through`);
+      out.push(`  solid: ${pairs(L.solid)},`);
+    }
+    out.push(`  intro: ${q(L.intro || "…how-to-play text…")},`);
+    out.push("}");
+    const header =
+`// ==== Exported from Outpost (Level ${idx + 1}) ====
+// size ${L.cols}×${L.rows} · ${(L.trees||[]).length} trees · ${(L.rocks||[]).length} rocks · ` +
+`${(L.deco||[]).length} deco · ${(L.solid||[]).length} solid\n`;
+    return header + out.join("\n");
+  }
+
+  // A canvas game has no DOM modal, so build a small HTML overlay on demand:
+  // a textarea with the level data + a Copy button, mirroring the builder's box.
+  function showExportOverlay(text, title) {
+    let bg = document.getElementById("lvlExportBg");
+    if (!bg) {
+      bg = document.createElement("div");
+      bg.id = "lvlExportBg";
+      bg.style.cssText = "position:fixed;inset:0;background:rgba(6,10,14,.72);display:flex;" +
+        "align-items:center;justify-content:center;z-index:9999;padding:24px;font-family:'Trebuchet MS',sans-serif";
+      bg.innerHTML =
+        '<div style="background:#1e2c39;border:1px solid rgba(255,255,255,.22);border-radius:12px;' +
+          'width:min(760px,100%);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.6)">' +
+          '<div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.1)">' +
+            '<div id="lvlExportTitle" style="color:#dbe6f0;font-size:16px;font-weight:bold"></div>' +
+            '<div style="color:#7d93a6;font-size:12px">paste this into the Level Builder\u2019s Import box to edit</div>' +
+          '</div>' +
+          '<div style="padding:14px 16px;overflow:auto">' +
+            '<textarea id="lvlExportText" spellcheck="false" readonly style="width:100%;height:340px;' +
+              'background:#0e151c;color:#cfe6c0;border:1px solid rgba(255,255,255,.1);border-radius:8px;' +
+              'padding:12px;font-family:Consolas,monospace;font-size:12px;line-height:1.5;resize:vertical;white-space:pre"></textarea>' +
+          '</div>' +
+          '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.1);display:flex;gap:10px;justify-content:flex-end">' +
+            '<button id="lvlExportClose" style="background:#26384a;color:#dbe6f0;border:1px solid rgba(255,255,255,.22);' +
+              'border-radius:7px;padding:8px 14px;font-family:inherit;font-size:13px;cursor:pointer">Close</button>' +
+            '<button id="lvlExportCopy" style="background:#2f4a30;color:#dff7df;border:1px solid #7de07d;' +
+              'border-radius:7px;padding:8px 14px;font-family:inherit;font-size:13px;cursor:pointer">Copy to clipboard</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(bg);
+      // wire close: button, or click on the dark backdrop
+      bg.addEventListener("click", (ev) => { if (ev.target === bg) bg.style.display = "none"; });
+      document.getElementById("lvlExportClose").addEventListener("click", () => { bg.style.display = "none"; });
+      document.getElementById("lvlExportCopy").addEventListener("click", () => {
+        const ta = document.getElementById("lvlExportText");
+        ta.select();
+        const btn = document.getElementById("lvlExportCopy");
+        const done = () => { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy to clipboard", 1400); };
+        if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done, () => { document.execCommand("copy"); done(); });
+        else { document.execCommand("copy"); done(); }
+      });
+    }
+    document.getElementById("lvlExportTitle").textContent = title;
+    document.getElementById("lvlExportText").value = text;
+    bg.style.display = "flex";
   }
   // From the intro screen, actually begin play.
   function beginPlay() {

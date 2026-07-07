@@ -162,6 +162,8 @@
 
   let NEED_WOOD = 15, NEED_STONE = 10;   // tower cost — set per-level from LEVELS[currentLevel].cost
   const TOWER_BUILD_MS = 6000;             // effort for ONE worker; N workers finish in TOWER_BUILD_MS/N (linear)
+  const THALL_BUILD_MS = 14000;            // town-hall section: deliberately long — a whole-crew job
+  const THALL_COST = { wood: 12, stone: 8 };  // per section (6 sections total)
   let GOLD_SEC = 90, SILVER_SEC = 140;   // star time thresholds — set per-level from LEVELS[currentLevel].stars
 
   // ---- Buildable types (build menu) -------------------------------------
@@ -259,7 +261,7 @@
   });
 
   // Tile types
-  const EMPTY = 0, TREE = 1, ROCK = 2, RUBBLE = 3, TOWER = 4, STOCK = 5, BUILDING = 6;
+  const EMPTY = 0, TREE = 1, ROCK = 2, RUBBLE = 3, TOWER = 4, STOCK = 5, BUILDING = 6, THALL = 7;
   // STOCK is a historical name — this tile type actually means "a house sits here."
   // The real stockpile is res.wood/res.stone in the HUD, not a tile. HOUSE is the
   // honest alias; both point at the same value so existing code keeps working and
@@ -276,6 +278,7 @@
       name: "The Clearing",
       subtitle: "LEVEL 1",
       clearText: "Level Cleared",   // shown on the level-complete screen
+      goal: "Rebuild the Watchtower",   // one-line objective on the intro screen
       blurb: "The frontier has gone quiet, and the old watchtower lies in ruin. " +
              "Clear the wilderness, gather timber and stone, and put your settlers " +
              "to work. Raise a workshop, break through the ridge, and rebuild the " +
@@ -298,6 +301,7 @@
       name: "The Expanse",
       subtitle: "LEVEL 2",
       clearText: "The Expanse Settled",
+      goal: "Build 5 Houses, Clear the Wall, Raise the Watchtower",
       blurb: "Word of the reclaimed clearing has spread, and villagers are moving " +
              "in to help tame the wider expanse. Put the whole crew to work — raise " +
              "homes for the newcomers, break down the long wall that splits the land, " +
@@ -311,7 +315,7 @@
       trees: [[3,6],[4,8],[2,10],[5,11],[3,13],[6,5],[4,2],[7,9],[5,15],[8,13]],
       rocks: [[6,7], [4,5], [8,10], [3,15]],   // 4 rocks = 24 stone: 6 for the workshop upgrade, 10 for the tower, buffer to spare
       cost:  { wood: 15, stone: 10 },   // tower cost
-      stars: { gold: 180, silver: 300 },
+      stars: { gold: 160, silver: 210 },   // 2:40 gold, 3:30 silver
       // Tower is gated: settle the outpost (5 houses) and clear the whole wall
       // before it will accept builders.
       objectives: { houses: 5, clearWalls: true },
@@ -319,6 +323,47 @@
              "Settlers are moving in: build 5 houses (one per worker — meet all " +
              "five!), upgrade a workshop to break through the wall, clear every " +
              "wall section, then raise a new watchtower on the far side to win.",
+    },
+    // ===== LEVEL 3 =====================================================
+    {
+      name: "The Town Hall",
+      subtitle: "LEVEL 3",
+      clearText: "Town Hall Raised",
+      goal: "Assemble the Town Hall (all 6 sections)",
+      blurb: "The settlement has outgrown its clearing. It's time to raise a proper " +
+             "Town Hall at the heart of the territory — a great timber-and-stone hall " +
+             "that will take the whole crew and a mountain of materials to assemble. " +
+             "Harvest the thick forests in every corner, quarry the stone ringing the " +
+             "site, and build all six sections of the hall to complete the outpost.",
+      cols: 24, rows: 18,
+      startHouse: { x: 2, y: 2 },
+      tower: null,   // no tower this level — the town hall is the goal
+      wallCol: -1,   // no wall this level
+      nodeHpMult: 2, // thick forests / dense rock — twice the harvest time
+      // Town hall: 2 wide x 3 tall, anchored so it sits centered on a 24x18 map.
+      // tiles listed row-major from the anchor: [left,right] per row, top->bottom.
+      townhall: {
+        anchor: { x: 11, y: 7 },
+        tiles: [ [100,100], [111,112], [123,124] ],
+      },
+      // Tree clusters in all four corners.
+      trees: [
+        [2,5],[3,5],[2,6],[4,6],[3,7],
+        [20,4],[21,5],[22,5],[21,6],[20,6],
+        [2,13],[3,14],[2,15],[4,14],[3,15],
+        [20,13],[21,14],[22,14],[21,15],[20,15],
+      ],
+      // Rocks circling the town-hall site (center ~11-12, 7-9).
+      rocks: [
+        [9,6],[11,5],[13,6],[14,8],[14,10],[13,11],[11,12],[9,11],[8,9],[9,8],
+      ],
+      cost:  { wood: 0, stone: 0 },
+      stars: { gold: 300, silver: 480 },
+      objectives: null,
+      intro: "THE TOWN HALL — click and drag to explore. Chop the corner forests for " +
+             "wood, build a workshop so your crew can mine the ring of stone, then click " +
+             "each of the six shadowed Town Hall sections in the center to assemble it. " +
+             "Every section is a long build — put your whole crew on it. Finish all six to win.",
     },
   ];
   let currentLevel = 0;   // index into LEVELS; the level currently loaded
@@ -367,7 +412,7 @@
     [RUBBLE]: { res: null,    amount: 0, work: 2000, hp: 12, label: "wall"},
   };
 
-  let grid, nodes, workers, houses, workshops, res, stockpile, tower, startTime, done, raf;
+  let grid, nodes, workers, houses, workshops, res, stockpile, tower, townhall, startTime, done, raf;
   let screen = "mainMenu";   // "mainMenu" | "levelSelect" | "levelIntro" | "play" | "levelComplete"
 
   function resetState(levelIndex) {
@@ -377,6 +422,7 @@
     // Pull per-level tuning into the engine's working variables.
     NEED_WOOD = L.cost.wood; NEED_STONE = L.cost.stone;
     GOLD_SEC = L.stars.gold; SILVER_SEC = L.stars.silver;
+    nodeHpMult = L.nodeHpMult || 1;
 
     // World dimensions come from the level. The viewport is fixed (16x12); the
     // camera scrolls when the world is bigger. Reset the camera to the origin.
@@ -388,17 +434,41 @@
     nodes = new Map(); // key "x,y" -> {type, hp, x, y}
 
     stockpile = { x: L.startHouse.x, y: L.startHouse.y };
-    tower     = { x: L.tower.x, y: L.tower.y, built: false, building: false, progress: 0 };
     grid[stockpile.y][stockpile.x] = HOUSE;
-    grid[tower.y][tower.x] = TOWER;
+
+    // Tower is optional (levels goaled on something else, like L3's town hall,
+    // omit it). Keep a harmless placeholder when absent so code that reads it
+    // doesn't blow up; it's just never placed or clickable.
+    if (L.tower) {
+      tower = { x: L.tower.x, y: L.tower.y, built: false, building: false, progress: 0 };
+      grid[tower.y][tower.x] = TOWER;
+    } else {
+      tower = { x: -1, y: -1, built: true, building: false, progress: 1 };  // "built" so win/HUD checks stay quiet
+    }
+
+    // Town hall (optional): a multi-tile shadowed structure the crew assembles,
+    // each cell built independently, walk-through until built. Win = all built.
+    townhall = null;
+    if (L.townhall) {
+      const th = L.townhall, parts = [];
+      for (let r = 0; r < th.tiles.length; r++) {
+        for (let c = 0; c < th.tiles[r].length; c++) {
+          const x = th.anchor.x + c, y = th.anchor.y + r;
+          grid[y][x] = THALL;
+          parts.push({ x, y, tile: th.tiles[r][c], built: false, building: false, progress: 0 });
+        }
+      }
+      townhall = { parts };
+    }
 
     // Houses: each is a home tile a worker lives in and hauls to. Worker 1 starts
     // in the first house; more are built during play via the build menu.
     houses = [];
     addHouse(L.startHouse.x, L.startHouse.y, true);   // house 0 = starting home
 
-    // Destructible wall — a full-height column, no gaps (spans the world height).
-    for (let y = 0; y < worldRows; y++) place(L.wallCol, y, RUBBLE);
+    // Destructible wall — a full-height column (levels without a wall use -1).
+    wallBreached = false;   // announce "the way is open" only the first time the wall clears
+    if (L.wallCol >= 0) for (let y = 0; y < worldRows; y++) place(L.wallCol, y, RUBBLE);
 
     // Resource nodes from data.
     L.trees.forEach(([x,y]) => place(x,y,TREE));
@@ -457,6 +527,7 @@
   function spawnWorker(home) {
     const sprite = WORKER_SPRITES[workers.length % WORKER_SPRITES.length];
     const name = WORKER_NAMES[workers.length % WORKER_NAMES.length];
+    home.name = name;   // label the house with its resident's name
     workers.push({
       home,                                   // this worker's house {x,y}
       name,                                   // Bobby, Sammy, Tommy, Mindy, Freddy
@@ -466,11 +537,13 @@
       carry: null, carryAmt: 0, workUntil: 0, moveT: 0,
       facing: 1, animT: 0,
       _node: null, _repeatNode: null, _depositOnArrive: false, _targetNodeKey: null,
-      _buildType: null, _upgradeWorkshop: null, _buildAt: null, buildUntil: 0, _towerBuild: false,
+      _buildType: null, _upgradeWorkshop: null, _buildAt: null, buildUntil: 0, _towerBuild: false, _thallPart: null,
     });
   }
 
-  function place(x, y, type) { grid[y][x] = type; if (JOB[type]) nodes.set(key(x,y), {type, hp: JOB[type].hp, x, y}); }
+  let nodeHpMult = 1;   // per-level: scales tree/rock hp (longer to harvest). Keep integer so hp stays divisible by amount.
+  let wallBreached = false;   // set true the first time the wall is fully cleared, so the breach message fires once
+  function place(x, y, type) { grid[y][x] = type; if (JOB[type]) nodes.set(key(x,y), {type, hp: JOB[type].hp * (JOB[type].res ? nodeHpMult : 1), x, y}); }
   function remove(x, y) { grid[y][x] = EMPTY; nodes.delete(key(x,y)); }
   const key = (x,y) => x + "," + y;
 
@@ -479,6 +552,12 @@
   function walkable(x, y) {
     if (x < 0 || y < 0 || x >= worldCols || y >= worldRows) return false;
     const t = grid[y][x];
+    if (t === THALL) {
+      // A town-hall cell blocks movement only once its part is built; ghosted
+      // (unbuilt) parts are walk-through, matching the shadow-then-solid design.
+      const part = townhall && townhall.parts.find(p => p.x === x && p.y === y);
+      return !part || !part.built;
+    }
     return t === EMPTY || t === STOCK;
   }
 
@@ -567,7 +646,14 @@
       }
       clearArmed = false;   // any other click disarms the confirm
       for (const cell of selectCells) {
-        if (cell.clickable && pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) { sfx.click(); gotoLevel(cell.i); return; }
+        if (!pointInRect(mx, my, cell.x, cell.y, cell.w, cell.h)) continue;
+        if (cell.clickable) { sfx.click(); gotoLevel(cell.i); return; }
+        if (cell.locked)    {
+          sfx.blocked();
+          const text = cell.exists ? "Unlock Prior Level First!" : "Coming Soon!";
+          selectMsg = { text, born: performance.now() };
+          return;
+        }
       }
       if (selectBackBtn && pointInRect(mx, my, selectBackBtn.x, selectBackBtn.y, selectBackBtn.w, selectBackBtn.h)) { sfx.click(); screen = "mainMenu"; }
       return;
@@ -695,10 +781,33 @@
       }
       return;
     }
-  }
 
-  // Can a building go on (gx,gy)? Empty cell, and placing it must not seal
-  // off any resource / the tower from every worker.
+    // Click a Town Hall section: start a long timed build (charge resources once
+    // per section) or send another idle worker to join it (linear speedup). When
+    // a section completes it becomes solid (non-walkable). All sections built = win.
+    if (t === THALL && townhall) {
+      const part = townhall.parts.find(p => p.x === gx && p.y === gy);
+      if (!part || part.built) return;
+      if (!part.building) {
+        if (res.wood < THALL_COST.wood || res.stone < THALL_COST.stone) {
+          setMsg(`Each Town Hall section needs ${THALL_COST.wood}w + ${THALL_COST.stone}s.`);
+          return;
+        }
+        const w = nearestIdleTo(gx, gy);
+        if (!w) { setMsg(dispatchFailMsg(gx, gy)); return; }
+        res.wood -= THALL_COST.wood; res.stone -= THALL_COST.stone; updateHUD();
+        part.building = true; part.progress = 0;
+        dispatch(w, gx, gy, { thall: part });
+        setMsg(`${w.name} is assembling a Town Hall section — click it again to add builders.`);
+      } else {
+        const w = nearestIdleTo(gx, gy);
+        if (!w) { setMsg(anyIdleWorker() ? "Can't reach that section." : "No free worker to add. Wait for one."); return; }
+        dispatch(w, gx, gy, { thall: part });
+        setMsg(`${w.name} joins the Town Hall build.`);
+      }
+      return;
+    }
+  }
   // A placement is invalid only if it makes something WORSE — i.e. strands a
   // node/target that is reachable RIGHT NOW. Things already blocked (e.g. by the
   // wall) aren't this placement's fault, so we ignore them.
@@ -721,6 +830,8 @@
     const nodesReachableBefore = [];
     for (const [, n] of nodes) if (reachableNow(n.x, n.y)) nodesReachableBefore.push(n);
     const towerReachableBefore = reachableNow(tower.x, tower.y);
+    // Unbuilt town-hall sections that can currently be reached must stay reachable.
+    const thallReachableBefore = townhall ? townhall.parts.filter(p => !p.built && reachableNow(p.x, p.y)) : [];
 
     // Temporarily place a non-walkable building and re-test only those.
     grid[gy][gx] = BUILDING;
@@ -730,6 +841,11 @@
     }
     if (!stranded && towerReachableBefore && !reachableNow(tower.x, tower.y)) {
       stranded = "the tower";
+    }
+    if (!stranded) {
+      for (const p of thallReachableBefore) {
+        if (!reachableNow(p.x, p.y)) { stranded = "the Town Hall"; break; }
+      }
     }
     grid[gy][gx] = EMPTY;
 
@@ -833,9 +949,10 @@
     w._buildType = opts.build || null;   // building key to construct on arrival, or null
     w._upgradeWorkshop = opts.upgrade || null;   // workshop object to upgrade on arrival
     w._towerBuild = opts.tower || false;   // heading to the tower to contribute build progress
+    w._thallPart = opts.thall || null;     // heading to a town-hall section to build it
     // is the destination a live harvest node? (tree/rock/wall) — used to abort
     // the walk if it gets depleted before the worker arrives.
-    w._targetNodeKey = (!w._buildType && !w._upgradeWorkshop && !w._towerBuild && nodes.has(key(gx, gy))) ? key(gx, gy) : null;
+    w._targetNodeKey = (!w._buildType && !w._upgradeWorkshop && !w._towerBuild && !w._thallPart && nodes.has(key(gx, gy))) ? key(gx, gy) : null;
     w.path = path;
     w.target = {x: gx, y: gy};
     w.state = "moving";
@@ -939,6 +1056,21 @@
         updateHUD();
         win(now);
       }
+    } else if (w.state === "thall") {
+      const part = w._thallPart;
+      if (!part || part.built) { w._thallPart = null; w.state = "idle"; return; }
+      part.progress += TICK_MS / THALL_BUILD_MS;
+      if (part.progress >= 1) {
+        part.progress = 1;
+        part.built = true;
+        part.building = false;
+        // this cell is now solid — pathfinding already reads part.built via walkable()
+        // release everyone parked on THIS section
+        for (const o of workers) if (o.state === "thall" && o._thallPart === part) { o._thallPart = null; o.state = "idle"; o.target = null; }
+        sfx.build();
+        addFloater(part.x, part.y, "Built!", "#cfe6c0");
+        if (townhall.parts.every(p => p.built)) { updateHUD(); win(now); }
+      }
     }
   }
 
@@ -964,7 +1096,7 @@
       const newHome = addHouse(bx, by, false);
       spawnWorker(newHome);
       addFloater(bx, by, "House!", "#cfe6c0");
-      setMsg(`House built — worker ${workers.length} moved in`);
+      setMsg(`${newHome.name} has moved in`);
     } else if (key_ === "workshop") {
       grid[by][bx] = BUILDING;
       workshops.push({ x: bx, y: by, level: 1 });
@@ -1020,6 +1152,14 @@
     }
     if (w._towerBuild) { w._towerBuild = false; w.state = "idle"; w.target = null; return; }
 
+    // Arrived adjacent to a Town Hall section to contribute build progress.
+    if (w._thallPart && !w._thallPart.built) {
+      w.state = "thall";
+      w.target = null;
+      return;
+    }
+    if (w._thallPart) { w._thallPart = null; w.state = "idle"; w.target = null; return; }
+
     // A hauler carrying goods has arrived at its own home tile. Deposit here and
     // re-arm the gather loop directly — this must happen in arriveAtTarget (same
     // sim tick as arrival), not in a separate render-time pass, or the node
@@ -1070,8 +1210,18 @@
 
     if (node.hp <= 0) {
       remove(node.x, node.y);
-      if (job.label === "wall") sfx.wallBreak();
-      setMsg(job.label === "wall" ? "Wall breached — the way is open." : `Depleted a ${job.label}.`);
+      if (job.label === "wall") {
+        sfx.wallBreak();
+        // Announce the breach only the first time the wall is fully cleared.
+        // (Level 1's single-tile wall clears on the first break, so it still
+        // fires once there; Level 2's long wall waits until the last section.)
+        if (!wallBreached && wallsRemaining() === 0) {
+          wallBreached = true;
+          setMsg("Wall breached — the way is open.");
+        }
+      } else {
+        setMsg(`Depleted a ${job.label}.`);
+      }
     }
 
     if (job.res) {
@@ -1173,6 +1323,16 @@
         // house level badge (all houses L1 for now; upgrade mechanics come later)
         const h = houses.find(hh => hh.x === x && hh.y === y);
         if (h) levelBadge(x, y, h.level || 1);
+        // resident name above the house
+        if (h && h.name) {
+          ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+          ctx.font = "bold 11px 'Trebuchet MS', sans-serif";
+          const ny = y*TILE - 3;
+          ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.75)";
+          ctx.strokeText(h.name, x*TILE + TILE/2, ny);
+          ctx.fillStyle = "#ffe9b0";
+          ctx.fillText(h.name, x*TILE + TILE/2, ny);
+        }
       }
       else if (t === BUILDING) {
         const ws = workshops.find(s => s.x === x && s.y === y);
@@ -1226,11 +1386,35 @@
           }
         }
       }
+      else if (t === THALL && townhall) {
+        const part = townhall.parts.find(p => p.x === x && p.y === y);
+        if (part && part.built) {
+          // solid section
+          if (sheetReady) blit(part.tile, x, y); else { ctx.fillStyle = "#6b5236"; ctx.fillRect(x*TILE+2, y*TILE+2, TILE-4, TILE-4); }
+        } else if (part) {
+          // ghosted section: faded sprite, dashed outline, progress bar when building
+          const pulse = 0.30 + 0.28*Math.abs(Math.sin(performance.now()/600));
+          ctx.save();
+          ctx.globalAlpha = pulse;
+          if (sheetReady) blit(part.tile, x, y); else { ctx.fillStyle = "#6b5236"; ctx.fillRect(x*TILE+4, y*TILE+4, TILE-8, TILE-8); }
+          ctx.restore();
+          ctx.strokeStyle = `rgba(230,180,34,${0.5+0.4*Math.abs(Math.sin(performance.now()/600))})`;
+          ctx.lineWidth = 2; ctx.setLineDash([5,4]);
+          ctx.strokeRect(x*TILE+3, y*TILE+3, TILE-6, TILE-6);
+          ctx.setLineDash([]);
+          if (part.building) {
+            const frac = Math.max(0, Math.min(1, part.progress));
+            const bx = x*TILE + 6, by = y*TILE + 3, bw = TILE - 12, bh = 4;
+            ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(bx-1, by-1, bw+2, bh+2);
+            ctx.fillStyle = "#6fae5f"; ctx.fillRect(bx, by, bw * frac, bh);
+          }
+        }
+      }
     }
 
     // health bars — only on damaged nodes (hidden when full)
     for (const [, n] of nodes) {
-      const max = JOB[n.type].hp;
+      const max = JOB[n.type].hp * (JOB[n.type].res ? nodeHpMult : 1);
       if (n.hp >= max) continue;               // full = no bar
       const frac = Math.max(0, n.hp / max);
       const bx = n.x*TILE + 6, by = n.y*TILE + 3, bw = TILE - 12, bh = 4;
@@ -1633,6 +1817,14 @@
       if (tower.building) return { text: "Add builder to the tower", color: "#7de07d" };
       return { text: `Build Tower for ${NEED_WOOD}w ${NEED_STONE}s`, color: "#ffcf3f" };
     }
+    if (t === THALL && townhall) {
+      const part = townhall.parts.find(p => p.x === gx && p.y === gy);
+      if (part && !part.built) {
+        if (part.building) return { text: `Add builder (${Math.round(part.progress*100)}%)`, color: "#7de07d" };
+        const built = townhall.parts.filter(p => p.built).length;
+        return { text: `Build Town Hall — ${THALL_COST.wood}w ${THALL_COST.stone}s  (${built}/6 done)`, color: "#ffcf3f" };
+      }
+    }
     return null;
   }
 
@@ -1791,7 +1983,7 @@
     if (w.state === "moving") {
       // walk-bob: hop on a sine wave, ~5 hops/sec
       bob = -Math.abs(Math.sin(w.animT / 90)) * 3;
-    } else if (w.state === "working" || w.state === "building" || w.state === "tower") {
+    } else if (w.state === "working" || w.state === "building" || w.state === "tower" || w.state === "thall") {
       // work-wiggle: quick side-to-side while chopping/mining/building
       wiggle = Math.sin(w.animT / 45) * 2;
     }
@@ -1956,7 +2148,7 @@
     // Objective line
     ctx.fillStyle = "#5fc55f";
     ctx.font = "bold 16px 'Trebuchet MS', sans-serif";
-    ctx.fillText("OBJECTIVE:  Rebuild the Watchtower", W/2, H*0.70);
+    ctx.fillText(`OBJECTIVE:  ${_L.goal || "Rebuild the Watchtower"}`, W/2, H*0.70);
 
     // Start prompt (pulsing button) — now a registered hit-target.
     const pulse = 0.6 + 0.4*Math.abs(Math.sin(performance.now()/500));
@@ -2090,7 +2282,7 @@
         ctx.fillText("\uD83D\uDD12", x+cellW-18, y+18);
       }
 
-      selectCells.push({ i, x, y, w: cellW, h: cellH, clickable: unlocked });
+      selectCells.push({ i, x, y, w: cellW, h: cellH, clickable: unlocked, locked: !unlocked, exists });
     }
     ctx.textBaseline = "alphabetic";
 
@@ -2114,7 +2306,21 @@
     ctx.fillText(clearArmed ? "Tap again to confirm" : "Clear Progress", cX+bW/2, rowY+bH/2);
     clearProgressBtn = { x: cX, y: rowY, w: bW, h: bH };
     ctx.textBaseline = "alphabetic";
+
+    // Transient toast when a subdued level is tapped: "Coming Soon!" for empty
+    // future slots, "Unlock Prior Level First!" for a real but still-locked level.
+    if (selectMsg) {
+      const age = performance.now() - selectMsg.born, DUR = 1600;
+      if (age < DUR) {
+        ctx.globalAlpha = age > DUR*0.6 ? 1 - (age - DUR*0.6)/(DUR*0.4) : 1;
+        ctx.fillStyle = "#ffcf3f"; ctx.textAlign = "center";
+        ctx.font = "bold 22px 'Trebuchet MS', sans-serif";
+        ctx.fillText(selectMsg.text, W/2, rowY - 14);
+        ctx.globalAlpha = 1;
+      } else selectMsg = null;
+    }
   }
+  let selectMsg = null;   // { text, born } — brief toast on the level-select screen
 
   // simple canvas word-wrap, centered
   function wrapText(text, cx, y, maxWidth, lineHeight) {
