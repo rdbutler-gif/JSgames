@@ -473,7 +473,7 @@
     [RUBBLE]: { res: null,    amount: 0, work: 2000, hp: 12, label: "wall"},
   };
 
-  let grid, nodes, workers, houses, workshops, res, stockpile, tower, townhall, startTime, done, raf;
+  let grid, nodes, workers, houses, workshops, res, stockpile, tower, townhall, done, raf;
   let solidMask = null;   // Set of "x,y" keys the crew cannot walk through (from L.solid)
   let decoTiles = null;   // Map "x,y" -> {s, i}: ground-layer art drawn under entities (from L.deco)
   let screen = "mainMenu";   // "mainMenu" | "levelSelect" | "levelIntro" | "play" | "levelComplete"
@@ -559,7 +559,6 @@
 
     res = { wood: 0, stone: 0 };
     done = false;
-    startTime = performance.now();
     simNow = 0; simAccum = 0;    // reset the simulation clock for the new level
     updateHUD();
     rollGround();
@@ -2436,24 +2435,8 @@
   }
   let selectMsg = null;   // { text, born } — brief toast on the level-select screen
 
-  // simple canvas word-wrap, centered
-  function wrapText(text, cx, y, maxWidth, lineHeight) {
-    const words = text.split(" ");
-    let line = "", ly = y;
-    for (const word of words) {
-      const test = line ? line + " " + word : word;
-      if (ctx.measureText(test).width > maxWidth && line) {
-        ctx.fillText(line, cx, ly);
-        line = word; ly += lineHeight;
-      } else {
-        line = test;
-      }
-    }
-    if (line) ctx.fillText(line, cx, ly);
-  }
-
-  // Like wrapText, but RETURNS the array of lines instead of drawing — used to
-  // size a box before rendering (caller must set ctx.font first for measuring).
+  // Canvas word-wrap that RETURNS the array of lines instead of drawing — used
+  // to size a box before rendering (caller must set ctx.font first for measuring).
   function wrapLines(text, maxWidth) {
     const words = text.split(" ");
     const lines = [];
@@ -2474,7 +2457,6 @@
     done = false;
     resetState();
     screen = "play";              // Restart/Play Again skip the title
-    startTime = performance.now();
     if (!raf) raf = requestAnimationFrame(update);
   }
 
@@ -2588,7 +2570,6 @@
   // From the intro screen, actually begin play.
   function beginPlay() {
     screen = "play";
-    startTime = performance.now();
   }
   // True if there's a next level after the current one that exists in LEVELS.
   function hasNextLevel() { return currentLevel + 1 < LEVELS.length; }

@@ -539,11 +539,11 @@ function cellAt(evt) {
   return {x,y};
 }
 
-function applyTool(x, y, erasing) {
+function applyTool(x, y, erasing, evt) {
   if (erasing) {
     // erase targets whatever layer the active tool works in
     if (tool === "solid") { solid[y][x] = false; return; }
-    if (tool === "deco"  || (window.event && window.event.shiftKey)) { deco[y][x]=null; return; }
+    if (tool === "deco"  || (evt && evt.shiftKey)) { deco[y][x]=null; return; }
     // right-drag clears entity content at this cell + any anchor / wall there
     ent[y][x] = EMPTY;
     if (x === wallCol) wallCol = -1;
@@ -584,12 +584,12 @@ board.addEventListener("pointerdown", e => {
   painting = true; paintErase = (e.button === 2);
   if (orphans){ orphans = null; }   // user is fixing it — drop the highlight
   board.setPointerCapture(e.pointerId);
-  applyTool(c.x, c.y, paintErase); draw();
+  applyTool(c.x, c.y, paintErase, e); draw();
 });
 board.addEventListener("pointermove", e => {
   if (!painting) return;
   const c = cellAt(e); if (!c) return;
-  applyTool(c.x, c.y, paintErase); draw();
+  applyTool(c.x, c.y, paintErase, e); draw();
 });
 board.addEventListener("pointerup", e => {
   painting = false;
