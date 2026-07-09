@@ -183,10 +183,7 @@
   <span class="hint">
     <span class="kbd">L-drag</span> paint&nbsp;·&nbsp;
     <span class="kbd">R-drag</span> erase&nbsp;·&nbsp;
-    <span class="kbd">Alt</span> eyedrop&nbsp;·&nbsp;
-    <span class="kbd">Ctrl-click</span> select&nbsp;·&nbsp;
-    <span class="kbd">click</span> grab/drop&nbsp;·&nbsp;
-    <span class="kbd">Esc</span> cancel
+    <span class="kbd">Alt</span> eyedrop deco
   </span>
 </header>
 
@@ -217,16 +214,6 @@
       <div class="tool" data-ent="house"><span class="swatch" id="sw-house"></span><span class="desc">Start house<small>anchor — one only</small></span></div>
       <div class="tool" data-ent="tower"><span class="swatch" id="sw-tower"></span><span class="desc">Tower goal<small>anchor — one only</small></span></div>
       <div class="tool" data-ent="hall"><span class="swatch" id="sw-hall"></span><span class="desc">Town hall<small>2×3 anchor — one only</small></span></div>
-    </div>
-
-    <div class="group">
-      <div class="label">Move a group</div>
-      <div class="note">
-        <span class="kbd">Ctrl</span>+click cells to select a structure (Ctrl+right-click
-        removes one; Ctrl-drag sweeps). Then plain-click any selected cell to
-        <em>lift</em> the whole stack — art, entities, solid, anchors — and it rides
-        the cursor. Click again to drop, <span class="kbd">Esc</span> to cancel.
-      </div>
     </div>
 
     <div class="group">
@@ -428,22 +415,6 @@ let layerView = "both";        // both|deco|ent
 let showSolid = true;          // render the red solid-mask overlay
 let orphans = null;            // Set of y*W+x cells flagged unreachable at export
 
-// ---- Selection + group-move state ----------------------------------
-// selection: a Set of y*W+x cell keys, built with Ctrl+click. When the user
-// plain-clicks inside a live selection, we "lift" the whole stack (entity +
-// deco + solid) out of those cells — plus any anchors / wall column whose
-// footprint intersects the selection — into `carry`, which then rides the
-// cursor until a second click drops it. Esc / right-click cancels and restores.
-let selection = new Set();      // Set<number> of y*W+x keys currently selected
-let carry = null;               // active group-move payload, or null. Shape below.
-let hoverCell = null;           // {x,y} last hovered cell — used to ghost the carry
-// carry = {
-//   cells:   [{dx,dy, ent, deco, solid}],   // relative offsets + lifted stack
-//   anchors: [{key:"house"|"tower"|"hall", dx,dy}],  // anchor offsets from grab origin
-//   wall:    {dCol} | null,                 // wall column carried, by column delta
-//   grab:    {x,y},                          // the cell that was grabbed
-// }
-
 // ---- Canvas --------------------------------------------------------
 const board = document.getElementById("board");
 const ctx = board.getContext("2d");
@@ -537,53 +508,6 @@ function draw() {
     if (anchors.tower) drawAnchor("tower", anchors.tower);
     if (anchors.hall)  drawHall(anchors.hall);
   }
-
-  // ---- selection outline (cyan) — cells marked for group-move ----
-  if (selection.size && !carry){
-    ctx.save();
-    for (const k of selection){
-      const sx=k%W, sy=(k/W)|0, dx=sx*TILE, dy=sy*TILE;
-      ctx.fillStyle="rgba(90,200,220,.18)"; ctx.fillRect(dx,dy,TILE,TILE);
-      ctx.strokeStyle="#5ac8dc"; ctx.lineWidth=2;
-      ctx.strokeRect(dx+1,dy+1,TILE-2,TILE-2);
-    }
-    ctx.restore();
-  }
-
-  // ---- carry ghost — the lifted group riding the cursor ----
-  if (carry && hoverCell){
-    drawCarryGhost();
-  }
-}
-
-// Paint the picked-up group at its would-be drop position, translucent, so the
-// user sees where a click will land it. Offset = hovered cell − grabbed cell.
-function drawCarryGhost(){
-  const ox = hoverCell.x - carry.grab.x;
-  const oy = hoverCell.y - carry.grab.y;
-  const off = dropOffset();                      // clamped so it can't fully leave
-  ctx.save();
-  ctx.globalAlpha = 0.6;
-  for (const c of carry.cells){
-    const gx=carry.grab.x+off.ox+c.dx, gy=carry.grab.y+off.oy+c.dy;
-    if (gx<0||gy<0||gx>=W||gy>=H) continue;
-    const dx=gx*TILE, dy=gy*TILE;
-    if (c.deco) blitTo(ctx, c.deco.s, c.deco.i, dx, dy, TILE);
-    if (c.ent && c.ent!==EMPTY){
-      const art=ENT_ART[c.ent];
-      if (!blitTo(ctx, art.s, art.i, dx, dy, TILE)) fallbackTile(c.ent, dx, dy);
-    }
-    if (c.solid){ ctx.fillStyle="rgba(217,83,79,.4)"; ctx.fillRect(dx,dy,TILE,TILE); }
-    ctx.strokeStyle="#5ac8dc"; ctx.lineWidth=1;
-    ctx.strokeRect(dx+.5,dy+.5,TILE-1,TILE-1);
-  }
-  // carried anchors, ghosted
-  for (const a of carry.anchors){
-    const gx=carry.grab.x+off.ox+a.dx, gy=carry.grab.y+off.oy+a.dy;
-    if (a.key==="hall") drawHall({x:gx,y:gy});
-    else if (gx>=0&&gy>=0&&gx<W&&gy<H) drawAnchor(a.key,{x:gx,y:gy});
-  }
-  ctx.restore();
 }
 
 function drawAnchor(type, {x,y}) {
@@ -647,165 +571,10 @@ function clearAnchorAt(x,y){
   }
 }
 
-// ---- Group move: lift / drop --------------------------------------
-// The drop offset from the grabbed cell to the hovered cell, clamped so the
-// group's bounding box stays at least partially on-map (fully-off drops are
-// meaningless). We clamp the box, not each cell, so relative shape is kept.
-function selectionBounds(){
-  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
-  for (const k of selection){
-    const x=k%W, y=(k/W)|0;
-    if (x<minx)minx=x; if (y<miny)miny=y; if (x>maxx)maxx=x; if (y>maxy)maxy=y;
-  }
-  return {minx,miny,maxx,maxy};
-}
-function dropOffset(){
-  if (!carry||!hoverCell) return {ox:0,oy:0};
-  let ox = hoverCell.x - carry.grab.x;
-  let oy = hoverCell.y - carry.grab.y;
-  // clamp using the lifted box so at least one cell stays in-bounds
-  const b = carry.box;
-  ox = Math.max(-b.minx, Math.min(W-1-b.maxx, ox));
-  oy = Math.max(-b.miny, Math.min(H-1-b.maxy, oy));
-  return {ox,oy};
-}
-
-// Lift the whole stack of every selected cell (plus intersecting anchors and
-// the wall column) into `carry`, blanking the source cells. Returns false if
-// there's nothing liftable.
-function liftSelection(grab){
-  if (!selection.size) return false;
-  const box = selectionBounds();
-  const cells=[], anchorList=[];
-  let wall=null;
-
-  for (const k of selection){
-    const x=k%W, y=(k/W)|0;
-    const e=ent[y][x], d=deco[y][x], s=solid[y][x];
-    if (e!==EMPTY || d || s){
-      cells.push({dx:x-grab.x, dy:y-grab.y, ent:e, deco:d, solid:s});
-    }
-    // blank the source stack
-    ent[y][x]=EMPTY; deco[y][x]=null; solid[y][x]=false;
-  }
-
-  // anchors: carried if their footprint's origin cell is inside the selection
-  const inSel=(x,y)=>selection.has(y*W+x);
-  for (const key of ["house","tower"]){
-    const a=anchors[key];
-    if (a && inSel(a.x,a.y)){ anchorList.push({key, dx:a.x-grab.x, dy:a.y-grab.y}); anchors[key]=null; }
-  }
-  if (anchors.hall){
-    const h=anchors.hall;
-    // carry the hall if ANY of its six footprint cells is selected
-    let hit=false;
-    for (let r=0;r<3&&!hit;r++) for (let c=0;c<2;c++) if (inSel(h.x+c,h.y+r)){ hit=true; break; }
-    if (hit){ anchorList.push({key:"hall", dx:h.x-grab.x, dy:h.y-grab.y}); anchors.hall=null; }
-  }
-
-  // wall column: carried by column delta if any selected cell sits in it
-  if (wallCol>=0){
-    let hit=false;
-    for (const k of selection) if (k%W===wallCol){ hit=true; break; }
-    if (hit){ wall={dCol: wallCol-grab.x}; wallCol=-1; }
-  }
-
-  if (!cells.length && !anchorList.length && !wall){
-    return false;   // selection was empty of content — nothing to move
-  }
-  carry = { cells, anchors:anchorList, wall, grab, box };
-  return true;
-}
-
-// Drop the carried group at the current offset. Overwrites destination cells.
-// A hall whose 2×3 footprint would spill off-map refuses the drop (kept carried).
-function dropCarry(){
-  const off = dropOffset();
-
-  // validate hall footprint first — refuse rather than clip a structure
-  for (const a of carry.anchors){
-    if (a.key==="hall"){
-      const hx=carry.grab.x+off.ox+a.dx, hy=carry.grab.y+off.oy+a.dy;
-      if (hx<0||hy<0||hx+2>W||hy+3>H){
-        toast("Town hall would run off the map — nudge back on."); return false;
-      }
-    }
-  }
-
-  for (const c of carry.cells){
-    const gx=carry.grab.x+off.ox+c.dx, gy=carry.grab.y+off.oy+c.dy;
-    if (gx<0||gy<0||gx>=W||gy>=H) continue;   // clamp already keeps box on-map
-    if (c.ent!==EMPTY) ent[gy][gx]=c.ent;
-    if (c.deco) deco[gy][gx]=c.deco;
-    if (c.solid) solid[gy][gx]=true;
-  }
-  for (const a of carry.anchors){
-    const gx=carry.grab.x+off.ox+a.dx, gy=carry.grab.y+off.oy+a.dy;
-    if (a.key==="hall") anchors.hall={x:gx,y:gy};
-    else if (gx>=0&&gy>=0&&gx<W&&gy<H) anchors[a.key]={x:gx,y:gy};
-  }
-  if (carry.wall){
-    const nc = carry.grab.x+off.ox+carry.wall.dCol;
-    if (nc>=0&&nc<W) wallCol=nc;
-  }
-  carry=null; selection.clear();
-  return true;
-}
-
-// Cancel a carry — put every lifted piece back exactly where it came from.
-function cancelCarry(){
-  if (!carry) return;
-  for (const c of carry.cells){
-    const gx=carry.grab.x+c.dx, gy=carry.grab.y+c.dy;
-    if (gx<0||gy<0||gx>=W||gy>=H) continue;
-    if (c.ent!==EMPTY) ent[gy][gx]=c.ent;
-    if (c.deco) deco[gy][gx]=c.deco;
-    if (c.solid) solid[gy][gx]=true;
-  }
-  for (const a of carry.anchors){
-    const gx=carry.grab.x+a.dx, gy=carry.grab.y+a.dy;
-    if (a.key==="hall") anchors.hall={x:gx,y:gy};
-    else anchors[a.key]={x:gx,y:gy};
-  }
-  if (carry.wall) wallCol = carry.grab.x + carry.wall.dCol;
-  carry=null; draw();
-}
-
 let painting = false, paintErase = false;
-let selDrag = null;   // {erasing} while a Ctrl-drag is extending the selection
 board.addEventListener("contextmenu", e => e.preventDefault());
 board.addEventListener("pointerdown", e => {
   const c = cellAt(e); if (!c) return;
-
-  // ---- carry active: a click drops it; right-click cancels ----
-  if (carry){
-    if (e.button===2){ cancelCarry(); return; }
-    hoverCell = c;
-    if (dropCarry()) draw();
-    return;
-  }
-
-  // ---- Ctrl = build/edit the selection set ----
-  if (e.ctrlKey || e.metaKey){
-    const k = c.y*W + c.x;
-    if (e.button===2){ selection.delete(k); }   // Ctrl+R-click removes
-    else            { selection.add(k); }        // Ctrl+L-click adds
-    selDrag = { erasing: e.button===2 };         // allow Ctrl-drag to continue
-    board.setPointerCapture(e.pointerId);
-    draw();
-    return;
-  }
-
-  // ---- plain click inside a live selection: grab the group ----
-  if (selection.size && selection.has(c.y*W+c.x) && e.button===0){
-    if (liftSelection(c)){ hoverCell=c; draw(); }
-    else { selection.clear(); draw(); }          // nothing to lift — clear it
-    return;
-  }
-
-  // ---- plain click outside a live selection: clear it, then paint ----
-  if (selection.size && e.button===0){ selection.clear(); }
-
   // Alt = eyedropper: pick the deco tile under the cursor
   if (e.altKey) {
     const d = deco[c.y][c.x];
@@ -818,25 +587,12 @@ board.addEventListener("pointerdown", e => {
   applyTool(c.x, c.y, paintErase, e); draw();
 });
 board.addEventListener("pointermove", e => {
-  const c = cellAt(e);
-
-  // while carrying, track the hovered cell so the ghost follows the cursor
-  if (carry){
-    if (c && (!hoverCell || c.x!==hoverCell.x || c.y!==hoverCell.y)){ hoverCell=c; draw(); }
-    return;
-  }
-  // Ctrl-drag extends (or erases) the selection across cells
-  if (selDrag && c){
-    const k=c.y*W+c.x;
-    if (selDrag.erasing) selection.delete(k); else selection.add(k);
-    draw();
-    return;
-  }
-  if (!painting || !c) return;
+  if (!painting) return;
+  const c = cellAt(e); if (!c) return;
   applyTool(c.x, c.y, paintErase, e); draw();
 });
 board.addEventListener("pointerup", e => {
-  painting = false; selDrag = null;
+  painting = false;
   try { board.releasePointerCapture(e.pointerId); } catch(_){}
 });
 
@@ -1309,13 +1065,6 @@ document.getElementById("doImport").addEventListener("click", ()=>{
   bits.push(`${nt} trees`, `${nr} rocks`);
   if (nd) bits.push(`${nd} deco`);
   toast("Loaded "+bits.join(" · "));
-});
-
-// ---- Escape: cancel a carry, or clear a pending selection ----------
-window.addEventListener("keydown", e => {
-  if (e.key !== "Escape") return;
-  if (carry){ cancelCarry(); toast("Move cancelled — group restored"); }
-  else if (selection.size){ selection.clear(); draw(); }
 });
 
 // ---- toast ---------------------------------------------------------
