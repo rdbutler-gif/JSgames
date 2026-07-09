@@ -2595,8 +2595,8 @@
     else         out.push(`  tower: null,`);
     out.push(`  wallCol: ${Number.isInteger(L.wallCol) ? L.wallCol : -1},`);
     if (L.nodeHpMult && L.nodeHpMult !== 1) out.push(`  nodeHpMult: ${L.nodeHpMult},`);
-    if (L.maxHouseLevel && L.maxHouseLevel !== 1) out.push(`  maxHouseLevel: ${L.maxHouseLevel},`);
-    if (L.maxWorkshopLevel && L.maxWorkshopLevel !== 2) out.push(`  maxWorkshopLevel: ${L.maxWorkshopLevel},`);
+    out.push(`  maxHouseLevel: ${L.maxHouseLevel || 1},`);
+    out.push(`  maxWorkshopLevel: ${L.maxWorkshopLevel || 2},`);
     if (L.townhall) {
       const t = L.townhall.tiles || [[100,100],[111,112],[123,124]];
       out.push(`  townhall: {`);
