@@ -1820,6 +1820,19 @@
       // draw right-aligned block: rightmost star at rightX
       ctx.fillText(i < liveStars ? "★" : "☆", rightX - (2-i)*gW - gW/2, cy + 9);
     }
+
+    // Goal reminder, centered in the open band between the pills and the timer.
+    // One line, small-cap style — she read the intro, forgot the mission.
+    if (_hudL.goal) {
+      const leftEdge = x;                    // x is just past the last resource pill
+      const rightEdge = rightX - 3*gW - 10;  // clear of the timer/star block
+      const gcx = (leftEdge + rightEdge) / 2;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "9px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = "#6d8298";
+      ctx.fillText(_hudL.goal.toUpperCase(), gcx, cy, rightEdge - leftEdge - 8);
+    }
+
     ctx.textAlign = "left";
   }
 
