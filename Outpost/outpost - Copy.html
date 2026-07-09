@@ -175,9 +175,6 @@
   };
   // Upgrading an existing L1 workshop to L2 (enables wall-breaking).
   const WORKSHOP_UPGRADE = { wood: 8, stone: 6, tile: 102 };
-  // Upgrading a house (only on levels with houseUpgrades:true) makes that house's
-  // worker walk twice as fast. Per-house: the boost follows the resident worker.
-  const HOUSE_UPGRADE = { wood: 20, stone: 10 };
   let buildMode = null;     // key into BUILDINGS while placing, else null
   let hoverCell = null;     // {x,y} cell under cursor during build mode
   let workshopLevel = 0;    // 0 = none, 1 = rock mining, 2 = wall breaking
@@ -427,33 +424,6 @@
              "in a pocket of rock — harvest through it to reach the site. Gather 15 " +
              "wood and 10 stone, then raise the tower to win.",
     },
-    {
-      name: "The Winding Road",
-      subtitle: "LEVEL 5",
-      clearText: "Road well travelled!",
-      goal: "Build the Town Hall and the Watchtower",
-      blurb: "The old town hall just isn't enough. Build another town hall at the end of the long and winding road — and a watchtower besides. The trees and rocks take longer to harvest, but yield more product.",
-      cols: 32, rows: 24,
-      startHouse: { x: 2, y: 2 },
-      tower:      { x: 26, y: 7 },
-      wallCol: -1,
-      nodeHpMult: 2,
-      houseUpgrades: true,   // this level: houses can be upgraded (20w/10s) so their worker walks 2x
-      townhall: {
-        anchor: { x: 2, y: 16 },
-        tiles: [ [100,100], [111,112], [123,124] ],
-      },
-      trees: [[19,5],[1,6],[2,6],[3,6],[20,6],[23,7],[25,8],[27,8],[26,11],[4,13],[6,14],[8,16],[7,17],[26,18],[14,20]],
-      rocks: [[21,6],[24,6],[26,9],[0,12],[2,13],[26,14],[7,15],[9,17],[11,18],[12,20]],
-      cost:  { wood: 40, stone: 20 },
-      stars: { gold: 300, silver: 540 },
-      objectives: null,
-      // decoration layer: [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
-      deco: [[0,0,0,99],[1,0,0,100],[2,0,0,100],[3,0,0,100],[4,0,0,101],[0,1,1,57],[1,1,0,113],[2,1,0,63],[3,1,0,114],[4,1,1,59],[0,2,1,57],[1,2,0,123],[3,2,0,124],[4,2,1,59],[15,2,0,2],[16,2,0,12],[17,2,0,13],[18,2,0,13],[19,2,0,13],[20,2,0,13],[21,2,0,13],[22,2,0,14],[0,3,0,24],[1,3,0,25],[2,3,0,25],[3,3,0,25],[4,3,0,26],[5,3,0,96],[6,3,0,98],[13,3,0,12],[14,3,0,13],[15,3,0,13],[16,3,0,39],[17,3,0,41],[18,3,0,37],[19,3,0,37],[20,3,0,37],[21,3,0,42],[22,3,0,40],[23,3,0,13],[24,3,0,13],[25,3,0,13],[26,3,0,13],[27,3,0,14],[28,3,0,2],[0,4,0,36],[1,4,0,42],[2,4,0,25],[3,4,0,41],[4,4,0,38],[5,4,0,108],[6,4,0,110],[13,4,0,24],[14,4,0,25],[15,4,0,41],[16,4,0,37],[17,4,0,38],[18,4,0,80],[19,4,0,81],[20,4,0,82],[21,4,0,36],[22,4,0,37],[23,4,0,37],[24,4,0,37],[25,4,0,37],[26,4,0,42],[27,4,0,40],[28,4,0,14],[0,5,0,2],[1,5,0,24],[2,5,0,25],[3,5,0,26],[4,5,0,96],[5,5,0,109],[6,5,0,110],[13,5,0,36],[14,5,0,42],[15,5,0,40],[16,5,0,14],[17,5,0,94],[21,5,0,80],[22,5,0,81],[23,5,0,45],[24,5,0,81],[25,5,0,82],[26,5,0,36],[27,5,0,42],[28,5,0,40],[29,5,0,13],[30,5,0,14],[1,6,0,24],[2,6,0,25],[3,6,0,26],[4,6,0,108],[5,6,0,109],[6,6,0,110],[14,6,0,36],[15,6,0,42],[16,6,0,40],[17,6,0,14],[18,6,0,95],[26,6,0,29],[27,6,0,36],[28,6,0,37],[29,6,0,42],[30,6,0,26],[0,7,0,29],[1,7,0,24],[2,7,0,25],[3,7,0,26],[4,7,0,120],[5,7,0,121],[6,7,0,122],[7,7,0,99],[8,7,0,100],[9,7,0,101],[15,7,0,36],[16,7,0,42],[17,7,0,40],[18,7,0,14],[19,7,0,80],[20,7,0,81],[21,7,0,82],[27,7,0,80],[28,7,0,46],[29,7,0,24],[30,7,0,26],[0,8,0,2],[1,8,0,24],[2,8,0,25],[3,8,0,26],[4,8,0,76],[5,8,0,77],[6,8,0,77],[7,8,0,76],[8,8,0,77],[9,8,0,79],[16,8,0,36],[17,8,0,42],[18,8,0,40],[19,8,0,13],[20,8,0,13],[21,8,0,14],[22,8,0,29],[28,8,0,59],[29,8,0,24],[30,8,0,26],[1,9,0,36],[2,9,0,42],[3,9,0,40],[4,9,0,13],[5,9,0,13],[6,9,0,14],[7,9,0,76],[8,9,0,77],[9,9,0,79],[10,9,0,99],[11,9,0,101],[17,9,0,36],[18,9,0,37],[19,9,0,37],[20,9,0,42],[21,9,0,40],[22,9,0,14],[23,9,0,29],[28,9,0,59],[29,9,0,24],[30,9,0,26],[1,10,0,29],[2,10,0,36],[3,10,0,37],[4,10,0,37],[5,10,0,42],[6,10,0,40],[7,10,0,13],[8,10,0,13],[9,10,0,14],[10,10,0,76],[11,10,0,79],[20,10,0,36],[21,10,0,42],[22,10,0,40],[23,10,0,14],[24,10,0,47],[28,10,0,71],[29,10,0,24],[30,10,0,26],[0,11,0,45],[1,11,0,81],[2,11,0,45],[3,11,0,81],[4,11,0,46],[5,11,0,36],[6,11,0,37],[7,11,0,37],[8,11,0,42],[9,11,0,26],[10,11,0,76],[11,11,0,79],[12,11,0,99],[13,11,0,101],[21,11,0,36],[22,11,0,42],[23,11,0,26],[24,11,0,59],[27,11,0,47],[28,11,0,12],[29,11,0,39],[30,11,0,26],[4,12,0,68],[5,12,0,81],[6,12,0,81],[7,12,0,46],[8,12,0,24],[9,12,0,40],[10,12,0,13],[11,12,0,14],[12,12,0,76],[13,12,0,79],[14,12,0,52],[15,12,0,55],[16,12,0,53],[17,12,0,54],[21,12,0,2],[22,12,0,24],[23,12,0,26],[24,12,0,71],[27,12,0,59],[28,12,0,24],[29,12,0,41],[30,12,0,38],[7,13,0,71],[8,13,0,36],[9,13,0,37],[10,13,0,42],[11,13,0,40],[12,13,0,13],[13,13,0,14],[14,13,0,64],[15,13,0,65],[16,13,0,65],[17,13,0,66],[21,13,0,29],[22,13,0,24],[23,13,0,40],[24,13,0,13],[27,13,0,59],[28,13,0,24],[29,13,0,26],[0,14,0,45],[1,14,0,81],[2,14,0,45],[3,14,0,81],[4,14,0,82],[8,14,0,80],[9,14,0,82],[10,14,0,36],[11,14,0,37],[12,14,0,42],[13,14,0,26],[14,14,0,76],[15,14,0,90],[16,14,0,91],[17,14,0,79],[18,14,0,48],[19,14,0,51],[20,14,0,50],[21,14,0,29],[22,14,0,24],[23,14,0,41],[24,14,0,37],[27,14,0,59],[28,14,0,24],[29,14,0,26],[1,15,0,12],[2,15,0,13],[3,15,0,13],[4,15,0,14],[5,15,0,47],[10,15,0,80],[11,15,0,46],[12,15,0,24],[13,15,0,40],[14,15,0,13],[15,15,0,14],[16,15,0,2],[17,15,0,2],[18,15,0,60],[19,15,0,63],[20,15,0,62],[21,15,0,2],[22,15,0,24],[23,15,0,26],[24,15,0,47],[27,15,0,59],[28,15,0,24],[29,15,0,26],[1,16,0,24],[2,16,0,25],[3,16,0,25],[4,16,0,26],[5,16,0,59],[11,16,0,71],[12,16,0,36],[13,16,0,37],[14,16,0,42],[15,16,0,40],[16,16,0,13],[17,16,0,14],[18,16,0,72],[19,16,0,85],[20,16,0,75],[21,16,0,12],[22,16,0,39],[23,16,0,26],[24,16,0,59],[27,16,0,59],[28,16,0,24],[29,16,0,26],[1,17,0,24],[2,17,0,25],[3,17,0,25],[4,17,0,26],[5,17,0,71],[12,17,0,80],[13,17,0,82],[14,17,0,36],[15,17,0,37],[16,17,0,42],[17,17,0,40],[18,17,0,13],[19,17,0,13],[20,17,0,13],[21,17,0,39],[22,17,0,41],[23,17,0,38],[24,17,0,71],[27,17,0,59],[28,17,0,24],[29,17,0,26],[1,18,0,24],[2,18,0,25],[3,18,0,25],[4,18,0,40],[5,18,0,14],[6,18,0,80],[7,18,0,82],[14,18,0,80],[15,18,0,82],[16,18,0,36],[17,18,0,37],[18,18,0,37],[19,18,0,37],[20,18,0,37],[21,18,0,37],[22,18,0,38],[23,18,0,94],[27,18,0,71],[28,18,0,24],[29,18,0,26],[1,19,0,36],[2,19,0,37],[3,19,0,37],[4,19,0,42],[5,19,0,40],[6,19,0,13],[7,19,0,14],[8,19,0,80],[9,19,0,82],[16,19,0,80],[17,19,0,81],[18,19,0,81],[19,19,0,45],[20,19,0,81],[21,19,0,81],[22,19,0,82],[26,19,0,83],[27,19,0,12],[28,19,0,39],[29,19,0,26],[4,20,0,36],[5,20,0,37],[6,20,0,42],[7,20,0,40],[8,20,0,13],[9,20,0,14],[10,20,0,95],[25,20,0,17],[26,20,0,12],[27,20,0,39],[28,20,0,41],[29,20,0,38],[6,21,0,36],[7,21,0,37],[8,21,0,42],[9,21,0,40],[10,21,0,14],[11,21,0,80],[12,21,0,45],[13,21,0,81],[14,21,0,45],[15,21,0,81],[16,21,0,45],[17,21,0,81],[18,21,0,45],[19,21,0,81],[20,21,0,45],[21,21,0,81],[22,21,0,45],[23,21,0,81],[24,21,0,82],[25,21,0,12],[26,21,0,39],[27,21,0,41],[28,21,0,38],[8,22,0,36],[9,22,0,42],[10,22,0,40],[11,22,0,13],[12,22,0,13],[13,22,0,13],[14,22,0,13],[15,22,0,13],[16,22,0,13],[17,22,0,13],[18,22,0,13],[19,22,0,13],[20,22,0,13],[21,22,0,13],[22,22,0,13],[23,22,0,13],[24,22,0,13],[25,22,0,39],[26,22,0,41],[27,22,0,38],[28,22,0,2],[9,23,0,36],[10,23,0,37],[11,23,0,37],[12,23,0,37],[13,23,0,37],[14,23,0,37],[15,23,0,37],[16,23,0,37],[17,23,0,37],[18,23,0,37],[19,23,0,37],[20,23,0,37],[21,23,0,37],[22,23,0,37],[23,23,0,37],[24,23,0,37],[25,23,0,37],[26,23,0,38]],
-      // solid mask: [x, y] cells workers cannot walk through
-      solid: [[2,1],[16,1],[17,1],[18,1],[19,1],[20,1],[21,1],[22,1],[23,1],[0,2],[1,2],[3,2],[4,2],[13,2],[14,2],[15,2],[23,2],[24,2],[25,2],[26,2],[27,2],[5,3],[12,3],[28,3],[5,4],[12,4],[18,4],[19,4],[20,4],[29,4],[30,4],[0,5],[4,5],[12,5],[17,5],[21,5],[22,5],[23,5],[24,5],[25,5],[31,5],[0,6],[4,6],[13,6],[18,6],[26,6],[31,6],[0,7],[4,7],[14,7],[19,7],[20,7],[21,7],[27,7],[28,7],[31,7],[0,8],[4,8],[5,8],[6,8],[15,8],[22,8],[28,8],[31,8],[0,9],[7,9],[8,9],[9,9],[16,9],[23,9],[28,9],[31,9],[1,10],[10,10],[17,10],[18,10],[19,10],[24,10],[28,10],[31,10],[2,11],[3,11],[4,11],[10,11],[11,11],[20,11],[24,11],[27,11],[31,11],[5,12],[6,12],[7,12],[12,12],[13,12],[21,12],[24,12],[27,12],[31,12],[7,13],[14,13],[21,13],[27,13],[30,13],[1,14],[2,14],[3,14],[4,14],[8,14],[9,14],[14,14],[15,14],[21,14],[27,14],[30,14],[0,15],[5,15],[10,15],[11,15],[16,15],[17,15],[21,15],[24,15],[27,15],[30,15],[0,16],[5,16],[11,16],[18,16],[19,16],[20,16],[24,16],[27,16],[30,16],[0,17],[5,17],[12,17],[13,17],[24,17],[27,17],[30,17],[0,18],[6,18],[7,18],[14,18],[15,18],[23,18],[27,18],[30,18],[0,19],[8,19],[9,19],[16,19],[17,19],[18,19],[19,19],[20,19],[21,19],[22,19],[26,19],[30,19],[1,20],[2,20],[3,20],[10,20],[25,20],[30,20],[4,21],[5,21],[11,21],[12,21],[13,21],[14,21],[15,21],[16,21],[17,21],[18,21],[19,21],[20,21],[21,21],[22,21],[23,21],[24,21],[29,21],[6,22],[7,22],[28,22],[8,23],[27,23]],
-      intro: "THE WINDING ROAD — a longer haul. The settlement winds back on itself, so your crew has to work the road. The old town hall is not enough: raise a new one at the road's end, and a watchtower besides. Trees and rocks take twice as long to harvest but yield more. Tip: upgrade a house (20 wood, 10 stone) and its worker walks twice as fast.",
-    },
   ];
   let currentLevel = 0;   // index into LEVELS; the level currently loaded
 
@@ -639,9 +609,8 @@
       path: [], target: null, state: "idle",
       carry: null, carryAmt: 0, workUntil: 0, moveT: 0,
       facing: 1, animT: 0,
-      speedMult: 1,                           // 2 after this worker's house is upgraded
       _node: null, _repeatNode: null, _depositOnArrive: false, _targetNodeKey: null,
-      _buildType: null, _upgradeWorkshop: null, _upgradeHouse: null, _buildAt: null, buildUntil: 0, _towerBuild: false, _thallPart: null,
+      _buildType: null, _upgradeWorkshop: null, _buildAt: null, buildUntil: 0, _towerBuild: false, _thallPart: null,
     });
   }
 
@@ -851,21 +820,6 @@
       res.wood -= u.wood; res.stone -= u.stone; updateHUD();
       dispatch(w, gx, gy, { upgrade: ws });
       setMsg(`${w.name} is heading out to upgrade the workshop.`);
-      return;
-    }
-
-    // Click an existing house -> upgrade it (this level only) so its worker
-    // walks twice as fast. Gated on the per-level houseUpgrades flag.
-    const hs = houses.find(h => h.x === gx && h.y === gy);
-    if (hs && LEVELS[currentLevel].houseUpgrades) {
-      if (hs.upgraded) { setMsg("This house is already upgraded — its worker is quick."); return; }
-      const u = HOUSE_UPGRADE;
-      if (res.wood < u.wood || res.stone < u.stone) { setMsg(`Need ${u.wood}w + ${u.stone}s to upgrade a house.`); return; }
-      const w = nearestIdleTo(gx, gy);
-      if (!w) { setMsg("No free worker to run the upgrade. Wait for one."); return; }
-      res.wood -= u.wood; res.stone -= u.stone; updateHUD();
-      dispatch(w, gx, gy, { upgradeHouse: hs });
-      setMsg(`${w.name} is upgrading a house.`);
       return;
     }
 
@@ -1083,12 +1037,11 @@
     w.carry = null; w.carryAmt = 0;
     w._buildType = opts.build || null;   // building key to construct on arrival, or null
     w._upgradeWorkshop = opts.upgrade || null;   // workshop object to upgrade on arrival
-    w._upgradeHouse = opts.upgradeHouse || null; // house object to upgrade on arrival
     w._towerBuild = opts.tower || false;   // heading to the tower to contribute build progress
     w._thallPart = opts.thall || null;     // heading to a town-hall section to build it
     // is the destination a live harvest node? (tree/rock/wall) — used to abort
     // the walk if it gets depleted before the worker arrives.
-    w._targetNodeKey = (!w._buildType && !w._upgradeWorkshop && !w._upgradeHouse && !w._towerBuild && !w._thallPart && nodes.has(key(gx, gy))) ? key(gx, gy) : null;
+    w._targetNodeKey = (!w._buildType && !w._upgradeWorkshop && !w._towerBuild && !w._thallPart && nodes.has(key(gx, gy))) ? key(gx, gy) : null;
     w.path = path;
     w.target = {x: gx, y: gy};
     w.state = "moving";
@@ -1165,7 +1118,7 @@
       const next = w.path[0];
       if (next.x > Math.round(w.px)) w.facing = 1;
       else if (next.x < Math.round(w.px)) w.facing = -1;
-      const p = Math.min(1, w.moveT / (MOVE_MS / (w.speedMult || 1)));
+      const p = Math.min(1, w.moveT / MOVE_MS);
       w.px = lerp(w.startX ?? w.px, next.x, p);
       w.py = lerp(w.startY ?? w.py, next.y, p);
       if (p >= 1) {
@@ -1192,7 +1145,8 @@
         grid[tower.y][tower.x] = TOWER;
         // release everyone parked on the tower back to idle
         for (const o of workers) if (o.state === "tower") { o._towerBuild = false; o.state = "idle"; o.target = null; }
-        checkWin(now);
+        updateHUD();
+        win(now);
       }
     } else if (w.state === "thall") {
       const part = w._thallPart;
@@ -1207,7 +1161,7 @@
         for (const o of workers) if (o.state === "thall" && o._thallPart === part) { o._thallPart = null; o.state = "idle"; o.target = null; }
         sfx.build();
         addFloater(part.x, part.y, "Built!", "#cfe6c0");
-        if (townhall.parts.every(p => p.built)) { checkWin(now); }
+        if (townhall.parts.every(p => p.built)) { updateHUD(); win(now); }
       }
     }
   }
@@ -1230,16 +1184,6 @@
       workshopLevel = Math.max(workshopLevel, 2);
       addFloater(bx, by, "Upgraded!", "#cfe6c0");
       setMsg("Workshop upgraded to Level 2! Workers can now break the wall.");
-    } else if (w._upgradeHouse) {
-      const hs = w._upgradeHouse;
-      w._upgradeHouse = null;
-      hs.upgraded = true;
-      hs.level = 2;
-      // Boost whichever worker calls this house home (may be the builder itself).
-      const resident = workers.find(o => o.home === hs);
-      if (resident) resident.speedMult = 2;
-      addFloater(bx, by, "Upgraded!", "#cfe6c0");
-      setMsg(`${hs.name || "The house"}'s worker now moves twice as fast.`);
     } else if (key_ === "house") {
       const newHome = addHouse(bx, by, false);
       spawnWorker(newHome);
@@ -1273,16 +1217,6 @@
     // state (same machinery as a fresh build) but with UPGRADE_MS and the
     // workshop reference carried through; finishBuild applies the level bump.
     if (w._upgradeWorkshop) {
-      w.state = "building";
-      w.buildUntil = now + UPGRADE_MS;
-      w._buildAt = { x: tgt.x, y: tgt.y };
-      w.target = null;
-      return;
-    }
-
-    // Upgrading a house: same timed-build machinery, finishBuild boosts the
-    // resident worker's speed.
-    if (w._upgradeHouse) {
       w.state = "building";
       w.buildUntil = now + UPGRADE_MS;
       w._buildAt = { x: tgt.x, y: tgt.y };
@@ -1489,7 +1423,7 @@
       else if (t === RUBBLE) has("wall") ? blit(TILEMAP.wall, x, y) : drawRubble(cx, cy, nodes.get(key(x,y)));
       else if (t === STOCK)  {
         has("store") ? blit(TILEMAP.store, x, y) : drawHouse(x*TILE, y*TILE);
-        // house level badge — L2 after a houseUpgrades-level upgrade (2x worker speed)
+        // house level badge (all houses L1 for now; upgrade mechanics come later)
         const h = houses.find(hh => hh.x === x && hh.y === y);
         if (h) levelBadge(x, y, h.level || 1);
         // resident name above the house
@@ -2217,30 +2151,13 @@
     return { ok: true };
   }
 
-  // A level may have a tower goal, a town hall goal, or both. win() only fires
-  // once EVERY defined goal is complete — so a dual-objective level can't be
-  // won by finishing just one. Single-objective levels: the absent goal is
-  // trivially satisfied (null tower / null townhall => that clause is true).
-  function allGoalsComplete() {
-    const towerDone = !tower || tower.built;
-    const thallDone = !townhall || townhall.parts.every(p => p.built);
-    return towerDone && thallDone;
-  }
-  function checkWin(now) {
-    updateHUD();
-    if (allGoalsComplete()) win(now);
-  }
-
   function win(now) {
     done = true;
     sfx.win();
     const sec = Math.floor(simNow / 1000);   // pure sim time — device-independent
     winStars = starsFor(sec);
     winTimeStr = `Finished in ${fmt(sec)}  ·  Gold ≤ ${fmt(GOLD_SEC)}, Silver ≤ ${fmt(SILVER_SEC)}`;
-    const bothGoals = tower && townhall;
-    setMsg(bothGoals ? "Town hall and watchtower complete. Outpost secured."
-         : townhall  ? "Town hall raised. Outpost secured."
-         :             "Watchtower complete. Outpost secured.");
+    setMsg("Watchtower complete. Outpost secured.");
     recordStars(currentLevel, winStars);   // persist best-ever; unlocks next level
     screen = "levelComplete";
   }
