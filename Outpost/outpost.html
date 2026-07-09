@@ -175,7 +175,7 @@
   };
   // Upgrading an existing L1 workshop to L2 (enables wall-breaking).
   const WORKSHOP_UPGRADE = { wood: 8, stone: 6, tile: 102 };
-  // Upgrading a house (only on levels with houseUpgrades:true) makes that house's
+  // Upgrading a house (on levels where maxHouseLevel > 1) makes that house's
   // worker walk twice as fast. Per-house: the boost follows the resident worker.
   const HOUSE_UPGRADE = { wood: 20, stone: 10 };
   let buildMode = null;     // key into BUILDINGS while placing, else null
@@ -438,7 +438,7 @@
       tower:      { x: 26, y: 7 },
       wallCol: -1,
       nodeHpMult: 2,
-      houseUpgrades: true,   // this level: houses can be upgraded (20w/10s) so their worker walks 2x
+      maxHouseLevel: 2,   // this level: houses upgrade to L2 (20w/10s) so their worker walks 2x
       townhall: {
         anchor: { x: 2, y: 16 },
         tiles: [ [100,100], [111,112], [123,124] ],
@@ -516,6 +516,8 @@
     NEED_WOOD = L.cost.wood; NEED_STONE = L.cost.stone;
     GOLD_SEC = L.stars.gold; SILVER_SEC = L.stars.silver;
     nodeHpMult = L.nodeHpMult || 1;
+    maxHouseLevel = L.maxHouseLevel || 1;
+    maxWorkshopLevel = L.maxWorkshopLevel || 2;
 
     // World dimensions come from the level. The viewport is fixed (16x12); the
     // camera scrolls when the world is bigger. Reset the camera to the origin.
@@ -646,6 +648,11 @@
   }
 
   let nodeHpMult = 1;   // per-level: scales tree/rock hp (longer to harvest). Keep integer so hp stays divisible by amount.
+  // Per-level caps on building upgrades. A building is upgradeable iff its
+  // current level < the cap. Houses default to 1 (no upgrade) except where a
+  // level opts in; workshops default to 2 (the L1->L2 mining/wall path).
+  let maxHouseLevel = 1;
+  let maxWorkshopLevel = 2;
   let wallBreached = false;   // set true the first time the wall is fully cleared, so the breach message fires once
   function place(x, y, type) { grid[y][x] = type; if (JOB[type]) nodes.set(key(x,y), {type, hp: JOB[type].hp * (JOB[type].res ? nodeHpMult : 1), x, y}); }
   function remove(x, y) { grid[y][x] = EMPTY; nodes.delete(key(x,y)); }
@@ -843,7 +850,7 @@
     // Click an existing L1 workshop -> upgrade it to L2 (enables wall-breaking)
     const ws = workshops.find(s => s.x === gx && s.y === gy);
     if (ws) {
-      if (ws.level >= 2) { setMsg("This workshop is already fully upgraded."); return; }
+      if (ws.level >= maxWorkshopLevel) { setMsg("This workshop is already fully upgraded."); return; }
       const u = WORKSHOP_UPGRADE;
       if (res.wood < u.wood || res.stone < u.stone) { setMsg(`Need ${u.wood}w + ${u.stone}s`); return; }
       const w = nearestIdleTo(gx, gy);
@@ -854,11 +861,10 @@
       return;
     }
 
-    // Click an existing house -> upgrade it (this level only) so its worker
-    // walks twice as fast. Gated on the per-level houseUpgrades flag.
+    // Click an existing house -> upgrade it (on levels where houses can go past
+    // L1) so its worker walks twice as fast. Upgradeable iff level < the cap.
     const hs = houses.find(h => h.x === gx && h.y === gy);
-    if (hs && LEVELS[currentLevel].houseUpgrades) {
-      if (hs.upgraded) { setMsg("This house is already upgraded — its worker is quick."); return; }
+    if (hs && (hs.level || 1) < maxHouseLevel) {
       const u = HOUSE_UPGRADE;
       if (res.wood < u.wood || res.stone < u.stone) { setMsg(`Need ${u.wood}w + ${u.stone}s to upgrade a house.`); return; }
       const w = nearestIdleTo(gx, gy);
@@ -1233,8 +1239,7 @@
     } else if (w._upgradeHouse) {
       const hs = w._upgradeHouse;
       w._upgradeHouse = null;
-      hs.upgraded = true;
-      hs.level = 2;
+      hs.level = (hs.level || 1) + 1;
       // Boost whichever worker calls this house home (may be the builder itself).
       const resident = workers.find(o => o.home === hs);
       if (resident) resident.speedMult = 2;
@@ -1489,7 +1494,7 @@
       else if (t === RUBBLE) has("wall") ? blit(TILEMAP.wall, x, y) : drawRubble(cx, cy, nodes.get(key(x,y)));
       else if (t === STOCK)  {
         has("store") ? blit(TILEMAP.store, x, y) : drawHouse(x*TILE, y*TILE);
-        // house level badge — L2 after a houseUpgrades-level upgrade (2x worker speed)
+        // house level badge — reflects hs.level (L2 after a house upgrade; 2x worker speed)
         const h = houses.find(hh => hh.x === x && hh.y === y);
         if (h) levelBadge(x, y, h.level || 1);
         // resident name above the house
@@ -1965,18 +1970,23 @@
   function tileTooltip(gx, gy) {
     if (gx < 0 || gy < 0 || gx >= worldCols || gy >= worldRows) return null;
 
-    // Workshops (upgradeable buildings)
+    // Workshops. Show the level; add the upgrade hint only while below the cap.
     const ws = workshops.find(s => s.x === gx && s.y === gy);
     if (ws) {
-      if (ws.level >= 2) return { text: "Workshop · Max Level", color: "#9fb8cc" };
-      const u = WORKSHOP_UPGRADE;
-      return { text: `Upgrade for ${u.wood}w ${u.stone}s`, color: "#ffcf3f" };
+      const tip = { text: `Workshop Level ${ws.level}`, color: "#cfe6c0" };
+      if (ws.level < maxWorkshopLevel) tip.sub = "Click to upgrade";
+      return tip;
     }
 
     // Houses (the starting home and any built via the menu). The stockpile is
     // the ethereal resource total in the HUD, not a tile — these are all houses.
+    // Show the level; add the upgrade hint only while below the per-level cap.
     const ho = houses.find(hh => hh.x === gx && hh.y === gy);
-    if (ho) return { text: `House · Level ${ho.level || 1}`, color: "#cfe6c0" };
+    if (ho) {
+      const tip = { text: `House Level ${ho.level || 1}`, color: "#cfe6c0" };
+      if ((ho.level || 1) < maxHouseLevel) tip.sub = "Click to upgrade";
+      return tip;
+    }
 
     const t = grid[gy][gx];
     if (t === TREE) return { text: "Wood", color: "#e09a4a" };
@@ -2008,8 +2018,12 @@
     ctx.save();
     ctx.font = "bold 12px 'Trebuchet MS', sans-serif";
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    const tw = ctx.measureText(tip.text).width;
-    const padX = 9, h = 24;
+    const subFont = "11px 'Trebuchet MS', sans-serif";
+    const mainW = ctx.measureText(tip.text).width;
+    let subW = 0;
+    if (tip.sub) { ctx.font = subFont; subW = ctx.measureText(tip.sub).width; ctx.font = "bold 12px 'Trebuchet MS', sans-serif"; }
+    const tw = Math.max(mainW, subW);
+    const padX = 9, h = tip.sub ? 38 : 24;
     let bx = mouse.x + 14, by = mouse.y - h - 6;
     // keep on-screen
     if (bx + tw + padX*2 > VIEW_W) bx = mouse.x - tw - padX*2 - 14;
@@ -2017,7 +2031,14 @@
     panel(bx, by, tw + padX*2, h, 7, "rgba(20,30,40,.92)",
           { shadowBlur: 6, shadowOffsetY: 2, highlight: false, stroke: "rgba(255,255,255,.14)", strokeW: 1 });
     ctx.fillStyle = tip.color;
-    ctx.fillText(tip.text, bx + padX, by + h/2);
+    if (tip.sub) {
+      ctx.fillText(tip.text, bx + padX, by + 13);
+      ctx.font = subFont;
+      ctx.fillStyle = "#8fb0c8";   // muted hint color for the action line
+      ctx.fillText(tip.sub, bx + padX, by + 27);
+    } else {
+      ctx.fillText(tip.text, bx + padX, by + h/2);
+    }
     ctx.restore();
   }
 
@@ -2574,6 +2595,8 @@
     else         out.push(`  tower: null,`);
     out.push(`  wallCol: ${Number.isInteger(L.wallCol) ? L.wallCol : -1},`);
     if (L.nodeHpMult && L.nodeHpMult !== 1) out.push(`  nodeHpMult: ${L.nodeHpMult},`);
+    if (L.maxHouseLevel && L.maxHouseLevel !== 1) out.push(`  maxHouseLevel: ${L.maxHouseLevel},`);
+    if (L.maxWorkshopLevel && L.maxWorkshopLevel !== 2) out.push(`  maxWorkshopLevel: ${L.maxWorkshopLevel},`);
     if (L.townhall) {
       const t = L.townhall.tiles || [[100,100],[111,112],[123,124]];
       out.push(`  townhall: {`);

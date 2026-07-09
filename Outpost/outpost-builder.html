@@ -243,6 +243,10 @@
         <div><label class="field">Silver ≤ s</label><input type="number" id="silverSec" value="300" min="1"></div>
       </div>
       <div><label class="field">Node HP mult (harvest speed)</label><input type="number" id="hpMult" value="1" min="1" step="1"></div>
+      <div class="row">
+        <div><label class="field">Max house lvl</label><input type="number" id="maxHouseLevel" value="1" min="1" step="1"></div>
+        <div><label class="field">Max workshop lvl</label><input type="number" id="maxWorkshopLevel" value="2" min="1" step="1"></div>
+      </div>
     </div>
 
     <div class="group">
@@ -1145,6 +1149,8 @@ function buildExport(){
   const stars = {gold:+document.getElementById("goldSec").value||180,
                  silver:+document.getElementById("silverSec").value||300};
   const hpMult= +document.getElementById("hpMult").value||1;
+  const maxHouseLevel = Math.max(1, +document.getElementById("maxHouseLevel").value||1);
+  const maxWorkshopLevel = Math.max(1, +document.getElementById("maxWorkshopLevel").value||2);
 
   // Build the object literal by hand so it reads like the existing LEVELS[]
   // entries (arrays on one line, comments preserved) rather than JSON.
@@ -1163,6 +1169,8 @@ function buildExport(){
   else               L.push(`  tower: null,`);
   L.push(`  wallCol: ${wallCol},`);
   if (hpMult!==1) L.push(`  nodeHpMult: ${hpMult},`);
+  if (maxHouseLevel!==1)    L.push(`  maxHouseLevel: ${maxHouseLevel},`);
+  if (maxWorkshopLevel!==2) L.push(`  maxWorkshopLevel: ${maxWorkshopLevel},`);
   if (anchors.hall){
     L.push(`  townhall: {`);
     L.push(`    anchor: { x: ${anchors.hall.x}, y: ${anchors.hall.y} },`);
@@ -1253,6 +1261,8 @@ function applyLevel(L){
   setVal("goldSec", st.gold ?? 180);
   setVal("silverSec", st.silver ?? 300);
   setVal("hpMult", L.nodeHpMult ?? 1);
+  setVal("maxHouseLevel", L.maxHouseLevel ?? 1);
+  setVal("maxWorkshopLevel", L.maxWorkshopLevel ?? 2);
 
   // ---- stash the round-trip fields ----
   meta = {
