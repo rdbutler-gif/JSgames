@@ -961,6 +961,10 @@
 
   function placementValid(gx, gy) {
     if (grid[gy][gx] !== EMPTY) return { ok: false, why: "That tile is occupied." };
+    // Solid-mask cells (fences and other builder collision tiles) look empty in
+    // grid[] but aren't buildable — building on one would otherwise let a worker
+    // treat the solid as passable once the structure lands.
+    if (solidMask && solidMask.has(key(gx, gy))) return { ok: false, why: "Can't build on a solid — clear it first." };
 
     // The tile must be reachable by at least one worker — otherwise the ghost
     // would show green over a spot no one can walk to, and the click would only
