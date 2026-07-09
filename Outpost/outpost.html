@@ -675,9 +675,26 @@
     return t === EMPTY || t === STOCK;
   }
 
-  function astar(sx, sy, tx, ty) {
+  // Cleared-flood variant: treats every harvestable (tree/rock/wall) as already
+  // removed. Used ONLY by the build-cutoff test — a resource you can dig your way
+  // to shouldn't count as "stranded" by a building. Without this, a maze level
+  // (L5's winding road) reports almost nothing reachable and flags valid spots.
+  function walkableCleared(x, y) {
+    if (x < 0 || y < 0 || x >= worldCols || y >= worldRows) return false;
+    if (solidMask && solidMask.has(key(x,y))) return false;
+    if (nodes.has(key(x,y))) return true;   // harvestable — passable once cleared
+    const t = grid[y][x];
+    if (t === THALL) {
+      const part = townhall && townhall.parts.find(p => p.x === x && p.y === y);
+      return !part || !part.built;
+    }
+    return t === EMPTY || t === STOCK;
+  }
+
+  function astar(sx, sy, tx, ty, canWalk) {
+    canWalk = canWalk || walkable;
     // target tile itself may be non-walkable (a tree); we path to it and stop adjacent.
-    const goalAdjacent = !walkable(tx, ty);
+    const goalAdjacent = !canWalk(tx, ty);
     const h = (x,y) => Math.abs(x-tx) + Math.abs(y-ty);
     const open = new Map();      // key -> node
     const came = new Map();
@@ -699,7 +716,7 @@
 
       for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
         const nx = cur.x+dx, ny = cur.y+dy;
-        if (!walkable(nx, ny)) continue;
+        if (!canWalk(nx, ny)) continue;
         const nk = key(nx,ny);
         const tentative = g.get(curK) + 1;
         if (tentative < (g.get(nk) ?? Infinity)) {
@@ -959,37 +976,48 @@
     return false;
   }
 
+  // Cleared-flood reachability: could a worker reach this if all harvestables
+  // were already cleared? Used by the cutoff test so buildings are only rejected
+  // when they'd wall off a node even in a fully-harvested map.
+  function reachableCleared(tx, ty) {
+    for (const w of workers) {
+      if (astar(Math.round(w.px), Math.round(w.py), tx, ty, walkableCleared)) return true;
+    }
+    return false;
+  }
+
   function placementValid(gx, gy) {
     if (grid[gy][gx] !== EMPTY) return { ok: false, why: "That tile is occupied." };
     // Solid-mask cells (fences and other builder collision tiles) look empty in
     // grid[] but aren't buildable — building on one would otherwise let a worker
     // treat the solid as passable once the structure lands.
-    if (solidMask && solidMask.has(key(gx, gy))) return { ok: false, why: "Can't build on a solid — clear it first." };
+    if (solidMask && solidMask.has(key(gx, gy))) return { ok: false, why: "Can't build here." };
 
     // The tile must be reachable by at least one worker — otherwise the ghost
     // would show green over a spot no one can walk to, and the click would only
     // fail at dispatch. Checking here turns the ghost red up front.
     if (!reachableNow(gx, gy)) return { ok: false, why: "No worker can reach that spot — clear a path first." };
 
-    // Snapshot what's reachable BEFORE placing.
+    // Snapshot what's reachable BEFORE placing — using cleared-flood reachability
+    // (harvestables count as passable), so only a genuine wall-off is a cutoff.
     const nodesReachableBefore = [];
-    for (const [, n] of nodes) if (reachableNow(n.x, n.y)) nodesReachableBefore.push(n);
-    const towerReachableBefore = reachableNow(tower.x, tower.y);
+    for (const [, n] of nodes) if (reachableCleared(n.x, n.y)) nodesReachableBefore.push(n);
+    const towerReachableBefore = reachableCleared(tower.x, tower.y);
     // Unbuilt town-hall sections that can currently be reached must stay reachable.
-    const thallReachableBefore = townhall ? townhall.parts.filter(p => !p.built && reachableNow(p.x, p.y)) : [];
+    const thallReachableBefore = townhall ? townhall.parts.filter(p => !p.built && reachableCleared(p.x, p.y)) : [];
 
     // Temporarily place a non-walkable building and re-test only those.
     grid[gy][gx] = BUILDING;
     let stranded = null;
     for (const n of nodesReachableBefore) {
-      if (!reachableNow(n.x, n.y)) { stranded = "a resource"; break; }
+      if (!reachableCleared(n.x, n.y)) { stranded = "a resource"; break; }
     }
-    if (!stranded && towerReachableBefore && !reachableNow(tower.x, tower.y)) {
+    if (!stranded && towerReachableBefore && !reachableCleared(tower.x, tower.y)) {
       stranded = "the tower";
     }
     if (!stranded) {
       for (const p of thallReachableBefore) {
-        if (!reachableNow(p.x, p.y)) { stranded = "the Town Hall"; break; }
+        if (!reachableCleared(p.x, p.y)) { stranded = "the Town Hall"; break; }
       }
     }
     grid[gy][gx] = EMPTY;

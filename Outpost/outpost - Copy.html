@@ -961,6 +961,10 @@
 
   function placementValid(gx, gy) {
     if (grid[gy][gx] !== EMPTY) return { ok: false, why: "That tile is occupied." };
+    // Solid-mask cells (fences and other builder collision tiles) look empty in
+    // grid[] but aren't buildable — building on one would otherwise let a worker
+    // treat the solid as passable once the structure lands.
+    if (solidMask && solidMask.has(key(gx, gy))) return { ok: false, why: "Can't build on a solid — clear it first." };
 
     // The tile must be reachable by at least one worker — otherwise the ghost
     // would show green over a spot no one can walk to, and the click would only
@@ -1820,6 +1824,19 @@
       // draw right-aligned block: rightmost star at rightX
       ctx.fillText(i < liveStars ? "★" : "☆", rightX - (2-i)*gW - gW/2, cy + 9);
     }
+
+    // Goal reminder, centered in the open band between the pills and the timer.
+    // One line, small-cap style — she read the intro, forgot the mission.
+    if (_hudL.goal) {
+      const leftEdge = x;                    // x is just past the last resource pill
+      const rightEdge = rightX - 3*gW - 10;  // clear of the timer/star block
+      const gcx = (leftEdge + rightEdge) / 2;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = "9px 'Trebuchet MS', sans-serif";
+      ctx.fillStyle = "#6d8298";
+      ctx.fillText(_hudL.goal.toUpperCase(), gcx, cy, rightEdge - leftEdge - 8);
+    }
+
     ctx.textAlign = "left";
   }
 
