@@ -186,6 +186,7 @@
     <span class="kbd">Alt</span> eyedrop&nbsp;·&nbsp;
     <span class="kbd">Ctrl-click</span> select&nbsp;·&nbsp;
     <span class="kbd">click</span> grab/drop&nbsp;·&nbsp;
+    <span class="kbd">Ctrl-drop</span> stamp&nbsp;·&nbsp;
     <span class="kbd">Esc</span> cancel
   </span>
 </header>
@@ -225,7 +226,9 @@
         <span class="kbd">Ctrl</span>+click cells to select a structure (Ctrl+right-click
         removes one; Ctrl-drag sweeps). Then plain-click any selected cell to
         <em>lift</em> the whole stack — art, entities, solid, anchors — and it rides
-        the cursor. Click again to drop, <span class="kbd">Esc</span> to cancel.
+        the cursor. Click to drop; <span class="kbd">Ctrl</span>+click to stamp a
+        copy and keep going; <span class="kbd">Esc</span> to cancel. Stamps lay
+        down art/entities/solid only — anchors land on the final drop.
       </div>
     </div>
 
@@ -719,11 +722,28 @@ function liftSelection(grab){
 
 // Drop the carried group at the current offset. Overwrites destination cells.
 // A hall whose 2×3 footprint would spill off-map refuses the drop (kept carried).
-function dropCarry(){
+// Paint the carried group's GRID layers (entity + deco + solid) at the current
+// offset. Shared by both a stamp (keepCarrying=true) and a final drop.
+function paintCarryCells(off){
+  for (const c of carry.cells){
+    const gx=carry.grab.x+off.ox+c.dx, gy=carry.grab.y+off.oy+c.dy;
+    if (gx<0||gy<0||gx>=W||gy>=H) continue;   // clamp already keeps box on-map
+    if (c.ent!==EMPTY) ent[gy][gx]=c.ent;
+    if (c.deco) deco[gy][gx]=c.deco;
+    if (c.solid) solid[gy][gx]=true;
+  }
+}
+
+// Drop the carried group. keepCarrying=true = a stamp: paint the grid layers,
+// leave the group riding the cursor for another placement. Anchors and the wall
+// column are singletons, so they're only committed on the FINAL drop, never on
+// an intermediate stamp (stamping would spawn duplicate houses/towers/halls).
+function dropCarry(keepCarrying){
   const off = dropOffset();
 
-  // validate hall footprint first — refuse rather than clip a structure
-  for (const a of carry.anchors){
+  // validate hall footprint first — refuse rather than clip a structure.
+  // Only matters when we'd commit the anchor (final drop); a stamp ignores it.
+  if (!keepCarrying) for (const a of carry.anchors){
     if (a.key==="hall"){
       const hx=carry.grab.x+off.ox+a.dx, hy=carry.grab.y+off.oy+a.dy;
       if (hx<0||hy<0||hx+2>W||hy+3>H){
@@ -732,13 +752,16 @@ function dropCarry(){
     }
   }
 
-  for (const c of carry.cells){
-    const gx=carry.grab.x+off.ox+c.dx, gy=carry.grab.y+off.oy+c.dy;
-    if (gx<0||gy<0||gx>=W||gy>=H) continue;   // clamp already keeps box on-map
-    if (c.ent!==EMPTY) ent[gy][gx]=c.ent;
-    if (c.deco) deco[gy][gx]=c.deco;
-    if (c.solid) solid[gy][gx]=true;
+  paintCarryCells(off);
+
+  if (keepCarrying){
+    // stamp: grid layers laid down, group stays on the cursor. If the group is
+    // anchor/wall-only (no grid cells), there's nothing to stamp — say so once.
+    if (!carry.cells.length) toast("Nothing to stamp — group is anchor/wall only.");
+    return true;
   }
+
+  // ---- final placement: commit anchors + wall column too ----
   for (const a of carry.anchors){
     const gx=carry.grab.x+off.ox+a.dx, gy=carry.grab.y+off.oy+a.dy;
     if (a.key==="hall") anchors.hall={x:gx,y:gy};
@@ -777,11 +800,15 @@ board.addEventListener("contextmenu", e => e.preventDefault());
 board.addEventListener("pointerdown", e => {
   const c = cellAt(e); if (!c) return;
 
-  // ---- carry active: a click drops it; right-click cancels ----
+  // ---- carry active ----
+  //   right-click        → cancel (restore group to origin)
+  //   Ctrl + left-click  → stamp grid layers here, keep carrying
+  //   plain left-click   → final drop (commits anchors/wall too)
   if (carry){
     if (e.button===2){ cancelCarry(); return; }
     hoverCell = c;
-    if (dropCarry()) draw();
+    const stamp = (e.ctrlKey || e.metaKey) && e.button===0;
+    if (dropCarry(stamp)) draw();
     return;
   }
 
