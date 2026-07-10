@@ -215,6 +215,7 @@
       <div class="tool" data-ent="tree"><span class="swatch" id="sw-tree"></span><span class="desc">Tree<small>wood node — paint freely</small></span></div>
       <div class="tool" data-ent="rock"><span class="swatch" id="sw-rock"></span><span class="desc">Rock<small>stone node — paint freely</small></span></div>
       <div class="tool" data-ent="wall"><span class="swatch" id="sw-wall"></span><span class="desc">Wall column<small>fills the whole column</small></span></div>
+      <div class="tool" data-ent="wallseg"><span class="swatch" id="sw-wallseg"></span><span class="desc">Wall segment<small>single tile — paint freely, harvestable</small></span></div>
       <div class="tool" data-ent="house"><span class="swatch" id="sw-house"></span><span class="desc">Start house<small>anchor — one only</small></span></div>
       <div class="tool" data-ent="tower"><span class="swatch" id="sw-tower"></span><span class="desc">Tower goal<small>anchor — one only</small></span></div>
       <div class="tool" data-ent="hall"><span class="swatch" id="sw-hall"></span><span class="desc">Town hall<small>2×3 anchor — one only</small></span></div>
@@ -303,7 +304,6 @@
         <button data-sheet="1">dungeon.png</button>
       </div>
       <div class="note" id="atlasNote">Click a tile, then paint on the map. The <span class="kbd">×</span> tile means "no decoration."</div>
-      <div class="note" id="sheetStatus" style="font-family:var(--mono);font-size:10px;color:var(--ink-dim);border:1px solid var(--line);border-radius:6px;padding:6px;white-space:pre-wrap">checking sheets…</div>
       <div id="atlas"></div>
     </div>
   </aside>
@@ -372,31 +372,19 @@ const sheets = [
   { src:"assets/dungeon.png", img:new Image(), ready:false, name:"dungeon.png" },
 ];
 sheets.forEach(s => {
-  s.img.onload  = () => { s.ready = true;  reportSheets(); buildAtlas(); draw(); };
-  s.img.onerror = () => { s.ready = false; reportSheets(); buildAtlas(); draw(); };
+  s.img.onload  = () => { s.ready = true;  buildAtlas(); draw(); };
+  s.img.onerror = () => { s.ready = false; buildAtlas(); draw(); };
   s.img.src = s.src;
 });
-// Truthful status readout — turns "I don't see tiles" into a specific fact.
-function reportSheets(){
-  const el = document.getElementById("sheetStatus");
-  if (!el) return;
-  const lines = sheets.map(s => {
-    if (s.ready) return `✓ ${s.name}  ${s.img.naturalWidth}×${s.img.naturalHeight}`;
-    // resolve the URL the browser actually tried
-    const resolved = new URL(s.src, location.href).href;
-    return `✗ ${s.name}  not loaded\n   tried: ${resolved}`;
-  });
-  el.textContent = lines.join("\n");
-  el.style.color = sheets.every(s=>s.ready) ? "#8fbf8a" : "#d98a6a";
-}
 
 // ---- Entity model --------------------------------------------------
 // Free-paint entities live per-cell; anchors (house/tower/hall) are single.
-const EMPTY='empty', TREE='tree', ROCK='rock', WALL='wall';
+const EMPTY='empty', TREE='tree', ROCK='rock', WALL='wall', WALLSEG='wallseg';
 const ENT_ART = {   // entity -> {sheet, idx} for its swatch/render
-  [TREE]:  {s:0, i:TILEMAP.tree},
-  [ROCK]:  {s:0, i:TILEMAP.rock},
-  [WALL]:  {s:0, i:TILEMAP.wall},
+  [TREE]:    {s:0, i:TILEMAP.tree},
+  [ROCK]:    {s:0, i:TILEMAP.rock},
+  [WALL]:    {s:0, i:TILEMAP.wall},
+  [WALLSEG]: {s:0, i:TILEMAP.wall},   // single-tile wall; same tile + HP as the column
   house:   {s:0, i:TILEMAP.store},
   tower:   {s:0, i:TILEMAP.tower},
   hall:    {s:0, i:THALL_TILES[0][0]},
@@ -475,7 +463,7 @@ function blitTo(context, sheetIdx, idx, dx, dy, size) {
 // fallback block when a sheet isn't served (opened via file://)
 function fallbackTile(entType, dx, dy) {
   const map = {
-    [TREE]:"#3f7a3a", [ROCK]:"#8b93a0", [WALL]:"#c9a06a",
+    [TREE]:"#3f7a3a", [ROCK]:"#8b93a0", [WALL]:"#c9a06a", [WALLSEG]:"#c9a06a",
     house:"#b07a4a", tower:"#9a86c4", hall:"#6b5236",
   };
   ctx.fillStyle = map[entType] || "#243440";
@@ -636,7 +624,8 @@ function applyTool(x, y, erasing, evt) {
   switch (tool) {
     case EMPTY: ent[y][x] = EMPTY; clearAnchorAt(x,y); if (x===wallCol) wallCol=-1; break;
     case TREE:
-    case ROCK:  ent[y][x] = tool; break;
+    case ROCK:
+    case WALLSEG: ent[y][x] = tool; break;
     case WALL:  wallCol = x; break;               // whole column
     case "house": anchors.house = {x,y}; break;   // single anchor
     case "tower": anchors.tower = {x,y}; break;
@@ -900,13 +889,14 @@ function paintSwatch(id, entType){
     cc.drawImage(s.img, c*STRIDE, r*STRIDE, SRC, SRC, 0, 0, SRC, SRC);
     el.appendChild(cv);
   } else {
-    const map={tree:"#3f7a3a",rock:"#8b93a0",wall:"#c9a06a",house:"#b07a4a",tower:"#9a86c4",hall:"#6b5236"};
+    const map={tree:"#3f7a3a",rock:"#8b93a0",wall:"#c9a06a",wallseg:"#c9a06a",house:"#b07a4a",tower:"#9a86c4",hall:"#6b5236"};
     el.style.background = map[entType]||"#243440";
   }
 }
 function refreshSwatches(){
   paintSwatch("sw-empty",EMPTY); paintSwatch("sw-tree",TREE);
   paintSwatch("sw-rock",ROCK);   paintSwatch("sw-wall",WALL);
+  paintSwatch("sw-wallseg",WALLSEG);
   paintSwatch("sw-house","house");paintSwatch("sw-tower","tower");
   paintSwatch("sw-hall","hall");
 }
@@ -1142,7 +1132,7 @@ function hallTilesStr(){
 }
 
 function buildExport(){
-  const trees=collect(TREE), rocks=collect(ROCK), decos=collectDeco(), solids=collectSolid();
+  const trees=collect(TREE), rocks=collect(ROCK), walls=collect(WALLSEG), decos=collectDeco(), solids=collectSolid();
   const house = anchors.house || {x:2,y:2};
   const cost  = {wood:+document.getElementById("costWood").value||0,
                  stone:+document.getElementById("costStone").value||0};
@@ -1179,6 +1169,10 @@ function buildExport(){
   }
   L.push(`  trees: ${pairsToStr(trees)},`);
   L.push(`  rocks: ${pairsToStr(rocks)},`);
+  // single-tile wall segments: harvestable, same HP/tile as wallCol. New engine
+  // field; ignored until wired. Emitted only when present so untouched levels
+  // round-trip byte-for-byte.
+  if (walls.length) L.push(`  walls: ${pairsToStr(walls)},`);
   L.push(`  cost:  { wood: ${cost.wood}, stone: ${cost.stone} },`);
   L.push(`  stars: { gold: ${stars.gold}, silver: ${stars.silver} },`);
   L.push(`  objectives: ${objectivesStr()},`);
@@ -1199,6 +1193,7 @@ function buildExport(){
   const summary =
 `// ==== Exported from Outpost Level Builder ====
 // size ${W}×${H} · ${trees.length} trees · ${rocks.length} rocks · ` +
+(walls.length?`${walls.length} wall-seg · `:"") +
 `wall col ${wallCol} · house@${house.x},${house.y}` +
 (anchors.tower?` · tower@${anchors.tower.x},${anchors.tower.y}`:"") +
 (anchors.hall?` · townhall@${anchors.hall.x},${anchors.hall.y}`:"") +
@@ -1233,6 +1228,7 @@ function applyLevel(L){
   // ---- entities ----
   (L.trees||[]).forEach(([x,y]) => { if (inb(x,y)) ent[y][x] = TREE; });
   (L.rocks||[]).forEach(([x,y]) => { if (inb(x,y)) ent[y][x] = ROCK; });
+  (L.walls||[]).forEach(([x,y]) => { if (inb(x,y)) ent[y][x] = WALLSEG; });
   wallCol = Number.isInteger(L.wallCol) ? L.wallCol : -1;
   if (wallCol >= W) wallCol = -1;
 
@@ -1342,8 +1338,9 @@ document.getElementById("doImport").addEventListener("click", ()=>{
   document.getElementById("importText").value="";
   const bits=[];
   bits.push(`${W}×${H}`);
-  const nt=collect(TREE).length, nr=collect(ROCK).length, nd=collectDeco().length;
+  const nt=collect(TREE).length, nr=collect(ROCK).length, nw=collect(WALLSEG).length, nd=collectDeco().length;
   bits.push(`${nt} trees`, `${nr} rocks`);
+  if (nw) bits.push(`${nw} wall-seg`);
   if (nd) bits.push(`${nd} deco`);
   toast("Loaded "+bits.join(" · "));
 });
