@@ -320,6 +320,9 @@
 
   // Tile types
   const EMPTY = 0, TREE = 1, ROCK = 2, RUBBLE = 3, TOWER = 4, STOCK = 5, BUILDING = 6, THALL = 7;
+  // Bumped on every code change; shown on the main menu and logged at load so
+  // the running build is always identifiable (catches stale browser caches).
+  const BUILD_TAG = "build 2026-07-10.f2";
   // STOCK is a historical name — this tile type actually means "a house sits here."
   // The real stockpile is res.wood/res.stone in the HUD, not a tile. HOUSE is the
   // honest alias; both point at the same value so existing code keeps working and
@@ -515,6 +518,32 @@
       solid: [[0,0],[4,0],[5,0],[6,0],[24,0],[25,0],[26,0],[27,0],[28,0],[29,0],[30,0],[31,0],[0,1],[24,1],[31,1],[0,2],[9,2],[10,2],[11,2],[12,2],[13,2],[14,2],[15,2],[16,2],[17,2],[18,2],[19,2],[20,2],[21,2],[24,2],[26,2],[28,2],[31,2],[0,3],[9,3],[21,3],[24,3],[31,3],[0,4],[9,4],[21,4],[24,4],[31,4],[0,5],[9,5],[21,5],[24,5],[26,5],[31,5],[0,6],[9,6],[12,6],[13,6],[14,6],[15,6],[16,6],[17,6],[18,6],[21,6],[24,6],[31,6],[0,7],[9,7],[11,7],[19,7],[21,7],[24,7],[27,7],[29,7],[31,7],[0,8],[9,8],[11,8],[19,8],[21,8],[24,8],[31,8],[0,9],[9,9],[11,9],[14,9],[15,9],[16,9],[19,9],[21,9],[24,9],[31,9],[0,10],[9,10],[11,10],[14,10],[15,10],[16,10],[19,10],[21,10],[24,10],[28,10],[31,10],[0,11],[4,11],[5,11],[6,11],[9,11],[10,11],[11,11],[14,11],[15,11],[16,11],[19,11],[20,11],[21,11],[24,11],[31,11],[0,12],[14,12],[15,12],[16,12],[31,12],[0,13],[14,13],[15,13],[16,13],[31,13],[0,14],[4,14],[5,14],[6,14],[9,14],[10,14],[11,14],[15,14],[19,14],[20,14],[21,14],[24,14],[31,14],[0,15],[9,15],[11,15],[19,15],[21,15],[24,15],[31,15],[0,16],[9,16],[11,16],[19,16],[21,16],[24,16],[31,16],[0,17],[9,17],[12,17],[13,17],[14,17],[15,17],[16,17],[17,17],[18,17],[21,17],[24,17],[31,17],[0,18],[9,18],[21,18],[24,18],[31,18],[0,19],[9,19],[21,19],[24,19],[31,19],[0,20],[9,20],[21,20],[24,20],[31,20],[0,21],[9,21],[10,21],[11,21],[12,21],[13,21],[14,21],[15,21],[16,21],[17,21],[18,21],[19,21],[20,21],[21,21],[24,21],[31,21],[0,22],[24,22],[31,22],[0,23],[24,23],[25,23],[26,23],[29,23],[30,23],[31,23]],
       intro: "THE FOUNTAIN — the watchtower over the castle fountain has fallen, and wall segments block the way in. These aren't ordinary rubble: a basic workshop won't touch them. Gather wood to build a workshop, mine stone to upgrade it to LEVEL 2, then your crew can finally break the wall segments and reach the tower. Gather 50 wood + 35 stone, clear a path, and click the TOWER to raise it and win.",
     },
+    {
+      name: "The Vortex",
+      subtitle: "LEVEL 7",
+      clearText: "Mission Accomplished!",
+      goal: "Build another dang Watchtower",
+      blurb: "Walk around and around and around. Or bust through — it's up to you.",
+      cols: 18, rows: 18,
+      startHouse: { x: 5, y: 12 },
+      tower:      { x: 3, y: 4 },
+      wallCol: -1,
+      maxHouseLevel: 2,
+      maxWorkshopLevel: 2,
+      trees: [[1,1],[2,1],[3,1],[4,1],[5,1],[6,1],[0,3],[1,3],[6,3],[8,3],[9,3],[10,3],[11,3],[12,3],[0,4],[1,4],[13,4],[0,5],[1,5],[13,5],[13,6],[13,7],[13,8],[6,9],[13,9],[13,10],[13,11],[6,12]],
+      rocks: [[8,1],[9,1],[10,1],[11,1],[12,1],[13,1],[14,1],[15,1],[15,2],[15,3],[15,4],[7,5],[15,5],[15,6],[15,7],[15,8],[15,9],[15,10],[15,11]],
+      // single-tile wall segments: harvestable RUBBLE (HP 12), needs a Level 2
+      // workshop to break. Here they're an optional shortcut through the spiral.
+      walls: [[7,2],[7,4],[7,6],[7,8]],
+      cost:  { wood: 65, stone: 45 },
+      stars: { gold: 300, silver: 400 },
+      objectives: null,
+      // decoration layer: [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
+      deco: [[0,0,0,44],[1,0,0,81],[2,0,0,45],[3,0,0,81],[4,0,0,45],[5,0,0,81],[6,0,0,45],[7,0,0,81],[8,0,0,45],[9,0,0,81],[10,0,0,45],[11,0,0,81],[12,0,0,45],[13,0,0,81],[14,0,0,45],[15,0,0,81],[16,0,0,46],[17,0,0,27],[0,1,0,56],[16,1,0,58],[17,1,0,21],[0,2,0,68],[1,2,0,81],[2,2,0,45],[3,2,0,81],[4,2,0,82],[5,2,0,44],[6,2,0,82],[8,2,0,80],[9,2,0,81],[10,2,0,45],[11,2,0,81],[12,2,0,45],[13,2,0,81],[14,2,0,46],[16,2,0,58],[17,2,0,3],[2,3,0,12],[3,3,0,13],[4,3,0,14],[5,3,0,56],[14,3,0,58],[16,3,0,58],[17,3,0,15],[2,4,0,24],[4,4,0,26],[5,4,0,68],[6,4,0,82],[8,4,0,80],[9,4,0,81],[10,4,0,45],[11,4,0,81],[12,4,0,46],[14,4,0,58],[16,4,0,58],[2,5,0,36],[3,5,0,37],[4,5,0,38],[5,5,0,1],[6,5,0,1],[7,5,0,1],[8,5,0,1],[9,5,0,1],[10,5,0,1],[11,5,0,1],[12,5,0,58],[14,5,0,58],[16,5,0,58],[17,5,0,21],[0,6,0,44],[1,6,0,81],[2,6,0,45],[3,6,0,81],[4,6,0,45],[5,6,0,81],[6,6,0,82],[8,6,0,80],[9,6,0,81],[10,6,0,46],[11,6,0,1],[12,6,0,58],[14,6,0,58],[16,6,0,58],[0,7,0,56],[1,7,0,1],[2,7,0,1],[3,7,0,1],[4,7,0,1],[5,7,0,1],[6,7,0,1],[7,7,0,1],[8,7,0,1],[9,7,0,1],[10,7,0,58],[11,7,0,1],[12,7,0,58],[14,7,0,58],[16,7,0,58],[17,7,0,27],[0,8,0,56],[1,8,0,1],[2,8,0,44],[3,8,0,81],[4,8,0,45],[5,8,0,81],[6,8,0,82],[8,8,0,47],[9,8,0,1],[10,8,0,58],[11,8,0,1],[12,8,0,58],[14,8,0,58],[16,8,0,58],[0,9,0,56],[1,9,0,1],[2,9,0,56],[3,9,0,1],[4,9,0,1],[5,9,0,1],[6,9,0,1],[7,9,0,1],[8,9,0,58],[9,9,0,1],[10,9,0,58],[11,9,0,1],[12,9,0,58],[14,9,0,58],[16,9,0,58],[0,10,0,56],[1,10,0,1],[2,10,0,56],[3,10,0,1],[4,10,0,44],[5,10,0,81],[6,10,0,46],[7,10,0,1],[8,10,0,58],[9,10,0,1],[10,10,0,58],[11,10,0,1],[12,10,0,58],[14,10,0,58],[16,10,0,58],[17,10,0,9],[0,11,0,56],[1,11,0,1],[2,11,0,56],[3,11,0,1],[4,11,0,56],[5,11,0,1],[6,11,0,71],[7,11,0,1],[8,11,0,58],[9,11,0,1],[10,11,0,58],[11,11,0,1],[12,11,0,58],[14,11,0,58],[16,11,0,58],[17,11,0,34],[0,12,0,56],[1,12,0,1],[2,12,0,56],[3,12,0,1],[4,12,0,56],[5,12,0,1],[6,12,0,1],[7,12,0,1],[8,12,0,58],[9,12,0,1],[10,12,0,58],[11,12,0,1],[12,12,0,58],[14,12,0,58],[15,12,0,80],[16,12,0,70],[0,13,0,56],[1,13,0,1],[2,13,0,56],[3,13,0,1],[4,13,0,68],[5,13,0,81],[6,13,0,45],[7,13,0,81],[8,13,0,70],[9,13,0,1],[10,13,0,58],[11,13,0,1],[12,13,0,58],[13,13,0,80],[14,13,0,70],[16,13,0,10],[0,14,0,56],[1,14,0,1],[2,14,0,56],[3,14,0,1],[4,14,0,1],[5,14,0,1],[6,14,0,1],[7,14,0,1],[8,14,0,1],[9,14,0,1],[10,14,0,58],[11,14,0,1],[12,14,0,58],[15,14,0,3],[16,14,0,34],[17,14,0,21],[0,15,0,56],[1,15,0,1],[2,15,0,68],[3,15,0,81],[4,15,0,45],[5,15,0,81],[6,15,0,45],[7,15,0,81],[8,15,0,45],[9,15,0,81],[10,15,0,70],[11,15,0,1],[12,15,0,58],[13,15,0,27],[15,15,0,15],[16,15,0,3],[17,15,0,27],[0,16,0,56],[1,16,0,1],[2,16,0,1],[3,16,0,1],[4,16,0,1],[5,16,0,1],[6,16,0,1],[7,16,0,1],[8,16,0,1],[9,16,0,1],[10,16,0,1],[11,16,0,1],[12,16,0,58],[15,16,0,21],[16,16,0,22],[17,16,0,11],[0,17,0,68],[1,17,0,81],[2,17,0,45],[3,17,0,81],[4,17,0,45],[5,17,0,81],[6,17,0,45],[7,17,0,81],[8,17,0,45],[9,17,0,81],[10,17,0,45],[11,17,0,81],[12,17,0,70],[13,17,0,10],[14,17,0,27],[15,17,0,21],[16,17,0,35],[17,17,0,34]],
+      // solid mask: [x, y] cells workers cannot walk through
+      solid: [[0,0],[1,0],[2,0],[3,0],[4,0],[5,0],[6,0],[7,0],[8,0],[9,0],[10,0],[11,0],[12,0],[13,0],[14,0],[15,0],[16,0],[0,1],[16,1],[0,2],[1,2],[2,2],[3,2],[4,2],[5,2],[6,2],[8,2],[9,2],[10,2],[11,2],[12,2],[13,2],[14,2],[16,2],[5,3],[14,3],[16,3],[5,4],[6,4],[8,4],[9,4],[10,4],[11,4],[12,4],[14,4],[16,4],[12,5],[14,5],[16,5],[0,6],[1,6],[2,6],[3,6],[4,6],[5,6],[6,6],[8,6],[9,6],[10,6],[12,6],[14,6],[16,6],[0,7],[10,7],[12,7],[14,7],[16,7],[0,8],[2,8],[3,8],[4,8],[5,8],[6,8],[8,8],[10,8],[12,8],[14,8],[16,8],[0,9],[2,9],[8,9],[10,9],[12,9],[14,9],[16,9],[0,10],[2,10],[4,10],[5,10],[6,10],[8,10],[10,10],[12,10],[14,10],[16,10],[0,11],[2,11],[4,11],[6,11],[8,11],[10,11],[12,11],[14,11],[16,11],[0,12],[2,12],[4,12],[8,12],[10,12],[12,12],[14,12],[15,12],[16,12],[0,13],[2,13],[4,13],[5,13],[6,13],[7,13],[8,13],[10,13],[12,13],[13,13],[14,13],[0,14],[2,14],[10,14],[12,14],[0,15],[2,15],[3,15],[4,15],[5,15],[6,15],[7,15],[8,15],[9,15],[10,15],[12,15],[0,16],[12,16],[0,17],[1,17],[2,17],[3,17],[4,17],[5,17],[6,17],[7,17],[8,17],[9,17],[10,17],[11,17],[12,17]],
+      intro: "THE VORTEX — the watchtower sits at the heart of a spiral, and the long way around coils all the way in. Gather wood for a workshop, mine your way to the stone to upgrade it to LEVEL 2, and then you've a choice: keep walking the spiral, or bust the wall segments and cut straight through. Gather 65 wood + 45 stone, reach the tower, and raise it. You know how to play by now — click on everything.",
+    },
   ];
   let currentLevel = 0;   // index into LEVELS; the level currently loaded
 
@@ -568,6 +597,7 @@
   let solidMask = null;   // Set of "x,y" keys the crew cannot walk through (from L.solid)
   let decoTiles = null;   // Map "x,y" -> {s, i}: ground-layer art drawn under entities (from L.deco)
   let screen = "mainMenu";   // "mainMenu" | "levelSelect" | "levelIntro" | "play" | "levelComplete"
+  console.log("OUTPOST", BUILD_TAG);
 
   function resetState(levelIndex) {
     if (typeof levelIndex === "number") currentLevel = levelIndex;
@@ -735,22 +765,6 @@
     if (t === THALL) {
       // A town-hall cell blocks movement only once its part is built; ghosted
       // (unbuilt) parts are walk-through, matching the shadow-then-solid design.
-      const part = townhall && townhall.parts.find(p => p.x === x && p.y === y);
-      return !part || !part.built;
-    }
-    return t === EMPTY || t === STOCK;
-  }
-
-  // Cleared-flood variant: treats every harvestable (tree/rock/wall) as already
-  // removed. Used ONLY by the build-cutoff test — a resource you can dig your way
-  // to shouldn't count as "stranded" by a building. Without this, a maze level
-  // (L5's winding road) reports almost nothing reachable and flags valid spots.
-  function walkableCleared(x, y) {
-    if (x < 0 || y < 0 || x >= worldCols || y >= worldRows) return false;
-    if (solidMask && solidMask.has(key(x,y))) return false;
-    if (nodes.has(key(x,y))) return true;   // harvestable — passable once cleared
-    const t = grid[y][x];
-    if (t === THALL) {
       const part = townhall && townhall.parts.find(p => p.x === x && p.y === y);
       return !part || !part.built;
     }
@@ -1042,14 +1056,39 @@
     return false;
   }
 
-  // Cleared-flood reachability: could a worker reach this if all harvestables
-  // were already cleared? Used by the cutoff test so buildings are only rejected
-  // when they'd wall off a node even in a fully-harvested map.
-  function reachableCleared(tx, ty) {
-    for (const w of workers) {
-      if (astar(Math.round(w.px), Math.round(w.py), tx, ty, walkableCleared)) return true;
+  // Harvest-flood: the set of cells the crew can actually open up from home by
+  // progressive harvesting. Grows outward from the starting house over walkable
+  // ground; a harvestable node joins the region only once the flood touches it
+  // (a worker could stand beside it and clear it). Wall segments join only when
+  // the workshop is Level 2 — until then they're hard walls. This is the model
+  // behind the build-cutoff test, and it's what makes "resources may block
+  // resources" safe: the flood digs through node chains exactly as a crew would.
+  function harvestReachableSet() {
+    const seen = new Set([key(stockpile.x, stockpile.y)]);
+    const q = [[stockpile.x, stockpile.y]];
+    while (q.length) {
+      const [x, y] = q.shift();
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, ny = y + dy, k = key(nx, ny);
+        if (seen.has(k)) continue;
+        if (nx < 0 || ny < 0 || nx >= worldCols || ny >= worldRows) continue;
+        if (solidMask && solidMask.has(k)) continue;
+        const n = nodes.get(k);
+        if (n) {
+          // The flood has reached this node's side, so a worker could harvest
+          // it — unless it's a wall segment and the workshop isn't L2 yet.
+          if (n.type === RUBBLE && workshopLevel < 2) continue;
+          seen.add(k); q.push([nx, ny]); continue;
+        }
+        const t = grid[ny][nx];
+        if (t === THALL) {
+          const part = townhall && townhall.parts.find(p => p.x === nx && p.y === ny);
+          if (part && part.built) continue;   // built sections block; ghosts walk through
+        } else if (t !== EMPTY && t !== STOCK) continue;
+        seen.add(k); q.push([nx, ny]);
+      }
     }
-    return false;
+    return seen;
   }
 
   function placementValid(gx, gy) {
@@ -1064,26 +1103,38 @@
     // fail at dispatch. Checking here turns the ghost red up front.
     if (!reachableNow(gx, gy)) return { ok: false, why: "No worker can reach that spot — clear a path first." };
 
-    // Snapshot what's reachable BEFORE placing — using cleared-flood reachability
-    // (harvestables count as passable), so only a genuine wall-off is a cutoff.
+    // Snapshot what the crew can actually obtain BEFORE placing, via the
+    // harvest-flood from home (progressive harvesting; walls gated on workshop
+    // level — see harvestReachableSet). Anchored at the fixed home tile, never
+    // at live worker positions: a worker standing beyond the build site must
+    // not make a sealed outpost look open.
+    const setBefore = harvestReachableSet();
+    const adjIn = (s, x, y) =>
+      s.has(key(x+1, y)) || s.has(key(x-1, y)) || s.has(key(x, y+1)) || s.has(key(x, y-1));
     const nodesReachableBefore = [];
-    for (const [, n] of nodes) if (reachableCleared(n.x, n.y)) nodesReachableBefore.push(n);
-    const towerReachableBefore = reachableCleared(tower.x, tower.y);
+    for (const [, n] of nodes) if (setBefore.has(key(n.x, n.y))) nodesReachableBefore.push(n);
+    const towerReachableBefore = adjIn(setBefore, tower.x, tower.y);
     // Unbuilt town-hall sections that can currently be reached must stay reachable.
-    const thallReachableBefore = townhall ? townhall.parts.filter(p => !p.built && reachableCleared(p.x, p.y)) : [];
+    const thallReachableBefore = townhall ? townhall.parts.filter(p => !p.built && setBefore.has(key(p.x, p.y))) : [];
 
-    // Temporarily place a non-walkable building and re-test only those.
+    // Temporarily place a non-walkable building and re-flood.
     grid[gy][gx] = BUILDING;
+    const setAfter = harvestReachableSet();
     let stranded = null;
-    for (const n of nodesReachableBefore) {
-      if (!reachableCleared(n.x, n.y)) { stranded = "a resource"; break; }
+    // Resources may block each other (they harvest away) and cutting off a side
+    // pocket is a tactical choice — but a placement that leaves NOTHING
+    // obtainable kills the run. The harvest-flood makes this exact: it only
+    // credits nodes the crew can genuinely work toward.
+    if (nodesReachableBefore.length > 0 &&
+        nodesReachableBefore.every(n => !setAfter.has(key(n.x, n.y)))) {
+      stranded = "every resource";
     }
-    if (!stranded && towerReachableBefore && !reachableCleared(tower.x, tower.y)) {
+    if (!stranded && towerReachableBefore && !adjIn(setAfter, tower.x, tower.y)) {
       stranded = "the tower";
     }
     if (!stranded) {
       for (const p of thallReachableBefore) {
-        if (!reachableCleared(p.x, p.y)) { stranded = "the Town Hall"; break; }
+        if (!setAfter.has(key(p.x, p.y))) { stranded = "the Town Hall"; break; }
       }
     }
     grid[gy][gx] = EMPTY;
@@ -2665,6 +2716,12 @@
     ctx.fillText("Level Select", W/2, sY+sH/2);
     menuSelectBtn = { x: sX, y: sY, w: sW, h: sH };
     ctx.textBaseline = "alphabetic";
+
+    // Build tag — bottom of the menu, small and out of the way. If this text
+    // doesn't match the latest file, the browser is serving a cached copy.
+    ctx.fillStyle = "rgba(159,179,198,.55)";
+    ctx.font = "11px 'Trebuchet MS', sans-serif";
+    ctx.fillText(BUILD_TAG, W/2, H - 14);
   }
 
   // ---- Level select -----------------------------------------------------
