@@ -320,6 +320,9 @@
       rocks: [[11,9],[12,8],[5,9],[6,10],[13,3]],
       cost:  { wood: 15, stone: 10 }, // tower cost
       stars: { gold: 100, silver: 150 }, // 1:40 gold, 2:30 silver
+      objectives: null,
+      // decoration layer: [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
+      deco: [[0,0,0,44],[1,0,0,81],[2,0,0,45],[3,0,0,81],[4,0,0,45],[5,0,0,81],[6,0,0,82],[9,0,0,80],[10,0,0,81],[11,0,0,45],[12,0,0,81],[13,0,0,45],[14,0,0,81],[15,0,0,46],[0,1,0,56],[15,1,0,58],[0,2,0,56],[15,2,0,58],[0,3,0,56],[15,3,0,58],[0,4,0,56],[15,4,0,58],[0,5,0,56],[1,5,0,12],[2,5,0,13],[3,5,0,14],[12,5,0,12],[13,5,0,13],[14,5,0,14],[15,5,0,58],[0,6,0,56],[1,6,0,24],[3,6,0,26],[12,6,0,24],[14,6,0,26],[15,6,0,58],[0,7,0,56],[1,7,0,36],[2,7,0,37],[3,7,0,38],[12,7,0,36],[13,7,0,37],[14,7,0,38],[15,7,0,58],[0,8,0,56],[15,8,0,58],[0,9,0,56],[15,9,0,58],[0,10,0,56],[15,10,0,58],[0,11,0,68],[1,11,0,81],[2,11,0,45],[3,11,0,81],[4,11,0,45],[5,11,0,81],[6,11,0,82],[9,11,0,80],[10,11,0,81],[11,11,0,45],[12,11,0,81],[13,11,0,45],[14,11,0,81],[15,11,0,70]],
       intro: "Click a tree or rock to send your nearest free worker to gather it. " +
              "Use the BUILD bar below to place a house (more workers) or a workshop " +
              "(unlocks stone, then wall-breaking). Gather 15 wood + 10 stone, then " +
@@ -348,6 +351,8 @@
       // Tower is gated: settle the outpost (5 houses) and clear the whole wall
       // before it will accept builders.
       objectives: { houses: 5, clearWalls: true },
+      // decoration layer: [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
+      deco: [[0,0,0,44],[1,0,0,45],[2,0,0,81],[3,0,0,45],[4,0,0,81],[5,0,0,45],[6,0,0,81],[7,0,0,45],[8,0,0,81],[9,0,0,45],[10,0,0,82],[12,0,0,80],[13,0,0,45],[14,0,0,81],[15,0,0,45],[16,0,0,81],[17,0,0,45],[18,0,0,81],[19,0,0,45],[20,0,0,81],[21,0,0,45],[22,0,0,81],[23,0,0,46],[0,1,0,56],[1,1,0,48],[2,1,0,49],[3,1,0,50],[23,1,0,58],[0,2,0,56],[1,2,0,60],[2,2,0,63],[3,2,0,62],[21,2,1,65],[23,2,0,58],[0,3,0,56],[1,3,0,72],[3,3,0,75],[19,3,1,64],[23,3,0,58],[0,4,0,56],[18,4,1,65],[20,4,1,64],[23,4,0,58],[0,5,0,56],[23,5,0,58],[0,6,0,56],[23,6,0,58],[0,7,0,56],[23,7,0,58],[0,8,0,56],[23,8,0,58],[0,9,0,56],[23,9,0,58],[0,10,0,56],[23,10,0,58],[0,11,0,56],[23,11,0,58],[0,12,0,56],[23,12,0,58],[0,13,0,56],[23,13,0,58],[0,14,0,56],[23,14,0,58],[0,15,0,56],[23,15,0,58],[0,16,0,56],[23,16,0,58],[0,17,0,68],[1,17,0,45],[2,17,0,81],[3,17,0,45],[4,17,0,81],[5,17,0,45],[6,17,0,81],[7,17,0,45],[8,17,0,81],[9,17,0,45],[10,17,0,82],[12,17,0,80],[13,17,0,81],[14,17,0,45],[15,17,0,81],[16,17,0,45],[17,17,0,81],[18,17,0,45],[19,17,0,81],[20,17,0,45],[21,17,0,81],[22,17,0,45],[23,17,0,70]],
       intro: "THE EXPANSE — click and drag the map to explore new area. " +
              "Settlers are moving in: build 5 houses (one per worker — meet all " +
              "five!), upgrade a workshop to break through the wall, clear every " +
@@ -383,15 +388,15 @@
         [20,13],[21,14],[22,14],[21,15],[20,15],
       ],
       // Rocks circling the town-hall site (center ~11-12, 7-9).
-      rocks: [
-        [9,6],[11,5],[13,6],[14,8],[14,10],[13,11],[11,12],[9,11],[8,9],[9,8],
-      ],
+      rocks: [[11,5],[14,5],[9,6],[9,8],[14,8],[8,9],[14,10],[9,11],[13,11],[11,12]],
       cost:  { wood: 0, stone: 0 },
-      stars: { gold: 300, silver: 480 },
+      stars: { gold: 200, silver: 300 },
       objectives: null,
       // decoration layer (added in builder): border trim around the map edges.
       // [x, y, sheetIndex(0=tilemap,1=dungeon), tileIndex]
-      deco: [[0,0,0,27],[1,0,0,27],[2,0,0,27],[3,0,0,27],[20,0,0,27],[21,0,0,27],[22,0,0,27],[23,0,0,27],[0,1,0,27],[1,1,0,27],[22,1,0,27],[23,1,0,27],[0,2,0,27],[23,2,0,27],[0,3,0,27],[23,3,0,27],[0,14,0,27],[23,14,0,27],[0,15,0,27],[23,15,0,27],[0,16,0,27],[1,16,0,27],[22,16,0,27],[23,16,0,27],[0,17,0,27],[1,17,0,27],[2,17,0,27],[3,17,0,27],[20,17,0,27],[21,17,0,27],[22,17,0,27],[23,17,0,27]],
+      deco: [[0,0,0,44],[1,0,0,81],[2,0,0,45],[3,0,0,82],[18,0,0,80],[19,0,0,45],[20,0,0,69],[21,0,0,45],[22,0,0,81],[23,0,0,46],[0,1,0,56],[8,1,0,48],[9,1,0,51],[10,1,0,49],[11,1,0,50],[23,1,0,58],[0,2,0,56],[8,2,0,60],[9,2,0,61],[10,2,0,63],[11,2,0,62],[23,2,0,58],[0,3,0,56],[8,3,0,72],[9,3,0,84],[10,3,0,85],[11,3,0,75],[23,3,0,58],[0,4,0,56],[15,4,0,52],[16,4,0,55],[17,4,0,53],[18,4,0,54],[23,4,0,58],[0,5,0,56],[15,5,0,64],[16,5,0,67],[17,5,0,65],[18,5,0,66],[23,5,0,58],[0,6,0,56],[10,6,0,12],[11,6,0,13],[12,6,0,13],[13,6,0,14],[15,6,0,76],[16,6,0,89],[17,6,0,88],[18,6,0,79],[23,6,0,58],[0,7,0,56],[10,7,0,24],[13,7,0,26],[23,7,0,58],[0,8,0,56],[10,8,0,24],[13,8,0,26],[23,8,0,58],[0,9,0,56],[2,9,0,52],[3,9,0,53],[4,9,0,55],[5,9,0,54],[10,9,0,24],[13,9,0,26],[23,9,0,58],[0,10,0,56],[2,10,0,64],[3,10,0,67],[4,10,0,65],[5,10,0,66],[10,10,0,36],[11,10,0,37],[12,10,0,37],[13,10,0,38],[23,10,0,58],[0,11,0,56],[2,11,0,76],[3,11,0,89],[4,11,0,77],[5,11,0,79],[16,11,0,48],[17,11,0,49],[18,11,0,51],[19,11,0,50],[23,11,0,58],[0,12,0,56],[16,12,0,60],[17,12,0,61],[18,12,0,63],[19,12,0,62],[23,12,0,58],[0,13,0,56],[16,13,0,72],[17,13,0,84],[18,13,0,85],[19,13,0,75],[23,13,0,58],[0,14,0,56],[23,14,0,58],[0,15,0,56],[23,15,0,58],[0,16,0,56],[23,16,0,58],[0,17,0,68],[1,17,0,81],[2,17,0,45],[3,17,0,82],[18,17,0,80],[19,17,0,45],[20,17,0,69],[21,17,0,45],[22,17,0,81],[23,17,0,70]],
+      // solid mask: [x, y] cells workers cannot walk through
+      solid: [[8,1],[9,1],[10,1],[11,1],[8,2],[9,2],[10,2],[11,2],[8,3],[9,3],[10,3],[11,3],[15,4],[16,4],[17,4],[18,4],[15,5],[16,5],[17,5],[18,5],[15,6],[16,6],[17,6],[18,6],[2,9],[3,9],[4,9],[5,9],[2,10],[3,10],[4,10],[5,10],[2,11],[3,11],[4,11],[5,11],[16,11],[17,11],[18,11],[19,11],[16,12],[17,12],[18,12],[19,12],[16,13],[17,13],[18,13],[19,13]],
       intro: "THE TOWN HALL — click and drag to explore. Chop the corner forests for " +
              "wood, build a workshop so your crew can mine the ring of stone, then click " +
              "each of the six shadowed Town Hall sections in the center to assemble it. " +
@@ -675,9 +680,26 @@
     return t === EMPTY || t === STOCK;
   }
 
-  function astar(sx, sy, tx, ty) {
+  // Cleared-flood variant: treats every harvestable (tree/rock/wall) as already
+  // removed. Used ONLY by the build-cutoff test — a resource you can dig your way
+  // to shouldn't count as "stranded" by a building. Without this, a maze level
+  // (L5's winding road) reports almost nothing reachable and flags valid spots.
+  function walkableCleared(x, y) {
+    if (x < 0 || y < 0 || x >= worldCols || y >= worldRows) return false;
+    if (solidMask && solidMask.has(key(x,y))) return false;
+    if (nodes.has(key(x,y))) return true;   // harvestable — passable once cleared
+    const t = grid[y][x];
+    if (t === THALL) {
+      const part = townhall && townhall.parts.find(p => p.x === x && p.y === y);
+      return !part || !part.built;
+    }
+    return t === EMPTY || t === STOCK;
+  }
+
+  function astar(sx, sy, tx, ty, canWalk) {
+    canWalk = canWalk || walkable;
     // target tile itself may be non-walkable (a tree); we path to it and stop adjacent.
-    const goalAdjacent = !walkable(tx, ty);
+    const goalAdjacent = !canWalk(tx, ty);
     const h = (x,y) => Math.abs(x-tx) + Math.abs(y-ty);
     const open = new Map();      // key -> node
     const came = new Map();
@@ -699,7 +721,7 @@
 
       for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
         const nx = cur.x+dx, ny = cur.y+dy;
-        if (!walkable(nx, ny)) continue;
+        if (!canWalk(nx, ny)) continue;
         const nk = key(nx,ny);
         const tentative = g.get(curK) + 1;
         if (tentative < (g.get(nk) ?? Infinity)) {
@@ -959,37 +981,48 @@
     return false;
   }
 
+  // Cleared-flood reachability: could a worker reach this if all harvestables
+  // were already cleared? Used by the cutoff test so buildings are only rejected
+  // when they'd wall off a node even in a fully-harvested map.
+  function reachableCleared(tx, ty) {
+    for (const w of workers) {
+      if (astar(Math.round(w.px), Math.round(w.py), tx, ty, walkableCleared)) return true;
+    }
+    return false;
+  }
+
   function placementValid(gx, gy) {
     if (grid[gy][gx] !== EMPTY) return { ok: false, why: "That tile is occupied." };
     // Solid-mask cells (fences and other builder collision tiles) look empty in
     // grid[] but aren't buildable — building on one would otherwise let a worker
     // treat the solid as passable once the structure lands.
-    if (solidMask && solidMask.has(key(gx, gy))) return { ok: false, why: "Can't build on a solid — clear it first." };
+    if (solidMask && solidMask.has(key(gx, gy))) return { ok: false, why: "Can't build here." };
 
     // The tile must be reachable by at least one worker — otherwise the ghost
     // would show green over a spot no one can walk to, and the click would only
     // fail at dispatch. Checking here turns the ghost red up front.
     if (!reachableNow(gx, gy)) return { ok: false, why: "No worker can reach that spot — clear a path first." };
 
-    // Snapshot what's reachable BEFORE placing.
+    // Snapshot what's reachable BEFORE placing — using cleared-flood reachability
+    // (harvestables count as passable), so only a genuine wall-off is a cutoff.
     const nodesReachableBefore = [];
-    for (const [, n] of nodes) if (reachableNow(n.x, n.y)) nodesReachableBefore.push(n);
-    const towerReachableBefore = reachableNow(tower.x, tower.y);
+    for (const [, n] of nodes) if (reachableCleared(n.x, n.y)) nodesReachableBefore.push(n);
+    const towerReachableBefore = reachableCleared(tower.x, tower.y);
     // Unbuilt town-hall sections that can currently be reached must stay reachable.
-    const thallReachableBefore = townhall ? townhall.parts.filter(p => !p.built && reachableNow(p.x, p.y)) : [];
+    const thallReachableBefore = townhall ? townhall.parts.filter(p => !p.built && reachableCleared(p.x, p.y)) : [];
 
     // Temporarily place a non-walkable building and re-test only those.
     grid[gy][gx] = BUILDING;
     let stranded = null;
     for (const n of nodesReachableBefore) {
-      if (!reachableNow(n.x, n.y)) { stranded = "a resource"; break; }
+      if (!reachableCleared(n.x, n.y)) { stranded = "a resource"; break; }
     }
-    if (!stranded && towerReachableBefore && !reachableNow(tower.x, tower.y)) {
+    if (!stranded && towerReachableBefore && !reachableCleared(tower.x, tower.y)) {
       stranded = "the tower";
     }
     if (!stranded) {
       for (const p of thallReachableBefore) {
-        if (!reachableNow(p.x, p.y)) { stranded = "the Town Hall"; break; }
+        if (!reachableCleared(p.x, p.y)) { stranded = "the Town Hall"; break; }
       }
     }
     grid[gy][gx] = EMPTY;

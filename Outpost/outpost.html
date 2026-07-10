@@ -100,6 +100,7 @@
   // the call sites. Effects are called as sfx.chop(), sfx.deposit(), etc.
   const sfx = (() => {
     let ctx = null, master = null, muted = false;
+    let winBuf = null, winBufFailed = false;   // decoded grand-piano flourish
     function ensure() {
       if (!ctx) {
         const AC = window.AudioContext || window.webkitAudioContext;
@@ -108,9 +109,28 @@
         master = ctx.createGain();
         master.gain.value = 0.35;         // overall headroom
         master.connect(ctx.destination);
+        loadWin();                        // kick off sample decode once ctx exists
       }
       if (ctx.state === "suspended") ctx.resume();
       return ctx;
+    }
+    // Decode the recorded win flourish once. Fire-and-forget: if it fails (missing
+    // file, offline, decode error) we set a flag and win() falls back to the synth
+    // arpeggio, so the game is never silent on a win.
+    function loadWin() {
+      if (winBuf || winBufFailed) return;
+      fetch("assets/grand_piano_level_complete.mp3")
+        .then(r => { if (!r.ok) throw new Error("HTTP "+r.status); return r.arrayBuffer(); })
+        .then(ab => {
+          // Callback form: works in Chrome, Firefox, and older Safari/iOS WebKit
+          // (which don't return a promise from decodeAudioData — the promise form
+          // fails silently there, which is what swallowed the sample originally).
+          ctx.decodeAudioData(ab,
+            buf => { winBuf = buf; },
+            ()  => { winBufFailed = true; }
+          );
+        })
+        .catch(() => { winBufFailed = true; });
     }
     // A single enveloped oscillator voice.
     function tone(freq, t0, dur, { type="sine", gain=0.5, glideTo=null, attack=0.005, release=null } = {}) {
@@ -154,7 +174,16 @@
       deposit() { play(t => { tone(523, t, 0.08, { type:"sine", gain:0.3 }); tone(784, t+0.06, 0.10, { type:"sine", gain:0.3 }); }); },
       place()   { play(t => { tone(300, t, 0.07, { type:"square", gain:0.25, glideTo:420 }); }); },
       build()   { play(t => { tone(440, t, 0.10, { type:"triangle", gain:0.3 }); tone(660, t+0.09, 0.12, { type:"triangle", gain:0.3 }); tone(880, t+0.2, 0.14, { type:"triangle", gain:0.3 }); }); },
-      win()     { play(t => { [523,659,784,1047].forEach((f,i)=> tone(f, t+i*0.12, 0.22, { type:"triangle", gain:0.32 })); }); },
+      win()     { play(t => {
+        if (winBuf) {
+          // Recorded grand-piano flourish, routed through master so mute works.
+          const src = ctx.createBufferSource(); src.buffer = winBuf;
+          src.connect(master); src.start(t);
+        } else {
+          // Synth fallback if the sample isn't ready (first-win race) or missing.
+          [523,659,784,1047].forEach((f,i)=> tone(f, t+i*0.12, 0.22, { type:"triangle", gain:0.32 }));
+        }
+      }); },
       click()   { play(t => { tone(660, t, 0.04, { type:"square", gain:0.18 }); }); },
       blocked() { play(t => { tone(200, t, 0.12, { type:"sawtooth", gain:0.22, glideTo:140 }); }); },
     };
@@ -1161,7 +1190,7 @@
       if (screen === "levelSelect") { drawLevelSelect(); raf = requestAnimationFrame(update); return; }
       if (screen === "levelIntro")  { drawTitle();       raf = requestAnimationFrame(update); return; }
     }
-    if (screen === "levelComplete") { lastFrame = now; draw(); drawWinBanner(); raf = requestAnimationFrame(update); return; }
+    if (screen === "levelComplete") { lastFrame = now; draw(); drawWinBanner(now); raf = requestAnimationFrame(update); return; }
 
     // screen === "play": drain accumulated real time into fixed sim ticks.
     // The intro banner PAUSES the sim — no ticks, no timer, no worker movement —
@@ -2093,9 +2122,132 @@
   }
 
   // ---- Level-complete overlay ----
-  function drawWinBanner() {
+
+  // Firework flourish on the win screen. Two phases:
+  //   1) opening mortar volley — shells launch from the base, arc up under gravity,
+  //      and explode at apex into a ring of spinning star particles;
+  //   2) ambient — gentle fountains keep spawning as long as the screen is shown.
+  // Only the star tiers the player earned take part (bronze/silver/gold). Purely
+  // cosmetic, so it runs on the render clock with delta-time physics (frame-rate
+  // independent) — no effect on the sim.
+  const fw = {
+    shells: [],      // rising mortar shells, {x,y,vx,vy,color,fuse}
+    sparks: [],      // exploded star particles, {x,y,vx,vy,rot,vrot,life,ttl,color,size}
+    t0: 0,           // when the current win screen started (ms)
+    last: 0,         // last frame time for dt
+    volleyLeft: 0,   // remaining opening-volley shells to fire
+    nextShell: 0,    // ms timestamp for next scheduled shell
+    nextAmbient: 0,  // ms timestamp for next ambient fountain
+    colors: [],      // earned star colors this win
+  };
+  const GRAV = 320;  // px/s^2, for shells and sparks alike
+
+  function fireworksReset(now) {
+    fw.shells.length = 0; fw.sparks.length = 0;
+    fw.t0 = now; fw.last = now;
+    fw.colors = STAR_COLORS.slice();   // always mix all three tiers — looks richest
+    fw.volleyLeft = 8;             // opening mortar burst count
+    fw.nextShell = now;            // fire first immediately
+    fw.nextAmbient = now + 1200;   // ambient starts after the volley gets going
+  }
+
+  function launchShell(now) {
+    const c = fw.colors[(Math.random()*fw.colors.length)|0];
+    const x = canvas.width * (0.2 + Math.random()*0.6);
+    // aim to burst somewhere in the upper third
+    const burstY = canvas.height * (0.18 + Math.random()*0.22);
+    const rise = (canvas.height - burstY);
+    const vy = -Math.sqrt(2 * GRAV * rise);   // exact velocity to apex at burstY
+    fw.shells.push({ x, y: canvas.height + 8, vx: (Math.random()-0.5)*40, vy, color: c });
+  }
+
+  function explode(x, y, color) {
+    const n = 26 + (Math.random()*10|0);
+    const baseSpeed = 120 + Math.random()*60;
+    for (let i=0;i<n;i++) {
+      const a = (i/n) * Math.PI*2 + Math.random()*0.15;
+      const spd = baseSpeed * (0.6 + Math.random()*0.5);
+      fw.sparks.push({
+        x, y,
+        vx: Math.cos(a)*spd, vy: Math.sin(a)*spd,
+        rot: Math.random()*Math.PI*2, vrot: (Math.random()-0.5)*10,
+        life: 0, ttl: 1.1 + Math.random()*0.7,
+        color, size: 16 + Math.random()*10,
+      });
+    }
+  }
+
+  function fireworksStep(now) {
+    let dt = (now - fw.last) / 1000;
+    fw.last = now;
+    if (dt > 0.05) dt = 0.05;   // clamp after a stall so nothing teleports
+
+    // schedule opening volley
+    if (fw.volleyLeft > 0 && now >= fw.nextShell) {
+      launchShell(now);
+      fw.volleyLeft--;
+      fw.nextShell = now + 140 + Math.random()*120;
+    }
+    // ambient fountains, looping
+    if (now >= fw.nextAmbient) {
+      launchShell(now);
+      fw.nextAmbient = now + 700 + Math.random()*900;
+    }
+
+    // advance shells; explode at apex (vy turns from up to down)
+    for (let i=fw.shells.length-1;i>=0;i--) {
+      const s = fw.shells[i];
+      s.vy += GRAV*dt; s.x += s.vx*dt; s.y += s.vy*dt;
+      if (s.vy >= 0) { explode(s.x, s.y, s.color); fw.shells.splice(i,1); }
+    }
+    // advance sparks
+    for (let i=fw.sparks.length-1;i>=0;i--) {
+      const p = fw.sparks[i];
+      p.vy += GRAV*0.45*dt;              // lighter gravity — drifting embers
+      p.vx *= (1 - 1.1*dt);             // air drag
+      p.x += p.vx*dt; p.y += p.vy*dt;
+      p.rot += p.vrot*dt;
+      p.life += dt;
+      if (p.life >= p.ttl) fw.sparks.splice(i,1);
+    }
+  }
+
+  function fireworksDraw() {
+    ctx.save();
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    // rising shells: a small bright dot with a faint glow
+    for (const s of fw.shells) {
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = s.color;
+      ctx.shadowColor = s.color; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(s.x, s.y, 2.5, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    // star sparks: spinning ★ glyphs fading over their lifetime
+    for (const p of fw.sparks) {
+      const k = p.life / p.ttl;
+      const alpha = k < 0.15 ? k/0.15 : (1 - (k-0.15)/0.85);  // quick in, slow fade
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color; ctx.shadowBlur = 8;
+      ctx.save();
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.font = `${p.size}px sans-serif`;
+      ctx.fillText("★", 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawWinBanner(now) {
     ctx.fillStyle = "rgba(15,22,30,.78)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Fireworks burst behind the panel — advance physics then paint.
+    fireworksStep(now ?? performance.now());
+    fireworksDraw();
+
     const cw = 380, ch = 260, cx = (canvas.width-cw)/2, cy = (canvas.height-ch)/2;
     panel(cx, cy, cw, ch, 16, "#2f4a63", { shadowBlur: 24, shadowOffsetY: 8,
            stroke: "rgba(255,255,255,.15)", strokeW: 2 });
@@ -2305,6 +2457,7 @@
   function win(now) {
     done = true;
     sfx.win();
+    fireworksReset(now);
     const sec = Math.floor(simNow / 1000);   // pure sim time — device-independent
     winStars = starsFor(sec);
     winTimeStr = `Finished in ${fmt(sec)}  ·  Gold ≤ ${fmt(GOLD_SEC)}, Silver ≤ ${fmt(SILVER_SEC)}`;
