@@ -704,6 +704,7 @@ let state = 'title'; // title, play, paused, dying, entry, over
 let player, bullets, enemies, eBullets, particles, stars, obstacles, powerups;
 let floaters;     // floating pickup labels
 let score, wave, waveTimer, spawnTimer, shotCooldown, frame, screenShake;
+let gameTime;     // real elapsed seconds — drives frame-rate-independent visual cycles
 let waveBanner;   // {text, t}
 let deathTimer;   // counts down the explosion pause
 let powerState;   // active timed powerups
@@ -713,7 +714,7 @@ let spriteCycle;  // per-type color-column cycle counters
 function reset(){
   player = {x:W/2, y:H-90, w:26, h:30, baseSpeed:4.2, speed:4.2, hp:5, maxhp:5, inv:0, alive:true};
   bullets=[]; enemies=[]; eBullets=[]; particles=[]; obstacles=[]; powerups=[]; floaters=[];
-  score=0; wave=1; waveTimer=0; spawnTimer=0; shotCooldown=0; frame=0; screenShake=0;
+  score=0; wave=1; waveTimer=0; spawnTimer=0; shotCooldown=0; frame=0; screenShake=0; gameTime=0;
   waveBanner={text:'WAVE 1', t:90};
   deathTimer=0;
   powerState={speed:0, spread:0, scoreMultiplier:0, scoreMultiplierAmount:1};
@@ -846,6 +847,7 @@ function spawnFloater(text, x, y, col){
 function update(dt){
   const frameTime = dt * 60; // convert deltaTime to "frame equivalents" at 60fps baseline
   frame++;
+  gameTime += dt;            // real seconds, for frame-rate-independent visual cycles
   const pad = readPad();
 
   // hide legend if player moves (instantly) - catch all input methods
@@ -1049,6 +1051,7 @@ function startDeath(){
 function updateDeath(dt){
   const frameTime = dt * 60; // convert deltaTime to "frame equivalents" at 60fps baseline
   frame++;
+  gameTime += dt;
   // keep world drifting/exploding while we pause
   stars.forEach(s=>{ s.y+=s.v*frameTime; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
   enemies.forEach(e=>{ e.y+=e.vy*frameTime; e.x+=e.vx*frameTime; });
@@ -1195,7 +1198,8 @@ function draw(){
 
   // player ship (hidden once dead)
   if(player.alive){
-    const flick = player.inv>0 && Math.floor(frame/4)%2===0;
+    // flicker at a fixed real-time rate (~7.5 blinks/sec) regardless of framerate
+    const flick = player.inv>0 && Math.floor(gameTime/0.0667)%2===0;
     if(!flick){
       ctx.save(); ctx.translate(player.x,player.y);
       // thruster flame (drawn behind the ship)
