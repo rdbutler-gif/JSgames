@@ -1190,7 +1190,12 @@
     if (buildMode === "house" && houseTile != null) {
       const d = decoTiles && decoTiles.get(key(gx, gy));
       if (!d || d.s !== 0 || d.i !== houseTile) {
-        return { ok: false, why: "Houses can only be built on cleared home sites." };
+        // Level 1 (index 0) teaches the concept with the "cleared home sites"
+        // phrasing; later targeted-placement levels point at the actual spot.
+        const why = currentLevel === 0
+          ? "Houses can only be built on cleared home sites."
+          : "Place in the doorway of a vacant house.";
+        return { ok: false, why };
       }
     }
 
