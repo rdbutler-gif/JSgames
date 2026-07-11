@@ -625,12 +625,14 @@
   let solidMask = null;   // Set of "x,y" keys the crew cannot walk through (from L.solid)
   let decoTiles = null;   // Map "x,y" -> {s, i}: ground-layer art drawn under entities (from L.deco)
   let screen = "mainMenu";   // "mainMenu" | "levelSelect" | "levelIntro" | "play" | "levelComplete"
+  let paused = false;        // play-screen pause: freezes the sim + shows the pause overlay
   console.log("OUTPOST", BUILD_TAG);
 
   function resetState(levelIndex) {
     if (typeof levelIndex === "number") currentLevel = levelIndex;
     const L = LEVELS[currentLevel];
     timerStr = "0:00";   // clear stale time from the prior run before the intro shows
+    paused = false;      // never carry a paused state into a fresh/reset level
 
     // Pull per-level tuning into the engine's working variables.
     NEED_WOOD = L.cost.wood; NEED_STONE = L.cost.stone;
@@ -968,6 +970,21 @@
       return;
     }
 
+    // --- Paused: the overlay swallows all input; only Resume/Quit respond ---
+    if (screen === "play" && paused) {
+      if (pauseResumeBtn && pointInRect(mx, my, pauseResumeBtn.x, pauseResumeBtn.y, pauseResumeBtn.w, pauseResumeBtn.h)) {
+        sfx.click();
+        paused = false;
+        lastFrame = performance.now();   // avoid a big catch-up delta on resume
+      } else if (pauseQuitBtn && pointInRect(mx, my, pauseQuitBtn.x, pauseQuitBtn.y, pauseQuitBtn.w, pauseQuitBtn.h)) {
+        sfx.click();
+        paused = false;
+        resetState(currentLevel);   // clear in-progress play state
+        screen = "mainMenu";        // back to the overall title screen
+      }
+      return;
+    }
+
     // --- In play ---
     const region = regionAt(my);
 
@@ -982,10 +999,9 @@
         if (pointInRect(mx, my, btn.x, btn.y, btn.w, btn.h)) { sfx.click(); toggleBuildMode(btn.key); return; }
       }
       if (restartBtn && pointInRect(mx, my, restartBtn.x, restartBtn.y, restartBtn.w, restartBtn.h)) { sfx.click(); start(); return; }
-      if (quitBtn && pointInRect(mx, my, quitBtn.x, quitBtn.y, quitBtn.w, quitBtn.h)) {
+      if (pauseBtn && pointInRect(mx, my, pauseBtn.x, pauseBtn.y, pauseBtn.w, pauseBtn.h)) {
         sfx.click();
-        resetState(currentLevel);   // clear in-progress play state
-        screen = "mainMenu";        // back to the overall title screen
+        paused = true;   // freeze the sim; the pause overlay handles resume/quit
         return;
       }
       if (muteBtn && pointInRect(mx, my, muteBtn.x, muteBtn.y, muteBtn.w, muteBtn.h)) { sfx.toggleMute(); return; }
@@ -1363,7 +1379,7 @@
     lastFrame = now;
     if (dt < 0) dt = 0;
     if (dt > 250) dt = 250;           // first frame / tab-return guard
-    if (!done && !introBanner) {
+    if (!done && !introBanner && !paused) {
       simAccum += dt;
       let steps = 0;
       while (simAccum >= TICK_MS && steps < MAX_CATCHUP) {
@@ -1376,6 +1392,7 @@
       timerStr = fmt(Math.floor(simNow / 1000));
     }
     draw();
+    if (paused) drawPauseScreen();
     raf = requestAnimationFrame(update);
   }
 
@@ -2184,16 +2201,16 @@
     ctx.fillText("↻ Restart", rbX + rbW/2, rbY + rbH/2);
     restartBtn = { x: rbX, y: rbY, w: rbW, h: rbH };
 
-    // quit button (left of restart) — back to the level's title/intro screen
-    const qbW = 72, qbX = rbX - qbW - 8, qbY = rbY, qbH = rbH;
+    // pause button (left of restart) — freezes the sim and opens the pause overlay
+    const qbW = 76, qbX = rbX - qbW - 8, qbY = rbY, qbH = rbH;
     const qbHover = pointInRect(mouse.x, mouse.y, qbX, qbY, qbW, qbH);
-    panel(qbX, qbY, qbW, qbH, 8, qbHover ? "#6a3a3a" : "#553030",
+    panel(qbX, qbY, qbW, qbH, 8, qbHover ? "#3a5a78" : "#2f4a63",
           { stroke: "rgba(255,255,255,.12)", strokeW: 1 });
     ctx.fillStyle = "#ffffff";
-    ctx.fillText("✕ Quit", qbX + qbW/2, qbY + qbH/2);
-    quitBtn = { x: qbX, y: qbY, w: qbW, h: qbH };
+    ctx.fillText("❚❚ Pause", qbX + qbW/2, qbY + qbH/2);
+    pauseBtn = { x: qbX, y: qbY, w: qbW, h: qbH };
 
-    // mute toggle (left of quit)
+    // mute toggle (left of pause)
     const mbW = 40, mbX = qbX - mbW - 8, mbY = rbY, mbH = rbH;
     const mbHover = pointInRect(mouse.x, mouse.y, mbX, mbY, mbW, mbH);
     panel(mbX, mbY, mbW, mbH, 8, mbHover ? "#3a5a78" : "#2f4a63",
@@ -2457,6 +2474,48 @@
     ctx.textBaseline = "alphabetic";
   }
 
+  // Pause overlay — dims the board, offers Resume and Quit. The sim is already
+  // frozen in update() while `paused` is true, so this only draws + registers hits.
+  function drawPauseScreen() {
+    ctx.fillStyle = "rgba(15,22,30,.78)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const cw = 340, ch = 220, cx = (canvas.width-cw)/2, cy = (canvas.height-ch)/2;
+    panel(cx, cy, cw, ch, 16, "#2f4a63", { shadowBlur: 24, shadowOffsetY: 8,
+           stroke: "rgba(255,255,255,.15)", strokeW: 2 });
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 26px 'Trebuchet MS', sans-serif";
+    ctx.fillText("PAUSED", cx+cw/2, cy+58);
+
+    ctx.font = "12px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#b8c9d9";
+    ctx.fillText("The clock is stopped.", cx+cw/2, cy+84);
+
+    // Resume button
+    const rbW = 200, rbH = 42, rbX = cx+(cw-rbW)/2, rbY = cy+104;
+    const rHover = pointInRect(mouse.x, mouse.y, rbX, rbY, rbW, rbH);
+    panel(rbX, rbY, rbW, rbH, 10, rHover ? "#5fc55f" : "#4fb54f",
+          { stroke: "rgba(255,255,255,.2)", strokeW: 2 });
+    ctx.fillStyle = "#12301a"; ctx.textBaseline = "middle";
+    ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
+    ctx.fillText("▶  Resume", rbX+rbW/2, rbY+rbH/2);
+    pauseResumeBtn = { x: rbX, y: rbY, w: rbW, h: rbH };
+
+    // Quit button — back to the main menu (abandons the run)
+    const qbW = 200, qbH = 38, qbX = cx+(cw-qbW)/2, qbY = cy+ch-52;
+    const qHover = pointInRect(mouse.x, mouse.y, qbX, qbY, qbW, qbH);
+    panel(qbX, qbY, qbW, qbH, 10, qHover ? "#6a3a3a" : "#553030",
+          { stroke: "rgba(255,255,255,.18)", strokeW: 2 });
+    ctx.fillStyle = "#f0d8d8";
+    ctx.font = "bold 14px 'Trebuchet MS', sans-serif";
+    ctx.fillText("✕  Quit to Menu", qbX+qbW/2, qbY+qbH/2);
+    pauseQuitBtn = { x: qbX, y: qbY, w: qbW, h: qbH };
+    ctx.textBaseline = "alphabetic";
+  }
+
   // Full-sheet index picker. D toggles, T flips sheet. Reads indices straight off.
   function drawPicker() {
     const cell = 44, pad = 2, cols = SHEET_COLS;
@@ -2648,7 +2707,8 @@
   // Button rectangles are computed each frame in drawBuildBar() and cached here
   // for hit-testing. Each entry: { key, x, y, w, h }.
   let buildButtons = [];
-  let restartBtn = null, quitBtn = null, muteBtn = null;
+  let restartBtn = null, pauseBtn = null, muteBtn = null;
+  let pauseResumeBtn = null, pauseQuitBtn = null;      // pause overlay buttons
   let continueBtn = null, completeSelectBtn = null;   // levelComplete screen
   let menuPlayBtn = null, menuSelectBtn = null;        // mainMenu screen
   let introStartBtn = null, introBackBtn = null;       // levelIntro screen
