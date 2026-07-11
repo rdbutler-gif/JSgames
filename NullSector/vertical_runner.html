@@ -581,10 +581,20 @@ function reset(){
 function spawnEnemy(){
   const t = Math.random();
   let e;
-  if(t<0.55){
+  // Type availability by wave: wave 1 = drone only, wave 2 = +weaver, wave 3+ = all.
+  // Tank frequency reduced from 15% to 7%.
+  let kind;
+  if(wave<=1){
+    kind='drone';
+  } else if(wave===2){
+    kind = t<0.6 ? 'drone' : 'weaver';
+  } else {
+    kind = t<0.55 ? 'drone' : (t<0.93 ? 'weaver' : 'tank');
+  }
+  if(kind==='drone'){
     e={type:'drone', x:Math.random()*(W-40)+20, y:-30, w:24,h:24, hp:2, maxhp:2,
        vx:(Math.random()-0.5)*1.5, vy:1.6+wave*0.12, fireT:60+Math.random()*60, score:50};
-  } else if(t<0.85){
+  } else if(kind==='weaver'){
     e={type:'weaver', x:Math.random()*(W-40)+20, y:-30, w:26,h:22, hp:3, maxhp:3,
        vx:0, vy:1.3+wave*0.1, base:0, amp:90, fireT:80, score:90};
     e.base=e.x;
