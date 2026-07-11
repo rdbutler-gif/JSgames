@@ -228,15 +228,22 @@
 
   const sheet = new Image();
   let sheetReady = false;
-  sheet.onload  = () => { sheetReady = true; };
+  sheet.onload  = () => { sheetReady = true; groundLayerDirty = true; };
   sheet.onerror = () => { sheetReady = false; console.warn("tilemap.png not found — using placeholder shapes"); };
   sheet.src = "assets/tilemap.png";   // repo-relative; loads over https on Pages / localhost
 
   // Second sheet: Tiny Dungeon (characters). Same 16px / 1px / 12-wide layout.
   const charSheet = new Image();
   let charReady = false;
-  charSheet.onload  = () => { charReady = true; };
+  charSheet.onload  = () => { charReady = true; groundLayerDirty = true; };
   charSheet.onerror = () => { charReady = false; console.warn("dungeon.png not found — worker stays primitive"); };
+
+  // Static ground layer (grass + deco), pre-rendered once per level instead of
+  // hundreds of per-tile blits every frame. Dirty whenever the level resets or
+  // a sheet finishes loading (sheets are async — a cache built before onload
+  // would freeze the placeholder look in).
+  let groundLayer = null, groundLayerDirty = true;
+  let _ghostCache = null;   // build-ghost validity memo: {x, y, ok, t}
   charSheet.src = "assets/dungeon.png";
 
   // index (0..131) -> source pixel origin on the sheet
@@ -246,10 +253,11 @@
   }
   // draw sheet tile `idx` into grid cell (gx,gy), scaled to TILE.
   // img/ready default to the terrain sheet; pass charSheet/charReady for characters.
-  function blit(idx, gx, gy, img = sheet, ready = sheetReady) {
+  // tctx targets the main canvas by default; the ground prerender passes its own.
+  function blit(idx, gx, gy, img = sheet, ready = sheetReady, tctx = ctx) {
     if (idx == null || !ready) return;
     const { sx, sy } = srcXY(idx);
-    ctx.drawImage(img, sx, sy, SRC, SRC, gx*TILE, gy*TILE, TILE, TILE);
+    tctx.drawImage(img, sx, sy, SRC, SRC, gx*TILE, gy*TILE, TILE, TILE);
   }
 
   // ---- Tile index map (PLACEHOLDER — fill from debug picker) -------------
@@ -322,7 +330,7 @@
   const EMPTY = 0, TREE = 1, ROCK = 2, RUBBLE = 3, TOWER = 4, STOCK = 5, BUILDING = 6, THALL = 7;
   // Bumped on every code change; shown on the main menu and logged at load so
   // the running build is always identifiable (catches stale browser caches).
-  const BUILD_TAG = "build 2026-07-10.f2";
+  const BUILD_TAG = "build 2026-07-10.f3";
   // STOCK is a historical name — this tile type actually means "a house sits here."
   // The real stockpile is res.wood/res.stone in the HUD, not a tile. HOUSE is the
   // honest alias; both point at the same value so existing code keeps working and
@@ -690,6 +698,7 @@
     simNow = 0; simAccum = 0;    // reset the simulation clock for the new level
     updateHUD();
     rollGround();
+    groundLayerDirty = true;   // new level → rebuild the static ground layer
     introBanner = { text: L.intro };
   }
 
@@ -1589,6 +1598,35 @@
   }
 
   // ---- Rendering --------------------------------------------------------
+  // Rebuild the static ground+deco layer for the whole world. Same drawing
+  // logic the per-frame loops used, run once into an offscreen canvas.
+  function renderGroundLayer() {
+    if (!groundLayer) groundLayer = document.createElement("canvas");
+    groundLayer.width = worldCols * TILE;
+    groundLayer.height = worldRows * TILE;
+    const g = groundLayer.getContext("2d");
+    g.imageSmoothingEnabled = false;
+
+    for (let y = 0; y < worldRows; y++) for (let x = 0; x < worldCols; x++) {
+      if (sheetReady) {
+        blit(groundTile(x, y), x, y, sheet, sheetReady, g);
+      } else {
+        g.fillStyle = ((x + y) & 1) ? "#2a3f2a" : "#2f472f";
+        g.fillRect(x*TILE, y*TILE, TILE, TILE);
+      }
+    }
+    // decoration layer — pure art painted in the builder, drawn over ground and
+    // under entities. Sheet 0 = terrain (tilemap), sheet 1 = characters (dungeon).
+    if (decoTiles && decoTiles.size) {
+      for (const [k, d] of decoTiles) {
+        const [x, y] = k.split(",").map(Number);
+        if (d.s === 1) blit(d.i, x, y, charSheet, charReady, g);
+        else           blit(d.i, x, y, sheet, sheetReady, g);
+      }
+    }
+    groundLayerDirty = false;
+  }
+
   function draw() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -1612,26 +1650,12 @@
     const x1 = Math.min(worldCols, Math.ceil((camera.x + VIEW_W) / TILE) + 1);
     const y1 = Math.min(worldRows, Math.ceil((camera.y + VIEW_H) / TILE) + 1);
 
-    // ground
-    for (let y=y0; y<y1; y++) for (let x=x0; x<x1; x++) {
-      if (sheetReady) {
-        blit(groundTile(x, y), x, y);
-      } else {
-        ctx.fillStyle = ((x+y)&1) ? "#2a3f2a" : "#2f472f";
-        ctx.fillRect(x*TILE, y*TILE, TILE, TILE);
-      }
-    }
-
-    // decoration layer — pure art painted in the builder, drawn over ground and
-    // under entities. Sheet 0 = terrain (tilemap), sheet 1 = characters (dungeon).
-    if (decoTiles && decoTiles.size) {
-      for (let y=y0; y<y1; y++) for (let x=x0; x<x1; x++) {
-        const d = decoTiles.get(key(x,y));
-        if (!d) continue;
-        if (d.s === 1) blit(d.i, x, y, charSheet, charReady);
-        else           blit(d.i, x, y, sheet, sheetReady);
-      }
-    }
+    // ground + decoration — static for the whole level, so they're pre-rendered
+    // once into an offscreen canvas and drawn with a single call per frame
+    // (hundreds of per-tile blits otherwise, at 120Hz). Rebuilt when dirty:
+    // level reset or a sheet finishing its async load.
+    if (groundLayerDirty) renderGroundLayer();
+    ctx.drawImage(groundLayer, 0, 0);
 
     // tiles
     for (let y=y0; y<y1; y++) for (let x=x0; x<x1; x++) {
@@ -1748,9 +1772,16 @@
     }
 
     // Build-mode ghost: highlight the cell under the cursor green (valid) or red.
+    // Validity runs two flood-fills, so the GHOST result is cached briefly
+    // (recomputed when the cursor moves cells, or every 100ms in place). The
+    // actual click in tryPlaceBuilding always calls placementValid fresh.
     if (buildMode && hoverCell) {
       const { x, y } = hoverCell;
-      const valid = placementValid(x, y).ok && res.wood >= BUILDINGS[buildMode].wood
+      const t = performance.now();
+      if (!_ghostCache || _ghostCache.x !== x || _ghostCache.y !== y || t - _ghostCache.t > 100) {
+        _ghostCache = { x, y, ok: placementValid(x, y).ok, t };
+      }
+      const valid = _ghostCache.ok && res.wood >= BUILDINGS[buildMode].wood
                     && res.stone >= BUILDINGS[buildMode].stone;
       const hx = x*TILE, hy = y*TILE;
       // ghost sprite of the building, faded
