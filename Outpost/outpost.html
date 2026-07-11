@@ -630,6 +630,7 @@
   function resetState(levelIndex) {
     if (typeof levelIndex === "number") currentLevel = levelIndex;
     const L = LEVELS[currentLevel];
+    timerStr = "0:00";   // clear stale time from the prior run before the intro shows
 
     // Pull per-level tuning into the engine's working variables.
     NEED_WOOD = L.cost.wood; NEED_STONE = L.cost.stone;
