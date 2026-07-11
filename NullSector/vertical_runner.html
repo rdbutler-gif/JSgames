@@ -702,6 +702,7 @@ function readPad(){
 // ====================================================================
 let state = 'title'; // title, play, paused, dying, entry, over
 let player, bullets, enemies, eBullets, particles, stars, obstacles, powerups;
+let floaters;     // floating pickup labels
 let score, wave, waveTimer, spawnTimer, shotCooldown, frame, screenShake;
 let waveBanner;   // {text, t}
 let deathTimer;   // counts down the explosion pause
@@ -711,7 +712,7 @@ let spriteCycle;  // per-type color-column cycle counters
 
 function reset(){
   player = {x:W/2, y:H-90, w:26, h:30, baseSpeed:4.2, speed:4.2, hp:5, maxhp:5, inv:0, alive:true};
-  bullets=[]; enemies=[]; eBullets=[]; particles=[]; obstacles=[]; powerups=[];
+  bullets=[]; enemies=[]; eBullets=[]; particles=[]; obstacles=[]; powerups=[]; floaters=[];
   score=0; wave=1; waveTimer=0; spawnTimer=0; shotCooldown=0; frame=0; screenShake=0;
   waveBanner={text:'WAVE 1', t:90};
   deathTimer=0;
@@ -807,26 +808,36 @@ function nuke(){
 }
 
 function grabPowerup(p){
-  if(p.kind==='S'){ powerState.speed = 60*7; }
-  else if(p.kind==='W'){ powerState.spread = 60*9; }
+  let label, col;
+  if(p.kind==='S'){ powerState.speed = 60*7; label='SPEED!'; col='#28e0ff'; }
+  else if(p.kind==='W'){ powerState.spread = 60*9; label='SPREAD SHOT!'; col='#00ff9c'; }
   else if(p.kind==='M'){ 
     powerState.scoreMultiplierAmount = (powerState.scoreMultiplierAmount || 1) + 1;
     powerState.scoreMultiplier = 60*15;  // 15 seconds
     sndScoreMultiplier();
+    label='x'+powerState.scoreMultiplierAmount+' MULTIPLIER!'; col='#ffff00';
   }
   else if(p.kind==='H'){ 
     if(player.hp < player.maxhp){ 
       player.hp++;
       sndHealthRegain();
     }
+    label='HEALTH!'; col='#ff66ff';
   }
   else if(p.kind==='N'){ 
     nuke();
     sndNukeExplosion();
+    label='NUKE!'; col='#b06bff';
   }
+  spawnFloater(label, p.x, p.y, col);
   burst(p.x,p.y,'#fff',16,3);
   // Play standard powerup sound for S, W, and N (unless it's M or H which have their own)
   if(p.kind==='S' || p.kind==='W' || p.kind==='N') sndPowerupGrab();
+}
+
+// Floating pickup label: pops up, rises, and fades out over ~500ms.
+function spawnFloater(text, x, y, col){
+  floaters.push({text, x, y, col, life:30, max:30});  // 30 frames ≈ 500ms at 60fps
 }
 
 // ====================================================================
@@ -1017,6 +1028,9 @@ function update(dt){
   particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=pDecay; p.vy*=pDecay; p.life-=frameTime; });
   compact(particles, p=>p.life>0);
 
+  floaters.forEach(f=>{ f.y -= 0.7*frameTime; f.life -= frameTime; });  // drift up, fade
+  compact(floaters, f=>f.life>0);
+
   if(screenShake>0) screenShake*=Math.pow(0.85,frameTime);
 }
 function rect(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
@@ -1043,6 +1057,8 @@ function updateDeath(dt){
   const pDecay = Math.pow(0.95, frameTime);
   particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=pDecay; p.vy*=pDecay; p.life-=frameTime; });
   compact(particles, p=>p.life>0);
+  floaters.forEach(f=>{ f.y -= 0.7*frameTime; f.life -= frameTime; });
+  compact(floaters, f=>f.life>0);
   // secondary pops
   if(Math.floor(deathTimer/14) !== Math.floor((deathTimer-frameTime)/14) && deathTimer>30){
     burst(player.x+(Math.random()-0.5)*30, player.y+(Math.random()-0.5)*30, '#ffb000', 14, 4);
@@ -1223,6 +1239,27 @@ function draw(){
     ctx.fillStyle=p.col; ctx.fillRect(p.x,p.y,2.5,2.5);
   });
   ctx.globalAlpha=1;
+
+  // floating pickup labels: quick pop-in scale, then fade as they rise
+  floaters.forEach(f=>{
+    const t = f.life/f.max;              // 1 -> 0 over lifetime
+    const pop = t>0.8 ? (1-t)/0.2 : 1;   // scale up during first ~20% of life
+    const scale = 0.6 + 0.4*pop;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, t*1.6);
+    ctx.translate(f.x, f.y);
+    ctx.scale(scale, scale);
+    ctx.font='bold 20px Orbitron, sans-serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowBlur=10; ctx.shadowColor=f.col;
+    ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,0.85)';
+    ctx.strokeText(f.text, 0, 0);
+    ctx.fillStyle=f.col;
+    ctx.fillText(f.text, 0, 0);
+    ctx.restore();
+  });
+  ctx.shadowBlur=0; ctx.globalAlpha=1;
+  ctx.textBaseline='alphabetic';
 
   ctx.restore();
 
