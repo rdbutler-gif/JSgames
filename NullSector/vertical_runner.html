@@ -115,13 +115,15 @@
     <div class="sub" id="entryScore">SCORE 000000</div>
     <div style="margin:20px 0;">
       <button id="entryUpBtn" class="entryBtn" style="display:block;margin:0 auto 8px;">▲</button>
-      <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
+      <div style="display:flex;gap:16px;justify-content:center;align-items:center;">
+        <button id="entryLeftBtn" class="entryBtn">◄</button>
+        <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
+        <button id="entryRightBtn" class="entryBtn">►</button>
+      </div>
       <button id="entryDownBtn" class="entryBtn" style="display:block;margin:8px auto 0;">▼</button>
     </div>
-    <div style="display:flex;gap:16px;justify-content:center;margin:16px 0;">
-      <button id="entryLeftBtn" class="entryBtn">◄</button>
+    <div style="display:flex;justify-content:center;margin:16px 0;">
       <button id="entryAcceptBtn" class="btn">SAVE</button>
-      <button id="entryRightBtn" class="entryBtn">►</button>
     </div>
     <div class="ehint" id="entryHint">Use buttons to change letters and move initial / SPACE/ENTER = save</div>
   </div>
@@ -148,6 +150,7 @@
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const W = cv.width, H = cv.height;
+ctx.imageSmoothingEnabled = false;  // set once: crisp pixel art, no per-draw toggling
 
 // ====================================================================
 // SPRITE SHEET  (32x32 tiles, 10 cols x 16 rows; row = ship, col = color)
@@ -169,10 +172,39 @@ function drawShipTile(row, col, w, h, flip){
   const sy = row * SPRITE_TILE;
   ctx.save();
   if(flip) ctx.scale(1,-1);
-  ctx.imageSmoothingEnabled = false;
   ctx.drawImage(spriteSheet, sx, sy, SPRITE_TILE, SPRITE_TILE, -w/2, -h/2, w, h);
   ctx.restore();
   return true;
+}
+
+// ====================================================================
+// PRE-RENDERED GLOW SPRITES
+// shadowBlur is the single most expensive canvas operation. Rendering the
+// glow ONCE to a small offscreen canvas and drawImage-ing it per bullet is
+// ~10x cheaper than blurring every fillRect each frame.
+// ====================================================================
+function makeGlowSprite(size, drawFn){
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const g = c.getContext('2d');
+  drawFn(g, size);
+  return c;
+}
+const bulletSprite = makeGlowSprite(28, (g,s)=>{
+  g.shadowBlur=8; g.shadowColor='#28e0ff'; g.fillStyle='#28e0ff';
+  g.fillRect(s/2-2, s/2-5, 4, 10);
+});
+const eBulletSprite = makeGlowSprite(24, (g,s)=>{
+  g.shadowBlur=8; g.shadowColor='#ff2d6f'; g.fillStyle='#ff2d6f';
+  g.beginPath(); g.arc(s/2, s/2, 3.5, 0, 7); g.fill();
+});
+
+// In-place array compaction — avoids allocating a new array every frame
+// (filter() churn causes GC stutter during heavy scenes).
+function compact(arr, keep){
+  let w=0;
+  for(let i=0;i<arr.length;i++){ if(keep(arr[i])) arr[w++]=arr[i]; }
+  arr.length=w;
 }
 
 // ====================================================================
@@ -275,116 +307,196 @@ function renderHSTable(highlightIdx=-1){
 // ====================================================================
 let soundEnabled = false;
 let audioContext = null;
+let masterGain = null;
+let compressor = null;
+let noiseBuffer = null;
+
+// Master volume — single knob for overall loudness. Bump this if still quiet.
+const MASTER_VOLUME = 0.9;
 
 function initAudio(){
   if(!audioContext){
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    // Compressor on the master bus acts as a limiter: stacked explosions get
+    // LOUD without clipping into harsh digital distortion.
+    compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.value = -14;
+    compressor.knee.value = 20;
+    compressor.ratio.value = 10;
+    compressor.attack.value = 0.002;
+    compressor.release.value = 0.16;
+    masterGain = audioContext.createGain();
+    masterGain.gain.value = MASTER_VOLUME;
+    masterGain.connect(compressor);
+    compressor.connect(audioContext.destination);
+    // One second of white noise, rendered once and reused (looped) by every
+    // noise-based sound. Real explosions are noise, not tones.
+    noiseBuffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
+    const d = noiseBuffer.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+  }
+  // Browsers start the context suspended until a user gesture; wake it up
+  // or early sounds come out weak or silent.
+  if(audioContext.state === 'suspended'){
+    audioContext.resume();
   }
 }
 
-function playSound(freq, duration, type='sine', volume=0.3){
-  if(!soundEnabled || !audioContext) return;
+function audioReady(){
+  if(!soundEnabled || !audioContext) return false;
+  if(audioContext.state === 'suspended') audioContext.resume();
+  return true;
+}
+
+// Tone with optional pitch sweep (f0 -> f1). All layering is scheduled on the
+// audio clock via `delay` (sample-accurate), replacing the old setTimeout hacks.
+function tone({f0=440, f1=null, dur=0.2, type='sine', vol=0.3, delay=0}){
+  if(!audioReady()) return;
   try{
-    const now = audioContext.currentTime;
+    const t = audioContext.currentTime + delay;
     const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    osc.connect(gain);
-    gain.connect(audioContext.destination);
-    osc.frequency.value = freq;
+    const g = audioContext.createGain();
     osc.type = type;
-    gain.gain.setValueAtTime(volume, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
-    osc.start(now);
-    osc.stop(now + duration);
+    osc.frequency.setValueAtTime(f0, t);
+    if(f1 !== null) osc.frequency.exponentialRampToValueAtTime(Math.max(1,f1), t+dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t+0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t+dur+0.02);
   }catch(e){}
 }
 
-function playMultiTone(frequencies, duration, volume=0.3){
-  if(!soundEnabled || !audioContext) return;
+// Filtered noise burst with a sweepable filter (f0 -> f1) -- the backbone of
+// every explosion and impact. Sweeping the cutoff downward reads as the
+// "energy dissipating" tail of a real blast.
+function noise({dur=0.3, vol=0.4, delay=0, type='lowpass', f0=1000, f1=null, q=0.9}){
+  if(!audioReady()) return;
   try{
-    const now = audioContext.currentTime;
-    frequencies.forEach(freq=>{
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      osc.connect(gain);
-      gain.connect(audioContext.destination);
-      osc.frequency.value = freq;
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(volume, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
-      osc.start(now);
-      osc.stop(now + duration);
-    });
+    const t = audioContext.currentTime + delay;
+    const src = audioContext.createBufferSource();
+    src.buffer = noiseBuffer;
+    src.loop = true;
+    const filt = audioContext.createBiquadFilter();
+    filt.type = type;
+    filt.Q.value = q;
+    filt.frequency.setValueAtTime(f0, t);
+    if(f1 !== null) filt.frequency.exponentialRampToValueAtTime(Math.max(20,f1), t+dur);
+    const g = audioContext.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    src.connect(filt); filt.connect(g); g.connect(masterGain);
+    src.start(t); src.stop(t+dur+0.02);
   }catch(e){}
 }
 
-// Game sounds
-function sndPlayerFire(){ playSound(150, 0.05, 'sine', 0.2); }
+// Back-compat single-tone helper.
+function playSound(freq, duration, type='sine', volume=0.3){
+  tone({f0:freq, dur:duration, type, vol:volume});
+}
+
+// ====================================================================
+// GAME SOUNDS
+// ====================================================================
+
+// PLAYER FIRE -- soft layered "pshew": a breathy noise sweep over a gentle
+// triangle pitch drop. Triangle instead of square (far softer timbre), low
+// levels, long decay tail. Random pitch variation keeps autofire organic.
+function sndPlayerFire(){
+  const f = 850 + Math.random()*150;
+  noise({dur:0.28, vol:0.07, type:'bandpass', f0:2600, f1:300, q:1.4}); // "psh" air
+  tone({f0:f, f1:f*0.08, dur:0.3, type:'triangle', vol:0.055});         // "eeew" fall
+  tone({f0:f*0.5, f1:f*0.06, dur:0.24, type:'sine', vol:0.03});         // soft body
+}
+
+// DRONE EXPLOSION -- small, crisp pop: bright noise crack + quick thump.
 function sndDroneExplode(){
-  // Small drone explosion - high-ish frequencies
-  playSound(100, 1.0, 'sine', 0.25);
-  setTimeout(()=>playSound(140, 0.8, 'sine', 0.2), 8);
+  noise({dur:0.16, vol:0.55, type:'bandpass', f0:1900, f1:350, q:0.8});
+  tone({f0:330, f1:65, dur:0.18, type:'triangle', vol:0.42});
 }
+
+// WEAVER EXPLOSION -- mid-size burst: fuller noise body, two-stage thump.
 function sndWeaverExplode(){
-  // Medium weaver explosion - mid-range
-  playSound(80, 1.2, 'sine', 0.28);
-  setTimeout(()=>playSound(110, 1.0, 'sine', 0.22), 10);
-  setTimeout(()=>playSound(90, 0.9, 'sine', 0.15), 25);
+  noise({dur:0.3, vol:0.6, type:'bandpass', f0:1300, f1:180, q:0.7});
+  tone({f0:270, f1:52, dur:0.32, type:'sawtooth', vol:0.38});
+  noise({dur:0.22, vol:0.3, delay:0.06, type:'lowpass', f0:650, f1:110});
 }
+
+// TANK EXPLOSION -- heavy boom: big noise blast, sub drop, crackle tail.
 function sndTankExplode(){
-  // Heavy tank explosion - lower frequencies, beefier
-  playSound(60, 1.4, 'sine', 0.32);
-  setTimeout(()=>playSound(100, 1.2, 'sine', 0.26), 12);
-  setTimeout(()=>playSound(75, 1.0, 'sine', 0.18), 30);
-  setTimeout(()=>playSound(120, 0.7, 'sine', 0.12), 50);
+  noise({dur:0.55, vol:0.75, type:'lowpass', f0:2600, f1:130});
+  tone({f0:190, f1:38, dur:0.55, type:'sawtooth', vol:0.5});
+  tone({f0:95, f1:34, dur:0.65, type:'sine', vol:0.5});
+  noise({dur:0.4, vol:0.32, delay:0.12, type:'bandpass', f0:950, f1:180, q:1.2}); // crackle
 }
+
+// NUKE -- the big one: initial crack, white-noise shockwave, deep sub sweep,
+// and a long rolling rumble tail.
 function sndNukeExplosion(){
-  // Loud, multi-layered nuke explosion with long decay
-  playSound(50, 2.5, 'sine', 0.75);
-  setTimeout(()=>playSound(80, 2.5, 'sine', 0.65), 15);
-  setTimeout(()=>playSound(120, 2.5, 'sine', 0.6), 30);
-  setTimeout(()=>playSound(100, 2.0, 'sine', 0.5), 50);
+  tone({f0:850, f1:90, dur:0.35, type:'square', vol:0.3});               // crack
+  noise({dur:1.7, vol:0.95, type:'lowpass', f0:4200, f1:70});            // shockwave
+  tone({f0:150, f1:28, dur:1.5, type:'sawtooth', vol:0.6});              // body drop
+  tone({f0:62, f1:24, dur:1.9, type:'sine', vol:0.6});                   // sub
+  noise({dur:1.3, vol:0.42, delay:0.28, type:'lowpass', f0:520, f1:55}); // rolling rumble
 }
+
+// PLAYER DEATH -- catastrophic: falling whine over a huge blast, long decay.
 function sndPlayerExplosion(){
-  // Multi-layered explosion with 3 second decay
-  playSound(80, 3.0, 'sine', 0.6);
-  setTimeout(()=>playSound(120, 3.0, 'sine', 0.5), 10);
-  setTimeout(()=>playSound(60, 3.0, 'sine', 0.4), 20);
-  setTimeout(()=>playSound(100, 2.5, 'sine', 0.3), 30);
+  noise({dur:1.3, vol:0.85, type:'lowpass', f0:3200, f1:90});
+  tone({f0:230, f1:32, dur:1.3, type:'sawtooth', vol:0.5});
+  tone({f0:470, f1:50, dur:1.0, type:'square', vol:0.3});                // falling whine
+  noise({dur:1.6, vol:0.42, delay:0.3, type:'lowpass', f0:420, f1:45});  // rumble tail
+  tone({f0:72, f1:26, dur:1.7, type:'sine', vol:0.5, delay:0.1});        // sub
 }
-function sndPowerupGrab(){ 
-  playSound(300, 0.1, 'sine', 0.25);
-  setTimeout(()=>playSound(400, 0.1, 'sine', 0.25), 50);
-  setTimeout(()=>playSound(500, 0.15, 'sine', 0.3), 100);
-}
-function sndWaveStart(){ 
-  playSound(400, 0.1, 'sine', 0.35);
-  setTimeout(()=>playSound(500, 0.2, 'sine', 0.35), 100);
-}
-function sndHighScoreEntry(){
-  playSound(500, 0.1, 'sine', 0.3);
-  setTimeout(()=>playSound(600, 0.1, 'sine', 0.3), 80);
-  setTimeout(()=>playSound(700, 0.15, 'sine', 0.3), 160);
-}
+
+// DAMAGE -- a real hit: noise thwack + low body knock.
 function sndDamage(){
-  playSound(100, 0.08, 'sine', 0.4);
+  noise({dur:0.13, vol:0.65, type:'bandpass', f0:750, f1:180, q:1});
+  tone({f0:145, f1:48, dur:0.17, type:'square', vol:0.5});
 }
+
+// POWERUP GRAB -- cheerful ascending major arpeggio (C5-E5-G5-C6).
+function sndPowerupGrab(){
+  tone({f0:523, dur:0.09, type:'square', vol:0.24});
+  tone({f0:659, dur:0.09, type:'square', vol:0.24, delay:0.07});
+  tone({f0:784, dur:0.13, type:'square', vol:0.28, delay:0.14});
+  tone({f0:1046, dur:0.18, type:'triangle', vol:0.26, delay:0.21});
+}
+
+// WAVE START -- rising alert sweep into a two-note fanfare with a bright accent.
+function sndWaveStart(){
+  tone({f0:200, f1:820, dur:0.35, type:'sawtooth', vol:0.3});
+  tone({f0:410, dur:0.12, type:'square', vol:0.3, delay:0.34});
+  tone({f0:615, dur:0.22, type:'square', vol:0.32, delay:0.46});
+  noise({dur:0.16, vol:0.22, delay:0.46, type:'highpass', f0:2400});     // cymbal-ish
+}
+
+// HIGH SCORE ENTRY -- little victory melody.
+function sndHighScoreEntry(){
+  const seq=[523,659,784,1046,784,1046];
+  seq.forEach((f,i)=>tone({f0:f, dur:0.12, type:'triangle', vol:0.3, delay:i*0.09}));
+}
+
+// SCORE MULTIPLIER -- escalating sparkle; each step sweeps upward.
 function sndScoreMultiplier(){
-  // Bright celebratory ascending tones
-  playSound(700, 0.12, 'sine', 0.35);
-  setTimeout(()=>playSound(900, 0.12, 'sine', 0.35), 60);
-  setTimeout(()=>playSound(1100, 0.18, 'sine', 0.4), 120);
+  tone({f0:700, f1:920, dur:0.1, type:'square', vol:0.28});
+  tone({f0:920, f1:1250, dur:0.1, type:'square', vol:0.28, delay:0.08});
+  tone({f0:1250, f1:1680, dur:0.16, type:'square', vol:0.3, delay:0.16});
+  noise({dur:0.2, vol:0.14, delay:0.16, type:'highpass', f0:3200});      // glitter
 }
+
+// HEALTH REGAIN -- warm rising shimmer (G4-B4-D5-G5), soft triangles.
 function sndHealthRegain(){
-  // Soft healing shimmer with sparkle
-  playSound(600, 0.15, 'sine', 0.3);
-  setTimeout(()=>playSound(850, 0.15, 'sine', 0.32), 50);
-  setTimeout(()=>playSound(1050, 0.12, 'sine', 0.3), 110);
+  tone({f0:392, dur:0.25, type:'triangle', vol:0.28});
+  tone({f0:494, dur:0.25, type:'triangle', vol:0.28, delay:0.08});
+  tone({f0:587, dur:0.3, type:'triangle', vol:0.3, delay:0.16});
+  tone({f0:784, dur:0.35, type:'sine', vol:0.25, delay:0.24});
 }
 
 // Sound toggle
 document.getElementById('soundToggleBtn').onclick=()=>{
-  if(!audioContext) initAudio();
+  initAudio();  // creates context if needed AND resumes it (valid user gesture)
   soundEnabled = !soundEnabled;
   const btn = document.getElementById('soundToggleBtn');
   if(btn){
@@ -437,7 +549,8 @@ addEventListener('keyup', e=>{ keys[e.code]=false; });
 
 // ---- TOUCH & MOUSE INPUT ----
 let touchActive = false;
-let mouseDown = false;
+let mouseMove = false;   // right button held: steer the ship
+let mouseFire = false;   // left button held: fire
 let touchPos = {x:0, y:0};
 let touchStartPos = {x:0, y:0};
 let touchStartTime = 0;
@@ -480,30 +593,37 @@ cv.addEventListener('touchend', e=>{
   }
 }, {passive:false});
 
-// MOUSE EVENTS
+// MOUSE EVENTS -- right button steers, left button fires
 cv.addEventListener('mousedown', e=>{
   if(state==='entry' || state==='title' || state==='over' || state==='paused') return;
   e.preventDefault();
-  touchStartPos = getInputPos(e);
-  touchPos = {...touchStartPos};
-  touchStartTime = Date.now();
-  mouseDown = true;
+  if(e.button===2){                 // right button: begin steering
+    touchPos = getInputPos(e);
+    mouseMove = true;
+  } else if(e.button===0){          // left button: fire
+    mouseFire = true;
+  }
 });
 
 cv.addEventListener('mousemove', e=>{
-  if(!mouseDown && !touchActive) return;
+  if(!mouseMove && !touchActive) return;
   touchPos = getInputPos(e);
 });
 
 cv.addEventListener('mouseup', e=>{
-  if(!mouseDown) return;
   e.preventDefault();
-  mouseDown = false;
-  // Click on menus: advance
-  if(state==='title' || state==='over' || state==='paused'){
-    menuAdvance();
+  if(e.button===2) mouseMove = false;
+  if(e.button===0){
+    mouseFire = false;
+    // Left-click on menus: advance
+    if(state==='title' || state==='over' || state==='paused'){
+      menuAdvance();
+    }
   }
 });
+
+// suppress right-click context menu on the canvas (right button = steer)
+cv.addEventListener('contextmenu', e=>e.preventDefault());
 
 // ENTRY SCREEN TOUCH EVENTS (minimal - just prevent default)
 cv.addEventListener('touchstart', e=>{
@@ -599,8 +719,11 @@ function reset(){
   legendTimer=180;  // show legend for 3 seconds at game start
   spriteCycle={drone:0, weaver:0, tank:0};  // per-type color column counters
   stars=[];
-  for(let i=0;i<90;i++) stars.push({x:Math.random()*W,y:Math.random()*H,
-    s:Math.random()*1.8+0.4, v:Math.random()*1.5+0.4});
+  for(let i=0;i<90;i++){
+    const s=Math.random()*1.8+0.4;
+    stars.push({x:Math.random()*W,y:Math.random()*H, s,
+      v:Math.random()*1.5+0.4, col:`rgba(0,255,156,${(0.25+s*0.3).toFixed(2)})`});
+  }
 }
 
 // ====================================================================
@@ -718,7 +841,7 @@ function update(dt){
   if(legendTimer>0 && (Math.abs(pad.x)>0.2 || Math.abs(pad.y)>0.2 || 
      keys['KeyW'] || keys['KeyA'] || keys['KeyS'] || keys['KeyD'] || 
      keys['ArrowUp'] || keys['ArrowDown'] || keys['ArrowLeft'] || keys['ArrowRight'] || 
-     touchActive || mouseDown)){
+     touchActive || mouseMove || mouseFire)){
     legendTimer=0;
   }
   if(legendTimer>0) legendTimer--;
@@ -730,9 +853,13 @@ function update(dt){
   if(keys['KeyW']||keys['ArrowUp']) dy-=1;
   if(keys['KeyS']||keys['ArrowDown']) dy+=1;
   dx+=pad.x; dy+=pad.y;
+  // Keyboard/controller directional intent (before mouse/touch is folded in).
+  // Used so keyboard & pad still autofire while moving, but mouse steering
+  // (right button) does not fire by itself.
+  const keyPadMoving = Math.hypot(dx,dy) > 0.01;
   
   // touch/mouse movement: move toward touch point at ship speed
-  if((touchActive || mouseDown) && state==='play'){
+  if((touchActive || mouseMove) && state==='play'){
     const tdx = touchPos.x - player.x;
     const tdy = touchPos.y - player.y;
     const tdist = Math.hypot(tdx, tdy);
@@ -758,8 +885,11 @@ function update(dt){
   else if(powerState.scoreMultiplier<=0) powerState.scoreMultiplierAmount=1;  // reset multiplier when duration expires
 
   // firing - autofire when moving or fire button pressed
+  // firing: Space / pad fire / left mouse button always fire.
+  // Keyboard & controller also autofire while moving. Mouse steering (right
+  // button) does NOT autofire on its own -- the left button is the trigger.
   if(shotCooldown>0) shotCooldown-=frameTime;
-  const firing = keys['Space']||pad.fire || mag > 0;
+  const firing = keys['Space'] || pad.fire || mouseFire || keyPadMoving || touchActive;
   if(firing && shotCooldown<=0){
     sndPlayerFire();
     if(powerState.spread>0){
@@ -777,7 +907,7 @@ function update(dt){
   }
 
   bullets.forEach(b=>{ b.y+=b.vy*frameTime; b.x+=(b.vx||0)*frameTime; });
-  bullets=bullets.filter(b=>b.y>-12 && b.x>-12 && b.x<W+12);
+  compact(bullets, b=>b.y>-12 && b.x>-12 && b.x<W+12);
 
   stars.forEach(s=>{ s.y+=s.v*frameTime; if(s.y>H){s.y=-2;s.x=Math.random()*W;} });
 
@@ -815,7 +945,7 @@ function update(dt){
   obstacles=obstacles.filter(o=>o.y<H+60);
 
   eBullets.forEach(b=>{ b.x+=b.vx*frameTime; b.y+=b.vy*frameTime; });
-  eBullets=eBullets.filter(b=>b.y>-10&&b.y<H+10&&b.x>-10&&b.x<W+10);
+  compact(eBullets, b=>b.y>-10&&b.y<H+10&&b.x>-10&&b.x<W+10);
 
   powerups.forEach(p=>{ p.y+=p.vy*frameTime; p.bob+=0.15*frameTime; });
   powerups=powerups.filter(p=>p.y<H+30);
@@ -851,7 +981,7 @@ function update(dt){
   });
 
   // enemy bullets vs obstacles (enemy bullets destroyed on contact)
-  eBullets = eBullets.filter(b=>{
+  compact(eBullets, b=>{
     for(let o of obstacles){
       if(b.x>o.x&&b.x<o.x+o.w&&b.y>o.y&&b.y<o.y+o.h){
         burst(b.x, b.y, '#ff2d6f', 2, 1.2);
@@ -883,8 +1013,9 @@ function update(dt){
     if(b.x>pl.x&&b.x<pl.x+pl.w&&b.y>pl.y&&b.y<pl.y+pl.h){ eBullets.splice(j,1); hitPlayer(); }
   }
 
-  particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=Math.pow(0.94,frameTime); p.vy*=Math.pow(0.94,frameTime); p.life-=frameTime; });
-  particles=particles.filter(p=>p.life>0);
+  const pDecay = Math.pow(0.94, frameTime);  // hoisted: same for every particle this frame
+  particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=pDecay; p.vy*=pDecay; p.life-=frameTime; });
+  compact(particles, p=>p.life>0);
 
   if(screenShake>0) screenShake*=Math.pow(0.85,frameTime);
 }
@@ -909,8 +1040,9 @@ function updateDeath(dt){
   enemies.forEach(e=>{ e.y+=e.vy*frameTime; e.x+=e.vx*frameTime; });
   obstacles.forEach(o=>{ o.y+=o.vy*frameTime; o.rot+=o.vr*frameTime; });
   eBullets.forEach(b=>{ b.x+=b.vx*frameTime; b.y+=b.vy*frameTime; });
-  particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=Math.pow(0.95,frameTime); p.vy*=Math.pow(0.95,frameTime); p.life-=frameTime; });
-  particles=particles.filter(p=>p.life>0);
+  const pDecay = Math.pow(0.95, frameTime);
+  particles.forEach(p=>{ p.x+=p.vx*frameTime; p.y+=p.vy*frameTime; p.vx*=pDecay; p.vy*=pDecay; p.life-=frameTime; });
+  compact(particles, p=>p.life>0);
   // secondary pops
   if(Math.floor(deathTimer/14) !== Math.floor((deathTimer-frameTime)/14) && deathTimer>30){
     burst(player.x+(Math.random()-0.5)*30, player.y+(Math.random()-0.5)*30, '#ffb000', 14, 4);
@@ -986,10 +1118,9 @@ function entryPadPoll(pad){
 function draw(){
   ctx.save();
   if(screenShake>0.3) ctx.translate((Math.random()-0.5)*screenShake,(Math.random()-0.5)*screenShake);
-  ctx.clearRect(-30,-30,W+60,H+60);
-  ctx.fillStyle='#000'; ctx.fillRect(-30,-30,W+60,H+60);
+  ctx.fillStyle='#000'; ctx.fillRect(-30,-30,W+60,H+60);  // opaque fill; clearRect redundant
 
-  stars.forEach(s=>{ ctx.fillStyle=`rgba(0,255,156,${0.25+s.s*0.3})`; ctx.fillRect(s.x,s.y,s.s,s.s*2); });
+  stars.forEach(s=>{ ctx.fillStyle=s.col; ctx.fillRect(s.x,s.y,s.s,s.s*2); });
 
   obstacles.forEach(o=>{
     ctx.save(); ctx.translate(o.x+o.w/2,o.y+o.h/2); ctx.rotate(o.rot);
@@ -1001,6 +1132,7 @@ function draw(){
   });
 
   // powerups
+  ctx.font='bold 15px Orbitron, monospace';  // set once, not per powerup
   powerups.forEach(p=>{
     const col = p.kind==='S'?'#28e0ff' : p.kind==='W'?'#00ff9c' : p.kind==='M'?'#ffff00' : p.kind==='H'?'#ff66ff' : '#b06bff';
     const yy=p.y+Math.sin(p.bob)*2;
@@ -1010,19 +1142,15 @@ function draw(){
     ctx.beginPath(); // diamond
     ctx.moveTo(0,-13);ctx.lineTo(13,0);ctx.lineTo(0,13);ctx.lineTo(-13,0);ctx.closePath();
     ctx.fill(); ctx.stroke();
-    ctx.shadowBlur=0; ctx.fillStyle=col; ctx.font='bold 15px Orbitron, monospace';
+    ctx.shadowBlur=0; ctx.fillStyle=col;
     ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(p.kind,0,1);
     ctx.restore();
   });
   ctx.textBaseline='alphabetic';
 
-  ctx.fillStyle='#28e0ff'; ctx.shadowBlur=8; ctx.shadowColor='#28e0ff';
-  bullets.forEach(b=>ctx.fillRect(b.x-2,b.y-8,4,10));
-  ctx.shadowBlur=0;
-
-  ctx.fillStyle='#ff2d6f'; ctx.shadowBlur=8; ctx.shadowColor='#ff2d6f';
-  eBullets.forEach(b=>{ ctx.beginPath();ctx.arc(b.x,b.y,3.5,0,7);ctx.fill(); });
-  ctx.shadowBlur=0;
+  // bullets: pre-rendered glow sprites (see makeGlowSprite) — no shadowBlur here
+  bullets.forEach(b=>ctx.drawImage(bulletSprite, b.x-14, b.y-17));
+  eBullets.forEach(b=>ctx.drawImage(eBulletSprite, b.x-12, b.y-12));
 
   enemies.forEach(e=>{
     ctx.save(); ctx.translate(e.x,e.y);
@@ -1073,7 +1201,7 @@ function draw(){
   }
 
   // touch/mouse movement indicator
-  if((touchActive || mouseDown) && state==='play'){
+  if((touchActive || mouseMove) && state==='play'){
     ctx.strokeStyle='rgba(40,224,255,0.6)';
     ctx.lineWidth=2;
     ctx.setLineDash([4,4]);
@@ -1192,13 +1320,13 @@ function drawTimer(label, t, max, col, y){
 // ====================================================================
 // LOOP
 // ====================================================================
-let lastFrameTime = Date.now();
+let lastFrameTime = 0;
 
-function loop(){
-  const now = Date.now();
-  const deltaTime = Math.min((now - lastFrameTime) / 1000, 0.05); // cap at 50ms (20fps minimum)
-  lastFrameTime = now;
-  
+function loop(ts){
+  if(!lastFrameTime) lastFrameTime = ts;
+  const deltaTime = Math.min((ts - lastFrameTime) / 1000, 0.05); // cap at 50ms (20fps minimum)
+  lastFrameTime = ts;
+
   if(state==='play'){ update(deltaTime); draw(); }
   else if(state==='dying'){ updateDeath(deltaTime); draw(); }
   requestAnimationFrame(loop);
@@ -1208,6 +1336,7 @@ function loop(){
 // FLOW
 // ====================================================================
 function startGame(){
+  initAudio();  // ensure audio context is live/resumed (reached via click or keypress)
   reset(); state='play';
   document.getElementById('title').classList.add('hidden');
   document.getElementById('over').classList.add('hidden');
