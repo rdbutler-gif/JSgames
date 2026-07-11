@@ -248,6 +248,13 @@
         <div><label class="field">Max house lvl</label><input type="number" id="maxHouseLevel" value="1" min="1" step="1"></div>
         <div><label class="field">Max workshop lvl</label><input type="number" id="maxWorkshopLevel" value="2" min="1" step="1"></div>
       </div>
+      <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-dim);cursor:pointer;padding:2px 2px">
+        <input type="checkbox" id="houseTileOn" style="width:auto"> Restrict houses to a deco tile
+      </label>
+      <div id="houseTileRow" style="display:none">
+        <label class="field">House-site tile # (tilemap.png)</label>
+        <input type="number" id="houseTileNum" value="78" min="0" step="1">
+      </div>
     </div>
 
     <div class="group">
@@ -968,6 +975,14 @@ document.getElementById("showSolid").addEventListener("change", e=>{
   showSolid = e.target.checked; draw();
 });
 
+// ---- House-tile restriction toggle ---------------------------------
+// Checkbox reveals a tile-# field. When on, buildExport emits houseTile.
+function syncHouseTileRow(){
+  const on = document.getElementById("houseTileOn").checked;
+  document.getElementById("houseTileRow").style.display = on ? "" : "none";
+}
+document.getElementById("houseTileOn").addEventListener("change", syncHouseTileRow);
+
 // ---- Size handling -------------------------------------------------
 const sizeSel = document.getElementById("sizeSel");
 const customSize = document.getElementById("customSize");
@@ -1158,6 +1173,11 @@ function buildExport(){
   if (anchors.tower) L.push(`  tower:      { x: ${anchors.tower.x}, y: ${anchors.tower.y} },`);
   else               L.push(`  tower: null,`);
   L.push(`  wallCol: ${wallCol},`);
+  // houseTile: emitted when the restriction checkbox is on. Reads the tile-# field.
+  if (document.getElementById("houseTileOn").checked) {
+    const ht = Math.max(0, +document.getElementById("houseTileNum").value || 0);
+    L.push(`  houseTile: ${ht},`);
+  }
   if (hpMult!==1) L.push(`  nodeHpMult: ${hpMult},`);
   if (maxHouseLevel!==1)    L.push(`  maxHouseLevel: ${maxHouseLevel},`);
   if (maxWorkshopLevel!==2) L.push(`  maxWorkshopLevel: ${maxWorkshopLevel},`);
@@ -1259,6 +1279,12 @@ function applyLevel(L){
   setVal("hpMult", L.nodeHpMult ?? 1);
   setVal("maxHouseLevel", L.maxHouseLevel ?? 1);
   setVal("maxWorkshopLevel", L.maxWorkshopLevel ?? 2);
+
+  // ---- house-tile restriction into checkbox + field ----
+  const htOn = (L.houseTile != null);
+  document.getElementById("houseTileOn").checked = htOn;
+  if (htOn) setVal("houseTileNum", L.houseTile|0);
+  syncHouseTileRow();
 
   // ---- stash the round-trip fields ----
   meta = {
