@@ -679,9 +679,14 @@
     maxWorkshopLevel = L.maxWorkshopLevel || 2;
 
     // World dimensions come from the level. The viewport is fixed (16x12); the
-    // camera scrolls when the world is bigger. Reset the camera to the origin.
+    // camera scrolls when the world is bigger. Open centered on the starting
+    // house (its tile centered in the play viewport), then clamp to world edges.
+    // clampCamera pins to 0 on any axis where the world fits the viewport, so
+    // levels no larger than 16x12 open unchanged (house wherever it sits).
     worldCols = L.cols; worldRows = L.rows;
-    camera.x = 0; camera.y = 0;
+    camera.x = (L.startHouse.x + 0.5) * TILE - VIEW_W / 2;
+    camera.y = (L.startHouse.y + 0.5) * TILE - VIEW_H / 2;
+    clampCamera();
 
     // grid of tile types (sized to the WORLD); nodes[] holds live objects w/ hp.
     grid = Array.from({length: worldRows}, () => Array(worldCols).fill(EMPTY));
