@@ -36,6 +36,13 @@ const LEVELS = [
   enemies: [[35,1,"fly"],[15,11,"slime_normal"],[31,11,"slime_spike"],[36,11,"frog"]],
   hazards: [[23,11,"spikes"],[26,11,"spikes"]],
   deco: [[6,11,"bush"],[11,11,"cactus"],[19,11,"cactus"],[34,11,"bush"]],
+  // tutorial tips (Level 1 only): fire when player crosses triggerX, show once
+  tips: [
+    [3,  "Click, tap, or press \u2191 to JUMP", 4.5],
+    [6,  "DOUBLE-tap to jump higher \u2014 clear the wall!", 4.5],
+    [12, "Leap onto enemies to STOMP them!", 4.0],
+    [20, "Watch out \u2014 avoid the SPIKES!", 4.0]
+  ],
 },
 {
   name: "Up and Away",
@@ -121,6 +128,7 @@ let solids=[];            // {x,y,w,h} in world px, built from terrain grid
 let solidSet=null;        // Set "gx,gy" for fast neighbor lookup
 let items=[], enemies=[], hazards=[], deco=[];
 let movers=[];            // moving platforms (ferries) lifted out of odd-theme terrain
+let levelTips=[], activeTip=null, activeTipT=0;   // tutorial popups (Level 1)
 let goalRect=null, spawnPx={x:0,y:0};
 let player, cam, keys={}, anim=0;
 let coinsGot=0, coinsTotal=0, lives=3, state='ready', invuln=0;
@@ -256,6 +264,9 @@ function buildLevel(i){
   coinsGot=0; coinsTotal=0; lives=3; invuln=0;
   score=0; combo=0; comboTimer=0; tookDamage=false; scorePops=[]; runSummary=null;
   paused=false;
+  // tutorial tips: copy from the level (if any), track fired state + active tip
+  levelTips = (L.tips||[]).map(([x,text,dur])=>({x, text, dur:(dur||4)*60, fired:false}));
+  activeTip = null; activeTipT = 0;
 
   // terrain -> solid rects. But first, detect "moving platforms": contiguous
   // horizontal runs of tiles whose THEME differs from the level's theme (e.g.
@@ -405,6 +416,11 @@ function update(){
   if(p.hurt>0)p.hurt--; if(invuln>0)invuln--;
   // countdown timer (60fps -> seconds); floors at 0
   if(timeLeft>0){ timeLeft=Math.max(0, timeLeft - 1/60); }
+  // tutorial tips: fire when the player reaches a trigger x (once each)
+  for(const tip of levelTips){
+    if(!tip.fired && p.x >= tip.x*TS){ tip.fired=true; activeTip=tip; activeTipT=tip.dur; }
+  }
+  if(activeTipT>0){ activeTipT--; if(activeTipT===0) activeTip=null; }
   // age score popups
   for(const sp of scorePops) sp.t++;
   scorePops=scorePops.filter(sp=>sp.t<50);
@@ -591,7 +607,7 @@ function drawTitle(){
   // title character sprite bouncing beside the logo
   const bob=Math.sin(t*2)*8;
   const cf=FRAMES.chars['character_green_idle'];
-  if(cf) ctx.drawImage(imgs.char, cf[0],cf[1],cf[2],cf[3], VW/2-260, VH*0.20-40+bob, 96,96);
+  if(cf) ctx.drawImage(imgs.char, cf[0],cf[1],cf[2],cf[3], VW/2-340, VH*0.20-40+bob, 96,96);
 
   // big title
   ctx.save();
@@ -602,7 +618,7 @@ function drawTitle(){
   ctx.restore();
   ctx.font="bold 20px 'Trebuchet MS', sans-serif"; ctx.fillStyle='#eafbe0';
   ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=6;
-  ctx.fillText('A KENNEY-POWERED PLATFORMER', VW/2, VH*0.24+52); ctx.shadowBlur=0;
+  ctx.fillText('A BROWSER-BASED PLATFORMER', VW/2, VH*0.24+52); ctx.shadowBlur=0;
 
   // buttons
   menuBtns={};
@@ -747,6 +763,8 @@ function draw(){
 
   ctx.restore();
   drawHUD();
+  if(state==='play' && !paused) drawGoalArrow();
+  if(activeTip && state==='play' && !paused) drawTip();
   if(state==='won')  endScreen('🏁 '+(L.name||'Level')+' cleared!', true);
   if(state==='lost') endScreen('💀 Game Over', false);
   if(paused && state==='play') pauseOverlay();
@@ -756,6 +774,68 @@ function hudLabel(txt,x,y,align,size,color){
   ctx.textAlign=align; ctx.textBaseline='middle';
   ctx.lineWidth=4; ctx.strokeStyle='rgba(8,20,12,.85)'; ctx.strokeText(txt,x,y);
   ctx.fillStyle=color||'#fff'; ctx.fillText(txt,x,y);
+}
+function drawTip(){
+  const tip=activeTip; if(!tip) return;
+  // fade: quick in over first 15 frames, out over last 30
+  const elapsed = tip.dur - activeTipT;
+  let a = 1;
+  if(elapsed < 15) a = elapsed/15;
+  else if(activeTipT < 30) a = activeTipT/30;
+  a = Math.max(0, Math.min(1, a));
+
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.font = "bold 20px 'Trebuchet MS', sans-serif";
+  const tw = ctx.measureText(tip.text).width;
+  const pad = 22, bw = tw + pad*2, bh = 44;
+  const bx = VW/2 - bw/2, by = 62;   // just below the top-center buttons
+  // slide down slightly as it fades in
+  const slide = (1-a) * -8;
+  panel(bx, by+slide, bw, bh, 12, 'rgba(20,34,24,.92)', {stroke:'#7ed957', strokeW:2, shadowBlur:10});
+  ctx.globalAlpha = a;
+  ctx.fillStyle = '#eafbe0'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(tip.text, VW/2, by+slide+bh/2);
+  ctx.restore();
+  ctx.textAlign='left';
+}
+// A single bouncing arrow that points toward the goal flag whenever it's off
+// screen. The flag is always the objective, so one directed indicator guides
+// the player (up the tower, across the valley, wherever it is).
+function drawGoalArrow(){
+  if(!goalRect) return;
+  // flag center in screen space
+  const fx = goalRect.x + goalRect.w/2 - Math.round(cam.x);
+  const fy = goalRect.y + goalRect.h/2 - Math.round(cam.y);
+  const margin = 8;
+  const onScreen = fx>=margin && fx<=VW-margin && fy>=margin && fy<=VH-margin;
+  if(onScreen) return;   // flag visible — no arrow needed
+
+  // direction from screen center to the flag
+  const cx=VW/2, cy=VH/2;
+  let dx=fx-cx, dy=fy-cy;
+  const len=Math.hypot(dx,dy)||1; dx/=len; dy/=len;
+  const ang=Math.atan2(dy,dx);
+
+  // place the arrow where that ray hits the edge band, inset by pad
+  const pad=42;
+  const halfW=VW/2-pad, halfH=VH/2-pad;
+  // scale the unit vector out to the edge rectangle
+  const scale=Math.min(halfW/Math.abs(dx||1e-6), halfH/Math.abs(dy||1e-6));
+  let ax=cx+dx*scale, ay=cy+dy*scale;
+  // bounce along the pointing direction
+  const t=anim/60, bounce=Math.sin(t*5)*6;
+  ax+=dx*bounce; ay+=dy*bounce;
+
+  ctx.save();
+  ctx.translate(ax,ay); ctx.rotate(ang);
+  // arrow: a rounded triangle with a short tail, drawn pointing +x then rotated
+  ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=6; ctx.shadowOffsetY=2;
+  ctx.fillStyle='#ffcf3f'; ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.lineWidth=2.5;
+  ctx.beginPath();
+  ctx.moveTo(16,0); ctx.lineTo(-8,-13); ctx.lineTo(-2,0); ctx.lineTo(-8,13);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.restore();
 }
 function drawHUD(){
   // hearts (top-left)
