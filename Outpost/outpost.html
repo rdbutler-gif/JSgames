@@ -246,6 +246,14 @@
   let _ghostCache = null;   // build-ghost validity memo: {x, y, ok, t}
   charSheet.src = "assets/dungeon.png";
 
+  // Menu splash art: drawn ghosted behind the main menu / level select. Optional —
+  // if the file is missing the menus just fall back to the plain gradient.
+  const splashImg = new Image();
+  let splashReady = false;
+  splashImg.onload  = () => { splashReady = true; };
+  splashImg.onerror = () => { splashReady = false; console.warn("splashbackground.png not found — menus use plain gradient"); };
+  splashImg.src = "assets/splashbackground.png";
+
   // index (0..131) -> source pixel origin on the sheet
   function srcXY(idx) {
     const c = idx % SHEET_COLS, r = (idx / SHEET_COLS) | 0;
@@ -667,35 +675,46 @@
   // Namespaced + versioned so it can't collide with Ghost Patrol's localStorage
   // on the same GitHub Pages origin, and so a future schema change can migrate
   // or reset cleanly instead of choking on an old save. Shape:
-  //   { v:1, stars: { "0": 3, "1": 2, ... } }  — best stars ever per level index.
+  //   { v:1, stars: { "0": 3, "1": 2, ... },   — best stars ever per level index
+  //          times: { "0": 97, ... } }          — fastest finish (SECONDS) per level
+  // `times` was added later; old saves without it load fine (defaults to {}).
   // A level is "completed" iff it has a stars entry >= 1. Unlock is linear:
   // level N is playable iff N===0 or level N-1 is completed.
   const SAVE_KEY = "outpost.progress.v1";
-  let progress = { v: 1, stars: {} };
+  let progress = { v: 1, stars: {}, times: {} };
 
   function loadProgress() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return;
       const p = JSON.parse(raw);
-      if (p && p.v === 1 && p.stars && typeof p.stars === "object") progress = p;
+      if (p && p.v === 1 && p.stars && typeof p.stars === "object") {
+        progress = p;
+        if (!progress.times || typeof progress.times !== "object") progress.times = {};   // migrate pre-times saves
+      }
     } catch (e) { /* corrupt or unavailable — start fresh, don't crash */ }
   }
   function saveProgress() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); } catch (e) {}
   }
   function clearProgress() {
-    progress = { v: 1, stars: {} };
+    progress = { v: 1, stars: {}, times: {} };
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
   }
   function starsForLevel(idx) { return progress.stars[idx] || 0; }
   function isCompleted(idx) { return starsForLevel(idx) >= 1; }
+  function bestTimeForLevel(idx) { return progress.times[idx] || 0; }   // seconds, 0 = none yet
   let allUnlocked = false;   // debug cheat (O+P chord): opens every level without faking star scores
   let exportMode = false;    // level-select (X+P chord): click a level to copy its builder data
   function isUnlocked(idx) { return allUnlocked || idx === 0 || isCompleted(idx - 1); }
   function recordStars(idx, stars) {
     // best-ever: never let a sloppy replay lower an earned score
     if (stars > (progress.stars[idx] || 0)) { progress.stars[idx] = stars; saveProgress(); }
+  }
+  function recordTime(idx, sec) {
+    // best-ever: keep the fastest finish only
+    const prev = progress.times[idx] || 0;
+    if (prev === 0 || sec < prev) { progress.times[idx] = sec; saveProgress(); }
   }
 
   // Yields / work durations (ms)
@@ -1032,6 +1051,25 @@
         sfx.click(); gotoLevel(nextPlayLevel());
       } else if (menuSelectBtn && pointInRect(mx, my, menuSelectBtn.x, menuSelectBtn.y, menuSelectBtn.w, menuSelectBtn.h)) {
         sfx.click(); screen = "levelSelect"; clearArmed = false;
+      } else if (menuInfoBtn && pointInRect(mx, my, menuInfoBtn.x, menuInfoBtn.y, menuInfoBtn.w, menuInfoBtn.h)) {
+        sfx.click(); screen = "info";
+      } else if (menuQuitBtn && pointInRect(mx, my, menuQuitBtn.x, menuQuitBtn.y, menuQuitBtn.w, menuQuitBtn.h)) {
+        sfx.click(); window.close();
+        // window.close() is a no-op on tabs the script didn't open (most browsers
+        // block it). Show a hint so it isn't a silent dead button in that case.
+        setTimeout(() => { if (!window.closed) alert("Your browser won't let a page close its own tab — you can close it manually."); }, 120);
+      }
+      return;
+    }
+
+    // --- Info screen ---
+    if (screen === "info") {
+      if (infoLinkBtn && pointInRect(mx, my, infoLinkBtn.x, infoLinkBtn.y, infoLinkBtn.w, infoLinkBtn.h)) {
+        sfx.click(); window.open("https://kenney.nl", "_blank", "noopener");
+        return;
+      }
+      if (infoBackBtn && pointInRect(mx, my, infoBackBtn.x, infoBackBtn.y, infoBackBtn.w, infoBackBtn.h)) {
+        sfx.click(); screen = "mainMenu";
       }
       return;
     }
@@ -1491,6 +1529,7 @@
     if (screen !== "play" && screen !== "levelComplete") {
       lastFrame = now;
       if (screen === "mainMenu")    { drawMainMenu();    raf = requestAnimationFrame(update); return; }
+      if (screen === "info")        { drawInfoScreen();  raf = requestAnimationFrame(update); return; }
       if (screen === "levelSelect") { drawLevelSelect(); raf = requestAnimationFrame(update); return; }
       if (screen === "levelIntro")  { drawTitle();       raf = requestAnimationFrame(update); return; }
     }
@@ -2925,6 +2964,7 @@
          : townhall  ? "Town hall raised. Outpost secured."
          :             "Watchtower complete. Outpost secured.");
     recordStars(currentLevel, winStars);   // persist best-ever; unlocks next level
+    recordTime(currentLevel, sec);          // persist fastest finish for this level
     screen = "levelComplete";
   }
 
@@ -2947,7 +2987,14 @@
   let restartBtn = null, pauseBtn = null, muteBtn = null;
   let pauseResumeBtn = null, pauseQuitBtn = null;      // pause overlay buttons
   let continueBtn = null, completeSelectBtn = null;   // levelComplete screen
-  let menuPlayBtn = null, menuSelectBtn = null;        // mainMenu screen
+  let menuPlayBtn = null, menuSelectBtn = null, menuQuitBtn = null, menuInfoBtn = null;   // mainMenu screen
+  let _titleBuffer = null;   // offscreen bitmap of the OUTPOST title, built once
+  // Fonts load async; if the title buffer was baked before the intended font was
+  // ready, drop it once fonts settle so it rebuilds correctly on the next frame.
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { _titleBuffer = null; });
+  }
+  let infoBackBtn = null, infoLinkBtn = null;          // info screen
   let introStartBtn = null, introBackBtn = null;       // levelIntro screen
   let selectCells = [], selectBackBtn = null;          // levelSelect screen
   let clearProgressBtn = null, clearArmed = false;      // levelSelect: destructive clear w/ 2-tap confirm
@@ -3049,7 +3096,20 @@
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, "#3a5169"); g.addColorStop(1, "#243342");
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    if (sheetReady) {
+    // Ghosted splash art scaled to cover the full canvas (aspect-fill: scale to
+    // the larger ratio so it fills W×H, center-cropping any overflow).
+    if (splashReady && splashImg.width && splashImg.height) {
+      const scale = Math.max(W / splashImg.width, H / splashImg.height);
+      const dw = splashImg.width * scale, dh = splashImg.height * scale;
+      const dx = (W - dw) / 2, dy = (H - dh) / 2;
+      ctx.save();
+      ctx.globalAlpha = 0.22;   // ghosted so menu text stays legible
+      ctx.imageSmoothingEnabled = true;   // photo-style art, not pixel tiles
+      ctx.drawImage(splashImg, dx, dy, dw, dh);
+      ctx.restore();
+      ctx.imageSmoothingEnabled = false;   // restore crisp pixel-art default
+    } else if (sheetReady) {
+      // fallback flavor: scattered faint tiles when there's no splash image
       ctx.globalAlpha = 0.18;
       const spots = [[1,1],[3,0],[14,1],[12,2],[0,13],[2,14],[15,12],[13,14],[7,0],[9,14]];
       for (const [tx,ty] of spots) { const {sx,sy}=srcXY(28); ctx.drawImage(sheet, sx,sy,SRC,SRC, tx*TILE, ty*TILE, TILE, TILE); }
@@ -3058,21 +3118,99 @@
   }
 
   // ---- Main menu --------------------------------------------------------
+  // Render the OUTPOST title ONCE into an offscreen canvas (outline + drop shadow
+  // + gold gradient fill baked in), so the menu can pulse it by scaling a bitmap
+  // instead of re-laying-out live text every frame. Rebuilds only if the fonts
+  // finish loading after first call (document.fonts gate). Returns {canvas,w,h}.
+  function getTitleBuffer() {
+    if (_titleBuffer) return _titleBuffer;
+    const text = "OUTPOST";
+    const size = 78, pad = 34;   // pad leaves room for glow/shadow bleed
+    // measure with a scratch context
+    const meas = document.createElement("canvas").getContext("2d");
+    meas.font = "bold " + size + "px 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif";
+    const tw = Math.ceil(meas.measureText(text).width);
+    const bw = tw + pad*2, bh = size + pad*2;
+    const off = document.createElement("canvas");
+    off.width = bw; off.height = bh;
+    const o = off.getContext("2d");
+    o.textAlign = "center"; o.textBaseline = "middle";
+    o.font = "bold " + size + "px 'Arial Rounded MT Bold', 'Trebuchet MS', sans-serif";
+    o.lineJoin = "round"; o.lineCap = "round";
+    const cx = bw/2, cy = bh/2;
+    // dark rounded outline for depth
+    o.strokeStyle = "rgba(10,20,30,.9)"; o.lineWidth = 8;
+    o.shadowColor = "rgba(0,0,0,.55)"; o.shadowBlur = 12; o.shadowOffsetY = 5;
+    o.strokeText(text, cx, cy);
+    // warm vertical gradient fill (no shadow on the fill pass)
+    o.shadowColor = "rgba(0,0,0,0)"; o.shadowBlur = 0; o.shadowOffsetY = 0;
+    const g = o.createLinearGradient(0, cy - size/2, 0, cy + size/2);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(0.55, "#ffe9c0"); g.addColorStop(1, "#ffc46b");
+    o.fillStyle = g;
+    o.fillText(text, cx, cy);
+    _titleBuffer = { canvas: off, w: bw, h: bh };
+    return _titleBuffer;
+  }
+
+  // Draw centered text with manual letter-spacing (works everywhere, unlike the
+  // newer ctx.letterSpacing which isn't in all browsers). Honors current font,
+  // fillStyle, shadow and alpha; leaves textAlign restored to "center".
+  function drawSpacedText(str, cx, y, spacing) {
+    const prevAlign = ctx.textAlign;
+    ctx.textAlign = "left";
+    const widths = [...str].map(ch => ctx.measureText(ch).width);
+    const total = widths.reduce((a, w) => a + w, 0) + spacing * (str.length - 1);
+    let x = cx - total / 2;
+    for (let i = 0; i < str.length; i++) {
+      ctx.fillText(str[i], x, y);
+      x += widths[i] + spacing;
+    }
+    ctx.textAlign = prevAlign;
+  }
+
   function drawMainMenu() {
     const W = canvas.width, H = canvas.height;
     drawMenuBackdrop();
     ctx.textAlign = "center";
 
+    // ---- Title: OUTPOST — big, rounded, shadowed, gently pulsating ----------
+    // Why an offscreen buffer: ctx.scale() on live TEXT re-lays-out the glyphs at
+    // a new pixel size every frame. At fractional sizes the font engine changes
+    // hinting/rounding — and if 'Arial Rounded MT Bold' falls back to Trebuchet,
+    // the two fonts have different metrics — so the letter PROPORTIONS jump as it
+    // pulses (the aspect-ratio wobble). Rendering the title ONCE to a bitmap and
+    // scaling THAT is a pure geometric transform: proportions stay locked.
+    const t = performance.now() / 1000;
+    const wave = 0.5 + 0.5 * Math.sin(t * 1.8);
+    const titlePulse = 1 + 0.035 * Math.sin(t * 1.8);
+    const glowA = 0.35 + 0.30 * wave;
+    const titleCX = W/2, titleCY = H*0.30;
+
+    const tb = getTitleBuffer();   // { canvas, w, h }, built once and cached
+    const dw = tb.w * titlePulse, dh = tb.h * titlePulse;
+    const dx = titleCX - dw/2, dy = titleCY - dh/2;
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 12; ctx.shadowOffsetY = 4;
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 60px 'Trebuchet MS', sans-serif";
-    ctx.fillText("OUTPOST", W/2, H*0.30);
+    ctx.imageSmoothingEnabled = true;   // smooth when scaling the bitmap
+    // breathing warm glow: same bitmap drawn under a colored shadow, alpha-pulsed
+    ctx.globalAlpha = glowA;
+    ctx.shadowColor = "rgba(255,190,90,1)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 0;
+    ctx.drawImage(tb.canvas, dx, dy, dw, dh);
+    // crisp title on top, no shadow (its outline+drop-shadow are baked into the buffer)
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = "rgba(0,0,0,0)"; ctx.shadowBlur = 0;
+    ctx.drawImage(tb.canvas, dx, dy, dw, dh);
     ctx.restore();
 
-    ctx.fillStyle = "#9fb3c6";
-    ctx.font = "16px 'Trebuchet MS', sans-serif";
-    ctx.fillText("A frontier resource game", W/2, H*0.30 + 34);
+    // ---- Subtitle: larger, ALL CAPS, letter-spaced, faint pulse -------------
+    const subPulse = 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(t * 1.8 + 0.6));
+    ctx.save();
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    ctx.font = "bold 24px 'Trebuchet MS', sans-serif";
+    ctx.globalAlpha = subPulse;
+    ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
+    ctx.fillStyle = "#cfe0ee";
+    drawSpacedText("A FRONTIER RESOURCE GAME", W/2, H*0.30 + 58, 4);
+    ctx.restore();
 
     // Play button — names the level it will actually load (see nextPlayLevel).
     const pW = 240, pH = 52, pX = (W-pW)/2;
@@ -3094,11 +3232,111 @@
     menuSelectBtn = { x: sX, y: sY, w: sW, h: sH };
     ctx.textBaseline = "alphabetic";
 
+    // Two small buttons below Level Select: Info (left) and Quit (right).
+    const smW = 112, smH = 38, smGap = 16, smY = sY + sH + 16;
+    const smX = (W - (smW*2 + smGap)) / 2;
+    // Info
+    const iHover = pointInRect(mouse.x, mouse.y, smX, smY, smW, smH);
+    panel(smX, smY, smW, smH, 10, iHover ? "#4a6076" : "#3c5064", { stroke:"rgba(255,255,255,.18)", strokeW:2 });
+    ctx.fillStyle = "#dceaf5"; ctx.textBaseline = "middle";
+    ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
+    ctx.fillText("\u2139  Info", smX+smW/2, smY+smH/2);
+    menuInfoBtn = { x: smX, y: smY, w: smW, h: smH };
+    // Quit (red) — closes the tab
+    const qX = smX + smW + smGap;
+    const qHover = pointInRect(mouse.x, mouse.y, qX, smY, smW, smH);
+    panel(qX, smY, smW, smH, 10, qHover ? "#6a3a3a" : "#553030", { stroke:"rgba(255,255,255,.15)", strokeW:2 });
+    ctx.fillStyle = "#f0cccc";
+    ctx.fillText("\u2715  Quit", qX+smW/2, smY+smH/2);
+    menuQuitBtn = { x: qX, y: smY, w: smW, h: smH };
+    ctx.textBaseline = "alphabetic";
+
     // Build tag — bottom of the menu, small and out of the way. If this text
     // doesn't match the latest file, the browser is serving a cached copy.
     ctx.fillStyle = "rgba(159,179,198,.55)";
     ctx.font = "11px 'Trebuchet MS', sans-serif";
     ctx.fillText(BUILD_TAG, W/2, H - 14);
+  }
+
+  // ---- Info / About -----------------------------------------------------
+  function drawInfoScreen() {
+    const W = canvas.width, H = canvas.height;
+    drawMenuBackdrop();
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 30px 'Trebuchet MS', sans-serif";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText("ABOUT OUTPOST", W/2, 52);
+
+    // Content is a flat list rendered top-down. Row kinds:
+    //   "head"  — gold section header
+    //   "body"  — muted paragraph line
+    //   "gap"   — vertical spacer (text field = pixels)
+    // Keep line count modest: the canvas is 720px tall and the back button sits
+    // near the bottom. If you add rows, trim elsewhere or shrink the gaps.
+    const HEAD = "bold 16px 'Trebuchet MS', sans-serif";
+    const BODY = "14px 'Trebuchet MS', sans-serif";
+    const GOLD = "#ffcf3f", TEXT = "#cdddea", MUTE = "#9fb3c6";
+    const rows = [
+      ["head", "HOW TO PLAY", GOLD],
+      ["body", "Click a tree or rock and your nearest free worker gathers it.", TEXT],
+      ["body", "Use the BUILD bar to add houses (more workers) and workshops", TEXT],
+      ["body", "(unlock stone mining, then upgrade to break through walls).", TEXT],
+      ["body", "Meet each level's goal — raise the watchtower or finish the", TEXT],
+      ["body", "town hall — as fast as you can. Beat the clock for more stars.", TEXT],
+      ["gap", 16],
+      ["head", "ABOUT THE AUTHOR", GOLD],
+      ["body", "Built by Russ \u201CRusko\u201D Butler of Tulsa, Oklahoma \u2014 a lifelong", TEXT],
+      ["body", "coder who cut his teeth on a Commodore 64, served as an Air Force", TEXT],
+      ["body", "radio tech, and still plays guitar every chance he gets. Outpost", TEXT],
+      ["body", "carries on a habit of writing games that started decades ago.", TEXT],
+      ["gap", 16],
+      ["head", "SPECIAL THANKS", GOLD],
+      ["body", "To Donna \u2014 chief playtester, idea machine, and the best", TEXT],
+      ["body", "suggestion-giver a designer could ask for. This is better", TEXT],
+      ["body", "because of you.", TEXT],
+      ["gap", 10],
+      ["body", "To Kenney for the wonderful free artwork. The tiles and", MUTE],
+      ["body", "characters come from his Tiny Town & Tiny Dungeon packs \u2014", MUTE],
+      ["body", "hand-made pixel art released CC0 (public domain) for anyone", MUTE],
+      ["body", "to use. A huge gift to hobbyist game makers everywhere.", MUTE],
+    ];
+
+    let y = 84;
+    for (const row of rows) {
+      if (row[0] === "gap") { y += row[1]; continue; }
+      const [, text, color] = row;
+      ctx.font = row[0] === "head" ? HEAD : BODY;
+      ctx.fillStyle = color;
+      ctx.fillText(text, W/2, y);
+      y += (row[0] === "head" ? 26 : 19);
+    }
+
+    // Clickable Kenney link — hit-rect sized to the drawn text; opens a new tab.
+    y += 4;
+    ctx.font = "bold 17px 'Trebuchet MS', sans-serif";
+    const linkText = "kenney.nl \u2197";
+    const lw = ctx.measureText(linkText).width;
+    const linkX = W/2 - lw/2, linkY = y, linkH = 24;
+    const linkHover = pointInRect(mouse.x, mouse.y, linkX, linkY, lw, linkH);
+    ctx.fillStyle = linkHover ? "#7fd0ff" : "#4fb0e8";
+    ctx.textBaseline = "top";
+    ctx.fillText(linkText, W/2, linkY);
+    ctx.strokeStyle = linkHover ? "#7fd0ff" : "#4fb0e8"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(linkX, linkY+linkH-3); ctx.lineTo(linkX+lw, linkY+linkH-3); ctx.stroke();
+    infoLinkBtn = { x: linkX, y: linkY, w: lw, h: linkH };
+    ctx.textBaseline = "alphabetic";
+
+    // Back button, bottom-centered.
+    const bW = 160, bH = 42, bX = (W-bW)/2, bY = H - 64;
+    const bHover = pointInRect(mouse.x, mouse.y, bX, bY, bW, bH);
+    panel(bX, bY, bW, bH, 10, bHover ? "#4a6076" : "#3c5064", { stroke:"rgba(255,255,255,.18)", strokeW:2 });
+    ctx.fillStyle = "#dceaf5"; ctx.textBaseline = "middle";
+    ctx.font = "bold 15px 'Trebuchet MS', sans-serif";
+    ctx.fillText("\u2039  Main Menu", bX+bW/2, bY+bH/2);
+    infoBackBtn = { x: bX, y: bY, w: bW, h: bH };
+    ctx.textBaseline = "alphabetic";
   }
 
   // ---- Level select -----------------------------------------------------
@@ -3158,7 +3396,14 @@
         const glyphW = 18, totalW = glyphW*3, startX = x+cellW/2 - totalW/2 + glyphW/2;
         for (let s = 0; s < 3; s++) {
           ctx.fillStyle = s < stars ? STAR_COLORS[s] : EMPTY_STAR;
-          ctx.fillText(s < stars ? "★" : "☆", startX + s*glyphW, y+cellH - 26);
+          ctx.fillText(s < stars ? "★" : "☆", startX + s*glyphW, y+cellH - 30);
+        }
+        // fastest-time line, just below the stars (blank until the level is beaten)
+        const best = bestTimeForLevel(i);
+        if (best > 0) {
+          ctx.font = "bold 12px 'Trebuchet MS', sans-serif";
+          ctx.fillStyle = "#ffcf3f";
+          ctx.fillText("\u23F1 " + fmt(best), x+cellW/2, y+cellH - 12);
         }
       }
 
