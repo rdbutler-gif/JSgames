@@ -92,14 +92,14 @@
     <div class="topline" id="titleTop">TOP &nbsp;<span class="ini">AAA</span>&nbsp; <span class="v">000000</span></div>
     <div class="controls">
       <span id="controlsText">
-        MOVE &nbsp;<b>W A S D</b> / <b>ARROWS</b> / <span class="pad">EITHER STICK</span><br>
+        MOVE &nbsp;<b>W A S D</b> / <b>ARROWS</b> / <span class="pad">L-STICK</span><br>
         MOUSE &nbsp;hold <b>RIGHT-CLICK</b> to move / <b>LEFT-CLICK</b> to fire<br>
         FIRE &nbsp;<b>SPACE</b> / <span class="pad">A / RT</span> (hold)<br>
         PAUSE &nbsp;<b>P</b> / <span class="pad">START</span>
       </span>
     </div>
     <button class="btn" id="startBtn">INSERT COIN &#9656; START</button>
-    <div class="small" id="padHint" style="display:none;color:var(--amber);">&#9656; PRESS <b style="color:var(--neon)">A</b> (Xbox) / <b style="color:var(--neon)">X</b> (PS) ON CONTROLLER TO START</div>
+    <div class="small" id="padHint" style="display:none;color:var(--amber);">&#9656; PRESS <b style="color:var(--neon)">X</b> ON CONTROLLER TO START</div>
     <div class="small" id="padStatus">controller: not detected</div>
     <div class="filebar" style="margin-top:12px;">
       sound: <button id="soundToggleBtn" style="font-family:'VT323',monospace;font-size:15px;background:transparent;color:var(--neon-dim);border:1px solid var(--neon-dim);padding:3px 10px;cursor:pointer;margin:0 4px;letter-spacing:1px;">OFF</button>
@@ -677,23 +677,13 @@ function readPad(){
   const gp = pads[padIndex];
   if(!gp) return out;
   const dz=0.18;
-  // Both analog sticks are additive: either one moves the ship, and pushing
-  // them in opposite directions cancels out. Speed stays constant because the
-  // movement code clamps the combined vector to magnitude 1.
-  let lx=gp.axes[0]||0, ly=gp.axes[1]||0;   // left stick
-  let rx=gp.axes[2]||0, ry=gp.axes[3]||0;   // right stick
-  if(Math.abs(lx)<dz) lx=0;
-  if(Math.abs(ly)<dz) ly=0;
-  if(Math.abs(rx)<dz) rx=0;
-  if(Math.abs(ry)<dz) ry=0;
-  out.x = lx+rx;
-  out.y = ly+ry;
-  // D-pad edge detection uses combined stick tilt too.
-  const dU=(gp.buttons[12]&&gp.buttons[12].pressed)||out.y<-0.5;
-  const dD=(gp.buttons[13]&&gp.buttons[13].pressed)||out.y>0.5;
-  const dL=(gp.buttons[14]&&gp.buttons[14].pressed)||out.x<-0.5;
-  const dR=(gp.buttons[15]&&gp.buttons[15].pressed)||out.x>0.5;
-  // D-pad presses are digital overrides (snap to full direction).
+  let lx=gp.axes[0]||0, ly=gp.axes[1]||0;
+  if(Math.abs(lx)>dz) out.x=lx;
+  if(Math.abs(ly)>dz) out.y=ly;
+  const dU=(gp.buttons[12]&&gp.buttons[12].pressed)||ly<-0.5;
+  const dD=(gp.buttons[13]&&gp.buttons[13].pressed)||ly>0.5;
+  const dL=(gp.buttons[14]&&gp.buttons[14].pressed)||lx<-0.5;
+  const dR=(gp.buttons[15]&&gp.buttons[15].pressed)||lx>0.5;
   if(gp.buttons[14]&&gp.buttons[14].pressed) out.x=-1;
   if(gp.buttons[15]&&gp.buttons[15].pressed) out.x=1;
   if(gp.buttons[12]&&gp.buttons[12].pressed) out.y=-1;
@@ -708,8 +698,7 @@ function readPad(){
   const startNow = gp.buttons[9]&&gp.buttons[9].pressed;
   if(startNow && !prevStart) out.start=true;
   prevStart = startNow;
-  // Menu start: Xbox A / PS X (south face button = index 0).
-  const xNow = gp.buttons[0]&&gp.buttons[0].pressed;
+  const xNow = gp.buttons[2]&&gp.buttons[2].pressed;
   if(xNow && !prevX) out.xStart=true;
   prevX = xNow;
   return out;
