@@ -337,13 +337,19 @@ let worldW=0, worldH=0;
 // ===================================================================
 function aabb(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
 
+// Per-FRAME work (input polling, menu nav): runs once per rendered frame,
+// independent of how many physics steps happen. Keeps gamepad/menu responsive
+// on high-refresh displays where a frame may contain zero physics steps.
+function perFrame(){
+  pollGamepad();
+  if(mouse.hold) updateMouseDir();
+}
+// Fixed-STEP physics sim: runs at a locked 60/sec via the accumulator loop.
 function update(){
   anim++;
-  pollGamepad();                 // refresh gamepad state each frame (also drives menu nav)
   if(screen!=='play') return;    // menus don't run the sim
   if(paused) return;             // paused: sim frozen, pause overlay drawn in draw()
   if(state==='dying'){ updateDeath(); return; }   // play the death arc, then -> 'lost'
-  if(mouse.hold) updateMouseDir(); // re-aim toward cursor as the player moves
   if(state!=='play') return;
   const p=player;
   const ACC=0.9, MAX=6, FRIC=0.78;
@@ -1177,8 +1183,37 @@ function activateEndRow(){
   else if(key==='select') gotoSelect();
 }
 
-function loop(){ update(); draw(); requestAnimationFrame(loop); }
-loadAll().then(()=>{ loadProgress(); booted=true; screen='title'; state='ready'; loop(); });
+// ---- Fixed-timestep loop -------------------------------------------------
+// The sim is tuned for 60 updates/second. A 120Hz display (iPad ProMotion) was
+// calling update() twice as often, doubling game speed. Fix: accumulate real
+// elapsed time and run update() a whole number of fixed 1/60s steps to match
+// wall-clock, decoupling physics from refresh rate. Draw once per frame.
+// Because each step is still exactly 1/60s, every tuned constant (jump height,
+// gravity, mover speed) is unchanged — no re-tuning, and no dt-spike tunneling.
+const STEP = 1000/60;         // ms per physics step
+// Global speed dial. 1.0 = the locked-60Hz reference speed; below 1.0 slows the
+// entire game uniformly (movement, gravity, jumps, enemies, ferry) while each
+// physics step stays exactly 1/60s internally — so no constant needs re-tuning
+// and collision never sees a large step. Raise/lower this one number to taste.
+const GAME_SPEED = 0.82;
+let lastT = 0, acc = 0;
+function loop(now){
+  if(!lastT) lastT = now;
+  let frame = now - lastT;
+  lastT = now;
+  if(frame > 250) frame = 250;   // clamp after a tab-stall so we don't spiral
+  acc += frame * GAME_SPEED;     // scale real time -> fewer sim steps = slower game
+  perFrame();                    // input polling, once per rendered frame
+  let steps = 0;
+  while(acc >= STEP && steps < 5){   // run physics at a locked 60/sec (scaled)
+    update();
+    acc -= STEP;
+    steps++;
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+loadAll().then(()=>{ loadProgress(); booted=true; screen='title'; state='ready'; requestAnimationFrame(loop); });
 
 </script>
 </body>
