@@ -48,11 +48,12 @@
   /* high score table */
   .hs{font-size:20px;line-height:1.35;color:var(--cyan);margin:8px 0;
     border:1px solid var(--neon-dim);padding:10px 22px;background:rgba(0,40,28,0.25);
-    min-width:240px;}
-  .hs .row{display:flex;justify-content:space-between;gap:30px;}
+    min-width:320px;}
+  .hs .row{display:grid;grid-template-columns:auto auto 1fr auto;gap:22px;align-items:baseline;}
   .hs .rank{color:var(--neon-dim);}
   .hs .ini{color:var(--amber);letter-spacing:3px;}
-  .hs .sc{color:var(--neon);}
+  .hs .wv{color:var(--cyan);text-align:left;}
+  .hs .sc{color:var(--neon);text-align:right;}
   .hs .me{color:var(--hot)!important;text-shadow:0 0 8px var(--hot);}
   .hs-title{color:var(--amber);font-size:22px;letter-spacing:3px;margin-bottom:4px;}
   .topline{font-size:21px;color:var(--amber);margin:6px 0 12px;letter-spacing:2px;}
@@ -92,6 +93,7 @@
     <div class="controls">
       <span id="controlsText">
         MOVE &nbsp;<b>W A S D</b> / <b>ARROWS</b> / <span class="pad">L-STICK</span><br>
+        MOUSE &nbsp;hold <b>RIGHT-CLICK</b> to move / <b>LEFT-CLICK</b> to fire<br>
         FIRE &nbsp;<b>SPACE</b> / <span class="pad">A / RT</span> (hold)<br>
         PAUSE &nbsp;<b>P</b> / <span class="pad">START</span>
       </span>
@@ -213,16 +215,16 @@ function compact(arr, keep){
 const HS_KEY = 'ruskosrun_highscores_v1';
 // Default seed table — also what a fresh EXPORT .dat will contain.
 const DEFAULT_SCORES = [
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
-  {ini:'AAA', sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
+  {ini:'AAA', wv:0, sc:0},
 ];
 let highScores = loadScores();
 
@@ -235,6 +237,7 @@ function loadScores(){
 }
 function normalize(arr){
   return arr.map(r=>({ini:String(r.ini||'AAA').toUpperCase().slice(0,3).padEnd(3,'A'),
+                      wv:Math.max(0, parseInt(r.wv)||0),
                       sc:Math.max(0, parseInt(r.sc)||0)}))
             .sort((a,b)=>b.sc-a.sc).slice(0,10);
 }
@@ -242,19 +245,20 @@ function saveScores(){
   try{ localStorage.setItem(HS_KEY, JSON.stringify(highScores)); }catch(e){}
 }
 function qualifies(s){ return highScores.length<10 || s > highScores[highScores.length-1].sc; }
-function insertScore(ini, s){
-  highScores.push({ini:ini.toUpperCase().slice(0,3).padEnd(3,'A'), sc:s});
+function insertScore(ini, wv, s){
+  const iniN = ini.toUpperCase().slice(0,3).padEnd(3,'A');
+  highScores.push({ini:iniN, wv:Math.max(0, parseInt(wv)||0), sc:s});
   highScores = normalize(highScores);
   saveScores();
-  return highScores.findIndex(r=>r.ini===ini.toUpperCase().slice(0,3).padEnd(3,'A') && r.sc===s);
+  return highScores.findIndex(r=>r.ini===iniN && r.sc===s);
 }
 
 // ---- export / import editable .dat ----
 function exportDat(){
-  // simple, hand-editable text:  INI,SCORE  per line
-  const lines = highScores.map(r=>`${r.ini},${r.sc}`).join('\n');
+  // simple, hand-editable text:  INI,WAVE,SCORE  per line
+  const lines = highScores.map(r=>`${r.ini},${r.wv},${r.sc}`).join('\n');
   const blob = new Blob([
-    "# RUSKO'S RUN high scores  —  format: INITIALS,SCORE  (one per line)\n"+
+    "# RUSKO'S RUN high scores  —  format: INITIALS,WAVE,SCORE  (one per line)\n"+
     "# Edit freely. Max 10 entries kept, sorted high to low.\n"+lines+"\n"
   ], {type:'text/plain'});
   const url = URL.createObjectURL(blob);
@@ -269,13 +273,15 @@ function importDat(file){
     let parsed=[];
     try{ // try JSON first
       const j = JSON.parse(txt);
-      if(Array.isArray(j)) parsed = j.map(o=>({ini:o.ini, sc:o.sc}));
+      if(Array.isArray(j)) parsed = j.map(o=>({ini:o.ini, wv:o.wv, sc:o.sc}));
     }catch(e){
       txt.split(/\r?\n/).forEach(line=>{
         line=line.trim();
         if(!line||line.startsWith('#')) return;
         const m=line.split(',');
-        if(m.length>=2) parsed.push({ini:m[0].trim(), sc:parseInt(m[1])});
+        // 3-field: INI,WAVE,SCORE  |  legacy 2-field: INI,SCORE (wave -> 0)
+        if(m.length>=3) parsed.push({ini:m[0].trim(), wv:parseInt(m[1]), sc:parseInt(m[2])});
+        else if(m.length===2) parsed.push({ini:m[0].trim(), wv:0, sc:parseInt(m[1])});
       });
     }
     if(parsed.length){
@@ -298,6 +304,7 @@ function renderHSTable(highlightIdx=-1){
     const me = i===highlightIdx ? ' me' : '';
     return `<div class="row"><span class="rank${me}">${String(i+1).padStart(2,'0')}</span>`+
            `<span class="ini${me}">${r.ini}</span>`+
+           `<span class="wv${me}">Wave ${r.wv}</span>`+
            `<span class="sc${me}">${String(r.sc).padStart(6,'0')}</span></div>`;
   }).join('');
 }
@@ -798,7 +805,7 @@ function nuke(){
   screenShake=22;
   sndNukeExplosion();
   const multiplier = powerState.scoreMultiplierAmount > 1 ? powerState.scoreMultiplierAmount : 1;
-  enemies.forEach(e=>{ score+=Math.floor(e.score/2)*multiplier; bigExplosion(e.x,e.y); });
+  enemies.forEach(e=>{ const g=Math.floor(e.score/2)*multiplier; score+=g; spawnFloater('+'+g, e.x, e.y, '#00ff9c'); bigExplosion(e.x,e.y); });
   obstacles.forEach(o=>burst(o.x+o.w/2,o.y+o.h/2,'#888',10,3));
   enemies=[]; obstacles=[]; eBullets=[];
   // shockwave ring particles
@@ -972,7 +979,9 @@ function update(dt){
         e.hp--; bullets.splice(j,1); burst(b.x,b.y,'#28e0ff',4,2);
         if(e.hp<=0){
           const multiplier = powerState.scoreMultiplierAmount > 1 ? powerState.scoreMultiplierAmount : 1;
-          score += e.score * multiplier; 
+          const gained = e.score * multiplier;
+          score += gained;
+          spawnFloater('+'+gained, e.x, e.y, '#00ff9c');
           burst(e.x,e.y,'#ff2d6f',18,3.5); screenShake=4;
           // Play explosion sound based on enemy type
           if(e.type==='drone') sndDroneExplode();
@@ -1109,7 +1118,7 @@ function movePos(dir){
 }
 function confirmEntry(){
   const ini=entryInitials.join('');
-  const idx=insertScore(ini, score);
+  const idx=insertScore(ini, wave, score);
   document.getElementById('entry').classList.add('hidden');
   refreshTitleTop();
   showGameOver(idx);
