@@ -212,6 +212,9 @@ let screen='title';
 let paused=false;            // in-play pause overlay (freezes sim, world stays visible)
 let menuBtns={};            // named button rects for hit-testing on the current screen
 let selectCells=[];         // level-select grid cells
+let exportMode=false;       // level-select back-door: X then P arms clipboard-export on click
+let exportKeyX=false;       // tracks the X in the X->P combo
+let exportToast='';         // brief on-screen confirmation after a copy
 let mmx=-1, mmy=-1;         // mouse pos in canvas space, for hover
 let menuSel=0;              // keyboard/gamepad menu cursor
 let padMenuPrev={up:false,down:false,left:false,right:false,a:false};
@@ -643,12 +646,73 @@ function drawTitle(){
   ctx.textAlign='left';
 }
 
+// Serialize a LEVELS[i] object back into the exact object-literal + comment
+// format the builder's Import reads, so a level can be pulled from the game and
+// dropped straight back into the builder for editing. Round-trips cleanly.
+function serializeLevel(i){
+  const L=LEVELS[i]; if(!L) return '';
+  const triples=arr => '['+(arr||[]).map(a=>`[${a[0]},${a[1]},"${a[2]}"]`).join(',')+']';
+  const q=s => JSON.stringify(s==null?'':s);
+  const nT=(L.terrain||[]).length, nI=(L.items||[]).length, nE=(L.enemies||[]).length,
+        nH=(L.hazards||[]).length, nD=(L.deco||[]).length;
+  const head =
+`// ==== Exported from Grassland Run ====\n`+
+`// ${L.cols}×${L.rows} · ${nT} terrain · ${nI} items · ${nE} enemies · ${nH} hazards · ${nD} deco\n`+
+`// spawn@${L.spawn?.x},${L.spawn?.y}  goal@${L.goal?.x},${L.goal?.y}  theme=${L.theme}\n`;
+  const B=[];
+  B.push('{');
+  B.push(`  name: ${q(L.name)},`);
+  B.push(`  subtitle: ${q(L.subtitle)},`);
+  B.push(`  theme: ${q(L.theme)},`);
+  if(L.gravity) B.push(`  gravity: ${q(L.gravity)},`);
+  B.push(`  cols: ${L.cols}, rows: ${L.rows},`);
+  B.push(`  spawn: { x: ${L.spawn?.x??2}, y: ${L.spawn?.y??2} },`);
+  B.push(`  goal:  { x: ${L.goal?.x??(L.cols-2)}, y: ${L.goal?.y??2} },`);
+  B.push(`  terrain: ${triples(L.terrain)},`);
+  if(L.items&&L.items.length)   B.push(`  items: ${triples(L.items)},`);
+  if(L.enemies&&L.enemies.length) B.push(`  enemies: ${triples(L.enemies)},`);
+  if(L.hazards&&L.hazards.length) B.push(`  hazards: ${triples(L.hazards)},`);
+  if(L.deco&&L.deco.length)     B.push(`  deco: ${triples(L.deco)},`);
+  if(L.tips&&L.tips.length)      B.push(`  tips: ${JSON.stringify(L.tips)},`);
+  B.push('}');
+  return head + B.join('\n');
+}
+// Copy a level's serialized text to the clipboard (with a textarea fallback).
+function exportLevelToClipboard(i){
+  const txt=serializeLevel(i);
+  const done=()=>{ exportToast='Level '+(i+1)+' copied — paste into the builder'; play('select');
+    setTimeout(()=>{ exportToast=''; },2600); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done));
+  } else fallbackCopy(txt,done);
+}
+function fallbackCopy(txt,done){
+  try{
+    const ta=document.createElement('textarea'); ta.value=txt;
+    ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta);
+    ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done();
+  }catch(e){ exportToast='Copy failed — see console'; console.log(txt); setTimeout(()=>exportToast='',2600); }
+}
+
 function drawLevelSelect(){
   drawMenuBackdrop();
   ctx.textAlign='center'; ctx.textBaseline='alphabetic';
   ctx.font="bold 40px 'Trebuchet MS', sans-serif"; ctx.fillStyle='#fff';
   ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=6;
-  ctx.fillText('SELECT LEVEL', VW/2, 74); ctx.shadowBlur=0;
+  ctx.fillText(exportMode?'EXPORT A LEVEL':'SELECT LEVEL', VW/2, 74); ctx.shadowBlur=0;
+  // export-mode subheader + toast
+  if(exportMode){
+    ctx.font="14px 'Trebuchet MS', sans-serif"; ctx.fillStyle='#ffcf3f';
+    ctx.fillText('click a level to copy its data to the clipboard  ·  Esc to cancel', VW/2, 96);
+  }
+  if(exportToast){
+    ctx.font="bold 15px 'Trebuchet MS', sans-serif";
+    const tw=ctx.measureText(exportToast).width;
+    const ty=VH-116;   // above the Back button (which sits at VH-70), with a gap
+    panel(VW/2-tw/2-16, ty, tw+32, 30, 8, 'rgba(20,34,24,.95)', {stroke:'#7ed957',strokeW:2,shadowBlur:6});
+    ctx.fillStyle='#eafbe0'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(exportToast, VW/2, ty+15); ctx.textBaseline='alphabetic';
+  }
 
   selectCells=[];
   const cols=5, cellW=130, cellH=118, gapX=22, gapY=26;
@@ -664,6 +728,7 @@ function drawLevelSelect(){
     const rec = exists?bestFor(i):{best:0,stars:0};
     let fill = !exists ? '#232f3a' : (rec.stars>0 ? (hover?'#3f6a48':'#35563d') : (hover?'#4a6076':'#3c5064'));
     let stroke = exists?'rgba(255,255,255,.22)':'rgba(255,255,255,.06)';
+    if(exportMode && exists){ fill = hover?'#6a5a24':'#4a3f1a'; stroke=hover?'#ffcf3f':'rgba(255,207,63,.5)'; }
     panel(x,y,cellW,cellH,12,fill,{stroke,strokeW:hover?3:2});
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillStyle=exists?'#fff':'#3a4a58';
@@ -844,6 +909,13 @@ function drawHUD(){
   // score (top-left, under hearts) — outlined so it reads on any background
   hudLabel('SCORE  '+String(score).padStart(6,'0'), 14, 66, 'left', 22, '#ffe9b0');
 
+  // level number + name (top-left, under score)
+  const lvNum = 'LEVEL '+(levelIndex+1);
+  hudLabel(lvNum, 14, 92, 'left', 15, '#7ed957');
+  ctx.font="bold 15px 'Trebuchet MS', sans-serif";
+  const numW = ctx.measureText(lvNum).width;
+  if(L.name) hudLabel(L.name, 14+numW+10, 92, 'left', 15, 'rgba(255,255,255,.9)');
+
   // coins (top-right) with a dark pill behind so white text never sits on white sky
   const coinTxt=coinsGot+' / '+coinsTotal;
   ctx.font="bold 22px 'Trebuchet MS', sans-serif";
@@ -860,10 +932,6 @@ function drawHUD(){
   // combo indicator (center) when a chain is live
   if(combo>1){ hudLabel('COMBO x'+combo, VW/2, 96, 'center', 24, '#ff9de0'); }
 
-  // level name (bottom-left, subtle backing)
-  ctx.font="13px Consolas, monospace";
-  const ln=(L.subtitle||'')+'  '+(L.name||'');
-  hudLabel(ln, 12, VH-16, 'left', 13, 'rgba(255,255,255,.85)');
   if(muted) hudLabel('MUTED', VW-16, 92, 'right', 14, '#ff6');
 
   ctx.textAlign='left';
@@ -1014,8 +1082,8 @@ function tryJump(){
 
 // ---- screen transitions ----
 function startLevel(i){ if(!LEVELS[i])return; buildLevel(i); screen='play'; play('select'); }
-function gotoTitle(){ screen='title'; menuSel=0; play('select'); }
-function gotoSelect(){ screen='levelSelect'; menuSel=0; play('select'); }
+function gotoTitle(){ screen='title'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; play('select'); }
+function gotoSelect(){ screen='levelSelect'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; play('select'); }
 
 // how many selectable menu items on the current screen (for kb/pad cursor)
 function menuCount(){
@@ -1035,11 +1103,19 @@ addEventListener('keydown',e=>{
 
   // menu navigation
   if(screen==='title'||screen==='levelSelect'){
+    // level-select back-door: press X, then P, to arm clipboard-export mode
+    if(screen==='levelSelect'){
+      if(e.key==='x'||e.key==='X'){ exportKeyX=true; return; }
+      if((e.key==='p'||e.key==='P') && exportKeyX){ exportMode=!exportMode; exportKeyX=false;
+        exportToast = exportMode ? 'EXPORT MODE — click a level to copy it' : 'Export mode off';
+        play('bump'); if(!exportMode) setTimeout(()=>{ if(!exportMode)exportToast=''; },1500); return; }
+      exportKeyX=false;   // any other key breaks the combo
+    }
     const n=menuCount();
     if(e.key==='ArrowDown'||e.key==='ArrowRight'){ menuSel=(menuSel+1)%n; play('bump'); }
     else if(e.key==='ArrowUp'||e.key==='ArrowLeft'){ menuSel=(menuSel-1+n)%n; play('bump'); }
     else if(e.key==='Enter'||e.key===' '){ menuActivate(); }
-    else if(e.key==='Escape'&&screen==='levelSelect'){ gotoTitle(); }
+    else if(e.key==='Escape'&&screen==='levelSelect'){ if(exportMode){exportMode=false;exportToast='';} else gotoTitle(); }
     return;
   }
   // play
@@ -1087,8 +1163,12 @@ function menuClick(mx,my){
     if(menuBtns.play && pointIn(mx,my,menuBtns.play)){ startLevel(0); return true; }
     if(menuBtns.select && pointIn(mx,my,menuBtns.select)){ gotoSelect(); return true; }
   } else if(screen==='levelSelect'){
-    for(const c of selectCells){ if(c.exists && pointIn(mx,my,c)){ startLevel(c.idx); return true; } }
-    if(menuBtns.back && pointIn(mx,my,menuBtns.back)){ gotoTitle(); return true; }
+    for(const c of selectCells){ if(c.exists && pointIn(mx,my,c)){
+      if(exportMode){ exportLevelToClipboard(c.idx); }   // export instead of play
+      else startLevel(c.idx);
+      return true;
+    } }
+    if(menuBtns.back && pointIn(mx,my,menuBtns.back)){ if(exportMode){exportMode=false;exportToast='';} gotoTitle(); return true; }
   } else if(screen==='play'){
     // pause overlay takes priority when open
     if(paused){
@@ -1146,7 +1226,9 @@ cv.addEventListener('touchstart',e=>{
     // level-select grid cells (not in menuBtns) — tap to start that level
     if(screen==='levelSelect'){
       let started=false;
-      for(const c of selectCells){ if(c.exists && pointIn(p.x,p.y,c)){ startLevel(c.idx); started=true; break; } }
+      for(const c of selectCells){ if(c.exists && pointIn(p.x,p.y,c)){
+        if(exportMode) exportLevelToClipboard(c.idx); else startLevel(c.idx);
+        started=true; break; } }
       if(started) continue;
     }
     // 2) on menus/overlays with no button hit, a tap acts like "confirm/advance"
