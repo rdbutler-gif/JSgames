@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/x-icon" href="rusko.ico">
 <title>RUSKO'S RUN</title>
+<div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;font-family:'Orbitron',sans-serif;font-weight:900;">.</div>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@700;900&display=swap');
   :root{
@@ -1289,14 +1290,18 @@ function draw(){
   ctx.restore();
 
   // ---- HUD ----
-  ctx.fillStyle='#00ff9c'; ctx.font='22px VT323, monospace'; ctx.textAlign='left';
-  ctx.fillText('SCORE '+String(score).padStart(6,'0'), 12, 26);
+  ctx.save();
+  ctx.font='900 22px Orbitron, sans-serif';
+  ctx.shadowColor='#00ff9c'; ctx.shadowBlur=12;
+  ctx.fillStyle='#7fffcf'; ctx.textAlign='left';
+  ctx.fillText('SCORE '+String(score).padStart(6,'0'), 12, 30);
   ctx.textAlign='right';
-  ctx.fillText('WAVE '+wave, W-12, 26);
+  ctx.fillText('WAVE '+wave, W-12, 30);
+  ctx.restore();
   ctx.textAlign='left';
   for(let i=0;i<player.maxhp;i++){
     ctx.fillStyle = i<player.hp ? '#28e0ff' : '#1a3a44';
-    ctx.fillRect(12+i*16, 36, 12, 8);
+    ctx.fillRect(12+i*16, 44, 12, 8);
   }
   // active powerup timers
   let py=58;
