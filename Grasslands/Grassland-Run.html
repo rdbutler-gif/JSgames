@@ -83,6 +83,61 @@ const LEVELS = [
   terrain: [[0,1,"terrain_snow_block_top_left"],[1,1,"terrain_snow_block_top_right"],[28,1,"terrain_snow_block_top_left"],[29,1,"terrain_snow_block_top_right"],[0,2,"terrain_snow_block_left"],[1,2,"terrain_snow_block_right"],[28,2,"terrain_snow_block_left"],[29,2,"terrain_snow_block_right"],[2,3,"terrain_snow_block_top_left"],[3,3,"terrain_snow_block_top_right"],[26,3,"terrain_snow_block_top_left"],[27,3,"terrain_snow_block_top_right"],[4,6,"terrain_snow_block_top_left"],[5,6,"terrain_snow_block_top_right"],[24,6,"terrain_snow_block_top_left"],[25,6,"terrain_snow_block_top_right"],[6,8,"terrain_snow_block_top_left"],[7,8,"terrain_snow_block_top_right"],[22,8,"terrain_snow_block_top_left"],[23,8,"terrain_snow_block_top_right"],[8,11,"terrain_snow_block_top_left"],[9,11,"terrain_snow_block_top_right"],[20,11,"terrain_snow_block_top_left"],[21,11,"terrain_snow_block_top_right"],[6,14,"terrain_snow_block_top_left"],[7,14,"terrain_snow_block_top_right"],[22,14,"terrain_snow_block_top_left"],[23,14,"terrain_snow_block_top_right"],[4,16,"terrain_snow_block_top_left"],[5,16,"terrain_snow_block_top_right"],[24,16,"terrain_snow_block_top_left"],[25,16,"terrain_snow_block_top_right"],[2,19,"terrain_snow_block_top_left"],[3,19,"terrain_snow_block_top_right"],[26,19,"terrain_snow_block_top_left"],[27,19,"terrain_snow_block_top_right"],[0,22,"terrain_snow_block_top_left"],[1,22,"terrain_snow_block_top_right"],[28,22,"terrain_snow_block_top_left"],[29,22,"terrain_snow_block_top_right"],[2,25,"terrain_snow_block_top_left"],[3,25,"terrain_snow_block_top_right"],[26,25,"terrain_snow_block_top_left"],[27,25,"terrain_snow_block_top_right"],[6,26,"terrain_snow_block_top_left"],[7,26,"terrain_snow_block_top_right"],[22,26,"terrain_snow_block_top_left"],[23,26,"terrain_snow_block_top_right"],[10,27,"terrain_snow_block_top_left"],[11,27,"terrain_snow_block_top_right"],[18,27,"terrain_snow_block_top_left"],[19,27,"terrain_snow_block_top_right"],[14,28,"terrain_snow_block_top_left"],[15,28,"terrain_snow_block_top_right"]],
   items: [[5,3,"coin_gold"],[24,3,"coin_gold"],[7,4,"coin_gold"],[22,4,"coin_gold"],[9,5,"coin_gold"],[20,5,"coin_gold"],[11,6,"coin_gold"],[18,6,"coin_gold"],[13,7,"coin_gold"],[16,7,"coin_gold"],[14,9,"coin_gold"],[15,9,"coin_gold"],[14,11,"coin_gold"],[15,11,"coin_gold"],[2,13,"gem_blue"],[14,13,"coin_gold"],[15,13,"coin_gold"],[27,13,"gem_blue"],[14,15,"coin_gold"],[15,15,"coin_gold"],[14,17,"coin_gold"],[15,17,"coin_gold"],[14,19,"coin_gold"],[15,19,"coin_gold"],[14,20,"coin_gold"],[15,20,"coin_gold"],[14,21,"coin_gold"],[15,21,"coin_gold"],[14,22,"coin_gold"],[15,22,"coin_gold"]],
   enemies: [[7,10,"fly"],[22,10,"fly"],[5,15,"slime_normal"],[24,15,"slime_normal"],[1,16,"saw"],[28,16,"saw"],[11,17,"fly"],[18,17,"fly"],[5,23,"saw"],[24,23,"saw"],[10,25,"fly"],[19,25,"fly"]],
+},
+{
+  name: "Coins Coins!",
+  subtitle: "LEVEL 5",
+  theme: "stone",
+  gravity: "normal",
+  cols: 31, rows: 30,
+  spawn: { x: 1, y: 1 },
+  goal:  { x: 30, y: 6 },
+  terrain: [[1,2,"terrain_stone_block_top_left"],[2,2,"terrain_stone_block_top_right"],[9,2,"terrain_stone_block_top_left"],[10,2,"terrain_stone_block_top_right"],[17,2,"terrain_stone_block_top_left"],[18,2,"terrain_stone_block_top_right"],[5,5,"terrain_stone_block_top_left"],[6,5,"terrain_stone_block_top_right"],[13,5,"terrain_stone_block_top_left"],[14,5,"terrain_stone_block_top_right"],[21,5,"terrain_stone_block_top_left"],[22,5,"terrain_stone_block_top_right"],[29,7,"terrain_stone_block_top_left"],[30,7,"terrain_stone_block_top_right"],[29,8,"terrain_stone_block_left"],[30,8,"terrain_stone_block_right"],[29,9,"terrain_stone_block_left"],[30,9,"terrain_stone_block_right"],[25,10,"terrain_stone_block_top_left"],[26,10,"terrain_stone_block_top_right"],[29,10,"terrain_stone_block_left"],[30,10,"terrain_stone_block_right"],[25,11,"terrain_stone_block_left"],[26,11,"terrain_stone_block_right"],[29,11,"terrain_stone_block_left"],[30,11,"terrain_stone_block_right"],[25,12,"terrain_stone_block_left"],[26,12,"terrain_stone_block_right"],[29,12,"terrain_stone_block_left"],[30,12,"terrain_stone_block_right"],[21,13,"terrain_stone_block_top_left"],[22,13,"terrain_stone_block_top_right"],[25,13,"terrain_stone_block_left"],[26,13,"terrain_stone_block_right"],[29,13,"terrain_stone_block_left"],[30,13,"terrain_stone_block_right"],[21,14,"terrain_stone_block_left"],[22,14,"terrain_stone_block_right"],[25,14,"terrain_stone_block_left"],[26,14,"terrain_stone_block_right"],[29,14,"terrain_stone_block_left"],[30,14,"terrain_stone_block_right"],[21,15,"terrain_stone_block_left"],[22,15,"terrain_stone_block_right"],[25,15,"terrain_stone_block_left"],[26,15,"terrain_stone_block_right"],[29,15,"terrain_stone_block_left"],[30,15,"terrain_stone_block_right"],[17,16,"terrain_stone_block_top_left"],[18,16,"terrain_stone_block_top_right"],[21,16,"terrain_stone_block_left"],[22,16,"terrain_stone_block_right"],[25,16,"terrain_stone_block_left"],[26,16,"terrain_stone_block_right"],[29,16,"terrain_stone_block_left"],[30,16,"terrain_stone_block_right"],[17,17,"terrain_stone_block_left"],[18,17,"terrain_stone_block_right"],[21,17,"terrain_stone_block_left"],[22,17,"terrain_stone_block_right"],[25,17,"terrain_stone_block_left"],[26,17,"terrain_stone_block_right"],[29,17,"terrain_stone_block_left"],[30,17,"terrain_stone_block_right"],[17,18,"terrain_stone_block_left"],[18,18,"terrain_stone_block_right"],[21,18,"terrain_stone_block_left"],[22,18,"terrain_stone_block_right"],[25,18,"terrain_stone_block_left"],[26,18,"terrain_stone_block_right"],[29,18,"terrain_stone_block_left"],[30,18,"terrain_stone_block_right"],[13,19,"terrain_stone_block_top_left"],[14,19,"terrain_stone_block_top_right"],[17,19,"terrain_stone_block_left"],[18,19,"terrain_stone_block_right"],[21,19,"terrain_stone_block_left"],[22,19,"terrain_stone_block_right"],[25,19,"terrain_stone_block_left"],[26,19,"terrain_stone_block_right"],[29,19,"terrain_stone_block_left"],[30,19,"terrain_stone_block_right"],[13,20,"terrain_stone_block_left"],[14,20,"terrain_stone_block_right"],[17,20,"terrain_stone_block_left"],[18,20,"terrain_stone_block_right"],[21,20,"terrain_stone_block_left"],[22,20,"terrain_stone_block_right"],[25,20,"terrain_stone_block_left"],[26,20,"terrain_stone_block_right"],[29,20,"terrain_stone_block_left"],[30,20,"terrain_stone_block_right"],[13,21,"terrain_stone_block_left"],[14,21,"terrain_stone_block_right"],[17,21,"terrain_stone_block_left"],[18,21,"terrain_stone_block_right"],[21,21,"terrain_stone_block_left"],[22,21,"terrain_stone_block_right"],[25,21,"terrain_stone_block_left"],[26,21,"terrain_stone_block_right"],[29,21,"terrain_stone_block_left"],[30,21,"terrain_stone_block_right"],[9,22,"terrain_stone_block_top_left"],[10,22,"terrain_stone_block_top_right"],[13,22,"terrain_stone_block_left"],[14,22,"terrain_stone_block_right"],[17,22,"terrain_stone_block_left"],[18,22,"terrain_stone_block_right"],[21,22,"terrain_stone_block_left"],[22,22,"terrain_stone_block_right"],[25,22,"terrain_stone_block_left"],[26,22,"terrain_stone_block_right"],[29,22,"terrain_stone_block_left"],[30,22,"terrain_stone_block_right"],[9,23,"terrain_stone_block_left"],[10,23,"terrain_stone_block_right"],[13,23,"terrain_stone_block_left"],[14,23,"terrain_stone_block_right"],[17,23,"terrain_stone_block_left"],[18,23,"terrain_stone_block_right"],[21,23,"terrain_stone_block_left"],[22,23,"terrain_stone_block_right"],[25,23,"terrain_stone_block_left"],[26,23,"terrain_stone_block_right"],[29,23,"terrain_stone_block_left"],[30,23,"terrain_stone_block_right"],[9,24,"terrain_stone_block_left"],[10,24,"terrain_stone_block_right"],[13,24,"terrain_stone_block_left"],[14,24,"terrain_stone_block_right"],[17,24,"terrain_stone_block_left"],[18,24,"terrain_stone_block_right"],[21,24,"terrain_stone_block_left"],[22,24,"terrain_stone_block_right"],[25,24,"terrain_stone_block_left"],[26,24,"terrain_stone_block_right"],[29,24,"terrain_stone_block_left"],[30,24,"terrain_stone_block_right"],[5,25,"terrain_stone_block_top_left"],[6,25,"terrain_stone_block_top_right"],[9,25,"terrain_stone_block_left"],[10,25,"terrain_stone_block_right"],[13,25,"terrain_stone_block_left"],[14,25,"terrain_stone_block_right"],[17,25,"terrain_stone_block_left"],[18,25,"terrain_stone_block_right"],[21,25,"terrain_stone_block_left"],[22,25,"terrain_stone_block_right"],[25,25,"terrain_stone_block_left"],[26,25,"terrain_stone_block_right"],[29,25,"terrain_stone_block_left"],[30,25,"terrain_stone_block_right"],[5,26,"terrain_stone_block_left"],[6,26,"terrain_stone_block_right"],[9,26,"terrain_stone_block_left"],[10,26,"terrain_stone_block_right"],[13,26,"terrain_stone_block_left"],[14,26,"terrain_stone_block_right"],[17,26,"terrain_stone_block_left"],[18,26,"terrain_stone_block_right"],[21,26,"terrain_stone_block_left"],[22,26,"terrain_stone_block_right"],[25,26,"terrain_stone_block_left"],[26,26,"terrain_stone_block_right"],[29,26,"terrain_stone_block_left"],[30,26,"terrain_stone_block_right"],[5,27,"terrain_stone_block_left"],[6,27,"terrain_stone_block_right"],[9,27,"terrain_stone_block_left"],[10,27,"terrain_stone_block_right"],[13,27,"terrain_stone_block_left"],[14,27,"terrain_stone_block_right"],[17,27,"terrain_stone_block_left"],[18,27,"terrain_stone_block_right"],[21,27,"terrain_stone_block_left"],[22,27,"terrain_stone_block_right"],[25,27,"terrain_stone_block_left"],[26,27,"terrain_stone_block_right"],[29,27,"terrain_stone_block_left"],[30,27,"terrain_stone_block_right"],[1,28,"terrain_stone_block_top_left"],[2,28,"terrain_stone_block_top_right"],[5,28,"terrain_stone_block_left"],[6,28,"terrain_stone_block_right"],[9,28,"terrain_stone_block_left"],[10,28,"terrain_stone_block_right"],[13,28,"terrain_stone_block_left"],[14,28,"terrain_stone_block_right"],[17,28,"terrain_stone_block_left"],[18,28,"terrain_stone_block_right"],[21,28,"terrain_stone_block_left"],[22,28,"terrain_stone_block_right"],[25,28,"terrain_stone_block_left"],[26,28,"terrain_stone_block_right"],[29,28,"terrain_stone_block_left"],[30,28,"terrain_stone_block_right"],[1,29,"terrain_stone_block_left"],[2,29,"terrain_stone_block_right"],[5,29,"terrain_stone_block_left"],[6,29,"terrain_stone_block_right"],[9,29,"terrain_stone_block_left"],[10,29,"terrain_stone_block_right"],[13,29,"terrain_stone_block_left"],[14,29,"terrain_stone_block_right"],[17,29,"terrain_stone_block_left"],[18,29,"terrain_stone_block_right"],[21,29,"terrain_stone_block_left"],[22,29,"terrain_stone_block_right"],[25,29,"terrain_stone_block_left"],[26,29,"terrain_stone_block_right"],[29,29,"terrain_stone_block_left"],[30,29,"terrain_stone_block_right"]],
+  items: [[1,3,"gem_red"],[2,3,"gem_red"],[9,3,"gem_green"],[10,3,"gem_green"],[17,3,"gem_blue"],[18,3,"gem_blue"],[27,3,"gem_red"],[1,4,"coin_gold"],[2,4,"coin_gold"],[9,4,"coin_gold"],[10,4,"coin_gold"],[17,4,"coin_gold"],[18,4,"coin_gold"],[27,4,"coin_gold"],[1,5,"coin_gold"],[2,5,"coin_gold"],[9,5,"coin_gold"],[10,5,"coin_gold"],[17,5,"coin_gold"],[18,5,"coin_gold"],[27,5,"coin_gold"],[23,6,"gem_red"],[27,6,"coin_gold"],[23,7,"coin_gold"],[27,7,"coin_gold"],[23,8,"coin_gold"],[27,8,"coin_gold"],[19,9,"gem_red"],[23,9,"coin_gold"],[19,10,"coin_gold"],[23,10,"coin_gold"],[19,11,"coin_gold"],[23,11,"coin_gold"],[15,12,"gem_red"],[19,12,"coin_gold"],[15,13,"coin_gold"],[19,13,"coin_gold"],[15,14,"coin_gold"],[19,14,"coin_gold"],[11,15,"gem_red"],[15,15,"coin_gold"],[11,16,"coin_gold"],[15,16,"coin_gold"],[11,17,"coin_gold"],[15,17,"coin_gold"],[7,18,"gem_red"],[11,18,"coin_gold"],[7,19,"coin_gold"],[11,19,"coin_gold"],[7,20,"coin_gold"],[11,20,"coin_gold"],[3,21,"gem_red"],[7,21,"coin_gold"],[3,22,"coin_gold"],[7,22,"coin_gold"],[3,23,"coin_gold"],[7,23,"coin_gold"],[3,24,"coin_gold"],[3,25,"coin_gold"],[3,26,"coin_gold"]],
+  enemies: [[14,4,"slime_normal"],[13,8,"fly"],[10,11,"fly"],[7,14,"fly"],[4,17,"fly"],[14,18,"slime_normal"]],
+  hazards: [[3,29,"water_top"],[4,29,"water_top"],[7,29,"water_top"],[8,29,"water_top"],[11,29,"water_top"],[12,29,"water_top"],[15,29,"water_top"],[16,29,"water_top"],[19,29,"water_top"],[20,29,"water_top"],[23,29,"water_top"],[24,29,"water_top"],[27,29,"water_top"],[28,29,"water_top"]],
+},
+{
+  name: "So Much Fun",
+  subtitle: "LEVEL 6",
+  theme: "snow",
+  gravity: "floaty",
+  cols: 40, rows: 40,
+  spawn: { x: 3, y: 10 },
+  goal:  { x: 36, y: 10 },
+  terrain: [[9,7,"terrain_snow_block_top_left"],[10,7,"terrain_snow_block_top"],[11,7,"terrain_snow_block_top"],[12,7,"terrain_snow_block_top_right"],[27,7,"terrain_snow_block_top_left"],[28,7,"terrain_snow_block_top"],[29,7,"terrain_snow_block_top"],[30,7,"terrain_snow_block_top_right"],[6,9,"terrain_snow_block_top_left"],[7,9,"terrain_snow_block_top_right"],[14,9,"terrain_snow_block_top_left"],[15,9,"terrain_snow_block_top_right"],[24,9,"terrain_snow_block_top_left"],[25,9,"terrain_snow_block_top_right"],[32,9,"terrain_snow_block_top_left"],[33,9,"terrain_snow_block_top_right"],[3,11,"terrain_snow_block_top_left"],[4,11,"terrain_snow_block_top_right"],[17,11,"terrain_snow_block_top_left"],[18,11,"terrain_snow_block_top"],[19,11,"terrain_snow_block_top"],[20,11,"terrain_snow_block_top"],[21,11,"terrain_snow_block_top"],[22,11,"terrain_snow_block_top_right"],[35,11,"terrain_snow_block_top_left"],[36,11,"terrain_snow_block_top_right"],[14,13,"terrain_snow_block_top_left"],[15,13,"terrain_snow_block_top_right"],[9,15,"terrain_snow_block_top_left"],[10,15,"terrain_snow_block_top"],[11,15,"terrain_snow_block_top"],[12,15,"terrain_snow_block_top_right"],[27,15,"terrain_snow_block_top_left"],[28,15,"terrain_snow_block_top"],[29,15,"terrain_snow_block_top"],[30,15,"terrain_snow_block_top_right"],[6,17,"terrain_snow_block_top_left"],[7,17,"terrain_snow_block_top_right"],[32,17,"terrain_snow_block_top_left"],[33,17,"terrain_snow_block_top_right"],[19,18,"terrain_snow_block_top_left"],[20,18,"terrain_snow_block_top_right"],[2,19,"terrain_snow_block_top_left"],[3,19,"terrain_snow_block_top"],[4,19,"terrain_snow_block_top_right"],[35,19,"terrain_snow_block_top_left"],[36,19,"terrain_snow_block_top"],[37,19,"terrain_snow_block_top_right"],[6,21,"terrain_snow_block_top_left"],[7,21,"terrain_snow_block_top_right"],[32,21,"terrain_snow_block_top_left"],[33,21,"terrain_snow_block_top_right"],[9,23,"terrain_snow_block_top_left"],[10,23,"terrain_snow_block_top"],[11,23,"terrain_snow_block_top"],[12,23,"terrain_snow_block_top_right"],[27,23,"terrain_snow_block_top_left"],[28,23,"terrain_snow_block_top"],[29,23,"terrain_snow_block_top"],[30,23,"terrain_snow_block_top_right"],[14,25,"terrain_snow_block_top_left"],[15,25,"terrain_snow_block_top_right"],[24,25,"terrain_snow_block_top_left"],[25,25,"terrain_snow_block_top_right"],[17,27,"terrain_snow_block_top_left"],[18,27,"terrain_snow_block_top"],[19,27,"terrain_snow_block_top"],[20,27,"terrain_snow_block_top"],[21,27,"terrain_snow_block_top"],[22,27,"terrain_snow_block_top_right"],[9,30,"terrain_snow_block_top_left"],[10,30,"terrain_snow_block_top"],[11,30,"terrain_snow_block_top"],[12,30,"terrain_snow_block_top"],[13,30,"terrain_snow_block_top"],[14,30,"terrain_snow_block_top"],[15,30,"terrain_snow_block_top_right"],[24,30,"terrain_snow_block_top_left"],[25,30,"terrain_snow_block_top"],[26,30,"terrain_snow_block_top"],[27,30,"terrain_snow_block_top"],[28,30,"terrain_snow_block_top"],[29,30,"terrain_snow_block_top"],[30,30,"terrain_snow_block_top_right"],[6,33,"terrain_snow_block_top_left"],[7,33,"terrain_snow_block_top_right"],[19,33,"terrain_snow_block_top_left"],[20,33,"terrain_snow_block_top_right"],[32,33,"terrain_snow_block_top_left"],[33,33,"terrain_snow_block_top_right"],[4,36,"terrain_snow_block_top_left"],[5,36,"terrain_snow_block_top_right"],[15,36,"terrain_snow_block_top_left"],[16,36,"terrain_snow_block_top_right"],[23,36,"terrain_snow_block_top_left"],[24,36,"terrain_snow_block_top_right"],[34,36,"terrain_snow_block_top_left"],[35,36,"terrain_snow_block_top_right"],[2,39,"terrain_snow_block_top_left"],[3,39,"terrain_snow_block_top_right"],[36,39,"terrain_snow_block_top_left"],[37,39,"terrain_snow_block_top_right"]],
+  items: [[10,2,"gem_blue"],[11,2,"gem_blue"],[28,2,"gem_blue"],[29,2,"gem_blue"],[6,3,"gem_blue"],[7,3,"gem_blue"],[10,3,"coin_gold"],[11,3,"coin_gold"],[28,3,"coin_gold"],[29,3,"coin_gold"],[32,3,"gem_blue"],[33,3,"gem_blue"],[3,4,"gem_blue"],[4,4,"gem_blue"],[6,4,"coin_gold"],[7,4,"coin_gold"],[10,4,"coin_gold"],[11,4,"coin_gold"],[28,4,"coin_gold"],[29,4,"coin_gold"],[32,4,"coin_gold"],[33,4,"coin_gold"],[35,4,"gem_blue"],[36,4,"gem_blue"],[3,5,"coin_gold"],[4,5,"coin_gold"],[6,5,"coin_gold"],[7,5,"coin_gold"],[32,5,"coin_gold"],[33,5,"coin_gold"],[35,5,"coin_gold"],[36,5,"coin_gold"],[3,6,"coin_gold"],[4,6,"coin_gold"],[35,6,"coin_gold"],[36,6,"coin_gold"],[19,14,"gem_blue"],[20,14,"gem_blue"],[2,15,"gem_blue"],[3,15,"gem_blue"],[19,15,"coin_gold"],[20,15,"coin_gold"],[36,15,"gem_blue"],[37,15,"gem_blue"],[2,16,"coin_gold"],[3,16,"coin_gold"],[19,16,"coin_gold"],[20,16,"coin_gold"],[36,16,"coin_gold"],[37,16,"coin_gold"],[2,17,"coin_gold"],[3,17,"coin_gold"],[36,17,"coin_gold"],[37,17,"coin_gold"],[27,19,"gem_blue"],[28,19,"gem_blue"],[11,20,"coin_gold"],[12,20,"coin_gold"],[27,20,"coin_gold"],[28,20,"coin_gold"],[11,21,"coin_gold"],[12,21,"coin_gold"],[27,21,"coin_gold"],[28,21,"coin_gold"],[19,23,"gem_blue"],[20,23,"gem_blue"],[19,24,"coin_gold"],[20,24,"coin_gold"],[19,25,"coin_gold"],[20,25,"coin_gold"],[9,26,"gem_blue"],[10,26,"gem_blue"],[29,26,"gem_blue"],[30,26,"gem_blue"],[9,27,"coin_gold"],[10,27,"coin_gold"],[29,27,"coin_gold"],[30,27,"coin_gold"],[9,28,"coin_gold"],[10,28,"coin_gold"],[29,28,"coin_gold"],[30,28,"coin_gold"],[2,30,"gem_blue"],[3,30,"gem_blue"],[36,30,"gem_blue"],[37,30,"gem_blue"],[2,31,"coin_gold"],[3,31,"coin_gold"],[36,31,"coin_gold"],[37,31,"coin_gold"],[2,32,"coin_gold"],[3,32,"coin_gold"],[36,32,"coin_gold"],[37,32,"coin_gold"],[15,34,"gem_blue"],[16,34,"gem_blue"],[23,34,"gem_blue"],[24,34,"gem_blue"],[0,36,"gem_blue"],[1,36,"gem_blue"],[38,36,"gem_blue"],[39,36,"gem_blue"]],
+  enemies: [[19,5,"fly"],[20,6,"fly"],[18,10,"slime_normal"],[21,10,"snail"],[10,12,"saw"],[11,12,"saw"],[28,12,"saw"],[29,12,"saw"],[17,21,"fly"],[22,21,"fly"],[22,26,"ladybug"],[6,28,"fly"],[33,28,"fly"],[12,29,"slime_spike"],[27,29,"slime_spike"]],
+}
+,
+{
+  name: "Baddies Galore",
+  subtitle: "LEVEL 7",
+  theme: "grass",
+  gravity: "normal",
+  cols: 55, rows: 14,
+  spawn: { x: 3, y: 10 },
+  goal:  { x: 52, y: 1 },
+  terrain: [[11,2,"terrain_grass_block_top_left"],[12,2,"terrain_grass_block_top_right"],[31,2,"terrain_grass_block_top_left"],[32,2,"terrain_grass_block_top_right"],[51,2,"terrain_grass_block_top_left"],[52,2,"terrain_grass_block_top_right"],[51,3,"terrain_grass_block_left"],[52,3,"terrain_grass_block_right"],[51,4,"terrain_grass_block_left"],[52,4,"terrain_grass_block_right"],[6,5,"terrain_grass_block_top_left"],[7,5,"terrain_grass_block_top_right"],[16,5,"terrain_grass_block_top_left"],[17,5,"terrain_grass_block_top_right"],[26,5,"terrain_grass_block_top_left"],[27,5,"terrain_grass_block_top_right"],[36,5,"terrain_grass_block_top_left"],[37,5,"terrain_grass_block_top_right"],[46,5,"terrain_grass_block_top_left"],[47,5,"terrain_grass_block_top_right"],[51,5,"terrain_grass_block_left"],[52,5,"terrain_grass_block_right"],[46,6,"terrain_grass_block_left"],[47,6,"terrain_grass_block_right"],[51,6,"terrain_grass_block_left"],[52,6,"terrain_grass_block_right"],[46,7,"terrain_grass_block_left"],[47,7,"terrain_grass_block_right"],[51,7,"terrain_grass_block_left"],[52,7,"terrain_grass_block_right"],[1,8,"terrain_grass_block_top_left"],[2,8,"terrain_grass_block_top_right"],[21,8,"terrain_grass_block_top_left"],[22,8,"terrain_grass_block_top_right"],[41,8,"terrain_grass_block_top_left"],[42,8,"terrain_grass_block_top_right"],[46,8,"terrain_grass_block_left"],[47,8,"terrain_grass_block_right"],[51,8,"terrain_grass_block_left"],[52,8,"terrain_grass_block_right"],[46,9,"terrain_grass_block_left"],[47,9,"terrain_grass_block_right"],[51,9,"terrain_grass_block_left"],[52,9,"terrain_grass_block_right"],[46,10,"terrain_grass_block_left"],[47,10,"terrain_grass_block_right"],[51,10,"terrain_grass_block_left"],[52,10,"terrain_grass_block_right"],[40,11,"terrain_grass_block_top_left"],[41,11,"terrain_grass_block_top"],[42,11,"terrain_grass_block_top"],[43,11,"terrain_grass_block_top"],[44,11,"terrain_grass_block_top"],[45,11,"terrain_grass_block_top"],[46,11,"terrain_grass_block_center"],[47,11,"terrain_grass_block_right"],[51,11,"terrain_grass_block_left"],[52,11,"terrain_grass_block_right"],[0,12,"terrain_grass_block_top_left"],[1,12,"terrain_grass_block_top"],[2,12,"terrain_grass_block_top"],[3,12,"terrain_grass_block_top"],[4,12,"terrain_grass_block_top"],[5,12,"terrain_grass_block_top"],[6,12,"terrain_grass_block_top"],[7,12,"terrain_grass_block_top"],[8,12,"terrain_grass_block_top"],[9,12,"terrain_grass_block_top"],[10,12,"terrain_grass_block_top"],[11,12,"terrain_grass_block_top"],[12,12,"terrain_grass_block_top"],[13,12,"terrain_grass_block_top"],[14,12,"terrain_grass_block_top"],[15,12,"terrain_grass_block_top"],[16,12,"terrain_grass_block_top"],[17,12,"terrain_grass_block_top"],[18,12,"terrain_grass_block_top"],[19,12,"terrain_grass_block_top"],[20,12,"terrain_grass_block_top"],[21,12,"terrain_grass_block_top"],[22,12,"terrain_grass_block_top"],[23,12,"terrain_grass_block_top"],[24,12,"terrain_grass_block_top"],[25,12,"terrain_grass_block_top"],[26,12,"terrain_grass_block_top"],[27,12,"terrain_grass_block_top"],[28,12,"terrain_grass_block_top"],[29,12,"terrain_grass_block_top"],[30,12,"terrain_grass_block_top"],[31,12,"terrain_grass_block_top"],[32,12,"terrain_grass_block_top"],[33,12,"terrain_grass_block_top"],[34,12,"terrain_grass_block_top"],[35,12,"terrain_grass_block_top"],[36,12,"terrain_grass_block_top"],[37,12,"terrain_grass_block_top"],[38,12,"terrain_grass_block_top"],[39,12,"terrain_grass_block_top"],[40,12,"terrain_grass_block_center"],[41,12,"terrain_grass_block_center"],[42,12,"terrain_grass_block_center"],[43,12,"terrain_grass_block_center"],[44,12,"terrain_grass_block_center"],[45,12,"terrain_grass_block_center"],[46,12,"terrain_grass_block_center"],[47,12,"terrain_grass_block_right"],[51,12,"terrain_grass_block_left"],[52,12,"terrain_grass_block_right"],[0,13,"terrain_grass_block_left"],[1,13,"terrain_grass_block_center"],[2,13,"terrain_grass_block_center"],[3,13,"terrain_grass_block_center"],[4,13,"terrain_grass_block_center"],[5,13,"terrain_grass_block_center"],[6,13,"terrain_grass_block_center"],[7,13,"terrain_grass_block_center"],[8,13,"terrain_grass_block_center"],[9,13,"terrain_grass_block_center"],[10,13,"terrain_grass_block_center"],[11,13,"terrain_grass_block_center"],[12,13,"terrain_grass_block_center"],[13,13,"terrain_grass_block_center"],[14,13,"terrain_grass_block_center"],[15,13,"terrain_grass_block_center"],[16,13,"terrain_grass_block_center"],[17,13,"terrain_grass_block_center"],[18,13,"terrain_grass_block_center"],[19,13,"terrain_grass_block_center"],[20,13,"terrain_grass_block_center"],[21,13,"terrain_grass_block_center"],[22,13,"terrain_grass_block_center"],[23,13,"terrain_grass_block_center"],[24,13,"terrain_grass_block_center"],[25,13,"terrain_grass_block_center"],[26,13,"terrain_grass_block_center"],[27,13,"terrain_grass_block_center"],[28,13,"terrain_grass_block_center"],[29,13,"terrain_grass_block_center"],[30,13,"terrain_grass_block_center"],[31,13,"terrain_grass_block_center"],[32,13,"terrain_grass_block_center"],[33,13,"terrain_grass_block_center"],[34,13,"terrain_grass_block_center"],[35,13,"terrain_grass_block_center"],[36,13,"terrain_grass_block_center"],[37,13,"terrain_grass_block_center"],[38,13,"terrain_grass_block_center"],[39,13,"terrain_grass_block_center"],[40,13,"terrain_grass_block_center"],[41,13,"terrain_grass_block_center"],[42,13,"terrain_grass_block_center"],[43,13,"terrain_grass_block_center"],[44,13,"terrain_grass_block_center"],[45,13,"terrain_grass_block_center"],[46,13,"terrain_grass_block_center"],[47,13,"terrain_grass_block_right"],[51,13,"terrain_grass_block_left"],[52,13,"terrain_grass_block_right"]],
+  items: [[11,0,"gem_blue"],[12,0,"gem_blue"],[31,0,"gem_blue"],[32,0,"gem_blue"],[46,1,"gem_blue"],[47,1,"gem_blue"],[6,2,"coin_gold"],[7,2,"coin_gold"],[16,2,"coin_gold"],[17,2,"coin_gold"],[26,2,"coin_gold"],[27,2,"coin_gold"],[36,2,"coin_gold"],[37,2,"coin_gold"],[1,4,"coin_gold"],[2,4,"coin_gold"],[20,4,"coin_gold"],[21,4,"coin_gold"],[22,4,"coin_gold"],[23,4,"coin_gold"],[41,4,"coin_gold"],[42,4,"coin_gold"],[5,9,"coin_gold"],[6,9,"coin_gold"],[7,9,"coin_gold"],[8,9,"coin_gold"],[16,9,"coin_gold"],[17,9,"coin_gold"],[18,9,"coin_gold"],[19,9,"coin_gold"],[24,9,"coin_gold"],[25,9,"coin_gold"],[26,9,"coin_gold"],[27,9,"coin_gold"],[35,9,"coin_gold"],[36,9,"coin_gold"],[37,9,"coin_gold"],[38,9,"coin_gold"]],
+  enemies: [[2,3,"fly"],[22,3,"fly"],[41,3,"fly"],[17,4,"snail"],[26,4,"snail"],[2,7,"slime_normal"],[22,7,"slime_normal"],[42,7,"slime_normal"],[43,10,"slime_spike"],[10,11,"mouse"],[17,11,"mouse"],[29,11,"frog"],[36,11,"mouse"]],
+  hazards: [[45,10,"spikes"],[22,11,"spikes"],[24,11,"spikes"],[39,11,"spikes"],[48,13,"lava_top"],[49,13,"lava_top"],[50,13,"lava_top"],[53,13,"lava_top"],[54,13,"lava_top"]],
+  deco: [[13,1,"ladder_top"],[30,1,"ladder_top"],[13,2,"ladder_middle"],[30,2,"ladder_middle"],[13,3,"ladder_middle"],[30,3,"ladder_middle"],[13,4,"ladder_middle"],[30,4,"ladder_middle"],[13,5,"ladder_middle"],[30,5,"ladder_middle"],[13,6,"ladder_middle"],[30,6,"ladder_middle"],[13,7,"ladder_middle"],[30,7,"ladder_middle"],[13,8,"ladder_middle"],[30,8,"ladder_middle"],[13,9,"ladder_middle"],[30,9,"ladder_middle"],[13,10,"ladder_middle"],[30,10,"ladder_middle"],[40,10,"mushroom_brown"],[1,11,"cactus"],[6,11,"mushroom_brown"],[9,11,"cactus"],[13,11,"ladder_bottom"],[15,11,"bush"],[19,11,"mushroom_red"],[27,11,"cactus"],[30,11,"ladder_bottom"],[32,11,"mushroom_brown"],[34,11,"bush"]],
+}
+,
+{
+  name: "Don't Fall",
+  subtitle: "LEVEL 8",
+  theme: "dirt",
+  gravity: "normal",
+  cols: 40, rows: 24,
+  spawn: { x: 14, y: 22 },
+  goal:  { x: 39, y: 1 },
+  terrain: [[38,2,"terrain_dirt_block_top_left"],[39,2,"terrain_dirt_block_top_right"],[1,3,"terrain_dirt_block_top_left"],[2,3,"terrain_dirt_block_top"],[3,3,"terrain_dirt_block_top_right"],[8,3,"terrain_dirt_block_top_left"],[9,3,"terrain_dirt_block_top"],[10,3,"terrain_dirt_block_top_right"],[15,3,"terrain_dirt_block_top_left"],[16,3,"terrain_dirt_block_top"],[17,3,"terrain_dirt_block_top_right"],[22,3,"terrain_dirt_block_top_left"],[23,3,"terrain_dirt_block_top"],[24,3,"terrain_dirt_block_top_right"],[29,3,"terrain_dirt_block_top_left"],[30,3,"terrain_dirt_block_top"],[31,3,"terrain_dirt_block_top_right"],[36,3,"terrain_dirt_block_top_left"],[37,3,"terrain_dirt_block_top"],[38,3,"terrain_dirt_block_center"],[39,3,"terrain_dirt_block_right"],[4,8,"terrain_dirt_block_top_left"],[5,8,"terrain_dirt_block_top"],[6,8,"terrain_dirt_block_top"],[7,8,"terrain_dirt_block_top_right"],[11,8,"terrain_dirt_block_top_left"],[12,8,"terrain_dirt_block_top"],[13,8,"terrain_dirt_block_top"],[14,8,"terrain_dirt_block_top_right"],[18,8,"terrain_dirt_block_top_left"],[19,8,"terrain_dirt_block_top"],[20,8,"terrain_dirt_block_top"],[21,8,"terrain_dirt_block_top_right"],[25,8,"terrain_dirt_block_top_left"],[26,8,"terrain_dirt_block_top"],[27,8,"terrain_dirt_block_top"],[28,8,"terrain_dirt_block_top_right"],[32,8,"terrain_dirt_block_top_left"],[33,8,"terrain_dirt_block_top"],[34,8,"terrain_dirt_block_top"],[35,8,"terrain_dirt_block_top_right"],[8,13,"terrain_dirt_block_top_left"],[9,13,"terrain_dirt_block_top"],[10,13,"terrain_dirt_block_top_right"],[15,13,"terrain_dirt_block_top_left"],[16,13,"terrain_dirt_block_top"],[17,13,"terrain_dirt_block_top_right"],[22,13,"terrain_dirt_block_top_left"],[23,13,"terrain_dirt_block_top"],[24,13,"terrain_dirt_block_top_right"],[29,13,"terrain_dirt_block_top_left"],[30,13,"terrain_dirt_block_top"],[31,13,"terrain_dirt_block_top_right"],[18,18,"terrain_dirt_block_top_left"],[19,18,"terrain_dirt_block_top"],[20,18,"terrain_dirt_block_top"],[21,18,"terrain_dirt_block_top_right"],[14,23,"terrain_dirt_block_top_left"],[15,23,"terrain_dirt_block_top"],[16,23,"terrain_dirt_block_top"],[17,23,"terrain_dirt_block_top_right"],[22,23,"terrain_dirt_block_top_left"],[23,23,"terrain_dirt_block_top"],[24,23,"terrain_dirt_block_top"],[25,23,"terrain_dirt_block_top_right"]],
+  items: [[0,0,"gem_green"],[1,0,"gem_green"],[16,0,"gem_green"],[23,0,"gem_green"],[12,1,"coin_gold"],[13,1,"coin_gold"],[26,1,"coin_gold"],[27,1,"coin_gold"],[9,2,"coin_gold"],[12,2,"coin_gold"],[13,2,"coin_gold"],[26,2,"coin_gold"],[27,2,"coin_gold"],[30,2,"coin_gold"],[12,5,"gem_green"],[13,5,"gem_green"],[19,5,"gem_green"],[20,5,"gem_green"],[26,5,"gem_green"],[27,5,"gem_green"],[6,7,"coin_gold"],[19,7,"coin_gold"],[20,7,"coin_gold"],[33,7,"coin_gold"],[12,10,"coin_gold"],[13,10,"coin_gold"],[26,10,"coin_gold"],[27,10,"coin_gold"],[12,11,"coin_gold"],[13,11,"coin_gold"],[26,11,"coin_gold"],[27,11,"coin_gold"],[12,12,"coin_gold"],[13,12,"coin_gold"],[26,12,"coin_gold"],[27,12,"coin_gold"],[12,13,"coin_gold"],[13,13,"coin_gold"],[26,13,"coin_gold"],[27,13,"coin_gold"],[19,17,"coin_gold"],[20,17,"coin_gold"],[15,18,"gem_red"],[24,18,"gem_red"],[15,19,"coin_gold"],[24,19,"coin_gold"],[15,20,"coin_gold"],[24,20,"coin_gold"]],
+  enemies: [[9,0,"bee"],[30,0,"bee"],[16,2,"snail"],[23,2,"snail"],[13,7,"slime_normal"],[21,7,"frog"],[26,7,"slime_normal"],[16,12,"ladybug"],[23,12,"ladybug"],[12,15,"fly"],[27,15,"fly"],[13,17,"fly"],[26,17,"fly"]],
+  hazards: [[18,23,"water_top"],[19,23,"water_top"],[20,23,"water_top"],[21,23,"water_top"]],
+  deco: [[4,2,"ladder_top"],[35,2,"ladder_top"],[4,3,"ladder_middle"],[35,3,"ladder_middle"],[4,4,"ladder_middle"],[35,4,"ladder_middle"],[4,5,"ladder_middle"],[35,5,"ladder_middle"],[4,6,"ladder_middle"],[35,6,"ladder_middle"],[4,7,"ladder_bottom"],[8,7,"ladder_top"],[31,7,"ladder_top"],[35,7,"ladder_bottom"],[8,8,"ladder_middle"],[31,8,"ladder_middle"],[8,9,"ladder_middle"],[31,9,"ladder_middle"],[8,10,"ladder_middle"],[31,10,"ladder_middle"],[8,11,"ladder_middle"],[31,11,"ladder_middle"],[8,12,"ladder_bottom"],[18,12,"ladder_top"],[21,12,"ladder_top"],[31,12,"ladder_bottom"],[18,13,"ladder_middle"],[21,13,"ladder_middle"],[18,14,"ladder_middle"],[21,14,"ladder_middle"],[18,15,"ladder_middle"],[21,15,"ladder_middle"],[18,16,"ladder_middle"],[21,16,"ladder_middle"],[17,17,"ladder_top"],[18,17,"ladder_bottom"],[21,17,"ladder_bottom"],[22,17,"ladder_top"],[17,18,"ladder_middle"],[22,18,"ladder_middle"],[17,19,"ladder_middle"],[22,19,"ladder_middle"],[17,20,"ladder_middle"],[22,20,"ladder_middle"],[17,21,"ladder_middle"],[22,21,"ladder_middle"],[17,22,"ladder_bottom"],[22,22,"ladder_bottom"]],
 }
 ];
 </script>
@@ -141,6 +196,7 @@ let solids=[];            // {x,y,w,h} in world px, built from terrain grid
 let solidSet=null;        // Set "gx,gy" for fast neighbor lookup
 let items=[], enemies=[], hazards=[], deco=[];
 let movers=[];            // moving platforms (ferries) lifted out of odd-theme terrain
+let ladderSet=null, ladderTopSet=null;   // climbable cells + top rungs (one-way platforms)
 let levelTips=[], activeTip=null, activeTipT=0;   // tutorial popups (Level 1)
 let goalRect=null, spawnPx={x:0,y:0};
 let player, cam, keys={}, anim=0;
@@ -339,8 +395,17 @@ function buildLevel(i){
   (L.hazards||[]).forEach(([x,y,kind])=>{
     hazards.push({x:x*TS, y:y*TS, w:TS, h:TS, kind});
   });
-  // deco (non-solid art)
-  (L.deco||[]).forEach(([x,y,kind])=> deco.push({x:x*TS, y:y*TS, kind}));
+  // deco (non-solid art). Ladder tiles (kind matching ladder_*) are ALSO
+  // registered as a functional climb layer: ladderSet holds every ladder cell,
+  // ladderTopSet holds just the top rungs (which double as one-way platforms).
+  ladderSet=new Set(); ladderTopSet=new Set();
+  (L.deco||[]).forEach(([x,y,kind])=>{
+    deco.push({x:x*TS, y:y*TS, kind});
+    if(/^ladder_/.test(kind)){
+      ladderSet.add(x+','+y);
+      if(kind==='ladder_top') ladderTopSet.add(x+','+y);
+    }
+  });
 
   // spawn + goal
   spawnPx={x:(L.spawn?.x??2)*TS, y:(L.spawn?.y??2)*TS};
@@ -349,7 +414,7 @@ function buildLevel(i){
   // gravity tuning
   const gp=GRAV_PRESET[L.gravity]||GRAV_PRESET.normal; gravG=gp.g; jumpV=gp.jump;
 
-  player={x:spawnPx.x, y:spawnPx.y, w:44, h:60, vx:0, vy:0, onGround:false, jumps:0, face:1, hurt:0};
+  player={x:spawnPx.x, y:spawnPx.y, w:44, h:60, vx:0, vy:0, onGround:false, jumps:0, face:1, hurt:0, climbing:false};
   cam={x:0,y:0};
   worldW=cols*TS; worldH=rows*TS;
   // time par scales with level width: ~1.4s per column, min 30s. Countdown feeds the time bonus.
@@ -405,11 +470,56 @@ function update(){
   if(touch.moveDir!==0)  dir+=touch.moveDir;  // touch drag on the left half
   dir=Math.max(-1,Math.min(1,dir));
 
-  if(dir<0){ p.vx-=ACC; p.face=-1; }
-  else if(dir>0){ p.vx+=ACC; p.face=1; }
-  else p.vx*=FRIC;
-  p.vx=Math.max(-MAX,Math.min(MAX,p.vx));
-  p.vy+=gravG; if(p.vy>16)p.vy=16;
+  // ---- LADDER / CLIMB ----------------------------------------------------
+  // Vertical intent: -1 up, +1 down. Keyboard arrows + gamepad vertical axis.
+  let vint=0;
+  if(keys['ArrowUp'])   vint-=1;
+  if(keys['ArrowDown']) vint+=1;
+  if(pad.vaxis!==0)     vint+=pad.vaxis;
+  vint=Math.max(-1,Math.min(1,vint));
+
+  // Which grid cells does the player currently overlap? Use the horizontal
+  // centre column, and every row the body spans (so a tall player still
+  // registers a ladder). onLadder = any overlapped cell is a ladder tile.
+  const CLIMB=3.2;
+  const cx = Math.floor((p.x + p.w/2)/TS);
+  const r0 = Math.floor(p.y/TS), r1 = Math.floor((p.y+p.h-1)/TS);
+  let onLadder=false, onLadderTop=false;
+  for(let ry=r0; ry<=r1; ry++){
+    if(ladderSet.has(cx+','+ry)) onLadder=true;
+    if(ladderTopSet.has(cx+','+ry)) onLadderTop=true;
+  }
+  // top rung the player's feet are near (for dismount / standing)
+  const footRow = Math.floor((p.y+p.h)/TS);
+  const feetOnTopRung = ladderTopSet.has(cx+','+footRow);
+
+  // Enter climb mode: on a ladder AND pressing up/down. Jump or left/right
+  // (with no vertical intent) drops out of climbing.
+  if(!p.climbing){
+    if(onLadder && vint!==0) p.climbing=true;
+  } else {
+    // leaving the ladder region ends the climb
+    if(!onLadder && !feetOnTopRung) p.climbing=false;
+  }
+
+  if(p.climbing){
+    // Gravity off. Vertical movement is direct at climb speed.
+    p.vy = vint*CLIMB;
+    // Don't climb up past the top rung into empty air: if pressing up and the
+    // cell above the head isn't a ladder, clamp so feet rest on the top rung.
+    // Horizontal is allowed but slowed so you can line up / step off sideways.
+    if(dir<0){ p.vx-=ACC*0.5; p.face=-1; }
+    else if(dir>0){ p.vx+=ACC*0.5; p.face=1; }
+    else p.vx*=0.6;
+    p.vx=Math.max(-MAX*0.6,Math.min(MAX*0.6,p.vx));
+    p.jumps=0;   // stepping off a ladder gives a fresh jump
+  } else {
+    if(dir<0){ p.vx-=ACC; p.face=-1; }
+    else if(dir>0){ p.vx+=ACC; p.face=1; }
+    else p.vx*=FRIC;
+    p.vx=Math.max(-MAX,Math.min(MAX,p.vx));
+    p.vy+=gravG; if(p.vy>16)p.vy=16;
+  }
 
   // horizontal
   p.x+=p.vx;
@@ -426,6 +536,20 @@ function update(){
     if(p.vy>0){ p.y=mv.y-p.h; p.vy=0; p.onGround=true; p.jumps=0; combo=0; p.rideMover=mv; }
     else if(p.vy<0){ p.y=mv.y+mv.h; p.vy=0; }
   }}
+  // ladder_top acts as a one-way platform: when NOT climbing and descending
+  // (or falling), if the feet cross a top rung from above, land on it. This is
+  // what lets you climb up a ladder and stand on the platform at the top, and
+  // walk over the top of a ladder without falling in unless you press down.
+  if(!p.climbing && p.vy>=0){
+    const topRow = footRow;
+    if(ladderTopSet.has(cx+','+topRow)){
+      const rungY = topRow*TS;
+      // only catch if feet were at/above the rung this frame (one-way)
+      if(p.y+p.h > rungY && p.y+p.h - p.vy <= rungY+2 && vint>=0 && !keys['ArrowDown'] && pad.vaxis<=0){
+        p.y = rungY - p.h; p.vy=0; p.onGround=true; p.jumps=0; combo=0;
+      }
+    }
+  }
   if(wasGround && !p.onGround && p.jumps===0) p.jumps=1;
   if(p.x<0)p.x=0; if(p.x+p.w>worldW)p.x=worldW-p.w;
   if(p.y>worldH+160) return hurt(true);
@@ -655,7 +779,7 @@ function drawTitle(){
   // controls footer, inside the canvas
   ctx.font="13px 'Trebuchet MS', sans-serif"; ctx.fillStyle='rgba(255,255,255,.75)';
   ctx.textBaseline='alphabetic';
-  ctx.fillText('Keys ← → ↑   ·   Mouse: right-hold move, left-click jump   ·   Pad: stick + ✕/A   ·   Touch: left-drag move, right-tap jump', VW/2, VH-24);
+  ctx.fillText('Keys ← → ↑   ·   ↑/↓ on ladders   ·   Mouse: right-hold move, left-click jump   ·   Pad: stick + ✕/A   ·   Touch: left-drag move, right-tap jump', VW/2, VH-24);
   ctx.textAlign='left';
 }
 
@@ -728,11 +852,14 @@ function drawLevelSelect(){
   }
 
   selectCells=[];
-  const cols=5, cellW=130, cellH=118, gapX=22, gapY=26;
-  const rows=Math.max(1,Math.ceil(Math.max(1,LEVELS.length)/cols));
+  const cols=5, cellW=130, gapX=22, gapY=26;
+  const filledRows=Math.max(1,Math.ceil(Math.max(1,LEVELS.length)/cols));
+  const slots=Math.max((filledRows+1)*cols, cols*2); // filled rows + one spare row for future levels
+  const rows=slots/cols;
   const gridW=cols*cellW+(cols-1)*gapX;
   const gridX=(VW-gridW)/2, gridY=118;
-  const slots=Math.max(LEVELS.length, cols); // show at least one row
+  const avail=(VH-70-16)-gridY;                        // room above Back button (VH-70) with padding
+  const cellH=Math.min(118, Math.floor((avail-(rows-1)*gapY)/rows));
   for(let i=0;i<slots;i++){
     const c=i%cols, r=Math.floor(i/cols);
     const x=gridX+c*(cellW+gapX), y=gridY+r*(cellH+gapY);
@@ -745,19 +872,19 @@ function drawLevelSelect(){
     panel(x,y,cellW,cellH,12,fill,{stroke,strokeW:hover?3:2});
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillStyle=exists?'#fff':'#3a4a58';
-    ctx.font="bold 34px 'Trebuchet MS', sans-serif";
-    ctx.fillText(exists?String(i+1):'–', x+cellW/2, y+28);
+    ctx.font="bold 24px 'Trebuchet MS', sans-serif";
+    ctx.fillText(exists?String(i+1):'–', x+cellW/2, y+22);
     if(exists){
       // stars row
       ctx.font='18px sans-serif';
       const gw=20, sx0=x+cellW/2-gw;
       for(let s=0;s<3;s++){ ctx.fillStyle = s<rec.stars?'#ffcf3f':'rgba(255,255,255,.16)';
-        ctx.fillText(s<rec.stars?'★':'☆', sx0+s*gw, y+58); }
+        ctx.fillText(s<rec.stars?'★':'☆', sx0+s*gw, y+44); }
       // name + best
-      ctx.font="12px 'Trebuchet MS', sans-serif"; ctx.fillStyle='#cfe0d8';
+      ctx.font="italic 13px Georgia, 'Times New Roman', serif"; ctx.fillStyle='#cfe0d8';
       ctx.fillText((LEVELS[i].name||'').slice(0,16), x+cellW/2, y+cellH-30);
       if(rec.best>0){ ctx.font="11px Consolas, monospace"; ctx.fillStyle='#ffe9b0';
-        ctx.fillText('best '+rec.best, x+cellW/2, y+cellH-14); }
+        ctx.fillText('BEST '+rec.best, x+cellW/2, y+cellH-14); }
     }
     selectCells.push({x,y,w:cellW,h:cellH,idx:i,exists});
   }
@@ -1085,12 +1212,21 @@ const mouse = { hold:false, dir:0, x:0, y:0 };
 // Touch: left half of the screen is a relative d-pad (drag from where the finger
 // landed decides left/right), right half taps to jump. Tracked per-finger by id.
 const touch = { moveId:null, startX:0, moveDir:0, DEAD:18, everUsed:false };
-const pad   = { axis:0, jumpPrev:false, index:null };
+const pad   = { axis:0, vaxis:0, jumpPrev:false, index:null };
 
-function tryJump(){
+function tryJump(fromUpKey){
   if(screen!=='play'||state!=='play') return;
   const p=player;
-  if(p && p.jumps<2){ p.vy=jumpV; p.jumps++; p.onGround=false; play(p.jumps>1?'jumphigh':'jump'); }
+  if(!p) return;
+  // On a ladder, ArrowUp means "climb up", not "jump" — swallow it so the
+  // climb logic in update() handles it. Space (fromUpKey false) still jumps
+  // off the ladder. Jumping off clears the climb state.
+  if(p.climbing){
+    if(fromUpKey) return;          // up-arrow climbs, doesn't jump
+    p.climbing=false;              // Space leaps off the ladder
+    p.vy=jumpV; p.jumps=1; p.onGround=false; play('jump'); return;
+  }
+  if(p.jumps<2){ p.vy=jumpV; p.jumps++; p.onGround=false; play(p.jumps>1?'jumphigh':'jump'); }
 }
 
 // ---- screen transitions ----
@@ -1149,7 +1285,7 @@ addEventListener('keydown',e=>{
     if(e.key==='Enter'){ activateEndRow(); return; }
   }
   keys[e.key]=true;
-  if((e.key==='ArrowUp'||e.key===' ')&&!e.repeat) tryJump();
+  if((e.key==='ArrowUp'||e.key===' ')&&!e.repeat) tryJump(e.key==='ArrowUp');
   if(e.key==='r'||e.key==='R') doRestart();
   if((e.key==='n'||e.key==='N') && LEVELS[levelIndex+1]) startLevel(levelIndex+1);
   if(e.key==='m'||e.key==='M') muted=!muted;
@@ -1302,6 +1438,7 @@ function pollGamepad(){
   if(!gp){ pad.axis=0; return; }
   const ax = gp.axes[0]||0, ay = gp.axes[1]||0;
   pad.axis = Math.abs(ax)<0.25 ? 0 : (ax>0?1:-1);
+  pad.vaxis = Math.abs(ay)<0.35 ? 0 : (ay>0?1:-1);   // down = +1, up = -1 (for ladders)
   const a  = !!(gp.buttons[0] && gp.buttons[0].pressed);   // ✕ / A
   const b  = !!(gp.buttons[1] && gp.buttons[1].pressed);   // ○ / B  (back)
   const start = !!(gp.buttons[9] && gp.buttons[9].pressed); // ☰ Menu/Start (right small btn)
