@@ -619,7 +619,7 @@ function update(){
     if(aabb(p,e)){
       const stomp = p.vy>0 && (p.y+p.h - e.y) < 30;
       if(stomp && e.def.stompable){
-        e.alive=false; p.vy=-9; p.jumps=1; play('disappear');
+        e.alive=false; p.vy=-9; p.jumps=1; play('death');
         combo++;                                   // chain grows per airborne stomp
         const pts = SCORE.stomp*combo;             // 200, 400, 600, …
         addScore(pts, e.x, e.y-10, '#ff9de0', combo>1?('x'+combo):null);
@@ -705,7 +705,7 @@ let death=null;
 function startDeath(){
   const p=player;
   state='dying';
-  play('death');               // distinct floaty death sting (layers over the hurt sound)
+  play('disappear');           // player death sting (layers over the hurt sound)
   death={ t:0, vy:-15 };        // strong upward pop
   p.vx=0;
 }
