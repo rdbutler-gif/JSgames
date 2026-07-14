@@ -280,6 +280,9 @@ let gravG=0.7, jumpV=-13.2;
 let screen='title';
 let paused=false;            // in-play pause overlay (freezes sim, world stays visible)
 let menuBtns={};            // named button rects for hit-testing on the current screen
+let resetArmed=false;       // level-select: first tap arms, second tap confirms the score wipe
+let resetToast='';          // transient confirmation message after a reset
+let titleHoverPrev=-1;      // last title button the mouse was over (-1 = none), for hover SFX
 let selectCells=[];         // level-select grid cells
 let exportMode=false;       // level-select back-door: X then P arms clipboard-export on click
 let exportKeyX=false;       // tracks the X in the X->P combo
@@ -295,7 +298,7 @@ function roundRect(c,x,y,w,h,r){ r=Math.min(r,w/2,h/2);
 function pointIn(px,py,r){ return px>=r.x&&py>=r.y&&px<=r.x+r.w&&py<=r.y+r.h; }
 function panel(x,y,w,h,rad,fill,opts={}){
   ctx.save();
-  ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=opts.shadowBlur??8; ctx.shadowOffsetY=3;
+  ctx.shadowColor=opts.shadowColor??'rgba(0,0,0,.45)'; ctx.shadowBlur=opts.shadowBlur??8; ctx.shadowOffsetY=opts.shadowColor?0:3;
   roundRect(ctx,x,y,w,h,rad); ctx.fillStyle=fill; ctx.fill(); ctx.restore();
   ctx.save(); roundRect(ctx,x+1.5,y+1.5,w-3,h-3,rad-1); ctx.clip();
   const g=ctx.createLinearGradient(0,y,0,y+h*0.5);
@@ -768,10 +771,18 @@ function drawTitle(){
     {key:'play',  y:VH*0.50, h:56, fill:'#4fb54f', hi:'#5fc55f', ink:'#12301a', label:'▶  Play  '+(LEVELS[0]?.subtitle||'Level 1')},
     {key:'select',y:VH*0.50+72, h:50, fill:'#3c5064', hi:'#4a6076', ink:'#dceaf5', label:'Level Select'},
   ];
+  // which button is highlighted: mouse-over wins exclusively; else pad/kb selection
+  const mouseHover = items.findIndex(it=>pointIn(mmx,mmy,{x:bx,y:it.y,w:bw,h:it.h}));
+  if(mouseHover>=0 && mouseHover!==titleHoverPrev) play('bump');   // sound on hover-enter
+  titleHoverPrev = mouseHover;
+  let hoverIdx = mouseHover;
+  if(hoverIdx>=0) menuSel=hoverIdx; else hoverIdx=menuSel;
   items.forEach((it,i)=>{
-    const hover = pointIn(mmx,mmy,{x:bx,y:it.y,w:bw,h:it.h}) || menuSel===i;
-    panel(bx,it.y,bw,it.h,12, hover?it.hi:it.fill, {stroke:'rgba(255,255,255,.22)',strokeW:2});
-    ctx.fillStyle=it.ink; ctx.textBaseline='middle';
+    const hover = i===hoverIdx;
+    panel(bx,it.y,bw,it.h,12, hover?it.hi:it.fill,
+      hover ? {stroke:'#ffcf3f',strokeW:3,shadowColor:'rgba(255,207,63,.55)',shadowBlur:14}
+            : {stroke:'rgba(255,255,255,.22)',strokeW:2});
+    ctx.fillStyle=it.ink; ctx.textBaseline='middle'; ctx.textAlign='center';
     ctx.font=`bold ${it.key==='play'?20:17}px 'Trebuchet MS', sans-serif`;
     ctx.fillText(it.label, VW/2, it.y+it.h/2);
     menuBtns[it.key]={x:bx,y:it.y,w:bw,h:it.h};
@@ -780,7 +791,7 @@ function drawTitle(){
   // controls footer, inside the canvas
   ctx.font="13px 'Trebuchet MS', sans-serif"; ctx.fillStyle='rgba(255,255,255,.75)';
   ctx.textBaseline='alphabetic';
-  ctx.fillText('Keys ← → ↑   ·   ↑/↓ on ladders   ·   Mouse: right-hold move, left-click jump   ·   Pad: stick + ✕/A   ·   Touch: left-drag move, right-tap jump', VW/2, VH-24);
+  ctx.fillText('Keys ← → ↑   ·   ↑/↓ on ladders   ·   Mouse: right-hold move, left-click jump   ·   Pad: stick or d-pad + ✕/A   ·   Touch: left-drag move, right-tap jump', VW/2, VH-24);
   ctx.textAlign='left';
 }
 
@@ -890,13 +901,32 @@ function drawLevelSelect(){
     selectCells.push({x,y,w:cellW,h:cellH,idx:i,exists});
   }
 
-  // back button
-  const bw=150,bh=44,bx=VW/2-bw/2,by=VH-70;
+  // reset-confirmation toast (mirrors the export toast placement)
+  if(resetToast){
+    ctx.font="bold 15px 'Trebuchet MS', sans-serif";
+    const tw=ctx.measureText(resetToast).width;
+    const ty=VH-116;
+    panel(VW/2-tw/2-16, ty, tw+32, 30, 8, 'rgba(34,20,20,.95)', {stroke:'#e06a6a',strokeW:2,shadowBlur:6});
+    ctx.fillStyle='#fbe0e0'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(resetToast, VW/2, ty+15); ctx.textBaseline='alphabetic';
+  }
+
+  // back + reset buttons (side by side)
+  const bw=150,bh=44,by=VH-70,bgap=16;
+  const rw=170;
+  const totalW=bw+bgap+rw, x0=VW/2-totalW/2;
+  const bx=x0, rx=x0+bw+bgap;
   const bh_hover=pointIn(mmx,mmy,{x:bx,y:by,w:bw,h:bh});
   panel(bx,by,bw,bh,10, bh_hover?'#4a6076':'#3c5064',{stroke:'rgba(255,255,255,.2)',strokeW:2});
-  ctx.fillStyle='#dceaf5'; ctx.textBaseline='middle';
-  ctx.font="bold 16px 'Trebuchet MS', sans-serif"; ctx.fillText('◂  Back', VW/2, by+bh/2);
-  menuBtns={back:{x:bx,y:by,w:bw,h:bh}};
+  ctx.fillStyle='#dceaf5'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font="bold 16px 'Trebuchet MS', sans-serif"; ctx.fillText('◂  Back', bx+bw/2, by+bh/2);
+  // reset
+  const rHover=pointIn(mmx,mmy,{x:rx,y:by,w:rw,h:bh});
+  const rFill = resetArmed ? (rHover?'#b23838':'#8f2c2c') : (rHover?'#5a4048':'#4a343a');
+  panel(rx,by,rw,bh,10, rFill,{stroke:resetArmed?'#ff9a9a':'rgba(255,160,160,.4)',strokeW:resetArmed?3:2});
+  ctx.fillStyle=resetArmed?'#fff':'#f0d0d6';
+  ctx.fillText(resetArmed?'Confirm reset?':'⟳  Reset scores', rx+rw/2, by+bh/2);
+  menuBtns={back:{x:bx,y:by,w:bw,h:bh}, reset:{x:rx,y:by,w:rw,h:bh}};
   ctx.textAlign='left';
 }
 
@@ -1232,8 +1262,15 @@ function tryJump(fromUpKey){
 
 // ---- screen transitions ----
 function startLevel(i){ if(!LEVELS[i])return; buildLevel(i); screen='play'; play('select'); }
-function gotoTitle(){ screen='title'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; play('select'); }
-function gotoSelect(){ screen='levelSelect'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; play('select'); }
+function gotoTitle(){ screen='title'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; resetArmed=false; resetToast=''; titleHoverPrev=-1; play('select'); }
+function gotoSelect(){ screen='levelSelect'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; resetArmed=false; resetToast=''; play('select'); }
+
+// wipe all best scores / stars (level-select "Reset" button, two-tap guarded)
+function resetAllScores(){
+  progress={}; saveProgress();
+  resetArmed=false; resetToast='All scores cleared';
+  play('bump'); setTimeout(()=>{ resetToast=''; },1600);
+}
 
 // how many selectable menu items on the current screen (for kb/pad cursor)
 function menuCount(){
@@ -1262,10 +1299,10 @@ addEventListener('keydown',e=>{
       exportKeyX=false;   // any other key breaks the combo
     }
     const n=menuCount();
-    if(e.key==='ArrowDown'||e.key==='ArrowRight'){ menuSel=(menuSel+1)%n; play('bump'); }
-    else if(e.key==='ArrowUp'||e.key==='ArrowLeft'){ menuSel=(menuSel-1+n)%n; play('bump'); }
+    if(e.key==='ArrowDown'||e.key==='ArrowRight'){ menuSel=(menuSel+1)%n; resetArmed=false; play('bump'); }
+    else if(e.key==='ArrowUp'||e.key==='ArrowLeft'){ menuSel=(menuSel-1+n)%n; resetArmed=false; play('bump'); }
     else if(e.key==='Enter'||e.key===' '){ menuActivate(); }
-    else if(e.key==='Escape'&&screen==='levelSelect'){ if(exportMode){exportMode=false;exportToast='';} else gotoTitle(); }
+    else if(e.key==='Escape'&&screen==='levelSelect'){ if(exportMode){exportMode=false;exportToast='';} else if(resetArmed){resetArmed=false;} else gotoTitle(); }
     return;
   }
   // play
@@ -1314,10 +1351,16 @@ function menuClick(mx,my){
     if(menuBtns.select && pointIn(mx,my,menuBtns.select)){ gotoSelect(); return true; }
   } else if(screen==='levelSelect'){
     for(const c of selectCells){ if(c.exists && pointIn(mx,my,c)){
+      resetArmed=false;
       if(exportMode){ exportLevelToClipboard(c.idx); }   // export instead of play
       else startLevel(c.idx);
       return true;
     } }
+    if(menuBtns.reset && pointIn(mx,my,menuBtns.reset)){
+      if(resetArmed) resetAllScores();
+      else { resetArmed=true; play('bump'); }
+      return true;
+    }
     if(menuBtns.back && pointIn(mx,my,menuBtns.back)){ if(exportMode){exportMode=false;exportToast='';} gotoTitle(); return true; }
   } else if(screen==='play'){
     // pause overlay takes priority when open
@@ -1377,6 +1420,7 @@ cv.addEventListener('touchstart',e=>{
     if(screen==='levelSelect'){
       let started=false;
       for(const c of selectCells){ if(c.exists && pointIn(p.x,p.y,c)){
+        resetArmed=false;
         if(exportMode) exportLevelToClipboard(c.idx); else startLevel(c.idx);
         started=true; break; } }
       if(started) continue;
@@ -1418,7 +1462,11 @@ cv.addEventListener('touchcancel',e=>{ endTouch(e); },{passive:false});
 // Shared button-tap handler so touch and click route through the same actions.
 function handleButtonTap(key){
   if(screen==='title'){ if(key==='play')startLevel(0); else if(key==='select')gotoSelect(); return; }
-  if(screen==='levelSelect'){ if(key==='back')gotoTitle(); return; }
+  if(screen==='levelSelect'){
+    if(key==='back')gotoTitle();
+    else if(key==='reset'){ if(resetArmed)resetAllScores(); else {resetArmed=true;play('bump');} }
+    return;
+  }
   if(screen==='play'){
     if(paused){ if(key==='resume')doResume(); else if(key==='quit')quitToMain(); return; }
     if(state==='play'){ if(key==='pause')doPause(); else if(key==='restart')doRestart(); return; }
@@ -1440,8 +1488,11 @@ function pollGamepad(){
   else { for(const g of pads){ if(g){ gp=g; pad.index=g.index; break; } } }
   if(!gp){ pad.axis=0; return; }
   const ax = gp.axes[0]||0, ay = gp.axes[1]||0;
-  pad.axis = Math.abs(ax)<0.25 ? 0 : (ax>0?1:-1);
-  pad.vaxis = Math.abs(ay)<0.35 ? 0 : (ay>0?1:-1);   // down = +1, up = -1 (for ladders)
+  // D-pad buttons feed the same movement intent as the stick (either input works).
+  const dpadX = (gp.buttons[15]&&gp.buttons[15].pressed) ? 1 : (gp.buttons[14]&&gp.buttons[14].pressed) ? -1 : 0;
+  const dpadY = (gp.buttons[13]&&gp.buttons[13].pressed) ? 1 : (gp.buttons[12]&&gp.buttons[12].pressed) ? -1 : 0;
+  pad.axis  = dpadX!==0 ? dpadX : (Math.abs(ax)<0.25 ? 0 : (ax>0?1:-1));
+  pad.vaxis = dpadY!==0 ? dpadY : (Math.abs(ay)<0.35 ? 0 : (ay>0?1:-1));   // down = +1, up = -1 (ladders)
   const a  = !!(gp.buttons[0] && gp.buttons[0].pressed);   // ✕ / A
   const b  = !!(gp.buttons[1] && gp.buttons[1].pressed);   // ○ / B  (back)
   const start = !!(gp.buttons[9] && gp.buttons[9].pressed); // ☰ Menu/Start (right small btn)
@@ -1452,13 +1503,25 @@ function pollGamepad(){
   const right= (gp.buttons[15]&&gp.buttons[15].pressed) || ax>0.5;
 
   if(screen==='title'||screen==='levelSelect'){
-    // D-pad + stick menu navigation, edge-triggered
+    // edge-triggered menu navigation
     const n=menuCount();
-    if((down||right)&&!padMenuPrev.down){ menuSel=(menuSel+1)%n; play('bump'); }
-    if((up||left)&&!padMenuPrev.up){ menuSel=(menuSel-1+n)%n; play('bump'); }
+    if(screen==='levelSelect'){
+      const cols=5;
+      if(right&&!padMenuPrev.right){ menuSel=(menuSel+1)%n; resetArmed=false; play('bump'); }
+      if(left&&!padMenuPrev.left){ menuSel=(menuSel-1+n)%n; resetArmed=false; play('bump'); }
+      if(down&&!padMenuPrev.down){ menuSel = menuSel+cols<n ? menuSel+cols : menuSel%cols; resetArmed=false; play('bump'); }
+      if(up&&!padMenuPrev.up){
+        if(menuSel-cols>=0){ menuSel-=cols; }
+        else { const lastRow=Math.floor((n-1)/cols); let t=lastRow*cols+(menuSel%cols); if(t>n-1)t-=cols; menuSel=t; }
+        resetArmed=false; play('bump');
+      }
+    } else {
+      if((down||right)&&!padMenuPrev.down){ menuSel=(menuSel+1)%n; play('bump'); }
+      if((up||left)&&!padMenuPrev.up){ menuSel=(menuSel-1+n)%n; play('bump'); }
+    }
     if(a&&!padMenuPrev.a){ menuActivate(); }
     if(b&&!padMenuPrev.b && screen==='levelSelect'){ gotoTitle(); }
-    padMenuPrev={up:up||left, down:down||right, a, b, start:padMenuPrev.start};
+    padMenuPrev={up, down, left, right, a, b, start:padMenuPrev.start};
     pad.jumpPrev=a; return;
   }
 
