@@ -476,6 +476,7 @@ function update(){
   if(keys['ArrowUp'])   vint-=1;
   if(keys['ArrowDown']) vint+=1;
   if(pad.vaxis!==0)     vint+=pad.vaxis;
+  if(touch.moveVdir!==0) vint+=touch.moveVdir;   // touch drag up/down on the left half
   vint=Math.max(-1,Math.min(1,vint));
 
   // Which grid cells does the player currently overlap? Use the horizontal
@@ -1211,7 +1212,7 @@ function quitToMain(){ paused=false; gotoTitle(); }
 const mouse = { hold:false, dir:0, x:0, y:0 };
 // Touch: left half of the screen is a relative d-pad (drag from where the finger
 // landed decides left/right), right half taps to jump. Tracked per-finger by id.
-const touch = { moveId:null, startX:0, moveDir:0, DEAD:18, everUsed:false };
+const touch = { moveId:null, startX:0, startY:0, moveDir:0, moveVdir:0, DEAD:18, VDEAD:22, everUsed:false };
 const pad   = { axis:0, vaxis:0, jumpPrev:false, index:null };
 
 function tryJump(fromUpKey){
@@ -1388,7 +1389,7 @@ cv.addEventListener('touchstart',e=>{
     }
     // 3) in active play: left half = movement d-pad, right half = jump
     if(p.x < VW/2){
-      if(touch.moveId===null){ touch.moveId=t.identifier; touch.startX=p.x; touch.moveDir=0; }
+      if(touch.moveId===null){ touch.moveId=t.identifier; touch.startX=p.x; touch.startY=p.y; touch.moveDir=0; touch.moveVdir=0; }
     } else {
       tryJump();   // right-half tap = jump (tap again mid-air = double jump)
     }
@@ -1401,12 +1402,14 @@ cv.addEventListener('touchmove',e=>{
       const p=touchPos(t);
       const dx=p.x-touch.startX;
       touch.moveDir = Math.abs(dx)<touch.DEAD ? 0 : (dx>0?1:-1);
+      const dy=p.y-touch.startY;
+      touch.moveVdir = Math.abs(dy)<touch.VDEAD ? 0 : (dy>0?1:-1);
     }
   }
 },{passive:false});
 function endTouch(e){
   for(const t of e.changedTouches){
-    if(t.identifier===touch.moveId){ touch.moveId=null; touch.moveDir=0; }
+    if(t.identifier===touch.moveId){ touch.moveId=null; touch.moveDir=0; touch.moveVdir=0; }
   }
 }
 cv.addEventListener('touchend',e=>{ e.preventDefault(); endTouch(e); },{passive:false});
