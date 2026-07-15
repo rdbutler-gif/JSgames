@@ -133,18 +133,6 @@ const LEVELS = [
 const TS = 64;                          // world tile size (px)
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const VW = cv.width, VH = cv.height;
-// Hi-DPI: back the 960x540 logical canvas with a devicePixelRatio-scaled
-// bitmap (capped at 2x) so Retina / ProMotion screens render sharp instead of
-// CSS-upscaled blur. All game code keeps drawing in 960x540 logical units;
-// the on-screen size is unchanged (cv.style.width pins it, the CSS max-w/max-h
-// rules still shrink it responsively). Set MAX_DPR = 1 to revert.
-const MAX_DPR = 2;
-const DPR = Math.min(MAX_DPR, window.devicePixelRatio || 1);
-if(DPR > 1){
-  cv.style.width = VW + 'px';
-  cv.width = VW*DPR; cv.height = VH*DPR;   // note: resizing resets ctx state
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-}
 let skyGrad=null;   // cached sky gradient (rebuilt lazily; VW/VH are fixed)
 
 // ---- assets ----
@@ -326,7 +314,7 @@ let exportKeyX=false;       // tracks the X in the X->P combo
 let exportToast='';         // brief on-screen confirmation after a copy
 let mmx=-1, mmy=-1;         // mouse pos in canvas space, for hover
 let menuSel=0;              // keyboard/gamepad menu cursor
-let padMenuPrev={up:false,down:false,left:false,right:false,a:false,b:false,start:false,view:false};
+let padMenuPrev={up:false,down:false,left:false,right:false,a:false};
 
 // ---- canvas button/panel helpers ----
 function roundRect(c,x,y,w,h,r){ r=Math.min(r,w/2,h/2);
@@ -586,10 +574,7 @@ function update(){
     if(ladderTopSet.has(cx+','+topRow)){
       const rungY = topRow*TS;
       // only catch if feet were at/above the rung this frame (one-way)
-      // only catch if feet were at/above the rung this frame (one-way).
-      // vint already merges keyboard, gamepad and touch vertical intent, so
-      // vint<=0 = "not pressing down" for every input device uniformly.
-      if(p.y+p.h > rungY && p.y+p.h - p.vy <= rungY+2 && vint<=0){
+      if(p.y+p.h > rungY && p.y+p.h - p.vy <= rungY+2 && vint>=0 && !keys['ArrowDown'] && pad.vaxis<=0){
         p.y = rungY - p.h; p.vy=0; p.onGround=true; p.jumps=0; combo=0;
       }
     }
@@ -1271,7 +1256,6 @@ function endScreen(title, won){
 // Pause overlay — drawn over the frozen level. Resume returns to play; Quit
 // goes to the MAIN TITLE (not level select). Navigable by mouse, keys, and pad.
 let pauseRows=[];
-let endRows=[];   // end-screen button keys (was an implicit global)
 function pauseOverlay(){
   ctx.fillStyle='rgba(8,14,10,.72)'; ctx.fillRect(0,0,VW,VH);
   ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -1601,7 +1585,7 @@ function pollGamepad(){
     }
     if(a&&!padMenuPrev.a){ menuActivate(); }
     if(b&&!padMenuPrev.b && screen==='levelSelect'){ gotoTitle(); }
-    padMenuPrev={...padMenuPrev, up, down, left, right, a, b};
+    padMenuPrev={up, down, left, right, a, b, start:padMenuPrev.start};
     pad.jumpPrev=a; return;
   }
 
@@ -1612,7 +1596,7 @@ function pollGamepad(){
     if(up&&!padMenuPrev.up){ menuSel=(menuSel-1+n)%n; play('bump'); }
     if(a&&!padMenuPrev.a){ (pauseRows[menuSel]==='resume')?doResume():quitToMain(); }
     if(view&&!padMenuPrev.view){ doResume(); }   // View again un-pauses
-    padMenuPrev={...padMenuPrev, up, down, a, b, view};
+    padMenuPrev={up, down, a, b, start:padMenuPrev.start, view};
     pad.jumpPrev=a; return;
   }
 
@@ -1623,7 +1607,7 @@ function pollGamepad(){
     if(up&&!padMenuPrev.up){ menuSel=(menuSel-1+n)%n; play('bump'); }
     if(a&&!padMenuPrev.a){ activateEndRow(); }
     if(b&&!padMenuPrev.b){ gotoSelect(); }
-    padMenuPrev={...padMenuPrev, up, down, a, b, view};
+    padMenuPrev={up, down, a, b, start:padMenuPrev.start, view};
     pad.jumpPrev=a; return;
   }
 
