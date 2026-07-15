@@ -150,6 +150,7 @@ const LEVELS = [
 const TS = 64;                          // world tile size (px)
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const VW = cv.width, VH = cv.height;
+let skyGrad=null;   // cached sky gradient (rebuilt lazily; VW/VH are fixed)
 
 // ---- assets ----
 const imgs={}, snds={};
@@ -162,7 +163,33 @@ function loadAll(){
   for(const k in ASSETS.snd) snds[k]="data:audio/ogg;base64,"+ASSETS.snd[k];
   return Promise.all(ps);
 }
-function play(k){ if(muted||!snds[k])return; const a=new Audio(snds[k]); a.volume=.5; a.play().catch(()=>{}); }
+// ---- audio ----
+// iOS Safari is slow to spin up media elements and re-decodes on every
+// `new Audio(dataURI)`. So we decode each clip ONCE into a small pool of
+// reusable <audio> elements and just rewind+play a free one — no per-SFX
+// allocation, no GC churn, no repeated decode. This is the main fix for
+// audio/graphics drift on older iPads.
+const SND_POOL=3;                 // simultaneous voices per clip
+const sndPool={};                 // k -> [HTMLAudioElement]
+const sndTurn={};                 // k -> round-robin index
+function primeAudio(k){
+  const pool=[];
+  for(let i=0;i<SND_POOL;i++){
+    const a=new Audio(snds[k]); a.volume=.5; a.preload='auto';
+    pool.push(a);
+  }
+  sndPool[k]=pool; sndTurn[k]=0;
+}
+function play(k){
+  if(muted||!snds[k])return;
+  let pool=sndPool[k];
+  if(!pool){ primeAudio(k); pool=sndPool[k]; }
+  // pick the next voice round-robin; rewind and fire it
+  const a=pool[sndTurn[k]];
+  sndTurn[k]=(sndTurn[k]+1)%pool.length;
+  try{ a.currentTime=0; }catch(e){}
+  a.play().catch(()=>{});
+}
 
 // ---- frame lookups ----
 function terFrame(name){ return FRAMES.terrain[name] || FRAMES.terrain['terrain_grass_block_center']; }
@@ -204,6 +231,16 @@ let coinsGot=0, coinsTotal=0, lives=3, state='ready', invuln=0;
 
 // ---- scoring (arcade) ----
 const SCORE = { coin:100, gem:500, stomp:200, timePerSec:10, allCoins:2000, noDamage:3000 };
+// Per-gem values. gem:500 above stays the fallback for any unlisted gem colour.
+// Power-ups: gem_red grants an extra life; gem_yellow grants 5s invulnerability.
+// invuln is measured in fixed 60/sec physics steps, so 5s = 300 steps.
+const GEM = {
+  gem_blue:   { points:200 },
+  gem_green:  { points:300 },
+  gem_red:    { points:400, life:1 },
+  gem_yellow: { points:500, invuln:300 },
+};
+function gemValue(kind){ return (GEM[kind] && GEM[kind].points!=null) ? GEM[kind].points : SCORE.gem; }
 const STAR_THRESH = [0, 0.45, 0.75];   // fraction of a level's "par" score for 1/2/3 stars
 let score=0;                 // running score this run
 let combo=0;                 // stomp chain since last ground touch
@@ -229,6 +266,11 @@ function saveProgress(){
 }
 function levelKey(i){ return (LEVELS[i] && LEVELS[i].name) ? LEVELS[i].name+'#'+i : 'level#'+i; }
 function bestFor(i){ return progress[levelKey(i)] || {best:0, stars:0}; }
+// A level counts as "completed" once it has a recorded best (set on finishLevel).
+function isCompleted(i){ return bestFor(i).best > 0; }
+// Level 0 is always open; every later level unlocks only after the previous one
+// has been completed. Non-existent indices are treated as locked.
+function isUnlocked(i){ return i===0 || (i>0 && i<LEVELS.length && isCompleted(i-1)); }
 
 // award points and spawn a floating "+N" popup at a world position
 function addScore(pts, wx, wy, color, tag){
@@ -241,7 +283,7 @@ function addScore(pts, wx, wy, color, tag){
 function parScore(i){
   const lv=LEVELS[i]; if(!lv) return 1;
   let p=0;
-  (lv.items||[]).forEach(([x,y,k])=> p += k.startsWith('gem')?SCORE.gem:(k==='block_coin'?SCORE.coin:SCORE.coin));
+  (lv.items||[]).forEach(([x,y,k])=> p += k.startsWith('gem')?gemValue(k):SCORE.coin);
   (lv.enemies||[]).forEach(()=> p += SCORE.stomp);
   p += SCORE.allCoins + SCORE.noDamage;
   const cols=lv.cols||40; p += Math.max(30,Math.round(cols*1.4))*SCORE.timePerSec*0.6;
@@ -585,14 +627,22 @@ function update(){
       const gem=it.kind.startsWith('gem');
       if(!gem) coinsGot++;                 // gems score but aren't part of the coin tally
       play(gem?'gem':'coin');
-      addScore(gem?SCORE.gem:SCORE.coin, it.x, it.y, gem?'#8fd3ff':'#ffd34d'); }
+      const val=gem?gemValue(it.kind):SCORE.coin;
+      addScore(val, it.x, it.y, gem?'#8fd3ff':'#ffd34d');
+      // power-up gems: extra life (capped at 3 for the HUD) and/or timed invulnerability
+      const power=gem?GEM[it.kind]:null;
+      if(power){
+        if(power.life){ lives=Math.min(3, lives+power.life); }
+        if(power.invuln){ invuln=Math.max(invuln, power.invuln); }
+        if(power.life||power.invuln) play('coin');
+      } }
   }
   // enemies
   for(const e of enemies){ if(!e.alive)continue; stepEnemy(e);
     if(aabb(p,e)){
       const stomp = p.vy>0 && (p.y+p.h - e.y) < 30;
       if(stomp && e.def.stompable){
-        e.alive=false; p.vy=-9; p.jumps=1; play('disappear');
+        e.alive=false; p.vy=-9; p.jumps=1; play('death');
         combo++;                                   // chain grows per airborne stomp
         const pts = SCORE.stomp*combo;             // 200, 400, 600, …
         addScore(pts, e.x, e.y-10, '#ff9de0', combo>1?('x'+combo):null);
@@ -678,7 +728,7 @@ let death=null;
 function startDeath(){
   const p=player;
   state='dying';
-  play('death');               // distinct floaty death sting (layers over the hurt sound)
+  play('disappear');           // player death sting (layers over the hurt sound)
   death={ t:0, vy:-15 };        // strong upward pop
   p.vx=0;
 }
@@ -733,8 +783,8 @@ function blitTile(frame,dx,dy){
 // ===================================================================
 function drawMenuBackdrop(){
   // grassland sky gradient + parallax hills, reused from the play background
-  const g=ctx.createLinearGradient(0,0,0,VH); g.addColorStop(0,'#8ec9e8'); g.addColorStop(1,'#cfeeff');
-  ctx.fillStyle=g; ctx.fillRect(0,0,VW,VH);
+  if(!skyGrad){ skyGrad=ctx.createLinearGradient(0,0,0,VH); skyGrad.addColorStop(0,'#8ec9e8'); skyGrad.addColorStop(1,'#cfeeff'); }
+  ctx.fillStyle=skyGrad; ctx.fillRect(0,0,VW,VH);
   const f=FRAMES.bg['background_color_hills'];
   if(f){ const scale=VH/256*1.15, tw=Math.ceil(256*scale), dy=Math.round(VH-256*scale*0.92);
     const off=Math.round(-(anim*0.4)%tw);
@@ -791,7 +841,7 @@ function drawTitle(){
   // controls footer, inside the canvas
   ctx.font="13px 'Trebuchet MS', sans-serif"; ctx.fillStyle='rgba(255,255,255,.75)';
   ctx.textBaseline='alphabetic';
-  ctx.fillText('Keys ← → ↑   ·   ↑/↓ on ladders   ·   Mouse: right-hold move, left-click jump   ·   Pad: stick or d-pad + ✕/A   ·   Touch: left-drag move, right-tap jump', VW/2, VH-24);
+  ctx.fillText('Keys ← → ↑ or WASD   ·   ↑/↓ (or W/S) on ladders   ·   Space to jump   ·   Mouse: right-hold move, left-click jump   ·   Pad: stick or d-pad + ✕/A', VW/2, VH-24);
   ctx.textAlign='left';
 }
 
@@ -876,17 +926,26 @@ function drawLevelSelect(){
     const c=i%cols, r=Math.floor(i/cols);
     const x=gridX+c*(cellW+gapX), y=gridY+r*(cellH+gapY);
     const exists=i<LEVELS.length;
-    const hover = exists && (pointIn(mmx,mmy,{x,y,w:cellW,h:cellH}) || menuSel===i);
+    const unlocked = exists && (exportMode || isUnlocked(i));   // export mode ignores locks
+    const hover = exists && unlocked && (pointIn(mmx,mmy,{x,y,w:cellW,h:cellH}) || menuSel===i);
     const rec = exists?bestFor(i):{best:0,stars:0};
-    let fill = !exists ? '#232f3a' : (rec.stars>0 ? (hover?'#3f6a48':'#35563d') : (hover?'#4a6076':'#3c5064'));
-    let stroke = exists?'rgba(255,255,255,.22)':'rgba(255,255,255,.06)';
+    let fill = !exists ? '#232f3a'
+             : (!unlocked ? '#2a333d'
+             : (rec.stars>0 ? (hover?'#3f6a48':'#35563d') : (hover?'#4a6076':'#3c5064')));
+    let stroke = exists ? (unlocked?'rgba(255,255,255,.22)':'rgba(255,255,255,.10)') : 'rgba(255,255,255,.06)';
     if(exportMode && exists){ fill = hover?'#6a5a24':'#4a3f1a'; stroke=hover?'#ffcf3f':'rgba(255,207,63,.5)'; }
     panel(x,y,cellW,cellH,12,fill,{stroke,strokeW:hover?3:2});
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillStyle=exists?'#fff':'#3a4a58';
+    ctx.fillStyle = !exists ? '#3a4a58' : (unlocked?'#fff':'#66727e');
     ctx.font="bold 24px 'Trebuchet MS', sans-serif";
     ctx.fillText(exists?String(i+1):'–', x+cellW/2, y+22);
-    if(exists){
+    if(exists && !unlocked){
+      // locked: padlock icon + hint, no stars/best
+      ctx.font='30px sans-serif'; ctx.fillStyle='rgba(255,255,255,.55)';
+      ctx.fillText('🔒', x+cellW/2, y+cellH/2+4);
+      ctx.font="italic 12px Georgia, 'Times New Roman', serif"; ctx.fillStyle='#8a97a3';
+      ctx.fillText('Locked', x+cellW/2, y+cellH-16);
+    } else if(exists){
       // stars row
       ctx.font='18px sans-serif';
       const gw=20, sx0=x+cellW/2-gw;
@@ -898,7 +957,7 @@ function drawLevelSelect(){
       if(rec.best>0){ ctx.font="11px Consolas, monospace"; ctx.fillStyle='#ffe9b0';
         ctx.fillText('BEST '+rec.best, x+cellW/2, y+cellH-14); }
     }
-    selectCells.push({x,y,w:cellW,h:cellH,idx:i,exists});
+    selectCells.push({x,y,w:cellW,h:cellH,idx:i,exists,unlocked});
   }
 
   // reset-confirmation toast (mirrors the export toast placement)
@@ -934,34 +993,41 @@ function draw(){
   ctx.clearRect(0,0,VW,VH);
   if(screen==='title'){ drawTitle(); return; }
   if(screen==='levelSelect'){ drawLevelSelect(); return; }
-  const g=ctx.createLinearGradient(0,0,0,VH); g.addColorStop(0,'#8ec9e8'); g.addColorStop(1,'#cfeeff');
-  ctx.fillStyle=g; ctx.fillRect(0,0,VW,VH);
+  if(!skyGrad){ skyGrad=ctx.createLinearGradient(0,0,0,VH); skyGrad.addColorStop(0,'#8ec9e8'); skyGrad.addColorStop(1,'#cfeeff'); }
+  ctx.fillStyle=skyGrad; ctx.fillRect(0,0,VW,VH);
   if(!player){ ctx.fillStyle='rgba(0,0,0,.3)';ctx.font='18px sans-serif';ctx.textAlign='center';
     ctx.fillText('Loading…',VW/2,VH/2);ctx.textAlign='left';return; }
   drawBG();
   ctx.save(); ctx.translate(-Math.round(cam.x),-Math.round(cam.y));
+  // Viewport cull bounds (world px). Anything fully outside gets skipped so a
+  // wide level doesn't pay drawImage cost for hundreds of off-screen tiles —
+  // the single biggest per-frame win on weaker devices like older iPads.
+  const viewL=cam.x-TS, viewR=cam.x+VW+TS, viewT=cam.y-TS, viewB=cam.y+VH+TS;
+  const onScreen=(x,y,w,h)=> x+w>=viewL && x<=viewR && y+h>=viewT && y<=viewB;
   // deco (behind)
-  for(const d of deco) blit('tiles', itemFrame(d.kind), d.x, d.y, TS, TS, false);
+  for(const d of deco){ if(!onScreen(d.x,d.y,TS,TS))continue; blit('tiles', itemFrame(d.kind), d.x, d.y, TS, TS, false); }
   // terrain
-  for(const s of solids) blitTile(terFrame(s.name), s.x, s.y);
+  for(const s of solids){ if(!onScreen(s.x,s.y,TS,TS))continue; blitTile(terFrame(s.name), s.x, s.y); }
   // moving platforms (ferries) — draw each tile of the run at the platform's live x
   for(const mv of movers){
-    for(let i=0;i<mv.tiles.length;i++) blitTile(terFrame(mv.tiles[i]), mv.x+i*TS, mv.y);
+    for(let i=0;i<mv.tiles.length;i++){ const tx=mv.x+i*TS; if(!onScreen(tx,mv.y,TS,TS))continue; blitTile(terFrame(mv.tiles[i]), tx, mv.y); }
   }
   // items
   for(const it of items){
+    if(!onScreen(it.x,it.y,TS,TS))continue;
     if(it.block){ blit('tiles', itemFrame(it.used?'block_empty':'block_coin'), it.x,it.y,TS,TS,false); continue; }
     if(it.got)continue;
     const bob=Math.sin(anim*0.09+it.x)*3;
     blit('tiles', itemFrame(it.kind), it.x+8, it.y+8+bob, TS-16, TS-16, false);
   }
   // hazards
-  for(const h of hazards) blit('tiles', itemFrame(h.kind), h.x, h.y, TS, TS, false);
+  for(const h of hazards){ if(!onScreen(h.x,h.y,TS,TS))continue; blit('tiles', itemFrame(h.kind), h.x, h.y, TS, TS, false); }
   // goal flag (animated)
   if(goalRect){ const ff=(Math.floor(anim/12)%2)?'flag_green_a':'flag_green_b';
     blit('tiles', itemFrame(state==='won'?ff:ff), goalRect.x, goalRect.y, TS, TS, false); }
   // enemies
   for(const e of enemies){ if(!e.alive)continue;
+    if(!onScreen(e.x,e.y,e.w,e.h))continue;
     const idx=Math.floor(anim/(60/e.def.fps));
     if(e.def.move==='spin'){
       const f=enemyFrame(e.kind,idx);
@@ -1261,7 +1327,7 @@ function tryJump(fromUpKey){
 }
 
 // ---- screen transitions ----
-function startLevel(i){ if(!LEVELS[i])return; buildLevel(i); screen='play'; play('select'); }
+function startLevel(i){ if(!LEVELS[i])return; if(!isUnlocked(i)){ play('bump'); return; } buildLevel(i); screen='play'; play('select'); }
 function gotoTitle(){ screen='title'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; resetArmed=false; resetToast=''; titleHoverPrev=-1; play('select'); }
 function gotoSelect(){ screen='levelSelect'; menuSel=0; exportMode=false; exportKeyX=false; exportToast=''; resetArmed=false; resetToast=''; play('select'); }
 
@@ -1286,6 +1352,11 @@ function menuActivate(){
 
 // ---- keyboard ----
 addEventListener('keydown',e=>{
+  // Mirror WASD onto the arrow keys so left-hand players get identical movement.
+  // Space stays the jump key. We wrap the event so every downstream check that
+  // reads e.key (movement, ladders, menu nav, jump-on-up) works unchanged.
+  const WASD={w:'ArrowUp',W:'ArrowUp',s:'ArrowDown',S:'ArrowDown',a:'ArrowLeft',A:'ArrowLeft',d:'ArrowRight',D:'ArrowRight'};
+  if(WASD[e.key]){ const raw=e; e={key:WASD[e.key], repeat:raw.repeat, preventDefault:()=>raw.preventDefault()}; }
   if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key))e.preventDefault();
 
   // menu navigation
@@ -1329,7 +1400,11 @@ addEventListener('keydown',e=>{
   if(e.key==='m'||e.key==='M') muted=!muted;
   if((e.key==='Escape'||e.key==='p'||e.key==='P')&&state==='play') doPause();
 });
-addEventListener('keyup',e=>{ keys[e.key]=false; });
+addEventListener('keyup',e=>{
+  const WASD={w:'ArrowUp',W:'ArrowUp',s:'ArrowDown',S:'ArrowDown',a:'ArrowLeft',A:'ArrowLeft',d:'ArrowRight',D:'ArrowRight'};
+  const k = WASD[e.key] || e.key;
+  keys[k]=false;
+});
 
 // ---- mouse ----
 cv.addEventListener('mousemove',e=>{
@@ -1353,6 +1428,7 @@ function menuClick(mx,my){
     for(const c of selectCells){ if(c.exists && pointIn(mx,my,c)){
       resetArmed=false;
       if(exportMode){ exportLevelToClipboard(c.idx); }   // export instead of play
+      else if(!c.unlocked){ play('bump'); }               // locked: no-op with feedback
       else startLevel(c.idx);
       return true;
     } }
@@ -1421,7 +1497,9 @@ cv.addEventListener('touchstart',e=>{
       let started=false;
       for(const c of selectCells){ if(c.exists && pointIn(p.x,p.y,c)){
         resetArmed=false;
-        if(exportMode) exportLevelToClipboard(c.idx); else startLevel(c.idx);
+        if(exportMode) exportLevelToClipboard(c.idx);
+        else if(!c.unlocked) play('bump');
+        else startLevel(c.idx);
         started=true; break; } }
       if(started) continue;
     }
@@ -1592,6 +1670,24 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 loadAll().then(()=>{ loadProgress(); booted=true; screen='title'; state='ready'; requestAnimationFrame(loop); });
+
+// iOS/Safari won't play any audio until a real user gesture. On the first
+// touch/click/key, prime every clip's pool and nudge each element (play+pause
+// muted) so the OS marks them unlocked — later SFX then fire instantly.
+let audioUnlocked=false;
+function unlockAudio(){
+  if(audioUnlocked)return; audioUnlocked=true;
+  for(const k in snds){
+    if(!sndPool[k]) primeAudio(k);
+    for(const a of sndPool[k]){
+      const v=a.volume; a.volume=0;
+      a.play().then(()=>{ a.pause(); a.currentTime=0; a.volume=v; })
+              .catch(()=>{ a.volume=v; });
+    }
+  }
+}
+['pointerdown','touchstart','keydown','mousedown'].forEach(ev=>
+  addEventListener(ev, unlockAudio, {once:true, passive:true}));
 
 </script>
 </body>
