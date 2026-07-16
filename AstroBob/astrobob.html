@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Grassland Run</title>
+<title>Atro Bob</title>
 <style>
   html,body{margin:0;height:100%;background:#0d1611;overflow:hidden;
     font-family:'Trebuchet MS','Segoe UI',system-ui,sans-serif;color:#e2efe4;}
@@ -140,7 +140,7 @@ const LEVELS = [
 </script>
 <script>
 // ===================================================================
-//  Grassland Run — engine that consumes the Level Builder format.
+//  Astro Bob — engine that consumes the Level Builder format.
 //  A level object: { cols, rows, spawn, goal, terrain[], items[],
 //  enemies[], hazards[], deco[], theme, gravity }.
 // ===================================================================
@@ -998,7 +998,7 @@ function drawInfoScreen(){
   ctx.fillStyle='#ffffff';
   ctx.font="bold 26px 'Trebuchet MS', sans-serif";
   ctx.textBaseline='alphabetic';
-  ctx.fillText('ABOUT GRASSLAND RUN', VW/2, 40);
+  ctx.fillText('ABOUT ASTRO BOB', VW/2, 40);
 
   const HEAD="bold 15px 'Trebuchet MS', sans-serif";
   const BODY="13px 'Trebuchet MS', sans-serif";
@@ -1014,8 +1014,8 @@ function drawInfoScreen(){
     ['head','ABOUT THE AUTHOR',GOLD],
     ['body','Built by Russ \u201CRusko\u201D Butler of Tulsa, Oklahoma \u2014 a lifelong',TEXT],
     ['body','coder who cut his teeth on a Commodore 64, served as an Air Force',TEXT],
-    ['body','radio tech, and still plays guitar every chance he gets. Grassland',TEXT],
-    ['body','Run carries on a habit of writing games that started decades ago.',TEXT],
+    ['body','radio tech, and still plays guitar every chance he gets. Astro',TEXT],
+    ['body','Bob carries on a habit of writing games that started decades ago.',TEXT],
     ['gap',12],
     ['head','CREDITS',GOLD],
     ['body','Artwork by Kenney \u2014 the tiles, characters, and props come from',MUTE],
@@ -1372,7 +1372,7 @@ function serializeLevel(i){
   const nT=(L.terrain||[]).length, nI=(L.items||[]).length, nE=(L.enemies||[]).length,
         nH=(L.hazards||[]).length, nD=(L.deco||[]).length;
   const head =
-`// ==== Exported from Grassland Run ====\n`+
+`// ==== Exported from Astro Bob ====\n`+
 `// ${L.cols}×${L.rows} · ${nT} terrain · ${nI} items · ${nE} enemies · ${nH} hazards · ${nD} deco\n`+
 `// spawn@${L.spawn?.x},${L.spawn?.y}  goal@${L.goal?.x},${L.goal?.y}  theme=${L.theme}\n`;
   const B=[];
