@@ -198,6 +198,37 @@ function play(k){
   s.connect(masterGain);
   try{ s.start(0); }catch(e){}
 }
+// A single synth note through the master bus (so mute still applies). Used to
+// build the level-clear fanfare — there's no recorded flourish in the atlas, so
+// we synthesize one the way OUTPOST does in its win() fallback.
+function fanfareTone(freq, when, dur, type, gain){
+  if(!actx||!masterGain)return;
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.type=type||'triangle'; o.frequency.value=freq;
+  const t=actx.currentTime+when;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain||0.3, t+0.02);      // quick attack
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);          // decay to silence
+  o.connect(g); g.connect(masterGain);
+  try{ o.start(t); o.stop(t+dur+0.05); }catch(e){}
+}
+// Rising major arpeggio capped by a held top note — a triumphant little flourish.
+// More stars => a richer, longer fanfare (extra octave sparkle on 3 stars).
+function playFanfare(stars){
+  if(muted||!actx)return;
+  // C E G C (one octave), then a bright high C to punctuate.
+  const notes=[523.25, 659.25, 783.99, 1046.50];
+  notes.forEach((f,i)=> fanfareTone(f, i*0.11, 0.30, 'triangle', 0.30));
+  fanfareTone(1046.50, notes.length*0.11, 0.55, 'triangle', 0.34);   // held top note
+  // Warm fifth underneath the top note for body.
+  fanfareTone(523.25, notes.length*0.11, 0.55, 'sine', 0.18);
+  if(stars>=2){                                   // silver+: sparkle an octave up
+    [1318.51,1567.98].forEach((f,i)=> fanfareTone(f, 0.62+i*0.09, 0.22, 'square', 0.10));
+  }
+  if(stars>=3){                                   // gold: a final shimmer chord
+    [1046.50,1318.51,1567.98,2093.00].forEach((f,i)=> fanfareTone(f, 0.86+i*0.05, 0.40, 'triangle', 0.12));
+  }
+}
 
 // ---- frame lookups ----
 function terFrame(name){ return FRAMES.terrain[name] || FRAMES.terrain['terrain_grass_block_center']; }
@@ -334,7 +365,10 @@ function finishLevel(){
 
   runSummary = { base, time:timeBonus, allCoins, noDmg, total, stars,
                  best:newBest, isNewBest, coinsGot, coinsTotal };
-  state='won'; menuSel=0; play('select');
+  state='won'; menuSel=0;
+  play('select');
+  playFanfare(stars);                       // triumphant synth flourish
+  fireworksReset(performance.now());        // kick off the celebration burst
 }
 let gravG=0.7, jumpV=-13.2;
 
@@ -453,9 +487,15 @@ function buildLevel(i){
   // enemies
   (L.enemies||[]).forEach(([x,y,kind])=>{
     const d=ENEMY_DEF[kind]||ENEMY_DEF.slime_normal;
-    enemies.push({x:x*TS+6, y:y*TS+6, w:TS-12, h:TS-12, kind, def:d,
+    // Ground-crawling movers (patrol/hop) sit with their feet flush on the
+    // ground: bottom-align the shrunk hitbox to the bottom of the spawn tile.
+    // Flyers/spinners keep the centered offset (their y is driven by homeY /
+    // sine bob, so the exact spawn y is cosmetic for them).
+    const groundMover = d.move==='patrol' || d.move==='hop';
+    const ey = groundMover ? (y+1)*TS - (TS-12) : y*TS+6;
+    enemies.push({x:x*TS+6, y:ey, w:TS-12, h:TS-12, kind, def:d,
       vx:(d.speed||1.0), dir:(Math.random()<0.5?-1:1), alive:true, t:Math.random()*100, turnCd:0,
-      homeY:y*TS+6, hopT:0, spin:0});
+      homeY:ey, hopT:0, spin:0});
   });
   // hazards (spikes/lava/water) — smaller hitbox so grazing the edge is fair
   (L.hazards||[]).forEach(([x,y,kind])=>{
@@ -1737,8 +1777,90 @@ function drawHUD(){
     ctx.restore(); ctx.textAlign='left';
   }
 }
+// ===================================================================
+//  Level-clear fireworks — a celebratory flourish behind the win banner.
+//  Adapted from OUTPOST's win screen: mortar shells rise from the base under
+//  gravity and burst at apex into a ring of spinning ★ sparks; after the
+//  opening volley, ambient shells keep launching while the screen is shown.
+//  Purely cosmetic and runs on the render clock (performance.now) with
+//  delta-time physics, so it's smooth and framerate-independent — no effect
+//  on the sim, which is already frozen in the 'won' state.
+// ===================================================================
+const STAR_TIER_COLORS=['#cd7f32','#cfd6de','#ffcf3f'];  // bronze / silver / gold
+const fw={ shells:[], sparks:[], last:0, volleyLeft:0, nextShell:0, nextAmbient:0, colors:[] };
+const FW_GRAV=520;   // px/s^2 (logical units; VH=540 so this feels right)
+function fireworksReset(now){
+  fw.shells.length=0; fw.sparks.length=0;
+  fw.last=now;
+  fw.colors=STAR_TIER_COLORS.slice();   // mix all three tiers — looks richest
+  fw.volleyLeft = 6 + (runSummary?runSummary.stars:1)*2;   // bigger burst for more stars
+  fw.nextShell=now;                     // first shell immediately
+  fw.nextAmbient=now+1100;              // ambient starts after the volley is underway
+}
+function fwLaunchShell(now){
+  const c=fw.colors[(Math.random()*fw.colors.length)|0];
+  const x=VW*(0.15+Math.random()*0.70);
+  const burstY=VH*(0.14+Math.random()*0.24);          // burst in the upper third
+  const vy=-Math.sqrt(2*FW_GRAV*(VH-burstY));          // exact velocity to apex at burstY
+  fw.shells.push({ x, y:VH+8, vx:(Math.random()-0.5)*50, vy, color:c });
+}
+function fwExplode(x,y,color){
+  const n=24+(Math.random()*12|0);
+  const base=150+Math.random()*70;
+  for(let i=0;i<n;i++){
+    const a=(i/n)*Math.PI*2 + Math.random()*0.15;
+    const spd=base*(0.6+Math.random()*0.5);
+    fw.sparks.push({ x,y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+      rot:Math.random()*Math.PI*2, vrot:(Math.random()-0.5)*10,
+      life:0, ttl:1.0+Math.random()*0.7, color, size:13+Math.random()*9 });
+  }
+}
+function fireworksStep(now){
+  let dt=(now-fw.last)/1000; fw.last=now;
+  if(dt>0.05) dt=0.05;              // clamp after a stall so nothing teleports
+  if(fw.volleyLeft>0 && now>=fw.nextShell){
+    fwLaunchShell(now); fw.volleyLeft--; fw.nextShell=now+130+Math.random()*120;
+  }
+  if(now>=fw.nextAmbient){
+    fwLaunchShell(now); fw.nextAmbient=now+650+Math.random()*900;
+  }
+  for(let i=fw.shells.length-1;i>=0;i--){
+    const s=fw.shells[i];
+    s.vy+=FW_GRAV*dt; s.x+=s.vx*dt; s.y+=s.vy*dt;
+    if(s.vy>=0){ fwExplode(s.x,s.y,s.color); fw.shells.splice(i,1); }   // burst at apex
+  }
+  for(let i=fw.sparks.length-1;i>=0;i--){
+    const p=fw.sparks[i];
+    p.vy+=FW_GRAV*0.45*dt;          // lighter gravity — drifting embers
+    p.vx*=(1-1.1*dt);               // air drag
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.rot+=p.vrot*dt; p.life+=dt;
+    if(p.life>=p.ttl) fw.sparks.splice(i,1);
+  }
+}
+function fireworksDraw(){
+  ctx.save();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(const s of fw.shells){                        // rising shells: bright glowing dot
+    ctx.globalAlpha=0.9; ctx.fillStyle=s.color;
+    ctx.shadowColor=s.color; ctx.shadowBlur=8;
+    ctx.beginPath(); ctx.arc(s.x,s.y,2.5,0,Math.PI*2); ctx.fill();
+  }
+  ctx.shadowBlur=0;
+  for(const p of fw.sparks){                         // star sparks: spinning ★ that fade
+    const k=p.life/p.ttl;
+    const alpha = k<0.15 ? k/0.15 : (1-(k-0.15)/0.85);   // quick in, slow fade
+    ctx.globalAlpha=Math.max(0,alpha);
+    ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=8;
+    ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+    ctx.font=p.size+'px sans-serif'; ctx.fillText('★',0,0); ctx.restore();
+  }
+  ctx.restore(); ctx.globalAlpha=1;
+}
+
 function endScreen(title, won){
   ctx.fillStyle='rgba(8,14,10,.82)'; ctx.fillRect(0,0,VW,VH);
+  // Fireworks flourish behind everything on the win screen.
+  if(won){ fireworksStep(performance.now()); fireworksDraw(); }
   ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.font='bold 40px Trebuchet MS, sans-serif'; ctx.fillText(title, VW/2, won?VH*0.14:VH*0.34);
 
