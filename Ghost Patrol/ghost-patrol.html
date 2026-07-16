@@ -105,6 +105,17 @@
     }
     @keyframes cleansePulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }
 
+    /* ---- fountain prompt (walk up, then click to enter shop) ---- */
+    #fountainPrompt {
+      position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: none; pointer-events: none;
+      font-family: var(--font-display); font-weight: 600; font-size: 16px;
+      color: #06202a; background: linear-gradient(180deg, #9be8ff, #44bbff);
+      padding: 9px 20px; border-radius: 999px;
+      box-shadow: 0 0 22px rgba(68,187,255,0.7), 0 4px 12px rgba(0,0,0,0.5);
+      animation: cleansePulse 1.1s ease-in-out infinite;
+    }
+
     /* ---- overlay (title / pause / result) ---- */
     #overlay {
       position: absolute; inset: 0; z-index: 20;
@@ -288,11 +299,12 @@
   </div>
   <div id="hudHelp">
     <b>WASD</b> move &bull; <b>Shift</b> sprint &bull; <b>Space</b> dash<br>
-    <b>L-click</b> shoot &bull; <b>R-click</b> cleanse art<br>
+    <b>L-click</b> shoot &bull; <b>R-click</b> cleanse / fountain<br>
     <b>W</b> up stairs/ladders &bull; <b>R</b> new gallery
   </div>
   <div id="message"></div>
   <div id="cleanse">&#9880; Right-click to cleanse the cursed painting</div>
+  <div id="fountainPrompt">&#9880; Right-click to enter the Fountain</div>
   <div id="shop">
     <div id="shopInner"></div>
   </div>
@@ -433,6 +445,7 @@
     let cursedPaintings = [], cursedFramed = 0, cursedTotal = 0;
     // shop
     let shopOpen = false, shopFountain = null, shopItems = [], shopJustLeft = null;
+    let nearFountain = null;    // fountain the player is standing at (prompt target)
     let shotsFired = 0, shotsHit = 0, startTime = 0;
     let highScores = [];
     let victoryHTML = '';
@@ -465,8 +478,67 @@
       o.start();
       o.stop(actx.currentTime + dur);
     }
-    const sndCoin  = () => sfx(988, 0.09, 'sine', 0.10, 350);
-    const sndShoot = () => sfx(320, 0.07, 'square', 0.07, -180);
+
+    const COIN_OGG_B64 = "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";
+    const GUN_OGG_B64 = "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";
+    // ---------- Embedded audio samples ----------
+    // Short SFX shipped as base64 ogg, decoded once into an AudioBuffer at
+    // startup. playSample fires a one-shot; returns true on success so callers
+    // can fall back to the synth blip if the buffer isn't ready yet.
+    let coinBuffer = null, gunBuffer = null;
+    function playSample(buf, vol) {
+      if (!actx || !buf) return false;
+      const src = actx.createBufferSource();
+      const g = actx.createGain();
+      g.gain.value = (vol == null ? 1 : vol);
+      src.buffer = buf;
+      src.connect(g).connect(actx.destination);
+      src.start();
+      return true;
+    }
+    // Retriggering player for rapid-fire SFX: stops the previous voice before
+    // starting a new one so fast autofire doesn't stack into a muddy drone.
+    let gunVoice = null;
+    function playGun(buf, vol) {
+      if (!actx || !buf) return false;
+      if (gunVoice) { try { gunVoice.stop(); } catch (e) {} gunVoice = null; }
+      const src = actx.createBufferSource();
+      const g = actx.createGain();
+      g.gain.value = (vol == null ? 1 : vol);
+      src.buffer = buf;
+      src.connect(g).connect(actx.destination);
+      src.onended = () => { if (gunVoice === src) gunVoice = null; };
+      src.start();
+      gunVoice = src;
+      return true;
+    }
+    function b64ToArrayBuffer(b64) {
+      const bin = atob(b64); const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
+    }
+    function loadSamples() {
+      if (!actx) return;
+      try {
+        // decodeAudioData is async; buffer becomes available a moment later.
+        actx.decodeAudioData(b64ToArrayBuffer(COIN_OGG_B64),
+          (buf) => { coinBuffer = buf; },
+          (err) => { console.warn('coin sfx decode failed', err); });
+        actx.decodeAudioData(b64ToArrayBuffer(GUN_OGG_B64),
+          (buf) => { gunBuffer = buf; },
+          (err) => { console.warn('gun sfx decode failed', err); });
+      } catch (e) { console.warn('coin sfx load failed', e); }
+    }
+    // Lazily create the AudioContext on first user gesture, and decode samples
+    // exactly once. Safe to call from any input handler.
+    let samplesRequested = false;
+    function ensureAudio() {
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!samplesRequested) { samplesRequested = true; loadSamples(); }
+    }
+    const sndCoin  = () => playSample(coinBuffer, 0.5) || sfx(988, 0.09, 'sine', 0.10, 350);
+    const sndShoot = () => playGun(gunBuffer, 0.35) || sfx(320, 0.07, 'square', 0.07, -180);
     const sndHit   = () => sfx(150, 0.12, 'sawtooth', 0.12, -60);
     const sndBust  = () => sfx(540, 0.30, 'triangle', 0.12, -420);
     const sndHurt  = () => sfx(90, 0.25, 'sawtooth', 0.16, -40);
@@ -962,6 +1034,7 @@
       fountains.push({ x: c.x, z: c.z, floor });
     }
 
+    // ---------- Ghosts ----------
     // ---------- Wraith model (embedded, no external loader) ----------
     // Low-poly hooded-wraith mesh baked to Y-up/height-1 and packed as base64
     // typed arrays. Decoded once at startup into GHOST_GEO + GHOST_MAT so each
@@ -1005,15 +1078,13 @@
       }
     }
 
-    // ---------- Ghosts ----------
     // Builds a wraith instance. bodyColor/emissive tint the robe so the same
     // model serves both the pale patrol ghosts and the purple King. Returns the
-    // group plus material handles (for hit-flash + death-fade) and a glow shell.
+    // group plus material handles (for hit-flash + death-fade).
     function makeGhostMesh(bodyColor, emissive, eyeColor, opacity) {
       const group = new THREE.Group();
 
       if (GHOST_READY) {
-        // tinted, self-lit robe so it never reads as a black blob in the gloom
         const bodyMat = new THREE.MeshStandardMaterial({
           map: GHOST_TEX, color: bodyColor,
           emissive: emissive, emissiveIntensity: 0.55,
@@ -1022,12 +1093,9 @@
           side: THREE.DoubleSide
         });
         const wraith = new THREE.Mesh(GHOST_GEO, bodyMat);
-        // model is height 1, feet at y=0 -> center it on the group origin and
-        // scale up to ghost size (~1.6 tall).
         wraith.scale.setScalar(1.7);
         wraith.position.y = -0.85;
         group.add(wraith);
-
         return { group, mats: [bodyMat], wraith };
       }
 
@@ -1309,6 +1377,8 @@
     function openShop(f) {
       shopOpen = true;
       shopFountain = f;
+      nearFountain = null;
+      document.getElementById('fountainPrompt').style.display = 'none';
       shopItems = SHOP_CATALOG[f.floor];
       active = false;                 // freeze the world while shopping
       document.exitPointerLock();     // release so the cursor returns for clicking
@@ -1698,7 +1768,7 @@
       overlay.addEventListener('click', (e) => {
         if (enteringInitials || outro) return;   // finish entry / wait out the pause
         const act = e.target.closest('[data-act]') ? e.target.closest('[data-act]').getAttribute('data-act') : null;
-        if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        ensureAudio();
 
         // explicit button actions
         if (act === 'help')     { showHelpScreen(); return; }
@@ -1753,7 +1823,8 @@
           shoot();   // first shot immediate; autofire loop continues if hasAuto
         }
         if (e.button === 2 && document.pointerLockElement) {
-          tryFrameCursed();   // right-click frames a nearby cursed painting
+          if (nearFountain) openShop(nearFountain);   // enter shop if standing at a fountain
+          else tryFrameCursed();                       // otherwise frame a nearby cursed painting
         }
       });
       document.addEventListener('mouseup', (e) => {
@@ -1833,6 +1904,7 @@
       outro = true;
       document.getElementById('bossbar').style.display = 'none';
       document.getElementById('cleanse').style.display = 'none';
+      document.getElementById('fountainPrompt').style.display = 'none';
       const overlay = document.getElementById('overlay');
       // release lock so the message shows, but nothing is interactive yet
       setTimeout(() => document.exitPointerLock(), 400);
@@ -1866,6 +1938,7 @@
       sndWin();
       document.getElementById('bossbar').style.display = 'none';
       document.getElementById('cleanse').style.display = 'none';
+      document.getElementById('fountainPrompt').style.display = 'none';
 
       // compute the run's stats now; record happens after initials are entered
       const secs = Math.floor((performance.now() - startTime) / 1000);
@@ -2002,7 +2075,10 @@
 
         // Square (button 2) -> frame a cursed painting (edge-detected)
         const sqNow = gp.buttons[2] && gp.buttons[2].pressed;
-        if (sqNow && !prevPadButtons[2] && document.pointerLockElement) tryFrameCursed();
+        if (sqNow && !prevPadButtons[2] && document.pointerLockElement) {
+          if (nearFountain) openShop(nearFountain);
+          else tryFrameCursed();
+        }
         prevPadButtons[2] = sqNow;
 
         // Initials entry: D-pad up/down cycles the next letter, X locks it in,
@@ -2044,7 +2120,7 @@
           } else if (document.pointerLockElement && !gameOver) {
             shoot();
           } else {
-            if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+            ensureAudio();
             if (gameOver && !enteringInitials) buildDungeon();
             else if (!gameOver) renderer.domElement.requestPointerLock();
           }
@@ -2218,18 +2294,20 @@
       }
       document.getElementById('cleanse').style.display = showCleanse ? 'block' : 'none';
 
-      // fountain -> open shop on contact
+      // fountain -> show a prompt when near; player right-clicks to enter
+      nearFountain = null;
       if (active && !shopOpen) {
         for (const f of fountains) {
           if (f.floor !== pf) continue;
-          const near = Math.hypot(player.x - f.x, player.z - f.z) < 1.9;
+          const near = Math.hypot(player.x - f.x, player.z - f.z) < 2.2;
           if (f === shopJustLeft) {
             if (!near) shopJustLeft = null;   // walked away; fountain is armed again
             continue;
           }
-          if (near) { openShop(f); break; }
+          if (near) { nearFountain = f; break; }
         }
       }
+      document.getElementById('fountainPrompt').style.display = nearFountain ? 'block' : 'none';
 
       // fire-rate cooldown + autofire (hold mouse/X to spray once owned)
       if (fireCooldown > 0) fireCooldown--;
@@ -2357,7 +2435,7 @@
           'Explore, arm up, and clear every ghost &mdash; when the last one falls, the <span class="hot">Ghost King</span> awakens and hunts you across floors. Put him down to win.</div>' +
           '<div class="help-grid">' +
           '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Coins</b> litter the rooms. Grab them all &mdash; they buy upgrades.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#9880;</span><div><b>Fountains</b> (one per floor) are shops. Walk in to spend coins on health, weapons, and ammo perks. Higher floors sell better gear.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#9880;</span><div><b>Fountains</b> (one per floor) are shops. Walk up and <b>right-click</b> (Square) to enter, then spend coins on health, weapons, and ammo perks. Higher floors sell better gear.</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--mint)">&#10022;</span><div><b>Ammo is finite.</b> Boxes only refill a little at first &mdash; upgrade your ammo perks and make every shot count.</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed paintings</b> smolder on the walls &mdash; one per floor. Right-click up close to cleanse them for a coin bounty.</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div>Busted ghosts sometimes drop <b>hearts</b>. Play aggressive to stay healed.</div></div>' +
@@ -2381,7 +2459,7 @@
           '<div class="help-k"><b>Shift</b> sprint</div>' +
           '<div class="help-k"><b>Space</b> dash roll</div>' +
           '<div class="help-k"><b>L-click</b> shoot</div>' +
-          '<div class="help-k"><b>R-click</b> cleanse art</div>' +
+          '<div class="help-k"><b>R-click</b> cleanse art / enter fountain</div>' +
           '<div class="help-k"><b>W</b> climb stairs / ladders</div>' +
           '<div class="help-k"><b>R</b> new gallery</div></div>' +
           '<div><div class="help-sub">Controller</div>' +
@@ -2390,7 +2468,7 @@
           '<div class="help-k"><b>L1</b> sprint</div>' +
           '<div class="help-k"><b>R1</b> dash roll</div>' +
           '<div class="help-k"><b>A</b> shoot / confirm</div>' +
-          '<div class="help-k"><b>Square</b> cleanse art</div>' +
+          '<div class="help-k"><b>Square</b> cleanse art / enter fountain</div>' +
           '<div class="help-k">Fountain: face buttons buy</div></div>' +
           '</div>';
       } else {
@@ -2438,7 +2516,7 @@
     function startNewGame() {
       try { localStorage.removeItem(HS_KEY); } catch (e) {}
       highScores = [];
-      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      ensureAudio();
       buildDungeon();
       menuState = null;
       renderer.domElement.requestPointerLock();
