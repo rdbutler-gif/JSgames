@@ -238,6 +238,37 @@
     @media (prefers-reduced-motion: reduce) {
       .gp-title, .gp-cta, #cleanse { animation: none; }
     }
+    .menu-row {
+      display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px;
+    }
+    .minipill {
+      font-family: var(--font-ui); font-weight: 700; font-size: 14px; cursor: pointer;
+      color: #eef; background: rgba(127,233,255,0.12); border: none;
+      box-shadow: inset 0 0 0 1.5px rgba(127,233,255,0.35);
+      padding: 8px 18px; border-radius: 999px; transition: background 0.12s, transform 0.08s;
+    }
+    .minipill:hover { background: rgba(127,233,255,0.24); transform: translateY(-1px); }
+    .minipill.danger { box-shadow: inset 0 0 0 1.5px rgba(255,107,138,0.5); color: #ffd0da; }
+    .minipill.danger:hover { background: rgba(255,107,138,0.2); }
+    .help-panel { max-width: 560px; text-align: left; }
+    .help-h {
+      font-family: var(--font-display); font-weight: 700; font-size: 24px; color: var(--cyan);
+      text-align: center; text-shadow: 0 0 14px rgba(127,233,255,0.5), 2px 2px 0 #1c4a5c; margin-bottom: 10px;
+    }
+    .help-p { font-size: 14.5px; line-height: 1.55; color: #cdd3f0; margin-bottom: 14px; }
+    .help-p .hot, .gp-sub .hot { color: var(--violet); font-weight: 700; }
+    .help-grid { display: flex; flex-direction: column; gap: 9px; }
+    .help-item { display: flex; align-items: flex-start; gap: 11px; font-size: 14px; line-height: 1.45; color: #dfe6ff; }
+    .help-item b { color: #fff; font-weight: 700; }
+    .hic { font-size: 20px; flex: 0 0 26px; text-align: center; line-height: 1.3; }
+    .help-cols { display: flex; gap: 24px; }
+    .help-cols > div { flex: 1; }
+    .help-sub { font-family: var(--font-display); font-weight: 600; color: var(--gold); font-size: 14px; margin-bottom: 5px; }
+    .help-k { font-size: 13px; color: #cdd3f0; line-height: 1.7; }
+    .help-k b { color: var(--cyan); font-weight: 700; }
+    .help-dots { display: flex; gap: 8px; }
+    .help-dots span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.2); }
+    .help-dots span.on { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
   </style>
 </head>
 <body>
@@ -258,7 +289,7 @@
   <div id="hudHelp">
     <b>WASD</b> move &bull; <b>Shift</b> sprint &bull; <b>Space</b> dash<br>
     <b>L-click</b> shoot &bull; <b>R-click</b> cleanse art<br>
-    <b>W</b> up stairs/ladders &bull; <b>R</b> new dungeon
+    <b>W</b> up stairs/ladders &bull; <b>R</b> new gallery
   </div>
   <div id="message"></div>
   <div id="cleanse">&#9880; Right-click to cleanse the cursed painting</div>
@@ -270,7 +301,7 @@
       <div class="gp-title">GHOST<span class="patrol">PATROL</span></div>
       <div class="gp-sub">Ghosts phase through walls. <span class="hot">You don't.</span></div>
       <div class="gp-sub">Bust them all &mdash; then their King comes for you.</div>
-      <div class="gp-cta">Click to enter the dungeon</div>
+      <div class="gp-cta">Click to enter the gallery</div>
     </div>
   </div>
 
@@ -407,6 +438,9 @@
     let victoryHTML = '';
     let enteringInitials = false, initials = '', pendingRun = null;
     let outro = false;   // non-interactive pause after win/lose before the result screen
+    let menuState = 'title';   // 'title' | 'help' | 'result' | null (in-play/pause)
+    let helpPage = 0;
+    const HELP_PAGES = 3;
     let worldGroup = null;
     let actx = null;
 
@@ -635,22 +669,26 @@
         for (let n = 0; n < CURSED_PER_FLOOR && onFloor.length; n++) {
           const pick = onFloor[Math.floor(Math.random() * onFloor.length)];
           const frame = new THREE.Mesh(
-            new THREE.PlaneGeometry(ART_H * pick.scale.x + 0.4, ART_H + 0.4),
-            new THREE.MeshBasicMaterial({ color: 0xffcc22, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+            new THREE.PlaneGeometry(ART_H * pick.scale.x + 0.5, ART_H + 0.5),
+            new THREE.MeshBasicMaterial({ color: 0xffaa22, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
           );
           frame.position.copy(pick.position);
           frame.rotation.copy(pick.rotation);
           const nx = Math.sin(pick.rotation.y), nz = Math.cos(pick.rotation.y);
-          frame.position.x -= nx * 0.01;
-          frame.position.z -= nz * 0.01;
+          // Halo sits just BEHIND the painting so only its oversized border pokes
+          // out around the edges (a real frame). Painting is at wall + 0.02; place
+          // the halo at wall + 0.015 -- behind the art, but far enough off the wall
+          // that its border renders cleanly instead of z-fighting the wall face.
+          frame.position.x -= nx * 0.005;
+          frame.position.z -= nz * 0.005;
           worldGroup.add(frame);
-          const glow = new THREE.PointLight(0xffcc44, 0.8, 4);
+          const glow = new THREE.PointLight(0xffcc44, 1.6, 6);
           glow.position.set(pick.position.x + nx * 0.5, pick.position.y, pick.position.z + nz * 0.5);
           worldGroup.add(glow);
           cursedPaintings.push({
             mesh: pick, frame, glow, floor,
             x: pick.position.x, y: pick.position.y, z: pick.position.z,
-            nx, nz, framed: false, phase: Math.random() * Math.PI * 2, baseGlow: 0.8
+            nx, nz, framed: false, phase: Math.random() * Math.PI * 2, baseGlow: 1.6
           });
           cursedTotal++;
           const px = pick.position.x, pz = pick.position.z;
@@ -1581,11 +1619,37 @@
     // ---------- Input ----------
     function setupControls() {
       const overlay = document.getElementById('overlay');
-      overlay.addEventListener('click', () => {
+      overlay.addEventListener('click', (e) => {
         if (enteringInitials || outro) return;   // finish entry / wait out the pause
+        const act = e.target.closest('[data-act]') ? e.target.closest('[data-act]').getAttribute('data-act') : null;
         if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-        if (gameOver) buildDungeon();
-        renderer.domElement.requestPointerLock();
+
+        // explicit button actions
+        if (act === 'help')     { showHelpScreen(); return; }
+        if (act === 'helpnext') { helpPage = Math.min(helpPage + 1, HELP_PAGES - 1); renderHelp(); return; }
+        if (act === 'helpprev') { helpPage = Math.max(helpPage - 1, 0); renderHelp(); return; }
+        if (act === 'tomenu')   { showTitleScreen(); return; }
+        if (act === 'new')      { showConfirm('This will erase all previous scores. Are you sure?', startNewGame, showTitleScreen); return; }
+        if (act === 'again')    { buildDungeon(); menuState = null; renderer.domElement.requestPointerLock(); return; }
+        if (act === 'menu')     { showTitleScreen(); return; }
+        // pause-menu: quit the current run to the title (confirmed)
+        if (act === 'resume')   { menuState = null; renderer.domElement.requestPointerLock(); return; }
+        if (act === 'quitrun')  { showConfirm('This will end progress for this run. Are you sure?', quitToMenu, showPauseScreen); return; }
+        // confirm dialog
+        if (act === 'confirmyes') { const f = confirmYes; confirmYes = confirmNo = null; if (f) f(); return; }
+        if (act === 'confirmno')  { const f = confirmNo;  confirmYes = confirmNo = null; if (f) f(); return; }
+
+        // background clicks depend on which screen we're on
+        if (menuState === 'confirm') return;       // confirm dialog: buttons only
+        if (menuState === 'pause') return;          // pause menu: buttons only
+        if (menuState === 'help') return;          // only buttons act on help
+        if (menuState === 'result') return;        // result screen: buttons only
+        // title or pause -> enter / resume the gallery
+        if (act === 'play' || menuState === 'title' || menuState === null) {
+          if (gameOver) buildDungeon();
+          menuState = null;
+          renderer.domElement.requestPointerLock();
+        }
       });
       document.addEventListener('pointerlockchange', () => {
         if (document.pointerLockElement) {
@@ -1597,8 +1661,8 @@
           // win/lose/outro screens are owned by doVictory/doGameOver/commitInitials;
           // don't overwrite them here. Only the in-play pause is handled below.
           if (won || gameOver || outro || enteringInitials) return;
-          overlay.style.display = 'flex';
-          overlay.innerHTML = '<div class="panel"><div class="gp-big" style="color:var(--cyan)">Paused</div><div class="gp-cta">Click to resume</div></div>';
+          if (menuState === 'confirm') return;   // don't stomp an open confirm dialog
+          showPauseScreen();
         }
       });
       document.addEventListener('mousemove', (e) => {
@@ -1647,7 +1711,7 @@
         if (k === ' ') e.preventDefault();   // dash key shouldn't scroll the page
         if (k === 'r' && !gameOver) {
           buildDungeon();
-          showMessage('New dungeon generated');
+          showMessage('New gallery generated');
         }
       });
       document.addEventListener('keyup', (e) => {
@@ -1705,12 +1769,16 @@
       // after the pause, show the leaderboard (no score recorded on a loss)
       setTimeout(() => {
         outro = false;
+        menuState = 'result';
         overlay.innerHTML =
           '<div class="panel">' +
           '<div class="gp-big lose">Game Over</div>' +
           '<div style="margin-top:8px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">&#9733; Top Runs</div>' +
           highScoreTableHTML(0) +
-          '<div class="gp-cta">Click to try a new dungeon</div>' +
+          '<div class="menu-row">' +
+          '<button class="minipill" data-act="again">&#9851; Try Again</button>' +
+          '<button class="minipill" data-act="menu">&#9832; Main Menu</button>' +
+          '</div>' +
           '</div>';
       }, 3000);
     }
@@ -1760,7 +1828,7 @@
       const ready = initials.length === 3;
       victoryHTML =
         '<div class="panel">' +
-        '<div class="gp-big win">Dungeon Cleared!</div>' +
+        '<div class="gp-big win">Gallery Cleared!</div>' +
         `<div class="gp-score">SCORE ${r.score}</div>` +
         `<div class="gp-hint">Time ${mm}:${ss} &bull; ${r.acc}% acc &bull; ${r.coins} coins &bull; ${r.cursed}/${cursedTotal} cursed</div>` +
         '<div style="margin:18px 0 8px;font-family:var(--font-display);font-weight:600;color:var(--cyan);font-size:17px">Enter your initials</div>' +
@@ -1784,14 +1852,18 @@
       const mm = Math.floor(r.secs / 60), ss = String(r.secs % 60).padStart(2, '0');
       victoryHTML =
         '<div class="panel">' +
-        '<div class="gp-big win">Dungeon Cleared!</div>' +
+        '<div class="gp-big win">Gallery Cleared!</div>' +
         `<div class="gp-score">SCORE ${r.score}</div>` +
         (rank ? `<div style="color:var(--gold);font-family:var(--font-display);font-weight:600;font-size:18px;text-shadow:0 0 12px rgba(255,207,92,0.6)">&#9733; New #${rank} on the leaderboard!</div>` : '') +
         `<div class="gp-hint">Time ${mm}:${ss} &bull; ${r.acc}% acc &bull; ${r.coins} coins &bull; ${r.cursed}/${cursedTotal} cursed</div>` +
         '<div style="margin-top:14px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">&#9733; Top Runs</div>' +
         highScoreTableHTML(rank) +
-        '<div class="gp-cta">Click for a new dungeon</div>' +
+        '<div class="menu-row">' +
+        '<button class="minipill" data-act="again">&#9851; Try Again</button>' +
+        '<button class="minipill" data-act="menu">&#9832; Main Menu</button>' +
+        '</div>' +
         '</div>';
+      menuState = 'result';
       const overlay = document.getElementById('overlay');
       overlay.innerHTML = victoryHTML;
       pendingRun = null;
@@ -1858,7 +1930,7 @@
         prevPadButtons[2] = sqNow;
 
         // Initials entry: D-pad up/down cycles the next letter, X locks it in,
-        // Triangle confirms (only when all 3 are entered) -- mirrors keyboard.
+        // Y confirms (only when all 3 are entered) -- mirrors keyboard.
         if (enteringInitials) {
           const up = gp.buttons[12] && gp.buttons[12].pressed;
           const down = gp.buttons[13] && gp.buttons[13].pressed;
@@ -1887,7 +1959,7 @@
           return;
         }
 
-        // X/cross (button 0) -> shoot / start / restart. Held for autofire.
+        // A (button 0) -> shoot / start / restart. Held for autofire.
         const xNow = gp.buttons[0] && gp.buttons[0].pressed;
         padShootHeld = xNow && document.pointerLockElement && !gameOver;
         if (xNow && !prevXButton) {
@@ -2054,9 +2126,9 @@
         if (active) {
           c.phase += 0.08;
           const pulse = 0.5 + 0.5 * Math.sin(c.phase);
-          c.glow.intensity = c.baseGlow + pulse * 1.6;          // smolder
-          c.frame.material.opacity = 0.35 + pulse * 0.45;       // breathe
-          c.frame.material.color.setHSL(0.11, 1, 0.4 + pulse * 0.2); // amber flicker
+          c.glow.intensity = c.baseGlow + pulse * 2.6;          // smolder (brighter)
+          c.frame.material.opacity = 0.45 + pulse * 0.5;        // breathe
+          c.frame.material.color.setHSL(0.08, 1, 0.45 + pulse * 0.22); // hot amber flicker
         }
         if (active && c.floor === pf) {
           const d = Math.hypot(player.x - c.x, player.z - c.z);
@@ -2139,6 +2211,163 @@
       return h;
     }
 
+    // ---------- Menu screens ----------
+    function topScoreHTML() {
+      if (!highScores.length) return '';
+      const s = highScores[0];
+      const mm = Math.floor(s.secs / 60), ss = String(s.secs % 60).padStart(2, '0');
+      return '<div style="margin-top:14px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">' +
+        `&#9733; Top Score &nbsp; <span style="color:var(--mint)">${s.score}</span> &nbsp;` +
+        `<span style="color:#cdd3f0">${s.name || 'AAA'} &bull; ${mm}:${ss}</span></div>`;
+    }
+
+    function showTitleScreen() {
+      menuState = 'title';
+      const overlay = document.getElementById('overlay');
+      overlay.style.display = 'flex';
+      overlay.innerHTML =
+        '<div class="panel">' +
+        '<div class="gp-title">GHOST<span class="patrol">PATROL</span></div>' +
+        '<div class="gp-sub">Ghosts phase through walls. <span class="hot">You don\'t.</span></div>' +
+        '<div class="gp-sub">Bust them all &mdash; then their King comes for you.</div>' +
+        topScoreHTML() +
+        '<div class="gp-cta" data-act="play">Click to enter the gallery</div>' +
+        '<div class="menu-row">' +
+        '<button class="minipill" data-act="help">&#9432; Help</button>' +
+        '<button class="minipill danger" data-act="new">&#9851; New</button>' +
+        '</div>' +
+        '</div>';
+    }
+
+    function quitToMenu() {
+      // End the current run so re-entering from the title starts fresh.
+      // The title's play path rebuilds when gameOver is set.
+      active = false; won = false; outro = false; enteringInitials = false;
+      shopOpen = false;
+      document.getElementById('shop').style.display = 'none';
+      document.getElementById('bossbar').style.display = 'none';
+      gameOver = true;
+      showTitleScreen();
+    }
+
+    function showPauseScreen() {
+      menuState = 'pause';
+      const overlay = document.getElementById('overlay');
+      overlay.style.display = 'flex';
+      overlay.innerHTML =
+        '<div class="panel">' +
+        '<div class="gp-big" style="color:var(--cyan)">Paused</div>' +
+        '<div class="menu-row" style="margin-top:18px">' +
+        '<button class="minipill" data-act="resume">&#9654; Resume</button>' +
+        '<button class="minipill danger" data-act="quitrun">&#9832; Main Menu</button>' +
+        '</div>' +
+        '</div>';
+    }
+
+    function showHelpScreen() {
+      menuState = 'help';
+      helpPage = 0;
+      renderHelp();
+    }
+
+    function renderHelp() {
+      const overlay = document.getElementById('overlay');
+      overlay.style.display = 'flex';
+      let body;
+      if (helpPage === 0) {
+        body =
+          '<div class="help-h">How to survive</div>' +
+          '<div class="help-p">You\'re on patrol in a haunted, ever-shifting gallery of three floors. ' +
+          'Explore, arm up, and clear every ghost &mdash; when the last one falls, the <span class="hot">Ghost King</span> awakens and hunts you across floors. Put him down to win.</div>' +
+          '<div class="help-grid">' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Coins</b> litter the rooms. Grab them all &mdash; they buy upgrades.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#9880;</span><div><b>Fountains</b> (one per floor) are shops. Walk in to spend coins on health, weapons, and ammo perks. Higher floors sell better gear.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#10022;</span><div><b>Ammo is finite.</b> Boxes only refill a little at first &mdash; upgrade your ammo perks and make every shot count.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed paintings</b> smolder on the walls &mdash; one per floor. Right-click up close to cleanse them for a coin bounty.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div>Busted ghosts sometimes drop <b>hearts</b>. Play aggressive to stay healed.</div></div>' +
+          '</div>';
+      } else if (helpPage === 1) {
+        body =
+          '<div class="help-h">Your HUD</div>' +
+          '<div class="help-grid">' +
+          '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9673;</span><div><b>Floor</b> &mdash; which of the 3 levels you\'re on.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Coins</b> collected / total on the run.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#10022;</span><div><b>Ammo</b> remaining, and your current weapon.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--violet)">&#9760;</span><div><b>Ghosts</b> busted / total. Clear them to wake the King.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9640;</span><div><b>Cursed</b> paintings cleansed / total.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div><b>Hearts</b> &mdash; your health. Lose them all and you\'re spooked.</div></div>' +
+          '</div>' +
+          '<div class="help-h" style="margin-top:14px">Controls</div>' +
+          '<div class="help-cols">' +
+          '<div><div class="help-sub">Keyboard &amp; mouse</div>' +
+          '<div class="help-k"><b>WASD</b> move</div>' +
+          '<div class="help-k"><b>Mouse</b> look</div>' +
+          '<div class="help-k"><b>Shift</b> sprint</div>' +
+          '<div class="help-k"><b>Space</b> dash roll</div>' +
+          '<div class="help-k"><b>L-click</b> shoot</div>' +
+          '<div class="help-k"><b>R-click</b> cleanse art</div>' +
+          '<div class="help-k"><b>W</b> climb stairs / ladders</div>' +
+          '<div class="help-k"><b>R</b> new gallery</div></div>' +
+          '<div><div class="help-sub">Controller</div>' +
+          '<div class="help-k"><b>L stick</b> move</div>' +
+          '<div class="help-k"><b>R stick</b> look (inverted Y)</div>' +
+          '<div class="help-k"><b>L1</b> sprint</div>' +
+          '<div class="help-k"><b>R1</b> dash roll</div>' +
+          '<div class="help-k"><b>A</b> shoot / confirm</div>' +
+          '<div class="help-k"><b>Square</b> cleanse art</div>' +
+          '<div class="help-k">Fountain: face buttons buy</div></div>' +
+          '</div>';
+      } else {
+        body =
+          '<div class="help-h">The art on these walls</div>' +
+          '<div class="help-p">Every painting you pass &mdash; and every cursed one you cleanse &mdash; is a real hand-drawn original by <span class="hot">D. Butler</span>. One hundred of her doodles and mandalas hang throughout the gallery. None were generated; each was drawn by hand.</div>' +
+          '<div class="help-p">Her work is surreal and meditative, folding geometry into nature: tessellated petals, spiraling mandalas, organic forms that resolve into pattern the longer you look. It\'s a strange and fitting thing to wander past while ghost-busting &mdash; which is exactly why it\'s here.</div>' +
+          '<div class="help-p">D. Butler is a little known local artist. If the gallery catches your eye, the source does far more justice than any game wall can &mdash; her albums are on Facebook:</div>' +
+          '<div style="text-align:center;margin-top:4px">' +
+          '<a href="https://www.facebook.com/shininggoober/photos_albums" target="_blank" rel="noopener" ' +
+          'style="color:var(--cyan);font-family:var(--font-display);font-weight:600;font-size:15px;text-decoration:none;border-bottom:1px solid rgba(127,233,255,0.5);padding-bottom:1px">' +
+          '&#9673; D. Butler&rsquo;s Doodles on Facebook &#8599;</a>' +
+          '</div>';
+      }
+      overlay.innerHTML =
+        '<div class="panel help-panel">' +
+        body +
+        '<div class="menu-row">' +
+        (helpPage > 0 ? '<button class="minipill" data-act="helpprev">&#8592; Back</button>' : '<span style="width:70px"></span>') +
+        `<div class="help-dots"><span class="${helpPage===0?'on':''}"></span><span class="${helpPage===1?'on':''}"></span><span class="${helpPage===2?'on':''}"></span></div>` +
+        (helpPage < HELP_PAGES - 1 ? '<button class="minipill" data-act="helpnext">Next &#8594;</button>' : '<button class="minipill" data-act="tomenu">Main Menu</button>') +
+        '</div>' +
+        '</div>';
+    }
+
+    // ---------- Confirm dialog ----------
+    // Overlays a small yes/no panel. onYes runs on confirm; onNo (optional) on
+    // cancel. While up, menuState === 'confirm' so background clicks are inert.
+    let confirmYes = null, confirmNo = null;
+    function showConfirm(message, onYes, onNo) {
+      confirmYes = onYes; confirmNo = onNo || null;
+      menuState = 'confirm';
+      const overlay = document.getElementById('overlay');
+      overlay.style.display = 'flex';
+      overlay.innerHTML =
+        '<div class="panel">' +
+        `<div class="gp-cta" style="margin-bottom:18px;max-width:340px;line-height:1.45">${message}</div>` +
+        '<div class="menu-row">' +
+        '<button class="minipill" data-act="confirmno">Cancel</button>' +
+        '<button class="minipill danger" data-act="confirmyes">Yes</button>' +
+        '</div>' +
+        '</div>';
+    }
+
+    function startNewGame() {
+      try { localStorage.removeItem(HS_KEY); } catch (e) {}
+      highScores = [];
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      buildDungeon();
+      menuState = null;
+      renderer.domElement.requestPointerLock();
+    }
+
     // ---------- Init ----------
     function init() {
       scene = new THREE.Scene();
@@ -2163,19 +2392,7 @@
       buildDungeon();
       setupControls();
       loadHighScores();
-      // show the leaderboard on the start overlay
-      const startOverlay = document.getElementById('overlay');
-      if (highScores.length) {
-        startOverlay.innerHTML =
-          '<div class="panel">' +
-          '<div class="gp-title">GHOST<span class="patrol">PATROL</span></div>' +
-          '<div class="gp-sub">Ghosts phase through walls. <span class="hot">You don\'t.</span></div>' +
-          '<div class="gp-sub">Bust them all &mdash; then their King comes for you.</div>' +
-          '<div style="margin-top:16px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">&#9733; Top Runs</div>' +
-          highScoreTableHTML(0) +
-          '<div class="gp-cta">Click to enter the dungeon</div>' +
-          '</div>';
-      }
+      showTitleScreen();
       animate();
     }
 
