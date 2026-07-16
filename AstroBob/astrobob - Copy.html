@@ -172,31 +172,32 @@ function loadAll(){
   for(const k in ASSETS.snd) snds[k]="data:audio/ogg;base64,"+ASSETS.snd[k];
   return Promise.all(ps);
 }
-// ---- audio (Web Audio API) ----
-// iOS Safari adds real latency to HTMLAudioElement.play(), even from a warmed
-// pool — that's the SFX-lag bug. The fix is Web Audio: decode each clip ONCE
-// into an AudioBuffer, then fire a fresh (throwaway) BufferSourceNode per hit.
-// Sources are cheap, overlap freely, and start with near-zero latency on iOS.
-let actx=null;                    // shared AudioContext (created on first unlock)
-let masterGain=null;              // single gain node -> destination (volume .5)
-const sndBuf={};                  // k -> decoded AudioBuffer
-function decodeSnd(k){
-  // ASSETS.snd[k] is raw base64 ogg; decode straight into an AudioBuffer.
-  if(!actx||sndBuf[k]!==undefined||!ASSETS.snd[k])return;
-  sndBuf[k]=null;                 // mark in-flight so we don't double-decode
-  const b=atob(ASSETS.snd[k]), n=b.length, u=new Uint8Array(n);
-  for(let i=0;i<n;i++)u[i]=b.charCodeAt(i);
-  // decodeAudioData wants its own ArrayBuffer copy.
-  actx.decodeAudioData(u.buffer, buf=>{ sndBuf[k]=buf; }, ()=>{ sndBuf[k]=undefined; });
+// ---- audio ----
+// iOS Safari is slow to spin up media elements and re-decodes on every
+// `new Audio(dataURI)`. So we decode each clip ONCE into a small pool of
+// reusable <audio> elements and just rewind+play a free one — no per-SFX
+// allocation, no GC churn, no repeated decode. This is the main fix for
+// audio/graphics drift on older iPads.
+const SND_POOL=3;                 // simultaneous voices per clip
+const sndPool={};                 // k -> [HTMLAudioElement]
+const sndTurn={};                 // k -> round-robin index
+function primeAudio(k){
+  const pool=[];
+  for(let i=0;i<SND_POOL;i++){
+    const a=new Audio(snds[k]); a.volume=.5; a.preload='auto';
+    pool.push(a);
+  }
+  sndPool[k]=pool; sndTurn[k]=0;
 }
 function play(k){
-  if(muted||!snds[k]||!actx)return;
-  const buf=sndBuf[k];
-  if(!buf){ decodeSnd(k); return; }   // not ready yet: kick decode, skip this hit
-  const s=actx.createBufferSource();
-  s.buffer=buf;
-  s.connect(masterGain);
-  try{ s.start(0); }catch(e){}
+  if(muted||!snds[k])return;
+  let pool=sndPool[k];
+  if(!pool){ primeAudio(k); pool=sndPool[k]; }
+  // pick the next voice round-robin; rewind and fire it
+  const a=pool[sndTurn[k]];
+  sndTurn[k]=(sndTurn[k]+1)%pool.length;
+  try{ a.currentTime=0; }catch(e){}
+  a.play().catch(()=>{});
 }
 
 // ---- frame lookups ----
@@ -2276,18 +2277,19 @@ function loop(now){
 loadAll().then(()=>{ loadProgress(); booted=true; screen='title'; state='ready'; requestAnimationFrame(loop); });
 
 // iOS/Safari won't play any audio until a real user gesture. On the first
-// touch/click/key, create+resume the AudioContext and decode every clip so the
-// first real SFX fires instantly. iOS starts contexts suspended until a gesture.
+// touch/click/key, prime every clip's pool and nudge each element (play+pause
+// muted) so the OS marks them unlocked — later SFX then fire instantly.
 let audioUnlocked=false;
 function unlockAudio(){
   if(audioUnlocked)return; audioUnlocked=true;
-  const AC=window.AudioContext||window.webkitAudioContext;
-  if(!AC)return;
-  actx=new AC();
-  masterGain=actx.createGain(); masterGain.gain.value=.5;
-  masterGain.connect(actx.destination);
-  if(actx.state==='suspended') actx.resume().catch(()=>{});
-  for(const k in ASSETS.snd) decodeSnd(k);
+  for(const k in snds){
+    if(!sndPool[k]) primeAudio(k);
+    for(const a of sndPool[k]){
+      const v=a.volume; a.volume=0;
+      a.play().then(()=>{ a.pause(); a.currentTime=0; a.volume=v; })
+              .catch(()=>{ a.volume=v; });
+    }
+  }
 }
 ['pointerdown','touchstart','keydown','mousedown'].forEach(ev=>
   addEventListener(ev, unlockAudio, {once:true, passive:true}));
