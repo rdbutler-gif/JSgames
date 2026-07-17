@@ -1487,14 +1487,16 @@ function drawLevelSelect(){
   ctx.fillText(exportMode?'EXPORT A LEVEL':'SELECT LEVEL', VW/2, 74); ctx.shadowBlur=0;
 
   selectCells=[];
-  const cols=5, cellW=130, gapX=22, gapY=26, cellH=118;   // fixed cell size — never squish
+  const cols=5, cellW=130, gapX=22, gapY=26;
   const filledRows=Math.max(1,Math.ceil(Math.max(1,LEVELS.length)/cols));
   const slots=filledRows*cols;                             // only rows we need (no spare row)
   const rows=filledRows;
   const gridW=cols*cellW+(cols-1)*gapX;
   const gridX=(VW-gridW)/2, gridY=118;
   const viewH=(VH-70-16)-gridY;                            // room above Back button (VH-70) with padding
-  const contentH=rows*cellH+(rows-1)*gapY;                 // full height of the grid at fixed cell size
+  // size cells to fit every row in the viewport (no scroll), clamped to a sane range
+  const cellH=Math.max(88, Math.min(118, Math.floor((viewH-(rows-1)*gapY)/rows)));
+  const contentH=rows*cellH+(rows-1)*gapY;                 // full height of the grid at this cell size
   selectScrollMax=Math.max(0, contentH-viewH);
   selectViewport={x:gridX-8, y:gridY-8, w:gridW+16, h:viewH+16};
   selectScroll=Math.max(0, Math.min(selectScroll, selectScrollMax));
@@ -1533,11 +1535,11 @@ function drawLevelSelect(){
       const gw=20, sx0=x+cellW/2-gw;
       for(let s=0;s<3;s++){ ctx.fillStyle = s<rec.stars?'#ffcf3f':'rgba(255,255,255,.16)';
         ctx.fillText(s<rec.stars?'★':'☆', sx0+s*gw, y+44); }
-      // name + best
+      // name + best — anchored just below the stars so the spacing stays tight at any cell height
       ctx.font="italic 13px Georgia, 'Times New Roman', serif"; ctx.fillStyle='#cfe0d8';
-      ctx.fillText((LEVELS[i].name||'').slice(0,16), x+cellW/2, y+cellH-30);
+      ctx.fillText((LEVELS[i].name||'').slice(0,16), x+cellW/2, y+66);
       if(rec.best>0){ ctx.font="11px Consolas, monospace"; ctx.fillStyle='#ffe9b0';
-        ctx.fillText('BEST '+rec.best, x+cellW/2, y+cellH-14); }
+        ctx.fillText('BEST '+rec.best, x+cellW/2, y+84); }
     }
     selectCells.push({x,y,w:cellW,h:cellH,idx:i,exists,unlocked});
   }
@@ -1642,11 +1644,16 @@ function draw(){
     blit('tiles', itemFrame(state==='won'?ff:ff), goalRect.x, goalRect.y, TS, TS, false); }
   // enemies
   for(const e of enemies){ if(!e.alive)continue;
-    if(!onScreen(e.x,e.y,e.w,e.h))continue;
-    const idx=Math.floor(anim/(60/e.def.fps));
+    const bodyVisible=onScreen(e.x,e.y,e.w,e.h);
+    // Barnacle beams shoot UPWARD from the shell, so a barnacle just below the
+    // camera can project a beam into view while its body is culled. Draw the beam
+    // whenever the beam's own column overlaps the viewport, independent of the body.
     if(e.def.move==='barnacle' && e.beamTop!==undefined){
-      drawBarnacleBeam(e);   // beam drawn first, so the barnacle sits over its base
+      const botY=e.y+e.h*0.4;
+      if(onScreen(e.beamX-8, e.beamTop, 16, botY-e.beamTop)) drawBarnacleBeam(e);
     }
+    if(!bodyVisible)continue;
+    const idx=Math.floor(anim/(60/e.def.fps));
     if(e.def.move==='spin'){
       const f=enemyFrame(e.kind,idx);
       ctx.save();ctx.translate(e.x+e.w/2,e.y+e.h/2);ctx.rotate(e.spin);
