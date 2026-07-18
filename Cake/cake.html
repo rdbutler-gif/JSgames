@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Happy Birthday, Mom!</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(circle at 50% 30%,#3a2a4d,#140a1e 70%);font-family:Georgia,serif;}
+  #banner{position:fixed;top:24px;left:0;right:0;text-align:center;color:#ffd9f0;
+    font-size:clamp(22px,5vw,44px);letter-spacing:1px;text-shadow:0 0 14px #ff5fbf,0 2px 4px #000;z-index:10;pointer-events:none;}
+  #message{position:fixed;bottom:52px;left:0;right:0;text-align:center;color:#ffd9f0;
+    font-family:'Dancing Script','Segoe Script',cursive,Georgia,serif;font-weight:700;
+    font-size:clamp(26px,4.5vw,46px);letter-spacing:.5px;
+    text-shadow:0 0 16px #ff5fbf,0 0 6px #ff9ad6,0 2px 4px #000;z-index:10;pointer-events:none;}
+  #message .heart{font-family:system-ui,sans-serif;filter:drop-shadow(0 0 8px #ff5fbf);}
+  #hint{position:fixed;bottom:16px;left:0;right:0;text-align:center;color:#b79fd0;
+    font-size:13px;font-family:system-ui,sans-serif;z-index:10;pointer-events:none;opacity:0;transition:opacity .6s;}
+  /* Fireworks canvas sits behind the transparent WebGL canvas. */
+  #fw{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;}
+  #cake{position:relative;z-index:1;display:block;}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="fw"></canvas>
+<div id="banner">Happy Birthday, Mom! &#127874;</div>
+<div id="message">We Love You! <span class="heart">&#10084;&#65039;</span></div>
+<div id="hint">drag to rotate &middot; scroll to zoom &middot; it also spins on its own</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ============================ 3D cake scene ============================ */
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, canvas:document.createElement('canvas') });
+renderer.domElement.id = 'cake';
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const key = new THREE.DirectionalLight(0xfff2e0, 1.4); key.position.set(20,30,20); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffd0f0, 0.7); fill.position.set(-20,10,-15); scene.add(fill);
+const rim = new THREE.PointLight(0xff88cc, 0.8, 400); rim.position.set(0,30,0); scene.add(rim);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 1.2;
+
+const pivot = new THREE.Group();
+scene.add(pivot);
+
+const loader = new GLTFLoader();
+loader.load('cake.glb', (gltf)=>{
+  const model = gltf.scene;
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  model.position.sub(center);
+  pivot.add(model);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const dist = maxDim / (2*Math.tan((Math.PI*camera.fov/180)/2)) * 1.6;
+  camera.position.set(dist*0.55, dist*0.4, dist);
+  camera.near = maxDim/100; camera.far = maxDim*20; camera.updateProjectionMatrix();
+  controls.target.set(0,0,0);
+  controls.update();
+  document.getElementById('hint').style.opacity = 1;
+}, undefined, (err)=>{
+  document.getElementById('banner').textContent = 'Could not load the cake model';
+  console.error(err);
+});
+
+/* ====================== 2D fireworks (optimized) ======================
+   Smoothness strategy:
+   - No canvas shadowBlur (very expensive per-draw). Glow comes from a
+     radial-gradient sprite baked ONCE per hue, then stamped with drawImage.
+   - Sparks are additive drawImage stamps (globalCompositeOperation='lighter')
+     instead of rotated fillText — cheaper and gives a brighter, richer burst.
+   - Hard particle cap so overlapping bursts can't stall the loop.
+====================================================================== */
+const fwCanvas = document.getElementById('fw');
+const fx = fwCanvas.getContext('2d');
+let W = 0, H = 0;
+function fwResize(){
+  const r = Math.min(devicePixelRatio, 2);
+  W = innerWidth; H = innerHeight;
+  fwCanvas.width = W * r; fwCanvas.height = H * r;
+  fwCanvas.style.width = W + 'px'; fwCanvas.style.height = H + 'px';
+  fx.setTransform(r, 0, 0, r, 0, 0);   // draw in CSS pixels, render at device res
+}
+fwResize();
+
+// Festive birthday palette (hues, deg): magenta, purple, gold, cyan,
+// violet, mint, coral, amber, sky, pink.
+const FW_PALETTE = [330, 300, 45, 190, 275, 155, 15, 50, 210, 320];
+const FW_GRAV = 320;
+const MAX_SPARKS = 900;   // safety cap
+
+// --- Pre-baked glow sprites, one soft radial dot per hue ---
+const SPRITE_R = 16;                      // sprite radius in px
+const sprites = new Map();                // hue -> canvas
+function makeSprite(hue){
+  const s = document.createElement('canvas');
+  s.width = s.height = SPRITE_R * 2;
+  const g = s.getContext('2d');
+  const grad = g.createRadialGradient(SPRITE_R, SPRITE_R, 0, SPRITE_R, SPRITE_R, SPRITE_R);
+  grad.addColorStop(0.0, `hsla(${hue},100%,85%,1)`);
+  grad.addColorStop(0.35, `hsla(${hue},95%,62%,0.9)`);
+  grad.addColorStop(1.0, `hsla(${hue},90%,50%,0)`);
+  g.fillStyle = grad;
+  g.beginPath(); g.arc(SPRITE_R, SPRITE_R, SPRITE_R, 0, Math.PI*2); g.fill();
+  return s;
+}
+function sprite(hue){
+  hue = ((hue % 360) + 360) % 360 | 0;
+  let s = sprites.get(hue);
+  if (!s){ s = makeSprite(hue); sprites.set(hue, s); }
+  return s;
+}
+FW_PALETTE.forEach(sprite);   // warm the cache up front
+
+const fw = { shells: [], sparks: [], last: performance.now(), nextShell: performance.now() };
+
+function fwLaunch(now){
+  const hue = FW_PALETTE[(Math.random()*FW_PALETTE.length)|0];
+  const x = W * (0.15 + Math.random()*0.7);
+  const burstY = H * (0.12 + Math.random()*0.28);
+  const rise = H - burstY;
+  const vy = -Math.sqrt(2 * FW_GRAV * rise);
+  fw.shells.push({ x, y: H + 8, vx:(Math.random()-0.5)*40, vy, hue });
+}
+
+function fwExplode(x, y, hue){
+  if (fw.sparks.length > MAX_SPARKS) return;
+  const n = 30 + (Math.random()*16|0);
+  const baseSpeed = 130 + Math.random()*70;
+  // Some bursts get a complementary accent hue for a two-tone pop.
+  const accent = (hue + 40 + Math.random()*60) % 360;
+  for (let i=0;i<n;i++){
+    const a = (i/n)*Math.PI*2 + Math.random()*0.15;
+    const spd = baseSpeed * (0.55 + Math.random()*0.55);
+    const h = Math.random() < 0.75 ? hue + (Math.random()-0.5)*24 : accent;
+    fw.sparks.push({
+      x, y, vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
+      life:0, ttl:1.2 + Math.random()*0.9,
+      hue: h,
+      scale: 0.5 + Math.random()*0.55,   // sprite size multiplier
+    });
+  }
+}
+
+function fwStep(now){
+  let dt = (now - fw.last)/1000; fw.last = now;
+  if (dt > 0.05) dt = 0.05;             // clamp after a stall
+
+  if (now >= fw.nextShell){
+    fwLaunch(now);
+    if (Math.random() < 0.35) fwLaunch(now);   // occasional double volley
+    fw.nextShell = now + 550 + Math.random()*750;
+  }
+  for (let i=fw.shells.length-1;i>=0;i--){
+    const s = fw.shells[i];
+    s.vy += FW_GRAV*dt; s.x += s.vx*dt; s.y += s.vy*dt;
+    if (s.vy >= 0){ fwExplode(s.x, s.y, s.hue); fw.shells.splice(i,1); }
+  }
+  for (let i=fw.sparks.length-1;i>=0;i--){
+    const p = fw.sparks[i];
+    p.vy += FW_GRAV*0.45*dt; p.vx *= (1 - 1.1*dt);
+    p.x += p.vx*dt; p.y += p.vy*dt; p.life += dt;
+    if (p.life >= p.ttl) fw.sparks.splice(i,1);
+  }
+}
+
+function fwDraw(){
+  fx.clearRect(0, 0, W, H);
+
+  // Rising shells: small bright dots (normal blending).
+  for (const s of fw.shells){
+    const spr = sprite(s.hue);
+    fx.globalAlpha = 0.95;
+    fx.drawImage(spr, s.x - 5, s.y - 5, 10, 10);
+  }
+
+  // Sparks: additive stamps for a glowing burst.
+  fx.globalCompositeOperation = 'lighter';
+  for (const p of fw.sparks){
+    const k = p.life / p.ttl;
+    const alpha = k < 0.15 ? k/0.15 : (1 - (k-0.15)/0.85);
+    if (alpha <= 0) continue;
+    fx.globalAlpha = alpha;
+    const spr = sprite(p.hue);
+    const d = SPRITE_R * 2 * p.scale;
+    fx.drawImage(spr, p.x - d/2, p.y - d/2, d, d);
+  }
+  fx.globalCompositeOperation = 'source-over';
+  fx.globalAlpha = 1;
+}
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  fwResize();
+});
+
+(function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  fwStep(now);
+  fwDraw();
+  controls.update();
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>
