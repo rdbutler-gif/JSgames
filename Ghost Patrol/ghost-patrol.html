@@ -404,6 +404,11 @@
     const GHOST_HP = 3;
     const GHOST_SPEED = 0.07;
     const GHOST_AWARE = 13;
+    // Knockback when a ghost touches the player: KB_SPEED is the initial per-frame
+    // push; with the 0.82 decay it sums to ~4 units total (the old instant jump),
+    // now spread over KB_FRAMES so it animates instead of teleporting.
+    const KB_SPEED = 0.7;
+    const KB_FRAMES = 18;
     const HEART_DROP_CHANCE = 0.30;
 
     // Boss tuning
@@ -1439,7 +1444,8 @@
         hp: GHOST_HP, maxHp: GHOST_HP, bar,
         dir: Math.random() * Math.PI * 2,
         dirTimer: 0, t: Math.random() * Math.PI * 2,
-        dead: false, fade: 1
+        dead: false, fade: 1,
+        kbx: 0, kbz: 0, kbTime: 0   // knockback velocity + remaining frames
       });
       ghostTotal++;
     }
@@ -1469,7 +1475,20 @@
         const dist = Math.hypot(dx, dz);
         const hunting = (g.floor === pf && dist < GHOST_AWARE);
 
-        if (hunting) {
+        if (g.kbTime > 0) {
+          // Being knocked back: coast backward along the stored velocity, which
+          // eases out over several frames so the player actually sees the ghost
+          // recoil instead of teleporting. Pursuit is suppressed until it settles.
+          g.x += g.kbx;
+          g.z += g.kbz;
+          g.x = Math.max(-HALF + 1, Math.min(HALF - 1, g.x));
+          g.z = Math.max(-HALF + 1, Math.min(HALF - 1, g.z));
+          g.kbx *= 0.82;   // decay toward rest
+          g.kbz *= 0.82;
+          g.kbTime--;
+          // keep facing the player as it flies back, so the recoil reads clearly
+          if (dist > 0.001) g.group.rotation.y = Math.atan2(dx, dz);
+        } else if (hunting) {
           g.x += (dx / dist) * GHOST_SPEED;
           g.z += (dz / dist) * GHOST_SPEED;
           g.group.rotation.y = Math.atan2(dx, dz);
@@ -1482,15 +1501,22 @@
           g.z = Math.max(-HALF + 1, Math.min(HALF - 1, g.z));
           g.group.rotation.y = g.dir;
         }
-        g.group.position.set(g.x, g.floor * LEVEL_H + 1.6 + Math.sin(g.t) * 0.2, g.z);
+        // extra vertical hop during knockback so the recoil is visible even when
+        // the ghost is backed against a wall and can't travel far horizontally
+        const kbHop = g.kbTime > 0 ? Math.sin((1 - g.kbTime / KB_FRAMES) * Math.PI) * 0.6 : 0;
+        g.group.position.set(g.x, g.floor * LEVEL_H + 1.6 + Math.sin(g.t) * 0.2 + kbHop, g.z);
 
         // faint robe roll on the model itself (guarded for procedural fallback)
         if (g.wraith) g.wraith.rotation.z = Math.sin(g.t * 0.8) * 0.05;
 
         if (hunting && dist < 1.1 && now > invulnUntil && !gameOver) {
           damagePlayer(now);
-          g.x -= (dx / dist) * 4;
-          g.z -= (dz / dist) * 4;
+          // launch a decaying knockback instead of an instant jump: same ~4-unit
+          // total distance, but spread over KB_FRAMES so it animates.
+          const nx = dx / dist, nz = dz / dist;
+          g.kbx = -nx * KB_SPEED;
+          g.kbz = -nz * KB_SPEED;
+          g.kbTime = KB_FRAMES;
         }
       }
     }
