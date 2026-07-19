@@ -403,6 +403,12 @@
     const GHOSTS_PER_FLOOR = 8;
     const GHOST_HP = 3;
     const GHOST_SPEED = 0.07;
+    // Per-floor hunting speed, indexed by floor (0 = level 1 ... FLOORS-1 = top).
+    // Level 1 is gentle, level 2 medium, top floor keeps the full-speed value.
+    // Any floor beyond the table falls back to GHOST_SPEED.
+    const GHOST_SPEED_BY_FLOOR = [0.045, 0.057, 0.07];
+    const ghostSpeedFor = (floor) =>
+      GHOST_SPEED_BY_FLOOR[floor] !== undefined ? GHOST_SPEED_BY_FLOOR[floor] : GHOST_SPEED;
     const GHOST_AWARE = 13;
     // Knockback when a ghost touches the player: KB_SPEED is the initial per-frame
     // push; with the 0.82 decay it sums to ~4 units total (the old instant jump),
@@ -1460,17 +1466,17 @@
       if (health <= 0) doGameOver();
     }
 
-    function updateGhosts(now) {
+    function updateGhosts(now, dt) {
       const pf = floorIndexOf(player.y);
       for (const g of ghosts) {
         if (g.dead) {
-          g.fade -= 0.03;
+          g.fade -= 0.03 * dt;
           g.mats.forEach(m => m.opacity = Math.max(0, g.fade * 0.55));
-          g.group.position.y += 0.04;
+          g.group.position.y += 0.04 * dt;
           if (g.fade <= 0) g.group.visible = false;
           continue;
         }
-        g.t += 0.04;
+        g.t += 0.04 * dt;
         const dx = player.x - g.x, dz = player.z - g.z;
         const dist = Math.hypot(dx, dz);
         const hunting = (g.floor === pf && dist < GHOST_AWARE);
@@ -1479,24 +1485,26 @@
           // Being knocked back: coast backward along the stored velocity, which
           // eases out over several frames so the player actually sees the ghost
           // recoil instead of teleporting. Pursuit is suppressed until it settles.
-          g.x += g.kbx;
-          g.z += g.kbz;
+          g.x += g.kbx * dt;
+          g.z += g.kbz * dt;
           g.x = Math.max(-HALF + 1, Math.min(HALF - 1, g.x));
           g.z = Math.max(-HALF + 1, Math.min(HALF - 1, g.z));
-          g.kbx *= 0.82;   // decay toward rest
-          g.kbz *= 0.82;
-          g.kbTime--;
+          const kbDecay = Math.pow(0.82, dt);   // decay toward rest (frame-rate stable)
+          g.kbx *= kbDecay;
+          g.kbz *= kbDecay;
+          g.kbTime -= dt;
           // keep facing the player as it flies back, so the recoil reads clearly
           if (dist > 0.001) g.group.rotation.y = Math.atan2(dx, dz);
         } else if (hunting) {
-          g.x += (dx / dist) * GHOST_SPEED;
-          g.z += (dz / dist) * GHOST_SPEED;
+          const gspd = ghostSpeedFor(g.floor);
+          g.x += (dx / dist) * gspd * dt;
+          g.z += (dz / dist) * gspd * dt;
           g.group.rotation.y = Math.atan2(dx, dz);
         } else {
-          g.dirTimer -= 1;
+          g.dirTimer -= dt;
           if (g.dirTimer <= 0) { g.dir = Math.random() * Math.PI * 2; g.dirTimer = 120 + Math.random() * 180; }
-          g.x += Math.sin(g.dir) * 0.02;
-          g.z += Math.cos(g.dir) * 0.02;
+          g.x += Math.sin(g.dir) * 0.02 * dt;
+          g.z += Math.cos(g.dir) * 0.02 * dt;
           g.x = Math.max(-HALF + 1, Math.min(HALF - 1, g.x));
           g.z = Math.max(-HALF + 1, Math.min(HALF - 1, g.z));
           g.group.rotation.y = g.dir;
@@ -1623,16 +1631,16 @@
       sndOrb();
     }
 
-    function updateBoss(now) {
+    function updateBoss(now, dt) {
       if (!boss) return;
       if (boss.dead) {
-        boss.fade -= 0.02;
+        boss.fade -= 0.02 * dt;
         boss.mats.forEach(m => m.opacity = Math.max(0, boss.fade * 0.7));
-        boss.group.position.y += 0.05;
+        boss.group.position.y += 0.05 * dt;
         if (boss.fade <= 0) boss.group.visible = false;
         return;
       }
-      boss.t += 0.04;
+      boss.t += 0.04 * dt;
       const pf = floorIndexOf(player.y);
 
       // Berserk: no ammo AND no ammo boxes left on the King's floor means the
@@ -1650,7 +1658,7 @@
 
       // the King phases through floors to follow you after a short delay
       if (boss.floor !== pf) {
-        boss.phaseTimer++;
+        boss.phaseTimer += dt;
         if (boss.phaseTimer > (berserk ? 60 : 150)) {
           boss.floor = pf;
           boss.phaseTimer = 0;
@@ -1662,16 +1670,17 @@
         const dx = player.x - boss.x, dz = player.z - boss.z;
         const dist = Math.hypot(dx, dz);
         if (dist > 0.01) {
-          boss.x += (dx / dist) * bspeed;
-          boss.z += (dz / dist) * bspeed;
+          boss.x += (dx / dist) * bspeed * dt;
+          boss.z += (dz / dist) * bspeed * dt;
           boss.group.rotation.y = Math.atan2(dx, dz);
         }
         if (dist < 1.4 && now > invulnUntil && !gameOver) {
           damagePlayer(now);
+          // instant recoil on contact (a one-shot displacement, not per-frame)
           boss.x -= (dx / dist) * 3;
           boss.z -= (dz / dist) * 3;
         }
-        boss.shootTimer--;
+        boss.shootTimer -= dt;
         if (boss.shootTimer <= 0 && dist < 16 && dist > 2) {
           fireOrb();
           boss.shootTimer = (berserk ? 70 : 140) + Math.random() * 60;
@@ -1680,16 +1689,16 @@
       boss.group.position.set(boss.x, boss.floor * LEVEL_H + 1.8 + Math.sin(boss.t) * 0.25, boss.z);
 
       // King flourish: crown bob/spin only
-      if (boss.crown) { boss.crown.position.y = 1.0 + Math.sin(boss.t * 1.6) * 0.05; boss.crown.rotation.y += 0.02; }
+      if (boss.crown) { boss.crown.position.y = 1.0 + Math.sin(boss.t * 1.6) * 0.05; boss.crown.rotation.y += 0.02 * dt; }
     }
 
-    function updateBossOrbs(now) {
+    function updateBossOrbs(now, dt) {
       for (let i = bossOrbs.length - 1; i >= 0; i--) {
         const o = bossOrbs[i];
-        o.mesh.position.x += o.vx;
-        o.mesh.position.y += o.vy;
-        o.mesh.position.z += o.vz;
-        o.life--;
+        o.mesh.position.x += o.vx * dt;
+        o.mesh.position.y += o.vy * dt;
+        o.mesh.position.z += o.vz * dt;
+        o.life -= dt;
         let dead = o.life <= 0;
 
         if (!dead) {
@@ -1872,13 +1881,13 @@
       }
     }
 
-    function updateProjectiles() {
+    function updateProjectiles(dt) {
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const p = projectiles[i];
-        p.mesh.position.x += p.vx;
-        p.mesh.position.y += p.vy;
-        p.mesh.position.z += p.vz;
-        p.life--;
+        p.mesh.position.x += p.vx * dt;
+        p.mesh.position.y += p.vy * dt;
+        p.mesh.position.z += p.vz * dt;
+        p.life -= dt;
         let dead = p.life <= 0;
 
         if (!dead) {
@@ -2364,7 +2373,8 @@
     }
 
     // ---------- Main loop ----------
-    function pollGamepad() {
+    function pollGamepad(dt) {
+      if (dt === undefined) dt = 1;
       // Keyboard is the always-on baseline: copy the WASD shadow keys into the
       // real movement flags every frame. Without this, WASD does nothing until
       // a gamepad appears and runs the merge below (the original bug).
@@ -2406,8 +2416,8 @@
         // Right stick -> look. Y inverted (pull down to look up), per preference.
         const rx = dz(gp.axes[2] || 0);
         const ry = dz(gp.axes[3] || 0);
-        yaw -= rx * PAD_LOOK_SPEED;
-        pitch += ry * PAD_LOOK_SPEED;   // inverted Y
+        yaw -= rx * PAD_LOOK_SPEED * dt;
+        pitch += ry * PAD_LOOK_SPEED * dt;   // inverted Y
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
 
         // Sprint on left-stick click (button 10) or left bumper (button 4),
@@ -2476,10 +2486,23 @@
       keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
     }
 
+    // Delta-time scale. All per-frame motion is authored for 60 fps, so `dt` is
+    // the number of 60 fps "steps" that elapsed since the last frame: dt === 1.0
+    // at exactly 60 fps, ~0.5 at 120 fps, ~2.0 at 30 fps. Multiplying movement
+    // and frame-counters by dt makes real-time speed identical on any display.
+    let lastFrameTime = performance.now();
+    const FRAME_MS = 1000 / 60;
+
     function animate() {
       requestAnimationFrame(animate);
       const now = performance.now();
-      pollGamepad();
+      // Clamp dt so a long stall (tab backgrounded, GC hitch) can't teleport the
+      // player through walls on the catch-up frame.
+      let dt = (now - lastFrameTime) / FRAME_MS;
+      lastFrameTime = now;
+      if (dt > 4) dt = 4;
+      if (dt < 0) dt = 0;
+      pollGamepad(dt);
 
       if (active) {
         let lad = null;
@@ -2499,8 +2522,8 @@
 
         // Dash: quick burst on Space/R1 in the direction of movement (or facing
         // if standing still). Uses movePlayer per-frame so walls still stop you.
-        if (dashCooldown > 0) dashCooldown--;
-        if (hasDash && dashFrames === 0 && dashCooldown === 0 && (keys[' '] || padDash)) {
+        if (dashCooldown > 0) dashCooldown = Math.max(0, dashCooldown - dt);
+        if (hasDash && dashFrames <= 0 && dashCooldown <= 0 && (keys[' '] || padDash)) {
           let ddx = dx, ddz = dz;
           if (len < 0.01) { ddx = -sin; ddz = -cos; }   // facing dir if no input
           const dl = Math.hypot(ddx, ddz) || 1;
@@ -2514,27 +2537,27 @@
         if (lad) {
           const topY = lad.yBase + LEVEL_H;
           if (keys['w'] && player.y < topY - 0.001) {
-            player.y = Math.min(topY, player.y + CLIMB_SPEED);
+            player.y = Math.min(topY, player.y + CLIMB_SPEED * dt);
             climbing = true;
           } else if (keys['s'] && player.y > computeGround(player.x, player.z, player.y) + 0.001) {
-            player.y = Math.max(lad.yBase, player.y - CLIMB_SPEED);
+            player.y = Math.max(lad.yBase, player.y - CLIMB_SPEED * dt);
             climbing = true;
           }
           vy = 0;
         }
 
         if (dashFrames > 0) {
-          movePlayer(dashVX * DASH_SPEED, dashVZ * DASH_SPEED);
-          dashFrames--;
+          movePlayer(dashVX * DASH_SPEED * dt, dashVZ * DASH_SPEED * dt);
+          dashFrames -= dt;
         } else if (!climbing && len > 0) {
-          movePlayer(dx / len * spd, dz / len * spd);
+          movePlayer(dx / len * spd * dt, dz / len * spd * dt);
         }
 
         if (!lad) {
           const ground = computeGround(player.x, player.z, player.y);
           if (player.y > ground + 0.01) {
-            vy -= 0.018;
-            player.y = Math.max(ground, player.y + vy);
+            vy -= 0.018 * dt;
+            player.y = Math.max(ground, player.y + vy * dt);
             if (player.y === ground) vy = 0;
           } else {
             player.y = ground;
@@ -2561,9 +2584,9 @@
       for (const c of coins) {
         if (c.collected) continue;
         if (active) {
-          c.t += 0.03;
+          c.t += 0.03 * dt;
           c.mesh.position.y = c.baseY + Math.sin(c.t) * 0.25;
-          c.mesh.rotation.y += 0.04;
+          c.mesh.rotation.y += 0.04 * dt;
         }
         if (active &&
             Math.hypot(player.x - c.mesh.position.x, player.z - c.mesh.position.z) < 1.2 &&
@@ -2580,9 +2603,9 @@
       for (const h of hearts) {
         if (h.collected) continue;
         if (active) {
-          h.t += 0.04;
+          h.t += 0.04 * dt;
           h.mesh.position.y = h.baseY + Math.sin(h.t) * 0.25;
-          h.mesh.rotation.y += 0.05;
+          h.mesh.rotation.y += 0.05 * dt;
         }
         if (active && health < maxHealth &&
             Math.hypot(player.x - h.mesh.position.x, player.z - h.mesh.position.z) < 1.2 &&
@@ -2599,9 +2622,9 @@
       for (const b of ammoBoxes) {
         if (b.collected) continue;
         if (active) {
-          b.t += 0.03;
+          b.t += 0.03 * dt;
           b.group.position.y = b.baseY + Math.sin(b.t) * 0.15;
-          b.group.rotation.y += 0.02;
+          b.group.rotation.y += 0.02 * dt;
         }
         if (active &&
             Math.hypot(player.x - b.group.position.x, player.z - b.group.position.z) < 1.2 &&
@@ -2621,7 +2644,7 @@
       for (const c of cursedPaintings) {
         if (c.framed) continue;
         if (active) {
-          c.phase += 0.08;
+          c.phase += 0.08 * dt;
           const pulse = 0.5 + 0.5 * Math.sin(c.phase);
           c.glow.intensity = c.baseGlow + pulse * 2.6;          // smolder (brighter)
           c.frame.material.opacity = 0.45 + pulse * 0.5;        // breathe
@@ -2655,14 +2678,14 @@
       document.getElementById('fountainPrompt').style.display = nearFountain ? 'block' : 'none';
 
       // fire-rate cooldown + autofire (hold mouse/X to spray once owned)
-      if (fireCooldown > 0) fireCooldown--;
-      if (active && hasAuto && (mouseHeld || padShootHeld) && fireCooldown === 0) shoot();
+      if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt);
+      if (active && hasAuto && (mouseHeld || padShootHeld) && fireCooldown <= 0) shoot();
 
       if (active) {
-        updateGhosts(now);
-        updateBoss(now);
-        updateBossOrbs(now);
-        updateProjectiles();
+        updateGhosts(now, dt);
+        updateBoss(now, dt);
+        updateBossOrbs(now, dt);
+        updateProjectiles(dt);
       }
       renderer.render(scene, camera);
     }
