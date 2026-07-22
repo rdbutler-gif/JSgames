@@ -165,6 +165,7 @@
   <div id="inventory"><div class="inv-empty">No potions yet.<br>Left-click potions in the dungeon to collect them.</div></div>
   <button id="descend" class="descend">&#11015; Descend to Next Level</button>
   <button id="rand" class="ghost">&#127922; New Dungeon (random seed)</button>
+  <button id="bgmtoggle" class="ghost">&#127925; Music: On</button>
   <div id="status"></div>
 </div>
 <canvas id="mini" class="mini" width="200" height="150"></canvas>
@@ -252,11 +253,19 @@ function showToast(msg, opts={}){
 }
 
 // ---- renderer / scene ----
-const renderer = new THREE.WebGLRenderer({ antialias:true });
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+// powerPreference: on dual-GPU laptops the browser may default to the integrated GPU;
+// this asks for the discrete one. Harmless everywhere else.
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+// PERF KNOB: 1.5 (was 2.0) — on a 2x-DPI display this cuts shaded fragments ~44%,
+// and every fragment here loops over ~21 lights. Raise back to 2 if you want max
+// sharpness and the frame budget allows.
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// PERF KNOB: plain PCF (was PCFSoft). PCFSoft on a POINT light (cube shadow) is one of
+// the most expensive per-fragment paths three.js has; in a dark flickering dungeon the
+// softer penumbra is nearly invisible. One-line revert if you disagree with the look.
+renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.5;
 document.getElementById('app').appendChild(renderer.domElement);
@@ -364,7 +373,11 @@ moon.position.set(-2000, 3000, -1500); scene.add(moon);
 const torch = new THREE.PointLight(0xffb060, 3.2, 3500, 0);
 // 512 shadow map (was 1024): a point-light shadow renders the scene to a cube (6 faces),
 // so this is a meaningful per-frame saving and barely visible in a dark dungeon.
-torch.castShadow = true; torch.shadow.mapSize.set(512,512); torch.shadow.camera.far = 4000;
+// far=2800 (was 4000): a point-light shadow renders 6 cube faces per frame, and each
+// face frustum-culls casters against this range. Beyond ~2800u the torch's light has
+// faded to near-black anyway, so those casters were pure cost. Shorter far also means
+// better depth precision in the 512 map (less acne).
+torch.castShadow = true; torch.shadow.mapSize.set(512,512); torch.shadow.camera.far = 2800;
 scene.add(torch);
 
 // ---- assets ----
@@ -685,6 +698,247 @@ function loadPotion(id){
 await Promise.all(Object.keys(POTION_TYPES).map(loadPotion));
 console.log('POTIONS loaded:', Object.keys(potionProtos).join(', ')||'NONE');
 
+// ============================================================
+//  AUDIO  (Web Audio; decode-once buffers, variant sound sets)
+// ------------------------------------------------------------
+//  Every sound is an ARRAY of decoded buffers, even single-file
+//  ones (array of length 1). play() always picks from an array,
+//  so adding variants later is just dropping files in the folder
+//  and adding filenames here — no code path change.
+//
+//  Files live in assets/audio/ and have SPACES + CAPITALS in the
+//  real filenames, so URLs are encodeURIComponent'd per segment.
+// ============================================================
+const SFX = (()=> {
+  let ctx=null;                         // created lazily / unlocked on first gesture
+  const buffers={};                     // name -> [AudioBuffer, ...]
+  const lastIdx={};                     // name -> last variant index (no-immediate-repeat)
+  let masterGain=null;
+  let ready=false;
+
+  // name -> list of files in assets/audio/ (exact names, spaces & caps included)
+  const MANIFEST = {
+    // --- hero spell casts ---
+    castFireball:  ['castFireball 1.ogg','castFireball 2.ogg','castFireball 3.ogg'],
+    spellImpact:   ['Spell Impact 1.ogg','Spell Impact 2.ogg','Spell Impact 3.ogg'],
+    // --- movement ---
+    walk:          ['Walk 1.ogg','Walk 2.ogg','Walk 3.ogg','Walk 4.ogg','Walk 5.ogg'],
+    run:           ['Run 1.ogg','Run 2.ogg','Run 3.ogg','Run 4.ogg','Run 5.ogg'],
+    // --- potion drink / portal ---
+    castSmallHealth: ['castSmallHealth.mp3'],
+    castLargeHealth: ['castLargeHealth.mp3'],
+    castSmallMana:   ['castSmallMana.mp3'],
+    castLargeMana:   ['castLargeMana.mp3'],
+    castTownPortal:  ['castTownPortal.mp3'],
+    // --- pickups ---
+    spellPickup:   ['spellPickup.mp3'],
+    healthPickup:  ['healthPickup.mp3'],
+    manaPickup:    ['manaPickup.mp3'],
+    lanternPickup: ['lanternPickup.mp3'],
+    // --- lantern toggle ---
+    lanternOn:     ['lanternOn.mp3'],
+    lanternOff:    ['lanternOff.mp3'],
+    // --- hero melee ---
+    heroPunch:     ['heroPunch 1.mp3','heroPunch 2.mp3','heroPunch 3.mp3'],
+    heroDeath:     ['heroDeath 1.mp3','heroDeath 2.mp3','heroDeath 3.mp3','heroDeath 4.mp3','heroDeath 5.mp3','heroDeath 6.mp3'],
+    consumeFruitbowl: ['consumeFruitbowl 1.mp3','consumeFruitbowl 2.mp3','consumeFruitbowl 3.mp3'],
+    // --- sorceress ---
+    sorceressCast:  ['sorceressCast 1.ogg','sorceressCast 2.ogg'],
+    sorceressPunch: ['sorceressPunch 1.mp3','sorceressPunch 2.mp3','sorceressPunch 3.mp3'],
+    sorceressDeath: ['sorceressDeath 1.mp3','sorceressDeath 2.mp3','sorceressDeath 3.mp3'],
+    // --- zombie ---
+    zombiePunch:   ['zombiePunch 1.mp3','zombiePunch 2.mp3','zombiePunch 3.mp3'],
+    zombieDeath:   ['zombieDeath 1.mp3','zombieDeath 2.mp3','zombieDeath 3.mp3'],
+    // --- skeleton ---
+    skellyPunch:   ['skellyPunch 1.mp3','skellyPunch 2.mp3','skellyPunch 3.mp3'],
+    skellyDeath:   ['skellyDeath 1.mp3','skellyDeath 2.mp3','skellyDeath 3.mp3'],
+    // --- boss ---
+    bossPunch:     ['bossPunch 1.mp3','bossPunch 2.mp3','bossPunch 3.mp3'],
+    bossBigAttack: ['bossBigAttack 1.mp3'],
+    bossDeath:     ['bossDeath 1.mp3'],
+  };
+
+  function ensureCtx(){
+    if(ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC){ console.warn('Web Audio unavailable — running silent'); return; }
+    ctx = new AC();
+    masterGain = ctx.createGain();
+    masterGain.gain.value = 1.0;
+    masterGain.connect(ctx.destination);
+  }
+
+  // Load + decode everything up front (called during the loading screen).
+  async function load(){
+    ensureCtx();
+    if(!ctx) return;                    // no audio support: stay silent, never throw
+    const jobs=[];
+    for(const [name,files] of Object.entries(MANIFEST)){
+      buffers[name]=new Array(files.length).fill(null);
+      lastIdx[name]=-1;
+      files.forEach((file,i)=>{
+        const url='assets/audio/'+encodeURIComponent(file);
+        jobs.push(
+          fetch(url)
+            .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); })
+            .then(ab=>ctx.decodeAudioData(ab))
+            .then(buf=>{ buffers[name][i]=buf; })
+            // A missing/failed sound is non-fatal: that slot stays null and is
+            // skipped at play time. Mirrors the game's skip-on-missing-asset rule.
+            .catch(err=>{ console.warn('SFX load failed:', file, err.message); })
+        );
+      });
+    }
+    await Promise.all(jobs);
+    ready=true;
+    console.log('SFX loaded:', Object.keys(MANIFEST).map(n=>n+'('+buffers[n].filter(Boolean).length+')').join(' '));
+  }
+
+  // Browsers suspend AudioContext until a user gesture. Resume on first click.
+  function unlock(){ if(ctx && ctx.state==='suspended') ctx.resume(); }
+
+  // Pick a variant index, guaranteeing no immediate repeat when there are 2+
+  // live variants. Build the candidate list EXCLUDING the last-played index,
+  // then pick from that — so a repeat is impossible, not just improbable.
+  function pickIdx(name){
+    const arr=buffers[name]; if(!arr) return -1;
+    const live=[]; for(let i=0;i<arr.length;i++) if(arr[i]) live.push(i);
+    if(live.length===0) return -1;
+    if(live.length===1) return live[0];
+    const cands = live.filter(i => i!==lastIdx[name]);
+    const pool = cands.length ? cands : live;
+    const idx = pool[(Math.random()*pool.length)|0];
+    lastIdx[name]=idx;
+    return idx;
+  }
+
+  // play(name, {volume=1, pitchJitter=0})
+  //   pitchJitter: fraction, e.g. 0.08 => playbackRate in [0.92, 1.08]
+  function play(name, opts){
+    if(!ready || !ctx) return;
+    const o=opts||{};
+    const idx=pickIdx(name);
+    if(idx<0) return;                   // nothing loaded for this name — silent, no throw
+    const buf=buffers[name][idx];
+    const src=ctx.createBufferSource();
+    src.buffer=buf;
+    if(o.pitchJitter){
+      const j=o.pitchJitter;
+      src.playbackRate.value = 1 + (Math.random()*2-1)*j;
+    }
+    const g=ctx.createGain();
+    g.gain.value = (o.volume==null?1:o.volume);
+    src.connect(g); g.connect(masterGain);
+    src.start();
+  }
+
+  return { load, unlock, play,
+           get ready(){ return ready; } };
+})();
+
+// Kick off audio decode during the loading screen (non-blocking — the game can
+// start before sounds finish; play() is a no-op until a buffer is ready).
+SFX.load();
+// Unlock the AudioContext on the first user interaction (browser autoplay policy).
+window.addEventListener('pointerdown', ()=>SFX.unlock(), { once:false });
+
+// ---- FOOTSTEPS ----------------------------------------------------------
+// The hero has no per-step animation event, so we synthesise a step rhythm:
+// detect movement by frame-to-frame position delta (caller-agnostic — works
+// no matter which _steer/_followPath path moved him) and fire a footstep on a
+// timer. With the Boots upgrade (bootsMult()===2) the hero moves 2x, so we use
+// the louder 'run' set and roughly halve the interval so cadence tracks speed.
+// These two intervals are the tuning knobs — adjust to taste, or set both huge
+// (or delete the updateFootsteps call in the main loop) to disable footsteps.
+const STEP_INTERVAL_WALK = 0.34;   // seconds between steps at normal speed
+const STEP_INTERVAL_RUN  = 0.20;   // seconds between steps with Boots (faster)
+let _stepAccum = 0;
+let _lastStepX = null, _lastStepZ = null;
+function updateFootsteps(dt){
+  if(gamePaused || !hero || hero.dead || !hero.root){ _lastStepX=null; return; }
+  const x=hero.root.position.x, z=hero.root.position.z;
+  if(_lastStepX===null){ _lastStepX=x; _lastStepZ=z; _stepAccum=0; return; }
+  const moved=Math.hypot(x-_lastStepX, z-_lastStepZ);
+  _lastStepX=x; _lastStepZ=z;
+  // "Actually moving" gate: enough ground covered this frame that he's walking,
+  // not just micro-sliding on a wall or standing still. Scales with dt.
+  const movingThreshold = (HERO_MOVE_SPEED*0.15)*dt;   // ~15% of max travel/frame
+  if(moved < movingThreshold){ _stepAccum=0; return; }  // stopped -> reset so next step is prompt
+  const boots = (typeof bootsMult==='function' && bootsMult()===2);
+  const interval = boots ? STEP_INTERVAL_RUN : STEP_INTERVAL_WALK;
+  _stepAccum += dt;
+  if(_stepAccum >= interval){
+    _stepAccum -= interval;
+    if(boots) SFX.play('run',  {volume:0.55, pitchJitter:0.10});
+    else      SFX.play('walk', {volume:0.40, pitchJitter:0.10});
+  }
+}
+
+// ---- PER-ENEMY SOUND MAP -------------------------------------------------
+// Each creature class sets this.sfxName ('skelly'|'zombie'|'sorceress'|'boss')
+// in its constructor. creatureSound(c,'Death') then plays e.g. 'sorceressDeath'
+// for a sorceress, 'zombieDeath' for a zombie, etc. — one call site in shared
+// code, right sound per enemy. Add a new enemy: give it a this.sfxName and (if
+// its sound files follow the <name><Event> convention) every hook works with
+// zero new wiring. If a key isn't in the manifest, play() is a silent no-op,
+// so a not-yet-added sound never throws.
+function creatureSound(c, event, opts){
+  if(!c || !c.sfxName) return;
+  SFX.play(c.sfxName + event, opts);   // e.g. 'sorceress'+'Death' -> 'sorceressDeath'
+}
+
+// ============================================================
+//  BGM  (per-level background music loop + on/off toggle)
+// ------------------------------------------------------------
+//  Unlike one-shot SFX (decoded PointBuffers), a long ~5MB music
+//  loop is best served by a streaming <audio> element: the browser
+//  streams it instead of holding decoded PCM in memory, and native
+//  loop=true handles the repeat. One track per depth (bgmLoop 1-4).
+//  Autoplay policy: can't start until a user gesture, so we arm it
+//  on first pointerdown and (re)start whatever the current level is.
+// ============================================================
+const BGM = (()=> {
+  const TRACKS = ['bgmLoop 1.mp3','bgmLoop 2.mp3','bgmLoop 3.mp3','bgmLoop 4.mp3'];
+  const el = new Audio();
+  el.loop = true;
+  el.volume = 0.35;                 // sits under the SFX; tune to taste
+  let enabled = true;               // user toggle (persisted only for the session)
+  let curTrack = -1;                // which track index is loaded
+  let unlocked = false;             // has a user gesture happened yet?
+
+  function srcFor(depth){
+    const i = Math.min(Math.max(depth,1), TRACKS.length) - 1;   // depth 1-4 -> track 0-3
+    return { i, url:'assets/audio/'+encodeURIComponent(TRACKS[i]) };
+  }
+  // Point the player at the track for this depth; play if enabled + unlocked.
+  function setLevel(depth){
+    const {i,url} = srcFor(depth);
+    if(i !== curTrack){
+      curTrack = i;
+      el.src = url;
+      el.load();
+    }
+    if(enabled && unlocked){ el.play().catch(()=>{}); }   // swallow autoplay rejections
+  }
+  // First user gesture: allowed to start audio now.
+  function unlock(){
+    if(unlocked) return;
+    unlocked = true;
+    if(enabled && el.src){ el.play().catch(()=>{}); }
+  }
+  function toggle(){
+    enabled = !enabled;
+    if(enabled){ if(unlocked && el.src) el.play().catch(()=>{}); }
+    else { el.pause(); }
+    return enabled;
+  }
+  function isOn(){ return enabled; }
+  return { setLevel, unlock, toggle, isOn };
+})();
+// BGM also unlocks on the first click (same gesture that unlocks SFX).
+window.addEventListener('pointerdown', ()=>BGM.unlock(), { once:false });
+
+
 loadingEl.style.display='none';
 
 // ---- seeded RNG ----
@@ -956,6 +1210,9 @@ function usePotion(id){
   else { before=hero.mana; hero.restoreMana(T.amount); after=hero.mana; statName='MP'; }
   const gained=Math.round(after-before);
   inventory[id]--; if(inventory[id]<=0) delete inventory[id];
+  // potion-drink sound, keyed to which potion (ids: health_small/large, mana_small/large)
+  SFX.play({ health_small:'castSmallHealth', health_large:'castLargeHealth',
+             mana_small:'castSmallMana',    mana_large:'castLargeMana' }[id], {volume:0.85});
   renderInventory();
   if(gained>0) showToast(T.label+' &middot; +'+gained+' '+statName, {kind: T.kind==='hp'?'':'', dur:1200});
   else showToast(statName+' already full', {kind:'warn', dur:1200});
@@ -996,6 +1253,27 @@ function updateWorldPotions(t){
 // ============================================================
 const worldPickups=[];   // {kind, root, x, z, phase, onCollect, label}
 
+// --- glow sprites for pickups/portal (NOT real lights) ---
+// PERF (critical): these icons used to carry their own PointLight. three.js bakes the
+// light COUNT into every lit material's shader, so collecting a pickup or opening/
+// closing a town portal changed the count and forced a SCENE-WIDE shader recompile —
+// a multi-second hitch, worst on L3/L4 where the material set is biggest. An additive
+// billboard sprite (same trick as the flame sconces) reads as "glow" at a distance
+// with ZERO light-count impact. Scene light count is now fixed at all times.
+const glowTexWhite=(()=>{ const c=document.createElement('canvas');c.width=c.height=64;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,2,32,32,30);
+  g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.4,'rgba(255,255,255,.45)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g;x.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c); })();
+function makeGlowSprite(colorHex, size){
+  const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexWhite, color:colorHex,
+    transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:0.85}));
+  spr.scale.set(size,size,1);
+  return spr;
+}
+
 // --- primitive icon builders (no external assets) ---
 function buildLanternIcon(){
   const g=new THREE.Group();
@@ -1015,8 +1293,8 @@ function buildLanternIcon(){
   }
   // ring handle on top
   const ring=new THREE.Mesh(new THREE.TorusGeometry(16,4,8,16),cageMat); ring.position.y=92; ring.rotation.x=Math.PI/2; g.add(ring);
-  // its own little glow light so it reads as a light source on the floor
-  const lp=new THREE.PointLight(0xffc060,1.6,900,0); lp.position.y=40; g.add(lp);
+  // glow SPRITE, not a light — keeps the scene light count fixed (see makeGlowSprite)
+  const lp=makeGlowSprite(0xffc060, 260); lp.position.y=40; g.add(lp);
   g.scale.setScalar(1.4);
   return g;
 }
@@ -1040,7 +1318,7 @@ function buildScrollIcon(tintHex){
   // colored ribbon band (tells spells apart at a glance)
   const band=new THREE.Mesh(new THREE.TorusGeometry(27,6,8,18), bandMat);
   band.position.y=44; g.add(band);
-  const lp=new THREE.PointLight(tintHex,1.0,700,0); lp.position.y=44; g.add(lp);
+  const lp=makeGlowSprite(tintHex, 200); lp.position.y=44; g.add(lp);   // sprite, not a light
   g.scale.setScalar(1.3);
   return g;
 }
@@ -1071,11 +1349,13 @@ function updateWorldPickups(t){
 // Grant helpers used by the exit-room pickups.
 function grantLantern(){
   hasLantern=true;
+  SFX.play('lanternPickup', {volume:0.9});
   showToast('Found the Lantern! (toggle with the Lantern button or L)', {dur:2200});
   updateAbilityHUD();
 }
 function learnSpell(id){
   learnedSpells.add(id);
+  SFX.play('spellPickup', {volume:0.9});
   showToast('Learned '+(SPELL_META[id]?SPELL_META[id].name:id)+'!', {dur:2200});
   updateAbilityHUD();
 }
@@ -1100,7 +1380,7 @@ function buildPortalIcon(){
   film.position.y=170; g.add(film);
   // a second, back-facing film so it looks solid from both sides
   const film2=film.clone(); film2.rotation.y=Math.PI; g.add(film2);
-  const lp=new THREE.PointLight(0x50a0ff, 2.2, 1600, 0); lp.position.y=170; g.add(lp);
+  const lp=makeGlowSprite(0x50a0ff, 520); lp.position.y=170; g.add(lp);   // sprite, not a light
   g.userData.spin=ring; g.userData.film=film; g.userData.film2=film2;
   return g;
 }
@@ -1359,6 +1639,7 @@ class Skeleton{
     this.atkTimer=0;                  // spacing between swings while chasing
     // --- health + billboarded healthbar ---
     this.maxHp=60; this.hp=60;
+    this.sfxName='skelly';
     this.bar=makeHealthbar();
     this.bar.group.position.set(this.root.position.x, 320, this.root.position.z);
     this.bar.group.visible=false;   // hidden until damaged — don't give away the skelly's position
@@ -1408,7 +1689,7 @@ class Skeleton{
       else this._settled=true;                        // death anim done -> freeze from now on
       return;
     }
-    if(this.mixer) this.mixer.update(dt);
+    if(this.mixer && !this._renderCull) this.mixer.update(dt);   // skip anim when render-culled
     this.stateTime+=dt;
     if(this.atkTimer>0) this.atkTimer-=dt;
     // keep healthbar above the body and facing camera
@@ -1424,7 +1705,7 @@ class Skeleton{
       // land the hit once, partway through the clip
       if(!this.retaliateHit && this.stateTime>0.45){
         this.retaliateHit=true;
-        if(hero && !hero.dead && this._distToHero()<=SKEL_ATTACK_RANGE) hero.takeDamage(SKEL_DMG);
+        if(hero && !hero.dead && this._distToHero()<=SKEL_ATTACK_RANGE){ hero.takeDamage(SKEL_DMG); creatureSound(this,'Punch',{volume:0.7,pitchJitter:0.08}); }
       }
       // return to chasing when the one-shot attack finishes
       if(this.actions.attack && !this.actions.attack.isRunning()) this.setState('idle');
@@ -1475,6 +1756,7 @@ class Skeleton{
     }
   }
   kill(){ if(this.dead) return; this.dead=true; this.state='die'; this.play('die',0.15);
+    creatureSound(this, 'Death', {volume:0.9, pitchJitter:0.05});
     if(this.bar){ this.bar.group.visible=false; } awardGold(LOOT_SKELETON); }   // corpse stays; bar hides
 }
 
@@ -1506,6 +1788,7 @@ class Zombie{
     this.moveSpeed=ZOMBIE_MOVE_SPEED; this.bodyR=140;
     this.path=null; this.pathIdx=1; this.repathTimer=0; this.atkTimer=0;
     this.maxHp=ZOMBIE_HP; this.hp=ZOMBIE_HP;
+    this.sfxName='zombie';
     this.bar=makeHealthbar();
     this.bar.group.position.set(this.root.position.x, 320, this.root.position.z);
     this.bar.group.visible=false;   // hidden until damaged
@@ -1562,7 +1845,7 @@ class Zombie{
       else this._settled=true;
       return;
     }
-    if(this.mixer) this.mixer.update(dt);
+    if(this.mixer && !this._renderCull) this.mixer.update(dt);   // skip anim when render-culled
     this.stateTime+=dt;
     if(this.atkTimer>0) this.atkTimer-=dt;
     if(this.bar){
@@ -1575,7 +1858,7 @@ class Zombie{
       this._faceHero();
       if(!this.retaliateHit && this.stateTime>0.45){
         this.retaliateHit=true;
-        if(hero && !hero.dead && this._distToHero()<=ZOMBIE_ATTACK_RANGE) hero.takeDamage(ZOMBIE_DMG);
+        if(hero && !hero.dead && this._distToHero()<=ZOMBIE_ATTACK_RANGE){ hero.takeDamage(ZOMBIE_DMG); creatureSound(this,'Punch',{volume:0.7,pitchJitter:0.08}); }
       }
       if(this.actions.attack && !this.actions.attack.isRunning()) this.setState('idle');
       else if(this.stateTime>1.2) this.setState('idle');
@@ -1627,6 +1910,7 @@ class Zombie{
     }
   }
   kill(){ if(this.dead) return; this.dead=true; this.state='die'; this.play('die',0.15);
+    creatureSound(this, 'Death', {volume:0.9, pitchJitter:0.05});
     if(this.bar){ this.bar.group.visible=false; } awardGold(LOOT_ZOMBIE); }
 }
 
@@ -1660,6 +1944,7 @@ class Sorceress{
     this.moveSpeed=SORC_MOVE_SPEED; this.bodyR=140;
     this.path=null; this.pathIdx=1; this.repathTimer=0;
     this.maxHp=SORC_HP; this.hp=SORC_HP;
+    this.sfxName='sorceress';
     this.bar=makeHealthbar();
     this.bar.group.position.set(this.root.position.x, 340, this.root.position.z);
     this.bar.group.visible=false;   // hidden until damaged
@@ -1714,7 +1999,7 @@ class Sorceress{
       else this._settled=true;
       return;
     }
-    if(this.mixer) this.mixer.update(dt);
+    if(this.mixer && !this._renderCull) this.mixer.update(dt);   // skip anim when render-culled
     this.stateTime+=dt;
     if(this.castTimer>0) this.castTimer-=dt;
     if(this.mana<this.maxMana) this.mana=Math.min(this.maxMana, this.mana+SORC_MANA_REGEN*dt);
@@ -1733,6 +2018,7 @@ class Sorceress{
         if(hero && !hero.dead && this._seesHero()){
           const from=new THREE.Vector3(this.root.position.x, 220, this.root.position.z);
           spawnIceBolt(from, SORC_ICE_DMG);
+          SFX.play('sorceressCast', {volume:0.8, pitchJitter:0.05});
           this.mana=Math.max(0, this.mana-SORC_MANA_COST);   // ice bolt costs mana
           this.castTimer=SORC_CAST_COOLDOWN;
         }
@@ -1745,7 +2031,7 @@ class Sorceress{
       this._faceHero();
       if(!this.meleeHit && this.stateTime>0.4){
         this.meleeHit=true;
-        if(hero && !hero.dead && this._distToHero()<=SORC_MELEE_RANGE) hero.takeDamage(SORC_MELEE_DMG);
+        if(hero && !hero.dead && this._distToHero()<=SORC_MELEE_RANGE){ hero.takeDamage(SORC_MELEE_DMG); creatureSound(this,'Punch',{volume:0.7,pitchJitter:0.08}); }
       }
       if((this.actions.attack && !this.actions.attack.isRunning()) || this.stateTime>1.2) this.setState('idle');
       return;
@@ -1814,6 +2100,7 @@ class Sorceress{
     }
   }
   kill(){ if(this.dead) return; this.dead=true; this.state='die'; this.play('die',0.15);
+    creatureSound(this, 'Death', {volume:0.95, pitchJitter:0.05});
     if(this.bar){ this.bar.group.visible=false; } awardGold(LOOT_SORCERESS); }
 }
 
@@ -1868,6 +2155,7 @@ class Boss{
     this.isBoss=true;
     this.path=null; this.pathIdx=1; this.repathTimer=0;   // pursuit pathing state
     this.maxHp=BOSS_HP; this.hp=BOSS_HP;
+    this.sfxName='boss';
     this.bar=makeHealthbar();
     this.bar.group.scale.setScalar(1.5);   // bigger bar to match the bigger model
     this.bar.group.position.set(this.root.position.x, 480, this.root.position.z);
@@ -1985,7 +2273,7 @@ class Boss{
       else { this._settled=true; if(this.warning) this.warning.visible=false; }
       return;
     }
-    if(this.mixer) this.mixer.update(dt);
+    if(this.mixer && !this._renderCull) this.mixer.update(dt);   // skip anim when render-culled
     this.stateTime+=dt;
     if(this.atkTimer>0) this.atkTimer-=dt;
     if(this.bigTimer>0) this.bigTimer-=dt;
@@ -2007,7 +2295,7 @@ class Boss{
       if(this.bigWindup<=0 && !this.bigDidHit){
         this.bigDidHit=true;
         if(w) w.visible=false;
-        if(hero && !hero.dead && this._heroInBigZone()) hero.takeDamage(BOSS_BIG_DMG);
+        if(hero && !hero.dead && this._heroInBigZone()){ hero.takeDamage(BOSS_BIG_DMG); creatureSound(this,'BigAttack',{volume:1.0,pitchJitter:0.03}); }
         // let the swing animation finish, then reset
       }
       // clear the pending state once the clip ends (or a safety timeout)
@@ -2028,7 +2316,7 @@ class Boss{
       this._faceHero();
       if(!this.meleeHit && this.stateTime>0.4){
         this.meleeHit=true;
-        if(hero && !hero.dead && this._distToHero()<=BOSS_MELEE_RANGE) hero.takeDamage(BOSS_MELEE_DMG);
+        if(hero && !hero.dead && this._distToHero()<=BOSS_MELEE_RANGE){ hero.takeDamage(BOSS_MELEE_DMG); creatureSound(this,'Punch',{volume:0.85,pitchJitter:0.06}); }
       }
       if((this.actions.attack && !this.actions.attack.isRunning()) || this.stateTime>1.3) this.setState('idle');
       return;
@@ -2085,6 +2373,7 @@ class Boss{
     }
   }
   kill(){ if(this.dead) return; this.dead=true; this.state='die'; this.play('die',0.15);
+    creatureSound(this, 'Death', {volume:1.0, pitchJitter:0.03});
     if(this.bar){ this.bar.group.visible=false; }
     if(this.warning){ this.warning.visible=false; }
     awardGold(LOOT_BOSS); winGame(); }
@@ -2485,6 +2774,7 @@ function updateFireballs(dt){
       if(fb.hitsHero){ if(hero && !hero.dead) hero.takeDamage(fb.dmg); }
       else if(fb.target && !fb.target.dead) fb.target.damage(fb.dmg);
       spawnImpact(fb.dest.clone(), fb.kind);
+      SFX.play('spellImpact', {volume:0.85, pitchJitter:0.06});
       scene.remove(fb.spr); releaseDynLight(fb.lh);
       fb.spr.material.dispose&&fb.spr.material.dispose();
       fireballs.splice(k,1); continue;
@@ -2683,9 +2973,12 @@ class Hero{
   }
   setLantern(on){
     // Can't turn the lantern on until the hero has actually found it.
+    const was=this.lanternOn;
     this.lanternOn = hasLantern && !!on;
     if(this.lantern) this.lantern.visible=this.lanternOn;
     if(this.lanternGlow) this.lanternGlow.visible=this.lanternOn;
+    // Sound only on a real transition (so re-calling with the same state is silent).
+    if(this.lanternOn!==was) SFX.play(this.lanternOn?'lanternOn':'lanternOff', {volume:0.7});
   }
   loopFlag(name){ return HERO_LOOPCLIPS.has(name); }
   play(name, fade=0.2){
@@ -2969,6 +3262,7 @@ class Hero{
         if(tgt && !tgt.dead && this.root){
           const from=new THREE.Vector3(this.root.position.x, 250, this.root.position.z);
           spawnFireball(from, tgt, SPELL_DMG);
+          SFX.play('castFireball', {volume:0.9, pitchJitter:0.06});
         }
       }, launchMs);
       // release the "busy" lock when the COOLDOWN ends (capped by the animation length),
@@ -2983,6 +3277,7 @@ class Hero{
       }, busyMs);
     } else {
       this.busy=true; this.setState('attack',0.12);
+      SFX.play('heroPunch', {volume:0.75, pitchJitter:0.08});
       emitCombatNoise();   // melee scuffle — nearby zombies may notice
       const gen=this._actionGen;   // snapshot; interruption cancels these
       const dur=(this.actions.attack&&this.actions.attack.getClip().duration)||1.0;
@@ -3007,6 +3302,7 @@ class Hero{
     this._clearLock(); this.path=null; this.moveGoal=null;
     if(this.moveMark) this.moveMark.visible=false;
     this.setState('die',0.15);
+    SFX.play('heroDeath', {volume:0.95, pitchJitter:0.04});
     showDeathBanner();
   }
   update(dt){
@@ -3062,6 +3358,7 @@ class Hero{
           const before=this.hp;
           this.heal(FRUIT_HEAL);
           consumeFruitBowl(b);
+          SFX.play('consumeFruitbowl', {volume:0.85, pitchJitter:0.06});
           this.eatTarget=null; this.moveGoal=null; this.path=null;
           if(this.moveMark) this.moveMark.visible=false;
           this.setState('idle');
@@ -3089,6 +3386,7 @@ class Hero{
         const d=Math.hypot(p.x-this.root.position.x, p.z-this.root.position.z);
         if(d<=CELL*0.7){
           addToInventory(p.id);
+          SFX.play(POTION_TYPES[p.id].kind==='hp' ? 'healthPickup' : 'manaPickup', {volume:0.8});
           removeWorldPotion(p);
           this.potionTarget=null; this.moveGoal=null; this.path=null;
           if(this.moveMark) this.moveMark.visible=false;
@@ -3414,11 +3712,24 @@ function winGame(){
   setTimeout(showWinBanner, 900);
 }
 
+// Floors/slabs lie flat on the ground plane — nothing exists below them to receive a
+// shadow, yet they were castShadow=true, so every tile was drawn into all 6 faces of
+// the torch's cube shadow map every frame. Pure waste; they still RECEIVE shadows.
+const NO_CAST=new Set(['Floor1','Floor2','Floor3','Slab1','Slab2']);
 function place(name,cx,cz,rotDeg=0,y=0){
   const proto=protos[name];
   if(!proto){ console.warn('place(): missing proto, skipping', name); return null; }   // asset failed to load
   const inst=proto.clone(true);
   inst.position.set(cx,y,cz); inst.rotation.y=THREE.MathUtils.degToRad(rotDeg);
+  // STATIC FREEZE: placed level pieces never move, so stop three.js recomposing their
+  // local matrix every frame (updateMatrixWorld composes EVERY matrixAutoUpdate object
+  // per frame — that's thousands of clones on L3/L4). updateMatrix() here bakes the
+  // final transform once. CAVEAT: if future code moves a placed prop, it must call
+  // .updateMatrix() on it (or set matrixAutoUpdate=true back) or it won't visibly move.
+  inst.traverse(o=>{
+    if(o.isMesh && NO_CAST.has(name)) o.castShadow=false;
+    o.updateMatrix(); o.matrixAutoUpdate=false;
+  });
   levelGroup.add(inst);
   if (FLAME_LOCAL[name]){
     const [lx,ly,lz]=FLAME_LOCAL[name]; const rad=THREE.MathUtils.degToRad(rotDeg);
@@ -3459,6 +3770,7 @@ function mountCandle(wx, wy, wz, yaw){
   const inst = protos['Wall_Candle'].clone(true);
   inst.position.set(wx, wy, wz);
   inst.rotation.y = yaw;
+  inst.traverse(o=>{ o.updateMatrix(); o.matrixAutoUpdate=false; });   // static (see place())
   levelGroup.add(inst);
   // flame local offset [2.3,50.7,35.1] rotated by yaw, plus mount height
   const [lx,ly,lz]=FLAME_LOCAL['Wall_Candle'];
@@ -3827,7 +4139,7 @@ let depth=1;
 let curSeed=7;                        // current dungeon seed (was the seed input)
 let curLevel=LEVELS[0];              // dimensions for the level being built
 function applyLevelSize(d){ curLevel=LEVELS[Math.min(Math.max(d,1),MAX_DEPTH)-1]; }
-const genLevel=()=>build(curLevel.w, curLevel.h, curLevel.room, curLevel.prop, curSeed|0, depth);
+const genLevel=()=>{ BGM.setLevel(depth); return build(curLevel.w, curLevel.h, curLevel.room, curLevel.prop, curSeed|0, depth); };
 
 el('descend').onclick=()=>{
   if(depth>=MAX_DEPTH){ setStatus('This is the final level — defeat the boss to win.'); return; }
@@ -3839,6 +4151,11 @@ el('rand').onclick=()=>{ curSeed=Math.floor(Math.random()*99999); depth=1; gameW
   for(const k in inventory) delete inventory[k]; renderInventory();
   resetProgression();   // lose lantern/spells/upgrades on a brand-new run
   hideWinBanner(); applyLevelSize(1); genLevel(); };
+// Music on/off toggle. Label reflects state; the music note stays either way.
+el('bgmtoggle').onclick=()=>{
+  const on=BGM.toggle();
+  el('bgmtoggle').innerHTML = (on ? '&#127925; Music: On' : '&#128263; Music: Off');
+};
 // Play Again (win banner): fresh run from Level 1 with a new random seed and 0 gold.
 function hideWinBanner(){ const b=document.getElementById('winbanner'); if(b) b.classList.remove('show'); }
 el('playagain').onclick=()=>{ curSeed=Math.floor(Math.random()*99999); depth=1; gameWon=false; gold=0; _lastGold=-1;
@@ -4100,6 +4417,7 @@ renderer.domElement.addEventListener('pointerup',(e)=>{
     }
     hero.mana -= TOWN_PORTAL_COST; updateHeroHUD();
     spawnPortal(cell[0]*CELL, cell[1]*CELL);
+    SFX.play('castTownPortal', {volume:0.9});
     return;
   }
   if(spell==='firerain'){
@@ -4155,7 +4473,28 @@ let prevT=0;
   updatePortal(t);         // pulse the town portal if one is open
   // update skeleton creatures (frozen while the store is open)
   if(currentMaze && !gamePaused){
-    try { for(const c of creatures) c.update(dt, currentMaze.floor, currentMaze.GW, currentMaze.GH); }
+    // CREATURE RENDER CULLING: skinned meshes load with frustumCulled=false (needed —
+    // animated bounds don't track the bind pose), so WITHOUT this every creature on the
+    // level rendered every frame in the main pass AND all 6 torch-shadow cube faces,
+    // with full GPU skinning each pass. On L4 that's ~70+ skinned draws x7. Anything
+    // beyond the torch/lantern reach is in near-blackness, so: hide creatures far from
+    // the camera focus. The threshold GROWS with camera zoom-out (cam→target distance)
+    // so pulling the camera way back still shows the whole moonlit level — no pop-in
+    // where you can actually see. AI/movement/aggro still update normally while hidden
+    // (only RENDERING and the alive-state AnimationMixer are skipped — see _renderCull
+    // gates in each class; the death-clip mixer path is NOT gated so corpses always
+    // settle). A culled mob resumes its loop pose on re-entry; in the dark you can't
+    // tell.
+    const _cullDist=3200 + camera.position.distanceTo(controls.target);
+    const _cullSq=_cullDist*_cullDist;
+    try {
+      for(const c of creatures){
+        const cull = c.root.position.distanceToSquared(controls.target) > _cullSq;
+        c._renderCull=cull;
+        c.root.visible=!cull;
+        c.update(dt, currentMaze.floor, currentMaze.GW, currentMaze.GH);
+      }
+    }
     catch(err){ console.warn('creature update error (skipped):', err); }
   }
   // SAFETY: normally the win fires from the boss's kill(). But if the boss asset failed
@@ -4167,6 +4506,7 @@ let prevT=0;
   }
   // update hero + spell effects (frozen while the store is open)
   if(!gamePaused){ try { if(hero) hero.update(dt); } catch(err){ console.warn('hero update error (skipped):', err); } }
+  try { updateFootsteps(dt); } catch(err){ console.warn('footstep error (skipped):', err); }
   renderMinimap();   // blit cached dungeon + moving hero blip
   try { updateFireballs(dt); updateImpacts(); } catch(err){ console.warn('fx update error (skipped):', err); }
   updateCameraFollow(dt);
