@@ -1107,15 +1107,103 @@ let currentMaze=null;
 const fruitBowls=[];   // {cell:[i,j], x,z,y} — healing pickups sitting on tables
 const worldPotions=[]; // {id, cell:[i,j], x,z, root, phase} — potions lying on the floor,
                        // left-click to pick up into the inventory (see POTION_TYPES).
-// A cell is walkable if it's floor AND not occupied by a solid prop. Props register
-// their cell in m.blocked (a Set of "i,j"). All movement (hero _walkable, A*
-// findPath, skeleton wander) goes through this so nothing walks through scenery.
-function isCellFree(m,i,j){
+// A cell is FLOOR if it's in bounds and carpeted — walls/void fail. This is the
+// movement-level ground check: since sub-tile prop collision (v15), a prop no longer
+// makes its whole cell unwalkable, so bodies test floor here and props as circles.
+function isFloorCell(m,i,j){
   if(!m) return false;
   if(i<0||i>=m.GW||j<0||j>=m.GH) return false;
-  if(!m.floor[i][j]) return false;
+  return !!m.floor[i][j];
+}
+// A cell is FREE if it's floor AND no prop occupies it. Movement does NOT use this
+// anymore (bodies collide with per-prop CIRCLES — propsBlockCircle below); it remains
+// the gate for PLACEMENT/TARGET picks: spawns, wander targets, portal drops, cast
+// spots, A* goal remaps — anything that should choose a clean cell over sharing one
+// with a barrel.
+function isCellFree(m,i,j){
+  if(!isFloorCell(m,i,j)) return false;
   if(m.blocked && m.blocked.has(i+','+j)) return false;
   return true;
+}
+
+// ---- SUB-TILE PROP COLLISION (v15) -----------------------------------------
+// Props used to block their whole 600u cell, which made A* refuse routes a body could
+// physically take and made straight steering grind against a cell-wide invisible wall
+// (the wedge exploit). Now each placed prop records a CIRCLE {x,z,r} at its measured
+// world position; movement tests body-circle vs prop-circle, and A* treats propped
+// cells as passable-at-a-cost. m.blocked still lists propped cells, but only the
+// placement/targeting logic reads it (see isCellFree above).
+// m.propGrid indexes each collider under every "i,j" cell its circle's bbox overlaps,
+// so a walkability test examines only the handful of colliders near the body.
+function addPropCollider(m, x, z, r){
+  const c={x,z,r};
+  m.propColliders.push(c);
+  const i0=Math.round((x-r)/CELL), i1=Math.round((x+r)/CELL);
+  const j0=Math.round((z-r)/CELL), j1=Math.round((z+r)/CELL);
+  for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++){
+    const k=i+','+j;
+    let l=m.propGrid.get(k); if(!l){ l=[]; m.propGrid.set(k,l); }
+    l.push(c);
+  }
+  return c;
+}
+// True if a body circle (center x,z, radius R) overlaps any prop collider. Only the
+// colliders indexed under the cells the body's bbox touches are examined — any contact
+// point lies inside both circles, hence inside both bboxes, hence in a cell that is
+// in the body's bbox range AND among the collider's registered cells. Neighbor-limited
+// by construction; never scans all props.
+function propsBlockCircle(m, x, z, R){
+  const g=m&&m.propGrid; if(!g||g.size===0) return false;
+  const i0=Math.round((x-R)/CELL), i1=Math.round((x+R)/CELL);
+  const j0=Math.round((z-R)/CELL), j1=Math.round((z+R)/CELL);
+  for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++){
+    const l=g.get(i+','+j); if(!l) continue;
+    for(const c of l){
+      const dx=x-c.x, dz=z-c.z, rr=R+c.r;
+      if(dx*dx+dz*dz < rr*rr) return true;
+    }
+  }
+  return false;
+}
+// When a step is stopped by a PROP, return a same-length TANGENTIAL step that slides
+// around the blocking collider — or null if no prop is responsible (i.e., a wall, which
+// keeps the classic axis-separated slide). Axis-slides alone GRIND on a circle dead
+// ahead: with the heading locked at the target, the perpendicular component is ~0, so
+// an axis-aligned approach stalls forever (headless-verified before this fix). The
+// tangent step keeps full speed, moves strictly away from the collider (chord of an
+// exterior circle), and picks its direction from the intended motion so the body
+// rounds the prop deterministically even on a perfectly symmetric head-on approach.
+function propSlideStep(m, x, z, mx, mz, R){
+  const g=m&&m.propGrid; if(!g||g.size===0) return null;
+  const tx=x+mx, tz=z+mz;
+  let hit=null, hd=Infinity;
+  const i0=Math.round((tx-R)/CELL), i1=Math.round((tx+R)/CELL);
+  const j0=Math.round((tz-R)/CELL), j1=Math.round((tz+R)/CELL);
+  for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++){
+    const l=g.get(i+','+j); if(!l) continue;
+    for(const c of l){
+      const dx=tx-c.x, dz=tz-c.z, rr=R+c.r, d2=dx*dx+dz*dz;
+      if(d2<rr*rr && d2<hd){ hd=d2; hit=c; }
+    }
+  }
+  if(!hit) return null;
+  let nx=x-hit.x, nz=z-hit.z; const nd=Math.hypot(nx,nz)||1; nx/=nd; nz/=nd;
+  let sx=-nz, sz=nx;                              // tangent to the collider
+  if(mx*sx+mz*sz<0){ sx=-sx; sz=-sz; }            // keep the sense of the intended motion
+  const step=Math.hypot(mx,mz);
+  return { x:sx*step, z:sz*step };
+}
+// Waypoint arrival radius for path-following. A* may now route THROUGH a propped cell,
+// whose center can sit inside the prop itself — a mover can never get within 40u of
+// it. If the waypoint's cell holds a collider, count the node "reached" once the body
+// is just outside touch distance, so it starts cutting toward the NEXT node and slides
+// around the prop instead of orbiting an unreachable center.
+function pathArriveR(bodyR, ci, cj, base){
+  const g=currentMaze&&currentMaze.propGrid;
+  const l=g&&g.get(ci+','+cj);
+  if(!l||!l.length) return base;
+  let mr=0; for(const c of l) if(c.r>mr) mr=c.r;
+  return Math.max(base, bodyR + mr + 50);
 }
 
 // ============================================================
@@ -1460,10 +1548,12 @@ function noiseActive(){ return performance.now()<combatNoise.until; }
 function mobWalkable(self, x, z){
   if(!currentMaze) return true;
   const R=self.bodyR||150;
+  // ground: the body's box corners must all be on floor (walls stay cell-based)
   for(const [px,pz] of [[x-R,z-R],[x+R,z-R],[x-R,z+R],[x+R,z+R],[x,z]]){
-    if(!isCellFree(currentMaze, Math.round(px/CELL), Math.round(pz/CELL))) return false;
+    if(!isFloorCell(currentMaze, Math.round(px/CELL), Math.round(pz/CELL))) return false;
   }
-  return true;
+  // props: circle vs circle against the real prop footprints (sub-tile collision)
+  return !propsBlockCircle(currentMaze, x, z, R);
 }
 function mobSteer(self, dt, tx, tz){
   const dx=tx-self.root.position.x, dz=tz-self.root.position.z; const dist=Math.hypot(dx,dz);
@@ -1475,8 +1565,14 @@ function mobSteer(self, dt, tx, tz){
   const mx=Math.sin(self.heading)*step, mz=Math.cos(self.heading)*step;
   const px=self.root.position.x, pz=self.root.position.z;
   if(mobWalkable(self,px+mx,pz+mz)){ self.root.position.x=px+mx; self.root.position.z=pz+mz; }
-  else if(mobWalkable(self,px+mx,pz)){ self.root.position.x=px+mx; }
-  else if(mobWalkable(self,px,pz+mz)){ self.root.position.z=pz+mz; }
+  else {
+    // blocked by a PROP -> slide tangentially around its circle (full speed); blocked
+    // by a WALL -> propSlideStep returns null and the classic axis slide applies.
+    const s=propSlideStep(currentMaze,px,pz,mx,mz,self.bodyR||150);
+    if(s && mobWalkable(self,px+s.x,pz+s.z)){ self.root.position.x=px+s.x; self.root.position.z=pz+s.z; }
+    else if(mobWalkable(self,px+mx,pz)){ self.root.position.x=px+mx; }
+    else if(mobWalkable(self,px,pz+mz)){ self.root.position.z=pz+mz; }
+  }
   self.cell=worldToCell(self.root.position.x,self.root.position.z);
   return dist-step;
 }
@@ -1504,10 +1600,24 @@ function mobPursue(self, dt){
   const {floor,GW,GH,blocked}=currentMaze;
   const a=worldToCell(self.root.position.x,self.root.position.z);
   const b=worldToCell(hero.root.position.x,hero.root.position.z);
-  if(lineOfSight(floor,GW,GH,a,b)){
+  // STALL DETECTION: if the mob is trying to move but barely covering ground (a prop
+  // cell wedged between it and the target that the straight-steer can't slide around),
+  // it would otherwise walk in place forever because lineOfSight ignores props. Track
+  // real progress; once stalled, COMMIT to an A* detour and suppress the LOS shortcut
+  // for a moment so it actually routes around instead of snapping back to steering into
+  // the prop. Mirrors the hero's proven anti-grind logic.
+  const _px=self.root.position.x, _pz=self.root.position.z;
+  const commitActive = (self._pathCommit||0) > 0;
+  if(!commitActive && lineOfSight(floor,GW,GH,a,b)){
     mobSteer(self, dt, hero.root.position.x, hero.root.position.z);
-    self.path=null; return;
+    self.path=null;
+    // did we actually move? if not, start counting toward a stall.
+    const moved=Math.hypot(self.root.position.x-_px, self.root.position.z-_pz);
+    self._stall = (moved < (self.moveSpeed||300)*dt*0.35) ? (self._stall||0)+dt : 0;
+    if(self._stall>0.3){ self._pathCommit=0.8; self._stall=0; self.path=null; self.repathTimer=0; }
+    return;
   }
+  if(commitActive) self._pathCommit-=dt;
   self.repathTimer=(self.repathTimer||0)-dt;
   if(self.repathTimer<=0 || !self.path){
     self.repathTimer=0.4;
@@ -1519,7 +1629,12 @@ function mobPursue(self, dt){
   if(self.path && self.pathIdx<self.path.length){
     const [ci,cj]=self.path[self.pathIdx];
     const left=mobSteer(self, dt, ci*CELL, cj*CELL);
-    if(left<40) self.pathIdx++;
+    if(left<pathArriveR(self.bodyR||150, ci, cj, 40)) self.pathIdx++;   // propped node: arrive at touch distance
+    // Even on the A* path, watch for a grind (path node sits past a prop corner). If we
+    // stop making progress, bump the repath so a fresh route is computed next tick.
+    const moved=Math.hypot(self.root.position.x-_px, self.root.position.z-_pz);
+    self._stall = (moved < (self.moveSpeed||300)*dt*0.35) ? (self._stall||0)+dt : 0;
+    if(self._stall>0.4){ self._stall=0; self.repathTimer=0; self.pathIdx++; }   // skip the snagged node
   } else {
     mobSteer(self, dt, hero.root.position.x, hero.root.position.z);
   }
@@ -1555,9 +1670,16 @@ function mobReturnHome(self, dt){
     self.returning=false; self.path=null;
     return false;
   }
-  if(lineOfSight(floor,GW,GH,a,goal)){
-    steer(dt, gx, gz); self.path=null; return true;
+  const _px=self.root.position.x, _pz=self.root.position.z;
+  const commitActive = (self._pathCommit||0) > 0;
+  if(!commitActive && lineOfSight(floor,GW,GH,a,goal)){
+    steer(dt, gx, gz); self.path=null;
+    const moved=Math.hypot(self.root.position.x-_px, self.root.position.z-_pz);
+    self._stall = (moved < (self.moveSpeed||300)*dt*0.35) ? (self._stall||0)+dt : 0;
+    if(self._stall>0.3){ self._pathCommit=0.8; self._stall=0; self.path=null; self.repathTimer=0; }
+    return true;
   }
+  if(commitActive) self._pathCommit-=dt;
   self.repathTimer=(self.repathTimer||0)-dt;
   if(self.repathTimer<=0 || !self.path){
     self.repathTimer=0.4;
@@ -1569,7 +1691,10 @@ function mobReturnHome(self, dt){
   if(self.path && self.pathIdx<self.path.length){
     const [ci,cj]=self.path[self.pathIdx];
     const left=steer(dt, ci*CELL, cj*CELL);
-    if(left<40) self.pathIdx++;
+    if(left<pathArriveR(self.bodyR||150, ci, cj, 40)) self.pathIdx++;   // propped node: arrive at touch distance
+    const moved=Math.hypot(self.root.position.x-_px, self.root.position.z-_pz);
+    self._stall = (moved < (self.moveSpeed||300)*dt*0.35) ? (self._stall||0)+dt : 0;
+    if(self._stall>0.4){ self._stall=0; self.repathTimer=0; self.pathIdx++; }
   } else {
     steer(dt, gx, gz);
   }
@@ -1586,6 +1711,7 @@ function deaggroCreature(c){
   if(!c || c.dead) return;
   c.provoked=false;
   c.path=null; c.pathIdx=1; c.repathTimer=0;
+  c._stall=0; c._pathCommit=0;   // fresh stuck-detection state for the walk home
   c.target=null;
   // cancel any committed action state so they don't finish a swing/cast at empty air
   if('castedThisClip' in c) c.castedThisClip=false;
@@ -2216,10 +2342,11 @@ class Boss{
   _walkable(x,z){
     if(!currentMaze) return true;
     const R=150;
+    // ground cell-based, props as circles (sub-tile collision — see propsBlockCircle)
     for(const [px,pz] of [[x-R,z-R],[x+R,z-R],[x-R,z+R],[x+R,z+R],[x,z]]){
-      if(!isCellFree(currentMaze, Math.round(px/CELL), Math.round(pz/CELL))) return false;
+      if(!isFloorCell(currentMaze, Math.round(px/CELL), Math.round(pz/CELL))) return false;
     }
-    return true;
+    return !propsBlockCircle(currentMaze, x, z, R);
   }
   _steer(dt, tx, tz){
     const dx=tx-this.root.position.x, dz=tz-this.root.position.z; const dist=Math.hypot(dx,dz);
@@ -2231,8 +2358,13 @@ class Boss{
     const mx=Math.sin(this.heading)*step, mz=Math.cos(this.heading)*step;
     const px=this.root.position.x, pz=this.root.position.z;
     if(this._walkable(px+mx,pz+mz)){ this.root.position.x=px+mx; this.root.position.z=pz+mz; }
-    else if(this._walkable(px+mx,pz)){ this.root.position.x=px+mx; }
-    else if(this._walkable(px,pz+mz)){ this.root.position.z=pz+mz; }
+    else {
+      // prop in the way -> tangential slide; wall -> null, classic axis slide below
+      const s=propSlideStep(currentMaze,px,pz,mx,mz,150);
+      if(s && this._walkable(px+s.x,pz+s.z)){ this.root.position.x=px+s.x; this.root.position.z=pz+s.z; }
+      else if(this._walkable(px+mx,pz)){ this.root.position.x=px+mx; }
+      else if(this._walkable(px,pz+mz)){ this.root.position.z=pz+mz; }
+    }
     this.cell=worldToCell(this.root.position.x,this.root.position.z);
     return dist-step;
   }
@@ -2243,10 +2375,17 @@ class Boss{
     const {floor,GW,GH,blocked}=currentMaze;
     const a=worldToCell(this.root.position.x,this.root.position.z);
     const b=worldToCell(hero.root.position.x,hero.root.position.z);
-    if(lineOfSight(floor,GW,GH,a,b)){
+    const _px=this.root.position.x, _pz=this.root.position.z;
+    const commitActive=(this._pathCommit||0)>0;
+    if(!commitActive && lineOfSight(floor,GW,GH,a,b)){
       this._steer(dt, hero.root.position.x, hero.root.position.z);
-      this.path=null; return;
+      this.path=null;
+      const moved=Math.hypot(this.root.position.x-_px, this.root.position.z-_pz);
+      this._stall = (moved < BOSS_MOVE_SPEED*dt*0.35) ? (this._stall||0)+dt : 0;
+      if(this._stall>0.3){ this._pathCommit=0.8; this._stall=0; this.path=null; this.repathTimer=0; }
+      return;
     }
+    if(commitActive) this._pathCommit-=dt;
     this.repathTimer-=dt;
     if(this.repathTimer<=0 || !this.path){
       this.repathTimer=0.4;
@@ -2258,7 +2397,10 @@ class Boss{
     if(this.path && this.pathIdx<this.path.length){
       const [ci,cj]=this.path[this.pathIdx];
       const left=this._steer(dt, ci*CELL, cj*CELL);
-      if(left<40) this.pathIdx++;
+      if(left<pathArriveR(150, ci, cj, 40)) this.pathIdx++;   // propped node: arrive at touch distance
+      const moved=Math.hypot(this.root.position.x-_px, this.root.position.z-_pz);
+      this._stall = (moved < BOSS_MOVE_SPEED*dt*0.35) ? (this._stall||0)+dt : 0;
+      if(this._stall>0.4){ this._stall=0; this.repathTimer=0; this.pathIdx++; }
     } else {
       this._steer(dt, hero.root.position.x, hero.root.position.z);
     }
@@ -2570,11 +2712,18 @@ function makeMoveMarker(){
 // ============================================================
 //  A* PATHFINDING over the maze floor grid (4-neighbor)
 // ============================================================
+// Sub-tile collision (v15): propped cells are PASSABLE for A* — bodies collide with
+// the prop's circle, not the cell — but entering one costs PROP_CROSS_COST extra, so
+// routes prefer clean floor and only squeeze past a barrel when it's a genuine
+// shortcut (or the only way; a fully-propped corridor cell used to return null here,
+// which is what fed the repath-into-the-same-wall wedge loop). Extra cost only ever
+// ADDS to an edge, so the octile heuristic stays admissible.
+const PROP_CROSS_COST=2.0;
 function findPath(floor, GW, GH, start, goal, blocked){
   if(!floor) return null;
   const key=(i,j)=>i*GH+j;
   const bl = blocked || new Set();
-  const inb=(i,j)=>i>=0&&i<GW&&j>=0&&j<GH&&floor[i][j]&&!bl.has(i+','+j);
+  const inb=(i,j)=>i>=0&&i<GW&&j>=0&&j<GH&&floor[i][j];
   if(!inb(start[0],start[1])||!inb(goal[0],goal[1])) return null;
   if(start[0]===goal[0]&&start[1]===goal[1]) return [start.slice()];
   const open=[start]; const came=new Map();
@@ -2608,7 +2757,7 @@ function findPath(floor, GW, GH, start, goal, blocked){
         if(!inb(cur[0]+di,cur[1]) || !inb(cur[0],cur[1]+dj)) continue;
       }
       const nk=key(ni,nj); if(seen.has(nk)) continue;
-      const tentative=(g.get(ck)??Infinity)+cost;
+      const tentative=(g.get(ck)??Infinity)+cost+(bl.has(ni+','+nj)?PROP_CROSS_COST:0);
       if(tentative<(g.get(nk)??Infinity)){
         came.set(nk,cur); g.set(nk,tentative); f.set(nk,tentative+h(ni,nj));
         if(!inOpen.has(nk)){ open.push([ni,nj]); inOpen.add(nk); }
@@ -3166,8 +3315,11 @@ class Hero{
     if(!currentMaze){ return; }
     const {floor,GW,GH,blocked}=currentMaze;
     let start=worldToCell(this.root?this.root.position.x:0, this.root?this.root.position.z:0);
-    // If the hero somehow sits on a non-walkable cell, snap start to nearest free floor.
-    if(!isCellFree(currentMaze,start[0],start[1])){
+    // If the hero somehow sits inside a WALL cell, snap start to nearest free floor.
+    // Standing in a PROPPED cell is legal now (his circle cleared the prop), so only a
+    // true non-floor cell triggers the snap — else every click beside a barrel would
+    // teleport him.
+    if(!isFloorCell(currentMaze,start[0],start[1])){
       const sf=nearestFloor(floor,GW,GH,[Math.max(0,Math.min(GW-1,start[0])),Math.max(0,Math.min(GH-1,start[1]))],blocked);
       if(sf){ start=sf; if(this.root){ this.root.position.x=sf[0]*CELL; this.root.position.z=sf[1]*CELL; } this.cell=start.slice(); }
     }
@@ -3190,15 +3342,16 @@ class Hero{
   }
   _walkable(x,z){
     // A world point is walkable if its cell (with a small body radius margin on
-    // each side) is a free floor cell (floor AND not occupied by a solid prop).
+    // each side) is FLOOR, and the body circle clears every nearby prop collider
+    // (sub-tile collision — props no longer block their whole cell).
     if(!currentMaze) return true;
     const R=140;   // body radius margin
     const cells=[[x-R,z-R],[x+R,z-R],[x-R,z+R],[x+R,z+R],[x,z]];
     for(const [px,pz] of cells){
       const i=Math.round(px/CELL), j=Math.round(pz/CELL);
-      if(!isCellFree(currentMaze,i,j)) return false;
+      if(!isFloorCell(currentMaze,i,j)) return false;
     }
-    return true;
+    return !propsBlockCircle(currentMaze, x, z, R);
   }
   _steer(dt, tx, tz){                   // move toward a world point, sliding along walls
     const dx=tx-this.root.position.x, dz=tz-this.root.position.z; const dist=Math.hypot(dx,dz);
@@ -3210,22 +3363,47 @@ class Hero{
     const step=Math.min(spd,dist);
     const mx=Math.sin(this.heading)*step, mz=Math.cos(this.heading)*step;
     const px=this.root.position.x, pz=this.root.position.z;
-    // axis-separated: try full move, else slide on whichever axis is clear
+    // full move first; a PROP hit slides tangentially around its circle; a WALL hit
+    // (propSlideStep null) keeps the classic axis-separated slide
     if(this._walkable(px+mx, pz+mz)){ this.root.position.x=px+mx; this.root.position.z=pz+mz; }
-    else if(this._walkable(px+mx, pz)){ this.root.position.x=px+mx; }
-    else if(this._walkable(px, pz+mz)){ this.root.position.z=pz+mz; }
-    // else: fully blocked this frame (both axes wall) -> don't move
+    else {
+      const s=propSlideStep(currentMaze,px,pz,mx,mz,140);
+      if(s && this._walkable(px+s.x,pz+s.z)){ this.root.position.x=px+s.x; this.root.position.z=pz+s.z; }
+      else if(this._walkable(px+mx, pz)){ this.root.position.x=px+mx; }
+      else if(this._walkable(px, pz+mz)){ this.root.position.z=pz+mz; }
+      // else: fully blocked this frame (both axes wall) -> don't move
+    }
     this.cell=worldToCell(this.root.position.x,this.root.position.z);
     return dist-step;
   }
   _unstick(){
-    // Safety net: if the hero ever ends up inside a wall/prop cell, snap to nearest free floor cell.
+    // Safety net: never stay wedged. Inside a WALL cell -> snap to nearest free floor.
+    // Overlapping a PROP circle (shouldn't happen, but belt+braces) -> push straight
+    // out of it radially; if even that fails, snap to a clean cell. NOTE: merely
+    // standing in a propped cell is legal now — only actual circle overlap counts.
     if(!currentMaze || !this.root) return;
     const {floor,GW,GH,blocked}=currentMaze;
     const i=Math.round(this.root.position.x/CELL), j=Math.round(this.root.position.z/CELL);
-    if(isCellFree(currentMaze,i,j)) return;   // already fine
-    const nf=nearestFloor(floor,GW,GH,[Math.max(0,Math.min(GW-1,i)),Math.max(0,Math.min(GH-1,j))],blocked);
-    if(nf){ this.root.position.x=nf[0]*CELL; this.root.position.z=nf[1]*CELL; this.cell=nf.slice(); }
+    const snap=()=>{
+      const nf=nearestFloor(floor,GW,GH,[Math.max(0,Math.min(GW-1,i)),Math.max(0,Math.min(GH-1,j))],blocked);
+      if(nf){ this.root.position.x=nf[0]*CELL; this.root.position.z=nf[1]*CELL; this.cell=nf.slice(); }
+    };
+    if(!isFloorCell(currentMaze,i,j)){ snap(); return; }
+    const R=140;
+    if(!propsBlockCircle(currentMaze,this.root.position.x,this.root.position.z,R)) return;   // fine
+    // find the overlapping collider and step just outside touch distance
+    let hit=null,hd=Infinity;
+    for(const c of currentMaze.propColliders){
+      const d=Math.hypot(this.root.position.x-c.x,this.root.position.z-c.z);
+      if(d<c.r+R && d<hd){ hd=d; hit=c; }
+    }
+    if(hit){
+      const d=Math.max(hd,1e-3);
+      const nx=(this.root.position.x-hit.x)/d, nz=(this.root.position.z-hit.z)/d;
+      const px=hit.x+nx*(hit.r+R+5), pz=hit.z+nz*(hit.r+R+5);
+      if(this._walkable(px,pz)){ this.root.position.x=px; this.root.position.z=pz; this.cell=worldToCell(px,pz); return; }
+    }
+    snap();
   }
   _doAction(){
     const a=this.lockAction, tgt=this.lock;
@@ -3325,16 +3503,14 @@ class Hero{
     // cast cooldown ticks continuously (even while busy/animating) so the controllable
     // cooldown — not the animation length — is what spaces casts.
     if(this.castTimer>0){ this.castTimer=Math.max(0, this.castTimer-dt); }
-    // LANTERN mana drain: keeping the lantern lit slowly burns mana. When it empties, the
-    // lantern gutters out automatically.
-    if(this.lanternOn){
-      this.mana=Math.max(0, this.mana-LANTERN_MANA_DRAIN*dt);
-      if(this.mana<=0){ HERO_LANTERN_ON=false; this.setLantern(false); updateAbilityHUD();
-        showToast('Lantern guttered out (no mana)', {kind:'warn', dur:1400}); }
+    // LANTERN: keeping the lantern lit no longer BURNS mana — it just slows regen
+    // to half, so you can leave it on much longer (it never gutters out from cost).
+    // Regen always runs; the lantern only changes the rate.
+    if(this.mana<this.maxMana){
+      const regenRate = this.lanternOn ? MANA_REGEN*0.5 : MANA_REGEN;
+      this.mana=Math.min(this.maxMana, this.mana+regenRate*dt);
       updateHeroHUD();
     }
-    // mana regen (only when the lantern isn't actively draining it)
-    if(!this.lanternOn && this.mana<this.maxMana){ this.mana=Math.min(this.maxMana, this.mana+MANA_REGEN*dt); updateHeroHUD(); }
     if(this.dead) return;
     // keep the halo glued under the locked enemy (and drop it if the enemy died)
     if(this.lock){
@@ -3552,8 +3728,9 @@ class Hero{
     this._steer(dt, tx, tz);
     const after=Math.hypot(tx-this.root.position.x, tz-this.root.position.z);
     // Advance the waypoint when we're close enough (don't require exact center — body
-    // radius may keep us from landing dead-on a wall-adjacent cell center).
-    if(after<=CELL*0.34){ this._advanceWaypoint(c); return; }
+    // radius may keep us from landing dead-on a wall-adjacent cell center; a PROPPED
+    // waypoint cell widens the radius to touch distance so we never orbit a barrel).
+    if(after<=pathArriveR(140, c[0], c[1], CELL*0.34)){ this._advanceWaypoint(c); return; }
     // Per-waypoint grind guard: if we're not closing on THIS waypoint, skip to the next
     // one (the path is still valid; we just can't sit exactly on this center).
     this._wpStall = (before-after < HERO_MOVE_SPEED*dt*0.3) ? (this._wpStall||0)+dt : 0;
@@ -3738,6 +3915,28 @@ function place(name,cx,cz,rotDeg=0,y=0){
   return inst;
 }
 
+// Measure a placed prop's real footprint and register it as a sub-tile collider.
+// The bbox is taken from the INSTANCE (place() already baked its matrices), so the
+// circle sits on the mesh's true center — pivot offsets and the 90° rotation steps
+// come out in the wash. r = mean of the two half-extents: a fair circle for boxy
+// props (e.g. a 500x250 table -> ~187) without the half-diagonal overreach, clamped
+// to [60,240] so nothing blocks a whole cell again. Degenerate/missing bbox falls
+// back to the placement point with a conservative 150.
+function addPropColliderFromInstance(m, inst, fx, fz){
+  let x=fx, z=fz, r=150;
+  try{
+    const bb=new THREE.Box3().setFromObject(inst);
+    if(isFinite(bb.min.x)&&isFinite(bb.max.x)){
+      const sx=bb.max.x-bb.min.x, sz=bb.max.z-bb.min.z;
+      if(sx>1&&sz>1){
+        x=(bb.min.x+bb.max.x)/2; z=(bb.min.z+bb.max.z)/2;
+        r=Math.max(60, Math.min(240, 0.25*(sx+sz)));
+      }
+    }
+  }catch(e){ console.warn('prop collider bbox failed; using default radius', e); }
+  return addPropCollider(m, x, z, r);
+}
+
 // Place a SOLID wall on a cell edge (always full 600 width -> floor is sealed).
 // Optionally mount a Wall_Candle sconce on the room-facing side, flame pointing inward.
 function placeEdgeWall(r, i, j, side, isDoor, withCandle){
@@ -3799,7 +3998,10 @@ function build(GW, GH, roomMax, density, seed, depth){
   removePortal();       // any open town portal belongs to the old level
 
   const m = generateMaze(GW,GH,roomMax,seed);
-  m.blocked = new Set();          // "i,j" cells occupied by solid props (non-walkable)
+  m.blocked = new Set();          // "i,j" cells containing a solid prop (spawn/target
+                                  // gate + A* crossing cost — NOT a movement wall since v15)
+  m.propColliders = [];           // {x,z,r} sub-tile prop circles — the ACTUAL collision
+  m.propGrid = new Map();         // "i,j" -> [colliders] whose circle bbox overlaps that cell
   currentMaze=m;
   const r = rng(seed ^ 0x9e3779b9);
   // total walkable floor cells (with nothing blocked) — the connectivity yardstick.
@@ -3841,11 +4043,15 @@ function build(GW, GH, roomMax, density, seed, depth){
     }
   }
 
-  // ---- SOLID PROP SCATTER (non-walkable; never severs the maze) ----
-  // Props occupy their whole cell. A cell is a candidate only if it's interior
-  // room floor (not a corridor cell, not entrance/exit). Before committing a prop
-  // we verify the maze stays fully connected with that cell blocked — this is what
-  // guarantees props don't wall off a doorway, corridor, or room region.
+  // ---- SOLID PROP SCATTER (never severs the maze) ----
+  // v15: a prop registers its cell in m.blocked (so spawns/targets avoid it and A*
+  // pays a crossing cost) AND a sub-tile CIRCLE collider at its measured world
+  // position — the circle is what bodies actually collide with. Candidate cells are
+  // interior room floor only (not corridors, not entrance/exit). The connectivity
+  // check below is kept byte-identical: it still guarantees the CLEAN (prop-free)
+  // floor stays fully connected, i.e. there is always a route that never has to
+  // squeeze past a prop — strictly more conservative than the new passability needs,
+  // and it keeps level generation exactly as before.
   const isRoomInterior=(i,j)=>{
     // interior = room cell whose 4 orthogonal neighbors are ALL floor (so it isn't
     // a doorway/corridor mouth). Keeps props off the natural choke points.
@@ -3878,8 +4084,11 @@ function build(GW, GH, roomMax, density, seed, depth){
   for (const [i,j] of propCells){
     if(placed>=want) break;
     if(!tryBlock(i,j)) continue;
-    // small jitter stays well inside the 600-cell so the whole cell is honestly blocked
-    place(pick(r,PROPS), i*CELL+(r()*2-1)*70, j*CELL+(r()*2-1)*70, pick(r,[0,90,180,270]));
+    // jitter unchanged (±70 of a 600 cell) — layout feel identical to v14; the prop
+    // now blocks only its own measured circle, not the cell
+    const wx=i*CELL+(r()*2-1)*70, wz=j*CELL+(r()*2-1)*70;
+    const inst=place(pick(r,PROPS), wx, wz, pick(r,[0,90,180,270]));
+    if(inst) addPropColliderFromInstance(m, inst, wx, wz);   // no mesh -> no invisible collider
     placed++;
   }
 
@@ -3908,12 +4117,20 @@ function build(GW, GH, roomMax, density, seed, depth){
     for(const pb of fruitBowls){ if(!hasFreeNeighbor(pb.cell[0],pb.cell[1])){ strands=true; break; } }
     if(strands){ m.blocked.delete(i+','+j); continue; }
     const wx=i*CELL, wz=j*CELL, rot=pick(r,[0,90,180,270]);
-    place('Table', wx, wz, rot);              // table on the floor
+    const tableInst=place('Table', wx, wz, rot);              // table on the floor
+    // the table gets its real hitbox either way — even if the bowl below fails, the
+    // visible table should never be walk-through
+    if(tableInst) addPropColliderFromInstance(m, tableInst, wx, wz);
     const bowlMesh=place('Fruit_Bowl', wx, wz, rot, TABLE_TOP_Y);   // bowl on the table top
     if(!bowlMesh){ m.blocked.delete(i+','+j); continue; }   // asset missing — skip this bowl
     bowlMesh.userData.fruitBowl=true;
     fruitBowls.push({ cell:[i,j], x:wx, z:wz, y:TABLE_TOP_Y, mesh:bowlMesh, consumed:false });
     bowlsPlaced++;
+  }
+  // one-line sanity readout: measured collider radii should sit well inside a cell
+  if(m.propColliders.length){
+    const rs=m.propColliders.map(c=>Math.round(c.r));
+    console.log('L'+depth+' PROP COLLIDERS:', rs.length, '(r '+Math.min(...rs)+'-'+Math.max(...rs)+')');
   }
 
   // ---- POTIONS (left-click pickups) — scattered on open floor, more on bigger levels.
