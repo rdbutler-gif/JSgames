@@ -1,333 +1,327 @@
-# Dungeon Maze — Handoff (v12)
+# Dungeon Maze — Handoff (v18)
 
 Single-file browser dungeon crawler on **three.js r160**. Click-to-move hero fights through
-**4 procedurally generated levels** to a boss on L4, now with a lantern, a spell system,
-found abilities (lantern + scrolls), a town-portal shop, and gold upgrades. `index.html` is
-~4,180 lines. This doc is the current state of play; it deliberately does **not** recap the
-full history — just what a fresh thread needs to keep building.
+**4 procedurally generated levels** to a boss on L4. `index.html` is ~5,720 lines.
+
+**v18 was a UI/presentation session.** It added typography, hover tooltips, ability-explainer
+modals, potions in the shop, and a real loading bar — and touched **none** of the collision,
+lighting, or generation code (verified by byte-comparing 24 functions against the previous
+build; see "Verification pattern" below). The engine notes in this doc are inherited from v15
+and remain accurate.
+
+**No mandated job this session.** Ask the user. See "Suggested next steps".
+
+---
+
+## Corrections to the v15 doc (it had gone stale)
+
+Read this before trusting any older handoff:
+
+- **Fire Rain is DONE, not stubbed.** Full implementation: ported Godot shader as native GLSL
+  on a flat `RingGeometry`, ground-targeted cast, 45 mana, 10 dmg × 5 ticks over 2.5s, 3×3
+  tile footprint, 6-tile range, own `ShaderMaterial` warm-up in `warmUpProjectiles()`. The v15
+  doc listing it as "the most-requested stub" was out of date.
+- **Title screen + backstory are DONE** (procedural scrolling floorplan backdrop, splash art,
+  instructions, Enter button).
+- **`LANTERN_MANA_DRAIN` is a DEAD CONSTANT.** Declared, never referenced. Real behaviour is
+  `MANA_REGEN*0.5` while lit (halved regen, never drains). **Still present — safe to delete.**
+- **`test_collision.mjs` was not in the v18 working set.** It could not be run or parity-checked
+  this session. Nothing v18 touched affects it, but re-verify parity before trusting it.
 
 ---
 
 ## How to run it
 
-- Everything is in **`index.html`** plus an **`assets/`** folder (character/prop GLBs +
-  animation FBXs, and `assets/potions/*.glb`) and a **`manifest.json`** listing the props.
-- **Must be served over HTTP** — models load by relative URL, so `file://` fails on CORS.
-  Run `python3 -m http.server` from the folder with `index.html` and open the localhost URL.
-- If `manifest.json` can't be fetched, the loading screen now shows a **clear error** instead
-  of hanging (see "Loading is defensive" below). A missing individual prop GLB is logged and
-  skipped, not fatal.
+- **`index.html`** + **`assets/`** (GLBs, FBX anim packs, `assets/potions/*.glb`,
+  `assets/audio/*`) + **`manifest.json`**.
+- **Must be served over HTTP** — `file://` fails on CORS. `python3 -m http.server`.
+- **New in v18:** fonts load from Google Fonts CDN (MedievalSharp + Cinzel). Offline, they fall
+  back to `serif`/`Georgia` and everything still works — `display=swap` prevents invisible text.
+- Missing `manifest.json` → clear on-screen error (replaces the whole loading screen).
+  Missing prop GLB / sound → logged, skipped, non-fatal.
 
 ---
 
 ## Conventions / how to work on this safely
 
-These are the lessons that have actually bitten us. Follow them.
+- **Verify against the code, not memory, and not this doc.** v15's doc was wrong about Fire
+  Rain. Pull the real constant/line before claiming anything. Line numbers here are approximate.
+- **Syntax-check every edit as a REAL ES MODULE:**
+  ```
+  sed -n '/<script type="module">/,/<\/script>/p' index.html | sed '1d;$d' > chk.mjs
+  node --check chk.mjs
+  ```
+  A CJS check bails on top-level `await` first and reports nothing else — false confidence.
+- **Naive brace/paren counting is unreliable** on this file. Parens are imbalanced in the
+  *original* too (string literals). Braces are a useful smoke test; `node --check` is the truth.
+- **Watch `str_replace` on repeated blocks.** Walk/idle/steer/pursue is near-duplicated across
+  enemy classes and the hero. Anchor on a class-unique token, assert exactly 1 match.
+- **Headless-test logic before playtest.** This caught real bugs in every recent session,
+  including two in v18 (see changelog). Extract the function with a regex, mock its deps, run
+  it under `node`. For DOM/layout, drive Playwright and assert on computed values.
+- **`let` is not hoisted-initialized.** A function that *assigns* a module-level `let` throws
+  `ReferenceError` if it runs before the declaration line executes. Bit us in v18 (`gamePaused`).
+  Declare shared flags above all users.
+- **Ship to `/mnt/user-data/outputs/`**, present the file, keep scratch out of outputs.
+- **State assumptions, flag tradeoffs, let the user decide.** CS background; catches
+  hand-waving. No flattery.
 
-- **Verify against the code, not memory.** Pull the real constant / line number before making
-  a claim or an edit. Line numbers in this doc are approximate — search the name.
-- **Syntax-check every edit as a REAL ES MODULE**, not as a plain script. The distinction
-  matters and has hidden a fatal bug before:
-  ```
-  python3 - <<'PY'
-  import re; s=open('index.html').read()
-  m=re.search(r'<script type="module">(.*?)</script>', s, re.S)
-  open('chk.mjs','w').write(re.sub(r'^\s*import .*$','',m.group(1),flags=re.M))
-  PY
-  node --check chk.mjs      # MUST be .mjs — a .js/CJS check bails on top-level await FIRST
-  ```
-  A CommonJS `node --check` hits the top-level-`await` error and reports nothing else, giving
-  false confidence while a brace imbalance sails through. A brace imbalance that dumps class
-  method bodies into class scope shows up as `Unexpected token 'this'` — that means an earlier
-  `}` closed a method/class too early (this exact bug froze the loading screen once; the
-  browser silently fails to parse the module and nothing runs).
-- **Watch `str_replace` on repeated blocks.** Several systems share near-identical
-  walk/idle/steer code across the four enemy classes and the hero's target-handlers
-  (potion / pickup / portal / exit blocks all look alike). A replace that spans a block
-  boundary can silently drop an opener like `if(this.exitTarget){`. After any such edit,
-  re-view the surrounding braces.
-- **Headless-test logic in isolation** (spawn invariants, cooldown/economy math, flee/return
-  geometry, pause state machine). For init-time crashes, a stubbed-three.js+DOM harness that
-  runs the module top-to-bottom catches runtime throws `node --check` can't.
-- **Ship to `/mnt/user-data/outputs/`, present the file, keep scratch out of outputs.**
-- **State assumptions, flag tradeoffs, let the user decide.** They have a CS background and
-  catch hand-waving. No flattery.
+### Verification pattern for "did I touch the danger zones?"
+
+Cheap and worth running after any non-trivial edit:
+
+```python
+import re
+orig=open('previous_index.html').read(); new=open('index.html').read()
+blk=lambda s,n:(re.search(r'\nfunction '+n+r'\([^)]*\)\{.*?\n\}',s,re.S) or [None])
+# compare blk(orig,name) == blk(new,name) for:
+#   propsBlockCircle propSlideStep pathArriveR addPropCollider findPath mobSteer
+#   mobPursue mobWalkable reachableCount lineOfSight isFloorCell isCellFree
+#   initDynLightPool assignFlameLights place generateMaze spawnCreatures
+```
+Note the signatures in code differ from this doc's prose — e.g. `propSlideStep(m, x, z, mx,
+mz, R)`, not `(m,px,pz,...)`. Grep the real signature; a wrong regex reports "not found" and
+looks like a deletion.
 
 ---
 
 ## Performance — READ BEFORE TOUCHING LIGHTS
 
-three.js bakes the **light COUNT into every lit material's shader**, so changing how many
-lights are in the scene forces a scene-wide recompile (multi-second freeze / slow-motion).
-Two standing fixes keep the total light count **fixed (~21) and constant at runtime**:
+three.js bakes the **light COUNT into every lit material's shader**; changing the number of
+lights forces a scene-wide recompile (multi-second freeze). Total count is **fixed (~21)**:
 
-1. **Projectile/impact lights are pooled** — `DYN_LIGHT_POOL_SIZE=6` (~line 2419). Fireballs
-   and ice-bolt impacts borrow from a fixed pool of always-present point lights. If the pool
-   is exhausted mid-barrage the extra bolt renders without a glow — no recompile.
-   `clearProjectiles()` releases handles on teardown. `warmUpProjectiles` (~2545) compiles
-   shader variants per level.
-2. **Flame sconce lights are pooled + capped** — `MAX_FLAME_LIGHTS=10` (~line 781). Every
-   sconce gets its glow **sprite** (that's what reads as torchlit), but only the 10 nearest
-   the camera focus get a real `PointLight`, reassigned ~5×/sec (`assignFlameLights` ~817).
+1. **Projectile/impact lights pooled** — `DYN_LIGHT_POOL_SIZE=6`.
+2. **Flame sconce lights pooled + capped** — `MAX_FLAME_LIGHTS=10`, nearest-to-focus,
+   reassigned ~5×/sec (`assignFlameLights`).
+3. **Icon glows are additive SPRITES** (`makeGlowSprite`), never lights. Any new glowing thing
+   gets a sprite or a pooled light, **never a fresh `PointLight`**.
 
-3. **(v13) Icon lights are GONE** — the lantern/scroll/portal icons now glow via additive
-   **sprites** (`makeGlowSprite`, near `buildLanternIcon`), not PointLights. The scene light
-   count is now **fixed at all times during play** (torch, hero lantern, 10-flame pool,
-   6-dyn pool, per-level exit light — the last two swap within a single frame on rebuild, so
-   the count never changes *between renders*). Collecting a pickup or opening/closing a town
-   portal no longer recompiles shaders. **Keep it that way**: any new glowing thing gets a
-   sprite or a pooled light, never a fresh PointLight.
+Other standing machinery:
+- **Creature render culling** (`_renderCull` + `root.visible`), threshold `3200 + cam→target`.
+  AI runs while hidden; only rendering + ALIVE mixer skipped. DEATH mixer ungated.
+- **Static matrix freeze**: `place()`/`mountCandle` set `matrixAutoUpdate=false` after one
+  `updateMatrix()`. **Moving a placed prop requires calling `.updateMatrix()`.**
+  `addPropColliderFromInstance` relies on the baked matrix being current — it runs immediately
+  after `place()`. **Keep that ordering.**
+- Floors/slabs `castShadow=false` (`NO_CAST`). PixelRatio cap 1.5, PCFShadowMap, torch
+  `shadow.camera.far` 2800.
+- **Collision perf rule:** prop-circle tests are neighbour-limited via `m.propGrid`. Never loop
+  all `m.propColliders` in a per-frame path.
 
-Other standing v13 perf machinery (see the v13 changelog for rationale):
-- **Creature render culling** in the main loop: `_renderCull` + `root.visible` per creature,
-  threshold `3200 + cam→target distance` (adaptive with zoom). AI still runs while hidden;
-  only rendering + the ALIVE-branch mixer are skipped. The DEATH-branch mixer is deliberately
-  ungated so corpses always settle. The Hero's mixer (in `class Hero`) is never gated.
-- **Static matrix freeze**: everything placed via `place()` / `mountCandle` gets
-  `matrixAutoUpdate=false` after one `updateMatrix()`. **If future code moves a placed prop,
-  call `.updateMatrix()` on it or nothing visibly moves.** Potions/pickups/portal/creatures/
-  hero don't go through `place()` and are unaffected.
-- **Floors/slabs `castShadow=false`** (`NO_CAST` set in `place()`); they still receive.
-- Renderer knobs (all commented at the setup block, ~line 255): pixelRatio cap **1.5**
-  (was 2), **PCFShadowMap** (was PCFSoft), torch `shadow.camera.far` **2800** (was 4000),
-  `powerPreference:'high-performance'`.
+**Next big lever if perf demands it:** instance static level geometry (`InstancedMesh`). Safe —
+nothing raycasts level geometry. Not scheduled.
 
 ---
 
-## Coordinate system & asset caveats
+## Coordinate system & collision model (v15 — unchanged through v18)
 
-- World `(x,z)` → grid cell `(round(x/CELL), round(z/CELL))`, `CELL=600`. Minimap flips both
-  axes (`drawMinimap`).
-- Dungeon props get their material **replaced** with a vertex-color MeshStandardMaterial.
-  Potions do **not** (baked texture atlas). Any new textured GLB asset needs the same
-  treatment as `loadPotion`. The new ability/portal icons are **pure three.js primitives**
-  built in code — no assets, no material replacement.
-- `place(name,...)` (~3417) now **returns null and skips** if the prop proto is missing
-  (graceful asset-skip). Callers that use the return value must null-check (the fruit-bowl
-  spawner does).
-
----
-
-## Current gameplay state
-
-### Progression & abilities (NEW this session)
-- **Ability/upgrade state lives at MODULE scope**, not on the Hero instance (which is rebuilt
-  every level/respawn), so it survives descend & death and resets only on a fresh run.
-  See the block near line 2596: `hasLantern`, `learnedSpells` (Set), `selectedSpell`,
-  `upgrades{boots,cloak,wand}`, plus `SPELLS`, `SPELL_META`, `UPGRADE_META`.
-  `resetProgression()` (~2612) clears it all + removes any portal; called from **New Dungeon**
-  and **Play Again**.
-- **Hero starts with NOTHING** — no lantern, no spells. `learnedSpells` empty,
-  `hasLantern=false`, `HERO_LANTERN_ON=false`. `setLantern` refuses to light until found.
-
-### Found abilities — exit-room pickups (NEW)
-- Placed by `placeExitPickups()` (an IIFE ~line 3650 inside `build`): finds the room
-  containing the exit, spreads pickups on free floor cells nearest the exit (never on the
-  exit/entrance cell, spaced ≥2 apart, don't block their cell).
-  - **L1 exit room:** the **Lantern** + the **Fireball scroll**.
-  - **L2 exit room:** the **Town Portal scroll** + the **Fire Rain scroll**.
-- Pickups are **primitive icons** (`buildLanternIcon` ~1000, `buildScrollIcon(tint)` ~1023,
-  color-coded per spell). Left-click one → hero `walkToPickup` → `onCollect()` on arrival
-  (`grantLantern` / `learnSpell`). System mirrors world-potions: `worldPickups[]` (~997),
-  `spawnPickup` / `removePickup` / `clearWorldPickups` / `updateWorldPickups` (bob+spin).
-  Cleared on level teardown. **Flagged for later:** swap the primitives for real low-poly GLBs.
-
-### Spells & the Selected-Spell toggle (NEW)
-- Three spells cycle on the HUD **Selected Spell** button: `fireball → firerain → townportal`.
-  Unlearned spells still appear but render **greyed/locked**; selecting one is allowed (to
-  preview), casting it is blocked with a toast.
-- **Right-click behavior depends on the selected spell** (in the contextmenu/pointerup
-  handler): `fireball` → click an enemy to cast (gated on learned + mana + cooldown);
-  `townportal` → click empty floor to open a portal (costs mana); `firerain` → **AOE not
-  implemented**, currently a no-op stub with a "coming soon" toast. **This is the obvious next
-  feature** — the user plans to animate real spell effects later.
-
-### Cast cooldown — now a REAL controllable value (was animation-driven)
-- `CAST_COOLDOWN=2.2`s base (a `let`), tracked by `hero.castTimer` which ticks every frame
-  independent of the animation. `effectiveCastCooldown()` applies the wand: `CAST_CD_WAND_MULT
-  =0.5` → ~1.1s with the Wand of Haste. **Base is the original slow rate; the wand is the
-  fast rate.** In `_doAction`'s cast branch (~2945): gated on `castTimer<=0`, sets the timer
-  on fire, the "busy" (animation-lock) window is **capped to the cooldown** so a short cooldown
-  actually fires faster (the old busy window silently capped fire rate — don't reintroduce
-  that). The cast clip's `timeScale` scales up when cooldown < clip length so the pose keeps
-  pace.
-
-### Lantern
-- Toggle via the HUD **Lantern** button, the **`L`** key, or `window.toggleLantern()` — all
-  no-op until found. **Drains `LANTERN_MANA_DRAIN=1` mana/sec while lit AND suppresses regen**
-  (so net cost > 1/s). Auto-gutters (turns off) at 0 mana. Note the button is
-  disabled/"Not found" until the L1 pickup.
-
-### Town Portal + Store (NEW)
-- Right-click empty floor with Town Portal selected → `spawnPortal` (primitive spinning
-  portal, ~1107), **costs `TOWN_PORTAL_COST=70` mana**. Only one portal at a time.
-- Left-click the portal → hero `walkToPortal` → on arrival: **portal is removed** (one-use)
-  and `openStore()` runs. `updatePortal` pulses it each frame.
-- **Store** (`openStore`/`closeStore`/`renderStore`/`buyUpgrade` ~1129–1200): sells **Boots**
-  (500g, ×2 walk speed), **Cloak** (600g, ½ damage taken), **Wand** (700g, ½ cast cooldown).
-  Owned/affordable states handled. Effects applied live: boots via `heroMoveSpeed()` /
-  `heroWalkTimeScale()` (~508), cloak in `hero.takeDamage`, wand in `effectiveCastCooldown`.
-- **Opening the store PAUSES the game** via `gamePaused` (~1089): the loop skips all creature
-  and hero updates while true (in-flight fireball FX are currently NOT gated — harmless, but a
-  one-liner if you want a hard freeze). Cleared on close.
-
-### HUD toggles (NEW)
-Three buttons below the HP/MP bars, synced by `updateAbilityHUD()` (~3352):
-- **Selected Spell** — cycles/greys as above.
-- **Cam** — follow-hero on/off. `setCameraFollow` now refreshes the HUD on EVERY path, so a
-  manual right-click pan / orbit / zoom that auto-disengages follow also flips the button to
-  "Off." (`C` key toggles too.)
-- **Lantern** — as above.
-
-### Levels, enemies, loot (largely stable)
-- **4 levels**, `LEVELS[]` (~3820), sizes ramp 16×12 → 40×32; `applyLevelSize` + `genLevel`
-  (`build`) generate. **Descend** advances (new seed from current); **New Dungeon** / **Play
-  Again** restart at L1 fresh (clear gold + inventory + progression). Win = kill L4 boss.
-- Enemies in `creatures[]`, spawned by `spawnCreatures` (~2124), **≥1 per room**, hero start
-  room empty. Skeleton (HP60), Zombie (`ZOMBIE_HP=70`), Sorceress (`SORC_HP=45`, ranged
-  ice-kite with a real mana economy), Boss (`BOSS_HP=220`, telegraphed big attack, L4 exit
-  room). Density `densPerLevel=[0.060,0.076,0.092,0.110]`.
-- **Return-home on respawn:** every enemy records `homeCell` at spawn; when the hero respawns,
-  `deaggroCreature` (~1305) drops aggro and sends them **walking back to spawn**
-  (`mobReturnHome` ~1263) before resuming wander — stops the entrance pile-up from kiting.
-  Sight-aggro is suppressed while `returning` and while the hero is dead, so they actually make
-  it home; being hit still re-aggros them.
-- Gold: `LOOT_SKELETON/ZOMBIE/SORCERESS/BOSS = 10/20/50/100`. Gold now has a **sink** (the
-  store).
-
-### Hero combat constants (~2576–2624)
-`HERO_MAX_HP=100`; move base × `HERO_SPEED_MULT=1.7` (×`BOOTS_SPEED_MULT=2` with boots);
-`CAST_RANGE=CELL*3.5` (a `let`, upgradeable); `SPELL_DMG=25`, `MELEE_DMG=18`,
-`MELEE_RANGE=CELL*0.6`; `MANA_MAX=100`, `MANA_COST=35`, `MANA_REGEN=3`/s.
-
-### Potions & inventory (stable)
-Four types in `POTION_TYPES` (~664, +25/+60 HP, +30/+70 MP), baked-atlas GLBs via `loadPotion`.
-`worldPotions[]` bob/spin, left-click to walk-and-grab. Inventory = left panel, `usePotion`
-consumes/heals with clamp+toast, `renderInventory` redraws. No cap, flat restore (intentional).
+- World `(x,z)` → cell `(round(x/CELL), round(z/CELL))`, **`CELL=600`**. Minimap flips both axes.
+- **Two layers.** Floor/walls cell-based; props are circles:
+  - **`isFloorCell(m,i,j)`** — movement/pathing floor gate.
+  - **`m.blocked`** — still marks propped cells but is **NOT a movement or A\* wall**. It is the
+    placement/target gate and an A* cost.
+  - **`isCellFree`** = floor AND not blocked. **Placement/targeting only** — spawns, wander
+    targets, portal drops, cast spots, `nearestFloor` remaps, approach cells, pickup scatter.
+    **Do not reintroduce into movement or A\* passability.**
+  - **`m.propColliders`** — `{x,z,r}` per prop. Radii **measured** via
+    `addPropColliderFromInstance`: Box3 of the placed instance, centred on bbox centre,
+    `r = clamp(0.25*(sx+sz), 60, 240)`, fallback `(fx,fz,150)`.
+  - **`m.propGrid`** — `Map "i,j"→[colliders]`, registered under every cell the bbox overlaps.
+- **Movement**: floor via `isFloorCell` (4 corners + centre) + **`propsBlockCircle`**. Bodies
+  may legally stand inside a propped cell.
+- **`propSlideStep(m, x, z, mx, mz, R)`** — tangential full-speed slide when a **prop** blocks;
+  returns `null` for a **wall** so the classic axis slide applies. Fixes the dead-ahead grind
+  that axis-slides alone can't (heading locks on target, perpendicular component → 0). Wired
+  into `mobSteer`, `Boss._steer`, `Hero._steer`.
+- **A\*** (`findPath`): floor-only `inb`; blocked cells cost **`PROP_CROSS_COST=2.0`** extra.
+  Heuristic stays admissible (costs only increase).
+- **`pathArriveR(bodyR,ci,cj,base)`** — inflated arrival radius in propped cells so followers
+  don't orbit an unreachable node centre. Used by `mobPursue`, `mobReturnHome`, `Boss._pursue`
+  (base 40), `Hero._followPath` (base `CELL*0.34`).
+- **Generation untouched since v14.** `tryBlock` + `reachableCount` byte-identical; seeds and
+  layouts reproduce. Prop jitter ±70, suppressed toward adjacent walls.
+- **v14 stall detection** (`_stall`/`_pathCommit`) retained as a safety net. It should
+  essentially never fire — **if playtest shows it firing, that's a bug signal, not a tuning task.**
+- Each level logs `L<depth> PROP COLLIDERS: <n> (r <min>-<max>)`; typical ~60–190.
 
 ---
 
-## Key function map (search names; line numbers approximate)
+## LOADING SEQUENCE (rewritten in v18 — read before touching startup)
+
+**The ordering is the important part and it is not obvious.** The module has **seven
+sequential top-level `await`s** (manifest → props → skeleton → hero → sorceress → boss →
+zombie → potions), then `genLevel()` builds the first level, and **only then** does the
+`initTitle()` IIFE run.
+
+Two facts that together dictate where the bar can live:
+
+1. **`#title` is z-index 60 and opaque; `#loading` is z-index 20.** The title screen's
+   *markup* is in the HTML from the first paint, so it **covers `#loading` for the entire
+   load**. A progress bar on `#loading` renders correctly and is never visible. (This was
+   shipped wrong once — the bar was built on `#loading` on the theory that the title "doesn't
+   exist yet". The title IIFE hasn't *run*, but the div is already there and painted.)
+2. **The browser DOES paint between top-level `await`s.** Verified with a Playwright probe
+   sampling rendered width across awaits: intermediate values appear. So a bar updated from
+   the load pipeline genuinely animates rather than snapping to 100% at the end.
+
+Therefore the bar lives on the **title screen** (`#tload` / `#tlfill` / `#tltext`), in the slot
+the old "Sound begins when you enter" line occupied. `#loading` is retained **only** as the
+surface the manifest-failure error writes to.
+
+- **`#enterbtn` ships `disabled`** and is enabled by `finishLoading()`. Without this the
+  player can click Enter into a level that does not exist yet. The `initTitle()` keydown
+  handler (Enter/Space → `enter()`) is bound *after* `finishLoading()` runs, so it cannot
+  fire early — verified by line order, but keep that ordering in mind if startup is rearranged.
+- **The manifest-failure path hides `#title` and raises `#loading` to z-index 100.** Otherwise
+  the error is painted underneath the opaque title screen and the player sees a frozen bar with
+  no explanation — the exact silent hang that block exists to prevent.
+
+Machinery:
+- **`LOAD_STAGES`** — `[key, weight]`, **weighted by real cost** (hero pack 22, props 14,
+  potions 6...). Equal weighting made the bar race then crawl.
+- **`_loadDone` is seeded with the `manifest` weight**, because that fetch completes *above*
+  the tracker's definition and no `beginLoadStage()` ever banks it. Without the seed the bar
+  tops out at ~98.3%.
+- **`beginLoadStage(key, txt)`** — banks the previous stage's full weight (bar can never go
+  backwards), sets the caption, resets intra-stage progress. Replaced the old `setLoadStage`.
+- **`setLoadProgress(frac)`** — 0..1 *within* the current stage; clamped.
+- **`finishLoading()`** — fills to 100%, sets "Ready", enables + focuses Enter, then **two
+  nested rAFs** before fading `#tload` and hiding `#loading`. The double rAF matters: on a
+  single frame the width and opacity transitions start together and the bar visibly never
+  reaches the end.
+- **Adding a load stage:** add `[key, weight]` to `LOAD_STAGES` **and** call
+  `beginLoadStage(key, caption)` at the boundary. A key not in the table sets index −1 and
+  silently freezes the bar. Cross-check:
+  `grep -o "beginLoadStage('\w*" index.html` against the table.
+
+---
+
+## UI LAYER (v18)
+
+### Typography
+`--font-display` (MedievalSharp) / `--font-body` (Cinzel) CSS vars in `:root`, both with serif
+fallbacks. Display → titles, banners, key labels, buttons, store/panel headers, section heads.
+Body → instructions, prose, descriptions. **HUD, toasts and tooltips stay system sans on
+purpose** — they update constantly during play and readability beats theme. Note both faces
+render smaller than the old monospace at a given px; sizes were nudged up where swapped.
+
+### Hover tooltips — `hoverTipFor()`
+One `#hovertip` element, text set at runtime. Covers **11 targets**: red exit ("Descend"),
+town portal, lantern, 3 spell scrolls, 4 potions, fruit bowl.
+- **Hit priority mirrors the left-click handler exactly** (portal → exit → pickup → potion →
+  bowl). If they diverge, the tooltip advertises one action while the click does another.
+  **Keep them in sync.**
+- Labels derive from `POTION_TYPES` and the `label` that `spawnPickup` already stores; only
+  `PICKUP_TIP_GLYPH` is new, with a `✨` fallback. Adding a scroll needs no tooltip edit.
+- Enemies deliberately excluded (they have healthbars + target halo).
+
+### Learn modal — `LEARN_INFO` / `openLearn()` / `closeLearn()`
+Fires on spell-scroll and lantern pickup, pauses via `gamePaused`. Close: Continue button,
+Enter, Space, Escape. **No click-backdrop-to-close** (unlike the store) — it appears unprompted
+the instant you step on a pickup, and a stray click aimed at the dungeon would dismiss it unread.
+- **Each entry is a FUNCTION, not an object — this is load-bearing.** The table sits ~1,900
+  lines above the constants it interpolates (`MANA_COST`, `FIRERAIN_COST`, ...). An eager
+  object literal throws `ReferenceError: Cannot access before initialization`. Lazy evaluation
+  defers the read until the modal actually opens.
+- Numbers are interpolated from real constants so retuning a spell can't leave the tutorial
+  lying.
+
+### Store — potions added
+`STORE_POTIONS` (price only) + `STORE_POTION_ORDER`; `buyPotion()` mirrors `buyUpgrade()` but
+is **repeatable** — no "owned" branch, stacks into the same `inventory` the world pickups feed,
+so the left panel and `usePotion()` needed no changes. Small 100g / Large 200g.
+`renderStore()` now emits two `.store-sect` sections (Upgrades / Potions); potion rows show a
+**"×N held"** badge instead of "Owned". Effect text pulled from `POTION_TYPES` at render time.
+`#storeitems` got `max-height:62vh; overflow-y:auto` (7 rows now).
+
+### `gamePaused`
+**Moved to ~line 1683, above all four users** (`openLearn`, `closeLearn`, `openStore`,
+`closeStore`). It previously sat *below* the store functions and worked only because the store
+opens long after init. Keep it above.
+
+---
+
+## AUDIO (v14 model — unchanged)
+
+- **`SFX`** IIFE: decode-once buffers, every sound an ARRAY of variants, no-immediate-repeat
+  picker, `pitchJitter`, silent-safe on missing files. `MANIFEST` maps name → filenames in
+  `assets/audio/` (spaces/capitals; URLs `encodeURIComponent`'d).
+- **Per-enemy map:** each class sets `this.sfxName`; `creatureSound(c,event)` plays
+  `sfxName+event`. **Adding an enemy = set `sfxName` + drop files named `<name><Event>`; zero
+  new wiring.** This is the seam the class-abstraction work should mirror.
+- **`BGM`** IIFE: streaming `<audio>` loop per depth, `volume=0.35`, toggle `#bgmtoggle`,
+  `BGM.setLevel(depth)` folded into `genLevel()`. Unlocks on first pointerdown.
+- **Cross-check sound filenames against disk** whenever sounds change.
+
+---
+
+## Key function map (search names; line numbers ~v18)
 
 | System | Function | ~Line |
 |---|---|---|
-| Toast messages | `showToast` | 244 |
-| Potion load (keeps atlas) | `loadPotion` | 671 |
-| Maze gen | `generateMaze` | 700 |
-| Flame light assignment | `assignFlameLights` | 817 |
-| Use a potion | `usePotion` | 950 |
-| Potion world spawn | `spawnWorldPotion` | 965 |
-| **Pickup icons** | `buildLanternIcon` / `buildScrollIcon` | 1000 / 1023 |
-| **Pickup spawn/anim** | `spawnPickup` / `updateWorldPickups` | 1048 / 1064 |
-| **Grant ability** | `grantLantern` / `learnSpell` | 1072 / 1077 |
-| **Portal** | `spawnPortal` / `removePortal` / `updatePortal` | 1107 / 1115 / 1119 |
-| **Store** | `openStore` / `renderStore` / `buyUpgrade` | 1137 / 1144 / 1129 |
-| Sorceress flee/kite | `mobFlee` | 1207 |
-| Enemy pursuit | `mobPursue` | 1222 |
-| **Return-home on respawn** | `mobReturnHome` | 1263 |
-| Drop aggro / send home | `deaggroCreature` | 1305 |
-| Enemy spawning (per-room) | `spawnCreatures` | 2124 |
-| Projectile warm-up | `warmUpProjectiles` | 2545 |
-| **Cast cooldown (wand)** | `effectiveCastCooldown` | 2588 |
-| **Reset run progression** | `resetProgression` | 2612 |
-| Hero cast/melee dispatch | `_doAction` (in Hero) | ~2940 |
-| **Hero walk-to-pickup / portal** | `walkToPickup` / `walkToPortal` | 2801 / 2815 |
-| Hero (re)spawn + de-aggro all | `spawnHero` | 3289 |
-| Inventory panel render | `renderInventory` | 3308 |
-| **HUD toggles sync** | `updateAbilityHUD` | 3352 |
-| Place a prop (null-safe) | `place` | 3417 |
-| Level build (spawns everything) | `build` | 3469 |
-| **Exit-room ability pickups** | `placeExitPickups` (IIFE in build) | 3650 |
-| Minimap static / blip | `drawMinimap` / `renderMinimap` | 3766 / 3792 |
-| Level list / sizing | `LEVELS` / `applyLevelSize` / `genLevel` | 3820 / 3829 / 3830 |
-| Camera follow | `setCameraFollow` | 3900 |
-| Raycast pickers | `pickPotion` / `pickPickup` / `pickPortal` | 3961 / 4006 / 4025 |
+| **Load stage table (weighted)** | `LOAD_STAGES` | ~623 |
+| **Advance load stage** | `beginLoadStage` | ~655 |
+| **Finish + fade loading screen** | `finishLoading` | ~5118 |
+| Floor gate (movement/pathing) | `isFloorCell` | ~1366 |
+| Placement/target gate | `isCellFree` | ~1376 |
+| Body-circle vs props | `propsBlockCircle` | ~1408 |
+| Tangential prop slide | `propSlideStep` | ~1429 |
+| Prop-aware arrival radius | `pathArriveR` | ~1454 |
+| **Global pause flag (declare high!)** | `gamePaused` | ~1695 |
+| **Ability explainer table (lazy!)** | `LEARN_INFO` | ~1706 |
+| Open/close explainer | `openLearn` / `closeLearn` | ~1758 |
+| **Buy consumable potion** | `buyPotion` | ~1846 |
+| Store render (2 sections) | `renderStore` | ~1863 |
+| Mob steer / pursue / return home | `mobSteer` / `mobPursue` / `mobReturnHome` | ~1936 / 1976 / 2036 |
+| Hero steer (+prop slide) | `Hero._steer` | ~2729 |
+| A* (floor-only + cross cost) | `findPath` | ~3100 |
+| Fire Rain shader / spawn | `FIRERAIN_VERT` / `spawnFireRain` | ~3382 / 3467 |
+| **Store potion prices** | `STORE_POTIONS` | ~3651 |
+| Measure + register collider | `addPropColliderFromInstance` | ~4533 |
+| Level build | `build` | ~4588 |
+| genLevel (+BGM) | `genLevel` | ~5045 |
+| **Tooltip glyphs / resolver** | `PICKUP_TIP_GLYPH` / `hoverTipFor` | ~5615 / 5623 |
 
 ---
 
-## Loading is defensive (don't undo it)
+## Session changelog (v15 → v18)
 
-`manifest.json` fetch is wrapped: failure shows an on-screen "serve over HTTP" message and
-stops with an explanation instead of a silent freeze. `loadAsset` resolves-on-failure (skips
-a missing prop) rather than rejecting the whole `Promise.all`. `place()` null-checks the proto.
-Keep this behavior — the old hard-fail bricked the loading screen with no clue why.
+*(Fire Rain and the title screen landed between v15's doc and this one; they are folded in here
+as pre-existing rather than claimed as v18 work.)*
 
----
-
-## Suggested next steps (open threads)
-
-- **Fire Rain (AOE)** — the one selectable spell with no effect yet. Right-click currently
-  stubs it. Needs a target-on-ground cast + area damage + effect. User will supply/animate a
-  real spell visual; wire the mechanic to accept a swapped-in mesh/particle later.
-- **Real low-poly meshes** for the lantern, the four scrolls, and the portal (all primitives
-  now). Pickup/portal code already isolates the `build*Icon` functions for a clean swap.
-- **"itch.io-worthy" polish pass** (user's stated bar). Likely items: pickup/portal sound +
-  particle, store UX (currently opens on portal-arrival — consider a visible "shop" affordance
-  and maybe letting the portal persist as a re-usable shop vs. one-use), spell VFX, a title/menu
-  screen, mobile/touch input, and a balance pass on the new economy (gold income vs. 500/600/700
-  upgrade costs; lantern mana tax vs. casting; wand fire-rate feel).
-- **Balance playtest** — L4 is dense casters + boss; verify the hero's speed, the potion +
-  gold economy, and whether the paused-store / one-use portal loop feels right.
-
----
-
-## Session changelog (v11 → v12)
-
-- Return-home-on-respawn for all enemies (v11's work, retained).
-- Hero starts with no lantern / no spells; both found as **exit-room pickups** (L1 lantern +
-  fireball, L2 town portal + fire rain) rendered as **primitive 3D icons**.
-- **Spell system**: 3-way Selected-Spell HUD toggle with greyed unlearned spells; right-click
-  dispatches per selected spell.
-- **Cast cooldown decoupled from animation** into a real value (`CAST_COOLDOWN`), base = slow
-  original rate, **Wand of Haste** halves it.
-- **HUD toggles**: Selected Spell, Cam-on-hero (syncs to "Off" on manual-pan override), Lantern.
-- **Lantern** drains 1 mana/sec (down from 2) + suppresses regen, auto-gutters at 0.
-- **Town Portal**: costs 70 mana; hero walks to it before the store opens; portal is one-use
-  (removed after); **store open pauses the game**.
-- **Store** with Boots (×2 speed) / Cloak (½ damage) / Wand (½ cooldown), applied live; gold
-  finally has a sink.
-- **Defensive loading**: visible error on manifest failure, skip-on-missing GLBs, null-safe
-  `place()`.
-- Fixed a fatal brace imbalance (dropped `if(this.exitTarget){`) that had frozen the loading
-  screen; established the ESM `node --check` discipline that catches it.
+**v18 (this session) — all UI; zero engine changes:**
+- **Transparent title art.** Luminance-keyed alpha on `titleSplash.png` (soft ramp so ember
+  glow feathers), verified against light and coloured backgrounds — no halo.
+- **Typography.** MedievalSharp/Cinzel via CSS vars; key-label column widened 104→132px with
+  `nowrap` (MedievalSharp is wider than the old monospace and "Left-click" wrapped).
+- **Hover tooltips** generalized from fruit-bowl-only to 11 targets, click-priority mirrored.
+- **Learn modals** for 3 spells + lantern, pausing the game; lazy-evaluated to dodge the TDZ.
+- **`gamePaused` moved above its users** (latent `ReferenceError` — assignment-before-declaration
+  verified to throw).
+- **Store potions**: small 100g / large 200g, stackable, "×N held" badges, sectioned layout.
+- **Loading bar** on the **title screen** (`#tload`), in the slot the "Sound begins when you
+  enter" line held. Weighted stages, monotonic, exactly 100%, then fades as Enter is enabled
+  and focused. `#enterbtn` now ships `disabled` so nobody can click into an unbuilt level.
+  **Manifest-failure path now hides `#title` and raises `#loading`'s z-index** — otherwise that
+  error renders underneath the opaque title screen and is invisible.
+- **Removed dead `setLoadStage`** helper (superseded). `LANTERN_MANA_DRAIN` still dead —
+  left alone as it's outside this session's scope.
+- Bugs caught before playtest: bar topping out at 98.3% (unbanked manifest weight);
+  `finishLoading` needing a double rAF or the bar never visibly completes; **bar initially
+  built on `#loading`, where the opaque title screen covers it — invisible in practice, caught
+  only when the user reported not seeing it.** Lesson: verify a UI element is actually
+  *on screen*, not merely present and correctly styled.
 
 ---
 
-## Session changelog (v12 → v13) — performance pass (L3/L4 lag)
+## Suggested next steps (user decides; do not start unprompted)
 
-Diagnosis first (verified in code, not guessed): the L3/L4 lag was **not** mainly the flame
-lights (already pooled) — it was (a) the torch's 6-face cube **shadow pass** redrawing every
-floor tile and every skinned creature each frame, (b) **all creatures** (`frustumCulled=false`)
-rendering + skinning + mixer-updating every frame regardless of distance (~77 on L4), and
-(c) the pickup/portal **PointLights changing the scene light count** at runtime → scene-wide
-shader recompile (the multi-second freeze class), worst on L3/L4 where the material set is
-biggest.
-
-Changes, in impact order:
-1. **Creature render culling** (main loop + a one-condition gate on the alive-branch
-   `mixer.update` in all 4 creature classes). Hidden creatures cost ~nothing on GPU (main
-   pass AND all 6 shadow faces) and skip bone animation on CPU. Threshold scales with camera
-   zoom so a pulled-back camera still shows the whole faintly-moonlit level — no visible
-   pop-in. AI/aggro/pathing unaffected.
-2. **Fixed light count, for real**: lantern/scroll/portal icon PointLights → additive glow
-   sprites. No more recompile hitch on pickup collect or portal open/close. (Side effect:
-   the portal's click target is a bit more generous — the sprite raycasts. Arguably better.)
-3. **Shadow diet**: floors/slabs no longer cast (nothing is under a floor); torch shadow far
-   4000→2800; PCFSoft→PCF (point-light PCFSoft is one of three.js's priciest fragment paths;
-   in a dark flickering dungeon the difference is nearly invisible — one-line revert if the
-   look bothers you).
-4. **Static matrix freeze** for all `place()`/`mountCandle` output — stops three.js
-   recomposing thousands of static local matrices per frame. See the caveat above.
-5. **pixelRatio 2→1.5** and `powerPreference:'high-performance'`. The ratio cap is the one
-   change with a visible cost (slight softness on 2x-DPI displays); it's a commented one-line
-   knob at the renderer setup.
-
-**Not done, next big lever if still needed**: merge/instance the static level geometry.
-Floors use 5 protos and walls ~3; an `InstancedMesh` per (geometry,material) pair would
-collapse a few thousand draw calls into ~a dozen. Safe because *nothing raycasts the level
-geometry* (click-to-move uses a math ground plane; pickers target specific objects) — but
-it interacts with the shared-prototype-geometry disposal rule above, so do it in its own
-session with before/after draw-call counts (`renderer.info.render.calls`).
-
-Cheap remaining knobs if a low-end machine still struggles: `MAX_FLAME_LIGHTS` 10→8 and
-`DYN_LIGHT_POOL_SIZE` 6→4 (every lit fragment loops over every light), `antialias:false`.
+- **Warrior class / class abstraction** — data-driven hero kit (resource, abilities, ranges,
+  anims, upgrades); mirror the `sfxName` pattern. **Biggest structural item.**
+- **Real low-poly meshes** for lantern / scrolls / portal (still primitives).
+- **Delete `LANTERN_MANA_DRAIN`** (dead constant, contradicts actual behaviour).
+- **Restore/parity-check `test_collision.mjs`** — not present in the v18 working set.
+- **itch.io polish:** spell VFX, ambient/UI sound, mobile/touch input, economy balance
+  (note: 10–100g per kill vs 100g potions / 500g+ upgrades — verify the curve in playtest).
+- **Per-track BGM volume** if some loops are hotter than others.
+- (Perf, only if needed: instance static level geometry.)

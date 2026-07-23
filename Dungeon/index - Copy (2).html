@@ -51,10 +51,6 @@
     padding: 6px 10px; border-radius: 6px; }
   #loading { position: absolute; inset: 0; display: flex; align-items: center;
     justify-content: center; z-index: 20; background: #0a0a0e; font-size: 13px; color: #9a8a78; }
-  /* NOTE: #loading is never actually seen. #title (z-index 60) is opaque and covers it
-     for the entire load, and the title screen carries the progress bar (see #tload).
-     #loading is kept only as the surface the manifest-failure error writes to, which
-     IS visible because that path throws before the title screen ever initialises. */
   .mini { position:absolute; top:14px; right:14px; z-index:10; border:1px solid #3a2f28;
     border-radius:8px; background:rgba(16,14,20,.85); }
   #herohud { position:absolute; bottom:12px; right:14px; z-index:10; font-size:10.5px;
@@ -172,26 +168,6 @@
   #enterbtn:focus-visible { outline:2px solid #ffd9a0; outline-offset:3px; }
   #title .foot { margin-top:20px; font-family:var(--font-body); font-size:11px;
     color:#5a4a3a; letter-spacing:.6px; }
-  /* Loading bar on the TITLE screen, occupying the slot the old "Sound begins when you
-     enter" line used to hold. It has to live here, not on #loading: #title is z-index 60
-     and opaque, so it covers #loading (z-index 20) for the whole load — a bar down there
-     is invisible. Sized to roughly match the Enter button so the two read as a pair. */
-  #tload { margin-top:18px; }
-  .tlbar { width:222px; height:8px; margin:0 auto; border-radius:5px;
-    background:#1c1620; border:1px solid #4a3a30; overflow:hidden;
-    box-shadow:inset 0 1px 3px rgba(0,0,0,.6); }
-  #tlfill { height:100%; width:0%; border-radius:4px;
-    background:linear-gradient(90deg,#8a4a12,#e8933a,#f4c070);
-    box-shadow:0 0 10px rgba(232,147,58,.55);
-    transition:width .28s cubic-bezier(.4,.9,.3,1); }
-  #tltext { margin-top:9px; font-size:10.5px; color:#6a5a48; letter-spacing:.5px;
-    min-height:1.2em; }
-  /* Fades out once loading finishes; the Enter button becomes the focus. */
-  #tload.done { opacity:0; transition:opacity .4s ease; pointer-events:none; }
-  /* Enter is disabled until the level exists — clicking into an unbuilt dungeon
-     would drop the player into a black void. */
-  #enterbtn:disabled { background:#5a4832; color:#8a7a63; cursor:not-allowed;
-    box-shadow:none; }
   @media (prefers-reduced-motion: reduce){
     #title.hide { transition:none; }
   }
@@ -241,15 +217,7 @@
   .store-gold { margin-left:auto; color:#f2c14e; font-weight:700; font-size:14px; }
   .store-x { background:none; border:none; color:#9a8a78; font-size:24px; line-height:1; cursor:pointer; padding:0 2px; }
   .store-x:hover { color:#e0c090; }
-  #storeitems { padding:10px 14px; display:flex; flex-direction:column; gap:9px;
-    max-height:62vh; overflow-y:auto; }
-  /* Section headers separating one-time Upgrades from repeatable Potions. */
-  .store-sect { font-family:var(--font-display); color:#8a7a68; font-size:13px;
-    letter-spacing:1.5px; text-transform:uppercase; margin:4px 2px 0; }
-  .store-sect:first-child { margin-top:0; }
-  /* "x2 held" badge on a potion row — stackables can't be "Owned", so show the count. */
-  .si-have { font-family:system-ui,sans-serif; font-size:10.5px; font-weight:600;
-    color:#8a7d6a; letter-spacing:.3px; }
+  #storeitems { padding:10px 14px; display:flex; flex-direction:column; gap:9px; }
   .store-item { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:10px;
     background:#211c16; border:1px solid #352c20; }
   .store-item.owned { opacity:.6; }
@@ -261,43 +229,6 @@
   .si-buy:hover:not(:disabled) { background:#4a3a18; border-color:#8a6a2a; }
   .si-buy:disabled { opacity:.5; cursor:not-allowed; }
   .store-foot { padding:10px 18px 14px; color:#7a6c58; font-size:11px; text-align:center; }
-  /* --- Learn modal (spell / lantern acquired) --- */
-  /* Mirrors the store modal's shell so acquiring an ability feels like part of the
-     same UI family. z-index sits above the store (60) since a pickup can never
-     happen while shopping, but ordering above it is the safe default. */
-  #learn { position:fixed; inset:0; z-index:62; display:none; align-items:center;
-    justify-content:center; background:rgba(6,4,8,.78); backdrop-filter:blur(3px); }
-  #learn.show { display:flex; }
-  .learn-inner { width:min(470px,92vw); background:#1a1510; border:1px solid #5a4a32;
-    border-radius:14px; box-shadow:0 12px 48px rgba(0,0,0,.65); overflow:hidden;
-    max-height:94vh; display:flex; flex-direction:column; }
-  /* On a very short window the body scrolls rather than pushing the Continue button
-     off-screen (head and foot stay pinned via flex:0). Verified fine down to 480px
-     tall without this; it's insurance for smaller/odd window sizes. */
-  #learnBody { overflow-y:auto; }
-  .learn-head, .learn-foot { flex:0 0 auto; }
-  .learn-head { display:flex; align-items:center; gap:14px; padding:16px 20px;
-    background:#241d14; border-bottom:1px solid #3a3020; }
-  .learn-glyph { font-size:34px; line-height:1; }
-  .learn-kicker { font-family:var(--font-body); color:#8a7a68; font-size:10px;
-    letter-spacing:2px; text-transform:uppercase; }
-  .learn-title { font-family:var(--font-display); color:#f0d8a8; font-size:24px;
-    font-weight:400; letter-spacing:.5px; margin-top:1px; }
-  #learnBody { padding:16px 20px 4px; font-family:var(--font-body); color:#c8bca8;
-    font-size:13px; line-height:1.65; }
-  #learnBody p { margin:0 0 12px; }
-  #learnBody .how { display:flex; gap:11px; align-items:baseline; margin:0 0 8px; }
-  #learnBody .how b { font-family:var(--font-display); color:#e0a060; font-weight:400;
-    font-size:14.5px; flex:0 0 128px; text-align:right; white-space:nowrap; }
-  #learnBody .cost { margin-top:14px; padding:9px 12px; border-radius:8px;
-    background:#211c16; border:1px solid #352c20; color:#9a8c74; font-size:12px; }
-  #learnBody .cost b { color:#f2c14e; font-weight:700; }
-  .learn-foot { padding:14px 20px 18px; text-align:center; }
-  #learnClose { width:auto; padding:11px 34px; font-family:var(--font-display);
-    font-size:16px; font-weight:400; letter-spacing:1px; background:#e8933a;
-    color:#17120c; border-radius:8px; }
-  #learnClose:hover { background:#f4a850; }
-  #learnClose:focus-visible { outline:2px solid #ffd9a0; outline-offset:3px; }
 </style>
 </head>
 <body>
@@ -352,21 +283,6 @@
     <div class="store-foot">Gold is earned from kills. Purchases persist for the run.</div>
   </div>
 </div>
-<div id="learn">
-  <div class="learn-inner">
-    <div class="learn-head">
-      <span class="learn-glyph" id="learnGlyph">&#128293;</span>
-      <div>
-        <div class="learn-kicker" id="learnKicker">New Spell Learned</div>
-        <div class="learn-title" id="learnTitle">Fireball</div>
-      </div>
-    </div>
-    <div id="learnBody"></div>
-    <div class="learn-foot">
-      <button id="learnClose">Continue</button>
-    </div>
-  </div>
-</div>
 <div id="deathbanner"><div class="dbinner"><div class="dbtitle">YOU DIED</div><button id="respawn">Respawn at entrance</button></div></div>
 <div id="winbanner"><div class="dbinner"><div class="wbtitle">VICTORY</div><div class="wbsub" id="winsub">The boss is slain.</div><button id="playagain">Play Again</button></div></div>
 <div id="toast"></div>
@@ -391,11 +307,8 @@
       <div><b>Scroll</b><span>Zoom in and out</span></div>
       <div><b>Red exit</b><span>Click it to descend to the next level</span></div>
     </div>
-    <button id="enterbtn" disabled>Enter Dungeon</button>
-    <div class="foot" id="tload">
-      <div class="tlbar"><div id="tlfill"></div></div>
-      <div id="tltext">Reading the manifest&hellip;</div>
-    </div>
+    <button id="enterbtn">Enter Dungeon</button>
+    <div class="foot">Sound begins when you enter</div>
   </div>
 </div>
 <div id="hovertip" style="position:fixed;pointer-events:none;z-index:50;display:none;padding:5px 9px;border-radius:6px;background:rgba(20,16,10,0.92);border:1px solid #8a6a2a;color:#ffe1a0;font:600 13px system-ui,sans-serif;white-space:nowrap;transform:translate(-50%,-140%)"></div>
@@ -577,12 +490,6 @@ try {
   manifest = await resp.json();
 } catch(err){
   console.error('Failed to load manifest.json:', err);
-  // The title screen (z-index 60, opaque) sits OVER #loading, so this error would be
-  // invisible behind it. Hide the title outright — there is no game to enter, and a
-  // frozen progress bar with no explanation is exactly the silent hang this block
-  // exists to prevent.
-  const _t=document.getElementById('title'); if(_t) _t.style.display='none';
-  loadingEl.style.zIndex='100';
   loadingEl.innerHTML = '<div style="text-align:center;max-width:520px;padding:20px;line-height:1.5">'+
     '<b>Could not load <code>manifest.json</code>.</b><br><br>'+
     'This game must be served over <b>HTTP</b> (not opened as a <code>file://</code> path), '+
@@ -611,65 +518,19 @@ function loadAsset(name){
   });
 }
 let loaded=0;
-// ---- LOAD PROGRESS ----------------------------------------------------------
-// Drives the bar on the loading screen. Stages are WEIGHTED by rough real cost, not
-// counted equally: the character packs (4-6 Mixamo FBXs each) dominate the wall clock
-// while the prop GLBs are small, so an equal-weight bar would race to 40% and then
-// crawl. Weights only need to be proportionally sane — they're normalised below.
-//
-// beginLoadStage(key,txt) replaces the old setLoadStage(txt): it sets the caption AND
-// advances the bar. Called at each stage boundary; the boundaries are the same places
-// setLoadStage used to be called, so the player still gets a running commentary.
-const LOAD_STAGES=[
-  ['manifest', 2],   // fetch manifest.json
-  ['props',   14],   // ~34 small prop GLBs
-  ['skelly',  16],   // 4 FBX clips + rig
-  ['hero',    22],   // 6 FBX clips (largest pack)
-  ['sorc',    16],   // 5 FBX clips
-  ['boss',    16],   // 5 FBX clips
-  ['zombie',  16],   // 4 FBX clips
-  ['potions',  6],   // 4 small GLBs
-  ['build',    8],   // first genLevel() — maze + meshes + shader warm-up
-];
-const _LOAD_TOTAL=LOAD_STAGES.reduce((a,[,w])=>a+w,0);
-// Seeded with the 'manifest' weight: that fetch completes ABOVE this point (it has to —
-// NAMES comes from it), so no beginLoadStage() call ever banks it. Without this seed the
-// bar tops out at total-2 / total ≈ 98.3% instead of 100%. Verified by the progression
-// harness, which asserts the final value is exactly 100.
-let _loadDone=LOAD_STAGES[0][1];   // 'manifest' already finished
-let _loadStageIdx=-1;              // index of the stage currently running
-// Bar elements live on the TITLE screen (#tlfill/#tltext), not the loading screen:
-// #title is z-index 60 and opaque, so it sits ON TOP of #loading (z-index 20) for the
-// entire load. A bar on #loading renders correctly but is never visible.
-const _ldFill=document.getElementById('tlfill');
-const _ldText=document.getElementById('tltext');
-// frac = 0..1 progress WITHIN the current stage (props/characters report real fractions;
-// stages that can't self-report just jump 0 -> 1 at their boundary).
-function setLoadProgress(frac){
-  const w = _loadStageIdx>=0 ? LOAD_STAGES[_loadStageIdx][1] : 0;
-  const pct = Math.min(100, ((_loadDone + w*Math.max(0,Math.min(1,frac))) / _LOAD_TOTAL) * 100);
-  if(_ldFill) _ldFill.style.width = pct.toFixed(1)+'%';
-}
-// Begin stage `key`, showing `txt`. Banks the previous stage's full weight first, so
-// the bar never goes backwards even if a stage reported partial progress.
-function beginLoadStage(key, txt){
-  if(_loadStageIdx>=0) _loadDone += LOAD_STAGES[_loadStageIdx][1];
-  _loadStageIdx = LOAD_STAGES.findIndex(s=>s[0]===key);
-  if(_ldText && txt) _ldText.textContent = txt;
-  setLoadProgress(0);
-}
-beginLoadStage('props', 'Lighting the torches\u2026');
+// The loader text used to stop updating after this stage, so it sat frozen on
+// "34/34" (34 = the GLB prop count from manifest.json) while the much larger
+// character FBXs streamed in silently. setLoadStage keeps the player informed
+// through the rest of the sequence.
+const setLoadStage = (txt) => { loadingEl.textContent = txt; };
 await Promise.all(NAMES.map(n => loadAsset(n).then(()=>{
-  loaded++;
-  if(_ldText) _ldText.textContent = 'Lighting the torches\u2026 '+loaded+'/'+NAMES.length;
-  setLoadProgress(loaded/Math.max(1,NAMES.length));
-})));
+  loaded++; loadingEl.textContent = 'Lighting the torches\u2026 '+loaded+'/'+NAMES.length; })));
 
 // ---- rigged skeleton (creature) ----
 // Load the skeleton MESH + RIG from one FBX and all four CLIPS from the FBXs.
 // Using the FBX mesh (not the glb) guarantees the animation tracks bind to the
 // exact same bones. All four files share the same rig.
-beginLoadStage('skelly', 'Raising the dead\u2026');
+setLoadStage('Raising the dead\u2026');
 let skeletonProto=null;
 const skelClips={};
 const fbxLoader=new FBXLoader();
@@ -709,7 +570,7 @@ console.log('skeleton mesh:', skeletonProto?'loaded':'MISSING', '| clips:', Obje
 // exact bones; keep obj.animations[0] from each as a named clip; strip baked
 // root translation from LOOPING clips so OUR code owns position.
 // Six clips: idle / walk / attack / cast / die / sadIdle (30s-AFK idle).
-beginLoadStage('hero', 'Arming the hero\u2026');
+setLoadStage('Arming the hero\u2026');
 let heroProto=null;
 const heroClips={};
 let heroWalkDur=0.967, heroWalkDrift=1.71;   // sane defaults; recomputed from the real walk clip below
@@ -776,7 +637,7 @@ console.log('HERO mesh:', heroProto?'loaded':'MISSING',
 // bones; keep obj.animations[0] from each FBX as a named clip; strip baked root
 // translation from LOOPING clips (idle/walk) so OUR code owns position. She casts a
 // blue ICE BOLT at the hero (spawnIceBolt) instead of meleeing at range.
-beginLoadStage('sorc', 'Summoning sorceresses\u2026');
+setLoadStage('Summoning sorceresses\u2026');
 let sorcProto=null;
 const sorcClips={};
 let sorcWalkDur=0.967, sorcWalkDrift=1.71;
@@ -823,7 +684,7 @@ console.log('SORCERESS mesh:', sorcProto?'loaded':'MISSING',
 // Same pipeline. Note Idle.fbx is capital-I (like the skeleton pack). He has a
 // telegraphed bigAttack: a warning AoE flashes ~2 cells in front, then lands for
 // double damage. Regular attack + death like the others.
-beginLoadStage('boss', 'Waking what sleeps below\u2026');
+setLoadStage('Waking what sleeps below\u2026');
 let bossProto=null;
 const bossClips={};
 let bossWalkDur=0.967, bossWalkDrift=1.71;
@@ -870,7 +731,6 @@ console.log('BOSS mesh:', bossProto?'loaded':'MISSING',
 // ---- ZOMBIE — a second basic melee enemy, behaviorally identical to the skeleton
 // (wander, retaliate-on-hit, no pursuit). Four clips from assets/zombie/. Uses the
 // SAME simple pipeline as the skeleton pack (strip root motion from idle/walk).
-beginLoadStage('zombie', 'Shambling into place\u2026');
 let zombieProto=null;
 const zombieClips={};
 let zombieWalkDur=0.967, zombieWalkDrift=1.71;
@@ -941,7 +801,6 @@ function loadPotion(id){
     }, undefined, e=>{ console.warn('POTION load failed:', id, e); res(); });
   });
 }
-beginLoadStage('potions', 'Corking the potions\u2026');
 await Promise.all(Object.keys(POTION_TYPES).map(loadPotion));
 console.log('POTIONS loaded:', Object.keys(potionProtos).join(', ')||'NONE');
 
@@ -1187,12 +1046,7 @@ const BGM = (()=> {
 window.addEventListener('pointerdown', ()=>BGM.unlock(), { once:false });
 
 
-// NOTE: the loading screen is deliberately NOT hidden here any more. It used to be
-// dismissed at this point, but the first genLevel() (maze + geometry + shader warm-up)
-// still runs well after this line, so the screen vanished while the game was still
-// building — leaving a blank window before the title appeared. It is now hidden by
-// finishLoading(), called after that first build completes.
-beginLoadStage('build', 'Carving the dungeon\u2026');
+loadingEl.style.display='none';
 
 // ---- seeded RNG ----
 function rng(seed){ let a=seed>>>0; return function(){ a|=0;a=(a+0x6D2B79F5)|0;
@@ -1687,104 +1541,18 @@ function updateWorldPickups(t){
     p.root.rotation.y+=0.02;
   }
 }
-// Global pause flag, shared by the LEARN modal and the town STORE. Declared here,
-// ABOVE both, deliberately: `let` is not hoisted-and-initialized, so a function that
-// assigns it would throw a ReferenceError if it ran before this line executed. The
-// learn modal opens from a pickup (always long after init) so the old placement below
-// happened to work, but relying on that ordering is a trap for the next edit.
-let gamePaused=false;   // true while a modal is open — freezes enemy + hero updates
-
-// ============================================================
-//  LEARN MODAL — shown when the hero picks up a spell scroll or the lantern.
-//  Pauses the game (same gamePaused flag the store uses) so the player can read
-//  without being chewed on, and explains what the ability does and how to use it.
-// ------------------------------------------------------------
-//  Numbers below are INTERPOLATED from the real gameplay constants (MANA_COST,
-//  FIRERAIN_COST, SPELL_DMG, ...) rather than typed as literals, so retuning a
-//  spell can't leave the tutorial text quietly lying about it.
-// ============================================================
-const LEARN_INFO={
-  fireball: ()=>({
-    glyph:'\uD83D\uDD25', kicker:'New Spell Learned', title:'Fireball',
-    body:'<p>A bolt of flame that streaks toward a single enemy and detonates on impact. '
-        +'Your bread-and-butter attack &mdash; it lets you fight from a safe distance instead '
-        +'of trading blows in melee.</p>'
-        +'<div class="how"><b>Select it</b><span>Click the spell button (bottom centre) until Fireball is shown</span></div>'
-        +'<div class="how"><b>Cast it</b><span>Right-click an enemy</span></div>'
-        +'<div class="how"><b>Note</b><span>Needs line of sight &mdash; your hero will reposition to get a clear shot</span></div>'
-        +'<div class="cost">Costs <b>'+MANA_COST+' mana</b> &middot; deals <b>'+SPELL_DMG+' damage</b> '
-        +'&middot; range <b>'+(CAST_RANGE/CELL).toFixed(1)+' tiles</b></div>'
-  }),
-  firerain: ()=>({
-    glyph:'\u2604\uFE0F', kicker:'New Spell Learned', title:'Fire Rain',
-    body:'<p>A ring of fire that burns the ground over a <b>3&times;3 tile</b> area, damaging '
-        +'every enemy standing in it repeatedly as it burns. This is your crowd-clearer &mdash; '
-        +'far better than Fireball when several enemies are bunched together.</p>'
-        +'<div class="how"><b>Select it</b><span>Click the spell button until Fire Rain is shown</span></div>'
-        +'<div class="how"><b>Cast it</b><span>Right-click a spot on the floor, or an enemy to centre it there</span></div>'
-        +'<div class="how"><b>Note</b><span>No line of sight needed &mdash; you can drop it around a corner</span></div>'
-        +'<div class="cost">Costs <b>'+FIRERAIN_COST+' mana</b> &middot; '
-        +'<b>'+FIRERAIN_TICK_DMG+' damage</b> every '+FIRERAIN_TICK+'s for '
-        +(FIRERAIN_TICK*FIRERAIN_TICKS)+'s (<b>'+(FIRERAIN_TICK_DMG*FIRERAIN_TICKS)+' total</b>) '
-        +'&middot; range <b>'+(FIRERAIN_CAST_RANGE/CELL)+' tiles</b></div>'
-  }),
-  townportal: ()=>({
-    glyph:'\uD83C\uDF00', kicker:'New Spell Learned', title:'Town Portal',
-    body:'<p>Opens a shimmering gateway on the dungeon floor. Step up to it and the '
-        +'<b>Town Store</b> opens, where the gold you have collected buys permanent upgrades '
-        +'&mdash; faster boots, damage reduction, and a quicker casting hand.</p>'
-        +'<div class="how"><b>Select it</b><span>Click the spell button until Town Portal is shown</span></div>'
-        +'<div class="how"><b>Cast it</b><span>Right-click an empty patch of floor</span></div>'
-        +'<div class="how"><b>Use it</b><span>Left-click the portal to shop</span></div>'
-        +'<div class="how"><b>Note</b><span>Only one portal at a time, and it closes once used</span></div>'
-        +'<div class="cost">Costs <b>'+TOWN_PORTAL_COST+' mana</b></div>'
-  }),
-  lantern: ()=>({
-    glyph:'\uD83D\uDCA1', kicker:'New Ability Learned', title:'The Lantern',
-    body:'<p>You have learned the <b>Lantern</b>. Once lit it follows you through the dungeon, '
-        +'pushing back the dark so you can see enemies and pickups well before they reach you.</p>'
-        +'<p>The light draws on the same energy as your spells: <b>while the lantern is lit your '
-        +'mana regenerates at half speed</b>. It never burns mana outright, so it will not gutter '
-        +'out on its own &mdash; but leaving it on means fewer spells. Douse it before a hard '
-        +'fight and light it while exploring.</p>'
-        +'<div class="how"><b>Toggle it</b><span>Click the Lantern button (bottom centre) or press <b>L</b></span></div>'
-        +'<div class="cost">Mana regen while lit: <b>'+(MANA_REGEN*0.5)+'/sec</b> '
-        +'(normally <b>'+MANA_REGEN+'/sec</b>)</div>'
-  }),
-};
-// Open the modal for `key` ('fireball' | 'firerain' | 'townportal' | 'lantern').
-// Unknown keys are ignored rather than throwing, so a future pickup that forgets to
-// add an entry degrades to "no popup" instead of breaking the collection.
-function openLearn(key){
-  const make=LEARN_INFO[key]; if(!make) return;
-  const info=make();
-  const box=document.getElementById('learn'); if(!box) return;
-  const g=document.getElementById('learnGlyph'); if(g) g.innerHTML=info.glyph;
-  const k=document.getElementById('learnKicker'); if(k) k.textContent=info.kicker;
-  const t=document.getElementById('learnTitle'); if(t) t.textContent=info.title;
-  const b=document.getElementById('learnBody'); if(b) b.innerHTML=info.body;
-  box.classList.add('show');
-  gamePaused=true;            // freeze hero + enemies while reading (same flag the store uses)
-  const btn=document.getElementById('learnClose');
-  if(btn) btn.focus();        // so Enter/Space closes it straight away
-}
-function closeLearn(){
-  const box=document.getElementById('learn');
-  if(box) box.classList.remove('show');
-  gamePaused=false;
-}
 // Grant helpers used by the exit-room pickups.
 function grantLantern(){
   hasLantern=true;
   SFX.play('lanternPickup', {volume:0.9});
+  showToast('Found the Lantern! (toggle with the Lantern button or L)', {dur:2200});
   updateAbilityHUD();
-  openLearn('lantern');   // pauses the game until the player closes it
 }
 function learnSpell(id){
   learnedSpells.add(id);
   SFX.play('spellPickup', {volume:0.9});
+  showToast('Learned '+(SPELL_META[id]?SPELL_META[id].name:id)+'!', {dur:2200});
   updateAbilityHUD();
-  openLearn(id);          // pauses the game until the player closes it
 }
 
 // ============================================================
@@ -1793,6 +1561,7 @@ function learnSpell(id){
 //  portal at a time. Primitive mesh for now (swap a real GLB later).
 // ============================================================
 let townPortal=null;   // { root, x, z } or null
+let gamePaused=false;   // true while the store is open — freezes enemy + hero updates
 const TOWN_PORTAL_COST=70;   // mana to open a town portal
 function buildPortalIcon(){
   const g=new THREE.Group();
@@ -1840,19 +1609,6 @@ function buyUpgrade(id){
   updateStatsHUD(); renderStore();
   showToast('Bought '+U.name+'!', {dur:1800});
 }
-// Buy one consumable potion. Repeatable — no "already owned" branch; the only gate is
-// gold. Goes straight into the same `inventory` stack the world pickups feed, so the
-// left panel and usePotion() need no changes.
-function buyPotion(id){
-  const P=STORE_POTIONS[id], T=POTION_TYPES[id];
-  if(!P || !T) return;
-  if(gold<P.cost){ showToast('Not enough gold ('+P.cost+' needed)', {kind:'warn', dur:1600}); return; }
-  gold-=P.cost;
-  addToInventory(id);   // also re-renders the inventory panel
-  SFX.play(T.kind==='hp' ? 'healthPickup' : 'manaPickup', {volume:0.8});
-  updateStatsHUD(); renderStore();
-  showToast('Bought '+T.label+'!', {dur:1500});
-}
 function openStore(){
   const s=document.getElementById('store'); if(!s) return;
   renderStore();
@@ -1864,10 +1620,6 @@ function renderStore(){
   const box=document.getElementById('storeitems'); if(!box) return;
   const goldEl=document.getElementById('storegold'); if(goldEl) goldEl.textContent=gold;
   box.innerHTML='';
-  // --- permanent upgrades (one-time; go "Owned") ---
-  const upHead=document.createElement('div');
-  upHead.className='store-sect'; upHead.textContent='Upgrades';
-  box.appendChild(upHead);
   for(const id of ['boots','cloak','wand']){
     const U=UPGRADE_META[id];
     const owned=upgrades[id];
@@ -1881,29 +1633,6 @@ function renderStore(){
         (owned?'Owned':(U.cost+' \uD83D\uDCB0'))+'</button>';
     const btn=row.querySelector('.si-buy');
     if(!owned && afford) btn.onclick=()=>buyUpgrade(id);
-    box.appendChild(row);
-  }
-  // --- consumable potions (repeatable; never "Owned") ---
-  // Effect text is derived from POTION_TYPES so it tracks the real heal/restore
-  // amounts. A count badge shows how many the player already carries, which is the
-  // useful information here — "Owned" would be wrong for a stackable item.
-  const poHead=document.createElement('div');
-  poHead.className='store-sect'; poHead.textContent='Potions';
-  box.appendChild(poHead);
-  for(const id of STORE_POTION_ORDER){
-    const P=STORE_POTIONS[id], T=POTION_TYPES[id];
-    if(!P||!T) continue;                      // skip if a potion type was removed
-    const afford=gold>=P.cost;
-    const have=inventory[id]||0;
-    const row=document.createElement('div');
-    row.className='store-item';
-    row.innerHTML=
-      '<div class="si-info"><div class="si-name">'+T.label
-        +(have?' <span class="si-have">\u00d7'+have+' held</span>':'')+'</div>'
-      +'<div class="si-desc">Restores '+T.amount+' '+(T.kind==='hp'?'health':'mana')+'</div></div>'
-      +'<button class="si-buy" '+(afford?'':'disabled')+'>'+P.cost+' \uD83D\uDCB0</button>';
-    const btn=row.querySelector('.si-buy');
-    if(afford) btn.onclick=()=>buyPotion(id);
     box.appendChild(row);
   }
 }
@@ -3643,19 +3372,6 @@ const UPGRADE_META={
   cloak:{ name:'Cloak of Warding', cost:600, desc:'Halve damage taken' },
   wand:{  name:'Wand of Haste', cost:700, desc:'Halve cast cooldown' },
 };
-// Consumable potions sold in the store. Unlike upgrades (one-time booleans in
-// `upgrades`), these are repeat purchases that stack into `inventory` — so they are
-// never "Owned" and never disable except when gold is short. Name/effect text is
-// pulled from POTION_TYPES at render time so a retune of heal amounts can't leave
-// the shop advertising stale numbers; only the PRICE lives here.
-const STORE_POTIONS={
-  health_small:{ cost:100 },
-  health_large:{ cost:200 },
-  mana_small:  { cost:100 },
-  mana_large:  { cost:200 },
-};
-// Display order in the shop: smalls before larges, health before mana.
-const STORE_POTION_ORDER=['health_small','mana_small','health_large','mana_large'];
 function resetProgression(){
   hasLantern=false; HERO_LANTERN_ON=false;
   learnedSpells.clear(); selectedSpell='fireball';
@@ -5092,15 +4808,6 @@ el('btnLantern').onclick=()=>{ window.toggleLantern(); };
 // Store close (open happens by clicking the town portal).
 el('storeClose').onclick=()=>closeStore();
 el('store').addEventListener('pointerdown',(e)=>{ if(e.target.id==='store') closeStore(); });   // click backdrop to close
-// Learn modal close. NOTE: deliberately NO click-the-backdrop-to-close here (unlike the
-// store) — the modal appears unprompted the instant you walk onto a pickup, and a stray
-// click meant for the dungeon would dismiss the explanation before it was read.
-el('learnClose').onclick=()=>closeLearn();
-addEventListener('keydown',(e)=>{
-  const box=document.getElementById('learn');
-  if(!box || !box.classList.contains('show')) return;
-  if(e.key==='Enter'||e.key===' '||e.key==='Escape'){ e.preventDefault(); closeLearn(); }
-});
 
 // Respawn: put a fresh hero at the entrance of the CURRENT level (don't regenerate).
 el('respawn').onclick=()=>{ if(currentMaze) spawnHero(currentMaze); };
@@ -5108,26 +4815,6 @@ renderInventory();   // paint the empty inventory panel on load
 updateAbilityHUD();  // initialize the toggle buttons
 applyLevelSize(1);   // start at the small L1 dungeon
 genLevel();   // build() schedules its own projectile warm-up for this level
-
-// Loading is done. Fill the bar, enable the Enter button (disabled until now so the
-// player can't drop into an unbuilt level), then fade the bar out and hide the
-// now-redundant #loading screen underneath.
-// Two rAFs so the browser paints the 100% state before the fade starts; on a single
-// frame the width and opacity transitions begin together and the bar visibly never
-// reaches the end.
-function finishLoading(){
-  if(_ldFill) _ldFill.style.width='100%';
-  if(_ldText) _ldText.textContent='Ready';
-  const btn=document.getElementById('enterbtn');
-  if(btn){ btn.disabled=false; btn.focus(); }
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    const bar=document.getElementById('tload');
-    if(bar){ bar.classList.add('done'); setTimeout(()=>{ bar.style.display='none'; }, 450); }
-    const ld=document.getElementById('loading');
-    if(ld) ld.style.display='none';   // never seen (title covers it), but don't leave it live
-  }));
-}
-finishLoading();
 
 // ============================================================
 //  TITLE SCREEN — shown over the (already-built) level until the player enters.
