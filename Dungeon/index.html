@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Modular Dungeon — Maze Generator</title>
+<title>Dungeon Maze</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -98,6 +98,54 @@
     font-size:14px; font-weight:600; letter-spacing:.3px; white-space:nowrap;
     box-shadow:0 4px 18px rgba(0,0,0,.5); opacity:0; transition:opacity .18s ease, transform .18s ease; }
   #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  /* ---------------- TITLE SCREEN ----------------
+     Sits above everything until the player enters. The backdrop is a live canvas
+     drawing randomly-generated floorplans with the SAME rooms+corridors idea the
+     game uses, so the first thing you see is the thing the game actually makes.
+     Palette/# type are inherited from the in-game HUD so this doesn't read as a
+     stranger bolted onto the front. */
+  #title { position:absolute; inset:0; z-index:60; display:flex;
+    align-items:center; justify-content:center; background:#0a0a0e; }
+  #title.hide { opacity:0; pointer-events:none; transition:opacity .45s ease; }
+  #titlemap { position:absolute; inset:0; width:100%; height:100%; opacity:.34; }
+  /* vignette keeps the centre readable over the busy floorplan */
+  #title .vign { position:absolute; inset:0; pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(10,10,14,.15) 0%, rgba(10,10,14,.82) 58%, rgba(10,10,14,.97) 100%); }
+  #title .tinner { position:relative; z-index:2; text-align:center; padding:24px;
+    max-width:640px; width:100%; }
+  #title .eyebrow { font-size:11px; letter-spacing:5px; text-transform:uppercase;
+    color:#7a6a58; margin-bottom:14px; }
+  /* Title art. Sized by viewport WIDTH but capped by HEIGHT so a tall or square
+     image can't shove the instructions and button off-screen on a short window.
+     object-fit:contain keeps whatever aspect ratio the PNG actually has, so this
+     works without knowing its dimensions. The drop-shadow gives it the same
+     torch-glow the lettering had. */
+  #titlelogo { display:block; margin:0 auto; width:min(100%, 560px);
+    max-height:min(34vh, 260px); object-fit:contain; height:auto;
+    filter:drop-shadow(0 0 26px rgba(240,168,72,.30)) drop-shadow(0 2px 0 #2a1c10);
+    -webkit-user-select:none; user-select:none; -webkit-user-drag:none; }
+  /* Only shown if titleSpash.png fails to load (see the img error handler). */
+  #titlefallback { margin:0; font-size:clamp(34px,7.4vw,68px); font-weight:700;
+    letter-spacing:clamp(4px,1.4vw,14px); color:#f0a848; line-height:1.05;
+    text-shadow:0 0 26px rgba(240,168,72,.30), 0 2px 0 #2a1c10; }
+  #titlefallback .m2 { display:block; color:#c88848; }
+  #title .rule { width:74px; height:2px; margin:20px auto 18px;
+    background:linear-gradient(90deg,transparent,#8a6a2a,transparent); }
+  #title .keys { display:grid; gap:9px; margin:0 auto 26px; max-width:430px;
+    text-align:left; font-size:12.5px; color:#9a8a78; line-height:1.45; }
+  #title .keys div { display:flex; gap:11px; align-items:baseline; }
+  #title .keys b { color:#e0a060; font-weight:600; flex:0 0 96px; text-align:right; }
+  #title .goal { font-size:12.5px; color:#8a7a68; line-height:1.6; margin-bottom:24px; }
+  #title .goal em { color:#cbb890; font-style:normal; }
+  #enterbtn { width:auto; margin:0 auto; padding:13px 40px; font-size:14px;
+    letter-spacing:1.2px; background:#e8933a; color:#17120c; border-radius:8px;
+    box-shadow:0 6px 24px rgba(232,147,58,.22); }
+  #enterbtn:hover { background:#f4a850; }
+  #enterbtn:focus-visible { outline:2px solid #ffd9a0; outline-offset:3px; }
+  #title .foot { margin-top:20px; font-size:10.5px; color:#5a4a3a; letter-spacing:.6px; }
+  @media (prefers-reduced-motion: reduce){
+    #title.hide { transition:none; }
+  }
   #toast.warn { border-color:#8a3a3a; color:#f4c4b0; background:rgba(28,12,10,.92); }
   /* --- Inventory panel --- */
   #inventory { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:12px 0 16px; min-height:70px; }
@@ -214,6 +262,29 @@
 <div id="toast"></div>
 <div id="herohud"></div>
 <div id="loading">Lighting the torches&hellip;</div>
+<div id="title">
+  <canvas id="titlemap"></canvas>
+  <div class="vign"></div>
+  <div class="tinner">
+    <div class="eyebrow">Descend &middot; Survive &middot; Escape</div>
+    <img id="titlelogo" src="titleSplash.png" alt="Dungeon Maze" fetchpriority="high" decoding="async">
+    <div class="rule"></div>
+    <div class="goal">
+      Four levels of shifting stone stand between you and the thing that waits at the bottom.
+      Find the <em>red exit</em> on each floor to descend. Torches, spells and gold are scattered
+      in the rooms &mdash; take what you find, you will need it.
+    </div>
+    <div class="keys">
+      <div><b>Left-click</b><span>Move, attack, or pick something up</span></div>
+      <div><b>Right-click</b><span>Cast the selected spell</span></div>
+      <div><b>Drag</b><span>Orbit the camera</span></div>
+      <div><b>Scroll</b><span>Zoom in and out</span></div>
+      <div><b>Red exit</b><span>Click it to descend to the next level</span></div>
+    </div>
+    <button id="enterbtn">Enter Dungeon</button>
+    <div class="foot">Sound begins when you enter</div>
+  </div>
+</div>
 <div id="fruittip" style="position:fixed;pointer-events:none;z-index:50;display:none;padding:5px 9px;border-radius:6px;background:rgba(20,16,10,0.92);border:1px solid #8a6a2a;color:#ffe1a0;font:600 13px system-ui,sans-serif;white-space:nowrap;transform:translate(-50%,-140%)">&#127823; Click to eat &middot; +40 HP</div>
 
 <script type="importmap">
@@ -421,6 +492,11 @@ function loadAsset(name){
   });
 }
 let loaded=0;
+// The loader text used to stop updating after this stage, so it sat frozen on
+// "34/34" (34 = the GLB prop count from manifest.json) while the much larger
+// character FBXs streamed in silently. setLoadStage keeps the player informed
+// through the rest of the sequence.
+const setLoadStage = (txt) => { loadingEl.textContent = txt; };
 await Promise.all(NAMES.map(n => loadAsset(n).then(()=>{
   loaded++; loadingEl.textContent = 'Lighting the torches\u2026 '+loaded+'/'+NAMES.length; })));
 
@@ -428,6 +504,7 @@ await Promise.all(NAMES.map(n => loadAsset(n).then(()=>{
 // Load the skeleton MESH + RIG from one FBX and all four CLIPS from the FBXs.
 // Using the FBX mesh (not the glb) guarantees the animation tracks bind to the
 // exact same bones. All four files share the same rig.
+setLoadStage('Raising the dead\u2026');
 let skeletonProto=null;
 const skelClips={};
 const fbxLoader=new FBXLoader();
@@ -467,6 +544,7 @@ console.log('skeleton mesh:', skeletonProto?'loaded':'MISSING', '| clips:', Obje
 // exact bones; keep obj.animations[0] from each as a named clip; strip baked
 // root translation from LOOPING clips so OUR code owns position.
 // Six clips: idle / walk / attack / cast / die / sadIdle (30s-AFK idle).
+setLoadStage('Arming the hero\u2026');
 let heroProto=null;
 const heroClips={};
 let heroWalkDur=0.967, heroWalkDrift=1.71;   // sane defaults; recomputed from the real walk clip below
@@ -533,6 +611,7 @@ console.log('HERO mesh:', heroProto?'loaded':'MISSING',
 // bones; keep obj.animations[0] from each FBX as a named clip; strip baked root
 // translation from LOOPING clips (idle/walk) so OUR code owns position. She casts a
 // blue ICE BOLT at the hero (spawnIceBolt) instead of meleeing at range.
+setLoadStage('Summoning sorceresses\u2026');
 let sorcProto=null;
 const sorcClips={};
 let sorcWalkDur=0.967, sorcWalkDrift=1.71;
@@ -579,6 +658,7 @@ console.log('SORCERESS mesh:', sorcProto?'loaded':'MISSING',
 // Same pipeline. Note Idle.fbx is capital-I (like the skeleton pack). He has a
 // telegraphed bigAttack: a warning AoE flashes ~2 cells in front, then lands for
 // double damage. Regular attack + death like the others.
+setLoadStage('Waking what sleeps below\u2026');
 let bossProto=null;
 const bossClips={};
 let bossWalkDur=0.967, bossWalkDrift=1.71;
@@ -2988,8 +3068,18 @@ function updateImpacts(){
 const FIRERAIN_TICK=0.5;          // seconds between damage ticks
 const FIRERAIN_TICKS=5;           // number of ticks (5 x 0.5s = 2.5s duration)
 const FIRERAIN_TICK_DMG=10;       // HP per tick (5 x 10 = 50 total)
-const FIRERAIN_RADIUS=CELL*1.5;   // one tile in every direction => 3x3 tile footprint
+const FIRERAIN_RADIUS=CELL*1.5;   // DAMAGE radius: one tile in every direction => 3x3 tiles
+// VISUAL radius: the mesh is drawn LARGER than the damage circle on purpose. The shader
+// fades alpha out before the geometry's rim (fade_tail subtracts 0.4, and the rim
+// smoothstep kills the outer slice), so a mesh sized exactly to FIRERAIN_RADIUS burns
+// out visually around ~0.78 of its radius — which made edge mobs take damage while
+// standing outside the visible flame. Oversizing the mesh pushes the visible flame
+// front out to (and slightly past) the real damage edge so what you see is what burns.
+const FIRERAIN_VIS_RADIUS=FIRERAIN_RADIUS*1.28;
 const FIRERAIN_COST=45;           // mana per cast (pricier than a fireball: it's 50 dmg AOE)
+// CAST RANGE: hero must be within this of the target point. No line-of-sight requirement
+// (you can drop it around a corner), but you can't nuke the far side of the map.
+const FIRERAIN_CAST_RANGE=CELL*6;   // 6 tiles
 const FIRERAIN_DURATION=FIRERAIN_TICK*FIRERAIN_TICKS;
 
 const FIRERAIN_VERT=`
@@ -3016,6 +3106,7 @@ const FIRERAIN_FRAG=`
   uniform vec3  uSecondary;   // mid flame
   uniform vec3  uTertiary;    // dark smoky base
   uniform float uEmission;
+  uniform float uDamageEdge;  // normalized radius (0..1 of the mesh) of the real damage circle
 
   // cheap hash-based value noise (stands in for the Godot NoiseTexture2D sampler)
   float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
@@ -3049,22 +3140,27 @@ const FIRERAIN_FRAG=`
     float w = wave(vUv, n);
     w = pow(max(w, 0.0), 1.4);
 
-    // radial fade: bright at the outer flame front, falling off toward the centre,
-    // and gated by the grow/fade envelope so the ring blooms in and dies out.
-    float fade_tail = max(((1.0 - vUv.y) + w * 0.1) - 0.4, 0.0);
+    // Radial fade, expressed RELATIVE TO THE DAMAGE EDGE rather than a hardcoded
+    // constant. rN normalizes radius so 0 = centre and 1 = the damage circle; the
+    // flame body therefore fills the whole damaged area instead of dying out at
+    // ~0.6 of it (which is what made edge mobs burn outside the visible fire).
+    float rN = vUv.y / uDamageEdge;
+    float fade_tail = max((1.0 - rN * 0.72) + w * 0.10, 0.0);
     fade_tail = smoothstep(1.0 - uGrow, 0.5 + (1.0 - uGrow) * 0.5, fade_tail);
 
     // spiral streaks rotating around the ring (the Godot "Spiral" group)
-    float spiral = sin(vUv.y * 20.0 + (vUv.x * 6.2831853 * 3.0) - uTime * 6.0) * 0.5 + 0.5;
-    spiral *= smoothstep(0.15, 0.55, vUv.y);
+    float spiral = sin(rN * 20.0 + (vUv.x * 6.2831853 * 3.0) - uTime * 6.0) * 0.5 + 0.5;
+    spiral *= smoothstep(0.15, 0.55, rN);
 
     vec3 tail_color = mix(uTertiary, uSecondary, w);
     vec3 color = mix(tail_color, uPrimary, pow(fade_tail, 4.0));
     color += uPrimary * spiral * 0.25 * fade_tail;
 
     float alpha = fade_tail * uGrow;
-    // soften the very outer rim so the disc doesn't end on a hard circle
-    alpha *= smoothstep(1.0, 0.82, vUv.y);
+    // soften the very outer rim so the disc doesn't end on a hard circle. The fade is
+    // deliberately pushed OUT past uDamageEdge (the normalized radius of the real damage
+    // circle) so the flame is still visibly burning where it actually hurts.
+    alpha *= 1.0 - smoothstep(uDamageEdge, 1.0, vUv.y);
     if(alpha <= 0.003) discard;
     gl_FragColor = vec4(color * uEmission, alpha);
   }
@@ -3074,12 +3170,13 @@ const fireRains=[];   // active AOE instances
 function spawnFireRain(cx, cz){
   // Ring mesh laid flat on the floor. Inner radius 0 (a full disc) so the centre
   // still burns; the shader's radial fade does the visual hollowing, not geometry.
-  const geo=new THREE.RingGeometry(1, FIRERAIN_RADIUS, 64, 6);
+  const geo=new THREE.RingGeometry(1, FIRERAIN_VIS_RADIUS, 64, 6);
   const mat=new THREE.ShaderMaterial({
     vertexShader:FIRERAIN_VERT,
     fragmentShader:FIRERAIN_FRAG,
     uniforms:{
-      uTime:{value:0}, uGrow:{value:0}, uOuter:{value:FIRERAIN_RADIUS},
+      uTime:{value:0}, uGrow:{value:0}, uOuter:{value:FIRERAIN_VIS_RADIUS},
+      uDamageEdge:{value:FIRERAIN_RADIUS/FIRERAIN_VIS_RADIUS},
       uPrimary:{value:new THREE.Color(0xffcc44)},
       uSecondary:{value:new THREE.Color(0xff6a18)},
       uTertiary:{value:new THREE.Color(0x99200c)},
@@ -3177,10 +3274,11 @@ function warmUpProjectiles(){
     // Fire Rain's ShaderMaterial is a DIFFERENT program from the sprites, so it needs
     // its own warm-up or the first AOE cast hitches while GLSL compiles.
     {
-      const geo=new THREE.RingGeometry(1, FIRERAIN_RADIUS, 64, 6);
+      const geo=new THREE.RingGeometry(1, FIRERAIN_VIS_RADIUS, 64, 6);
       const mat=new THREE.ShaderMaterial({
         vertexShader:FIRERAIN_VERT, fragmentShader:FIRERAIN_FRAG,
-        uniforms:{ uTime:{value:0}, uGrow:{value:0}, uOuter:{value:FIRERAIN_RADIUS},
+        uniforms:{ uTime:{value:0}, uGrow:{value:0}, uOuter:{value:FIRERAIN_VIS_RADIUS},
+          uDamageEdge:{value:FIRERAIN_RADIUS/FIRERAIN_VIS_RADIUS},
           uPrimary:{value:new THREE.Color(0xffcc44)}, uSecondary:{value:new THREE.Color(0xff6a18)},
           uTertiary:{value:new THREE.Color(0x99200c)}, uEmission:{value:1.8} },
         transparent:true, blending:THREE.AdditiveBlending,
@@ -4692,6 +4790,192 @@ updateAbilityHUD();  // initialize the toggle buttons
 applyLevelSize(1);   // start at the small L1 dungeon
 genLevel();   // build() schedules its own projectile warm-up for this level
 
+// ============================================================
+//  TITLE SCREEN — shown over the (already-built) level until the player enters.
+//  The backdrop is a slowly-drifting procedural FLOORPLAN drawn with the same
+//  rooms+corridors idea as the real generator, so the first thing on screen is
+//  the artifact this game is about. It is purely decorative: it uses its own
+//  Math.random, never the seeded game rng, so it can't disturb level generation.
+// ============================================================
+(function initTitle(){
+  const titleEl=document.getElementById('title');
+  const cvs=document.getElementById('titlemap');
+  const btn=document.getElementById('enterbtn');
+  if(!titleEl||!cvs||!btn) return;
+  // If the splash art is missing or misspathed, fall back to the wordmark rather
+  // than showing a broken-image icon with no game name on it.
+  const logo=document.getElementById('titlelogo');
+  if(logo){
+    logo.addEventListener('error', ()=>{
+      const h=document.createElement('h1');
+      h.id='titlefallback';
+      h.innerHTML='DUNGEON<span class="m2">MAZE</span>';
+      logo.replaceWith(h);
+      console.warn('Title art not found at "'+logo.getAttribute('src')+'" (relative to index.html) — using text title.');
+    }, { once:true });
+  }
+  const ctx=cvs.getContext('2d');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let raf=0, running=true;
+
+  const C=26;                     // px per cell in the backdrop plan
+  let cols=0, rows=0, grid=null;
+  // ENDLESS SCROLL WITH REAL ROOMS.
+  // The first version placed whole rooms with an overlap test (reject if a candidate
+  // touches an existing room), which is what gave the plan its distinct rooms with
+  // mortar gaps between them. Streaming one column at a time threw that away — rooms
+  // extruded blind and fused into blobs. So: generate into a LOOKAHEAD BUFFER that
+  // extends past the right edge, where the same reject-on-overlap rule still applies,
+  // then stream finished columns out of it. Rooms stay separated; scroll stays endless.
+  let subOff=0;                   // 0..C horizontal sub-cell offset, in CSS px
+  const LOOKAHEAD=26;             // columns generated beyond the visible edge
+  let buf=[];                     // column arrays waiting to enter view
+  let liveRooms=[];               // rooms in buffer-space: {x,y,w,h} (x = buffer column)
+  let bufX=0;                     // buffer column index of the next column to emit
+  let bufFilledTo=0;              // buffer generated out to this column (exclusive)
+  let lastCenter=null;            // centre of the previous room, for corridor linking
+  const corridorCells=new Map();  // "x,y" -> true, corridors carved in buffer space
+
+  function roomFits(x,y,w,h){
+    // same rule as the real generator: reject if within 1 cell of another room
+    for(const r of liveRooms){
+      if(x-1 < r.x+r.w && x+w+1 > r.x && y-1 < r.y+r.h && y+h+1 > r.y) return false;
+    }
+    return true;
+  }
+  function carve(x,y){ if(y>0&&y<rows-1) corridorCells.set(x+','+y, true); }
+  function carveH(x0,x1,y){ for(let x=Math.min(x0,x1);x<=Math.max(x0,x1);x++) carve(x,y); }
+  function carveV(y0,y1,x){ for(let y=Math.min(y0,y1);y<=Math.max(y0,y1);y++) carve(x,y); }
+
+  // Fill the buffer out to `upto` (a buffer-space column index), placing rooms with
+  // proper separation and linking each to the previous one with an L corridor.
+  function fillTo(upto){
+    while(bufFilledTo < upto){
+      const x=bufFilledTo;
+      // try a few times to drop a room whose left edge is at this column
+      if(Math.random()<0.34){
+        for(let attempt=0;attempt<8;attempt++){
+          const w=3+((Math.random()*5)|0), h=3+((Math.random()*5)|0);
+          const y=1+((Math.random()*Math.max(1,rows-h-2))|0);
+          if(!roomFits(x,y,w,h)) continue;
+          liveRooms.push({x,y,w,h});
+          const cx=x+(w>>1), cy=y+(h>>1);
+          if(lastCenter){
+            // L corridor from the previous room's centre to this one
+            if(Math.random()<0.5){ carveH(lastCenter[0],cx,lastCenter[1]); carveV(lastCenter[1],cy,cx); }
+            else { carveV(lastCenter[1],cy,lastCenter[0]); carveH(lastCenter[0],cx,cy); }
+          }
+          lastCenter=[cx,cy];
+          break;
+        }
+      }
+      bufFilledTo++;
+    }
+    // Retire rooms that have fully scrolled off the LEFT of the view. Pruning by
+    // count instead would pop a still-visible room out of existence on a wide
+    // screen (verified: a 40-room cap dropped rooms ~12 columns inside the window).
+    // `cols` is the visible width, so anything ending before that is safely gone.
+    const cutoff=bufX-cols-2;
+    if(liveRooms.length>24) liveRooms=liveRooms.filter(r=>r.x+r.w>=cutoff);
+  }
+
+  // Materialise buffer column x into a boolean column array.
+  function columnAt(x){
+    const col=new Array(rows).fill(false);
+    for(const r of liveRooms){
+      if(x>=r.x && x<r.x+r.w){
+        for(let j=r.y;j<r.y+r.h;j++) if(j>0&&j<rows) col[j]=true;
+      }
+    }
+    for(let j=0;j<rows;j++) if(corridorCells.has(x+','+j)) col[j]=true;
+    return col;
+  }
+  function growCol(){
+    fillTo(bufX+LOOKAHEAD);
+    const col=columnAt(bufX);
+    // forget corridor cells that have fully scrolled off the left of the view
+    // (must clear the visible window, or corridors would vanish mid-screen)
+    if(bufX%64===0){
+      const cutoff=bufX-cols-2;
+      for(const k of corridorCells.keys()){
+        const cx=+k.slice(0,k.indexOf(','));
+        if(cx < cutoff) corridorCells.delete(k);
+      }
+    }
+    bufX++;
+    return col;
+  }
+  function resize(){
+    const dpr=Math.min(2, devicePixelRatio||1);
+    cvs.width=Math.floor(innerWidth*dpr); cvs.height=Math.floor(innerHeight*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);   // draw in CSS px, render at device res
+    makePlan();
+  }
+  function makePlan(){
+    cols=Math.ceil(innerWidth/C)+3; rows=Math.ceil(innerHeight/C)+2;
+    grid=[]; subOff=0;
+    buf=[]; liveRooms=[]; bufX=0; bufFilledTo=0; lastCenter=null; corridorCells.clear();
+    for(let i=0;i<cols;i++) grid.push(growCol());
+  }
+
+  const SPEED=16;                 // px/sec leftward drift
+  let lastNow=0;
+  function draw(now){
+    if(!running) return;
+    const w=innerWidth, h=innerHeight;
+    if(!lastNow) lastNow=now;
+    const dt=Math.min(0.05,(now-lastNow)/1000); lastNow=now;
+    // Advance the sub-cell offset; every time it passes a whole cell, retire the
+    // leftmost column and grow a new one on the right. No modulo wrap => no snap.
+    if(!reduce){
+      subOff+=SPEED*dt;
+      while(subOff>=C){ subOff-=C; grid.shift(); grid.push(growCol()); }
+    }
+    ctx.clearRect(0,0,w,h);
+    ctx.save(); ctx.translate(-subOff,0);
+    ctx.lineWidth=1;
+    for(let i=0;i<grid.length;i++){
+      const colArr=grid[i]; if(!colArr) continue;
+      for(let j=0;j<rows;j++){
+        if(!colArr[j]) continue;
+        const x=i*C, y=j*C;
+        ctx.fillStyle='rgba(40,30,20,.85)';
+        ctx.fillRect(x,y,C-1,C-1);
+        // mortar edge only where a wall abuts, which reads as room outlines
+        ctx.strokeStyle='rgba(150,105,50,.30)';
+        ctx.beginPath();
+        if(!colArr[j-1]){ ctx.moveTo(x,y+0.5); ctx.lineTo(x+C-1,y+0.5); }
+        if(!colArr[j+1]){ ctx.moveTo(x,y+C-0.5); ctx.lineTo(x+C-1,y+C-0.5); }
+        if(!(grid[i-1]&&grid[i-1][j])){ ctx.moveTo(x+0.5,y); ctx.lineTo(x+0.5,y+C-1); }
+        if(!(grid[i+1]&&grid[i+1][j])){ ctx.moveTo(x+C-0.5,y); ctx.lineTo(x+C-0.5,y+C-1); }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+    raf=requestAnimationFrame(draw);
+  }
+
+  addEventListener('resize', ()=>{ if(running){ resize(); } });
+  resize();
+  raf=requestAnimationFrame(draw);
+
+  function enter(){
+    if(!running) return;
+    running=false; cancelAnimationFrame(raf);
+    titleEl.classList.add('hide');
+    // unlock audio on this gesture (same path the game already uses)
+    try{ BGM.unlock(); }catch(e){}
+    try{ SFX.unlock&&SFX.unlock(); }catch(e){}
+    setTimeout(()=>{ titleEl.style.display='none'; }, 500);
+  }
+  btn.addEventListener('click', enter);
+  addEventListener('keydown', (e)=>{
+    if(titleEl.style.display==='none') return;
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); enter(); }
+  });
+  btn.focus();
+})();
+
 // --- Camera tuning helpers (open F12 console) ---------------------------------
 // Module vars are private, so expose the ones you'll want to inspect/tweak:
 window.camera = camera;
@@ -4932,6 +5216,16 @@ renderer.domElement.addEventListener('pointerup',(e)=>{
       showToast('Can\u2019t cast Fire Rain there', {kind:'warn', dur:1400}); return;
     }
     if(hero.dead || hero.busy){ return; }
+    // RANGE: 6 tiles from the hero. Deliberately NO line-of-sight requirement — you can
+    // drop it around a corner or through a doorway — but casting across the whole map
+    // trivialised the spell, so distance is gated.
+    if(hero.root){
+      const rdx=tx-hero.root.position.x, rdz=tz-hero.root.position.z;
+      if(Math.hypot(rdx, rdz) > FIRERAIN_CAST_RANGE){
+        showToast('Out of range', {kind:'warn', dur:1400, key:'frrange', throttleMs:800});
+        return;
+      }
+    }
     if(hero.castTimer>0){ return; }                  // still on cooldown
     if(hero.mana < FIRERAIN_COST){
       showToast('Not enough mana for Fire Rain ('+FIRERAIN_COST+')', {kind:'warn', dur:1500}); return;
