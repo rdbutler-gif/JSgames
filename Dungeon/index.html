@@ -186,8 +186,13 @@
     transition:width .28s cubic-bezier(.4,.9,.3,1); }
   #tltext { margin-top:9px; font-size:10.5px; color:#6a5a48; letter-spacing:.5px;
     min-height:1.2em; }
-  /* Fades out once loading finishes; the Enter button becomes the focus. */
-  #tload.done { opacity:0; transition:opacity .4s ease; pointer-events:none; }
+  /* Fades out once loading finishes; the Enter button becomes the focus.
+     IMPORTANT: this uses visibility/opacity, NOT display:none. The title content is a
+     vertically-centred flex block, so removing the bar from layout shrinks the block and
+     shifts EVERYTHING down ~25px — a visible jump the moment loading completes. Keeping
+     the element in flow (just invisible) holds the layout perfectly still. */
+  #tload.done { opacity:0; visibility:hidden; transition:opacity .4s ease;
+    pointer-events:none; }
   /* Enter is disabled until the level exists — clicking into an unbuilt dungeon
      would drop the player into a black void. */
   #enterbtn:disabled { background:#5a4832; color:#8a7a63; cursor:not-allowed;
@@ -5121,8 +5126,10 @@ function finishLoading(){
   const btn=document.getElementById('enterbtn');
   if(btn){ btn.disabled=false; btn.focus(); }
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    // Fade only — deliberately NOT display:none. The bar keeps its space in the
+    // vertically-centred title block; removing it re-flows everything ~25px.
     const bar=document.getElementById('tload');
-    if(bar){ bar.classList.add('done'); setTimeout(()=>{ bar.style.display='none'; }, 450); }
+    if(bar) bar.classList.add('done');
     const ld=document.getElementById('loading');
     if(ld) ld.style.display='none';   // never seen (title covers it), but don't leave it live
   }));

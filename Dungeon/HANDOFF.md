@@ -189,6 +189,12 @@ Machinery:
   nested rAFs** before fading `#tload` and hiding `#loading`. The double rAF matters: on a
   single frame the width and opacity transitions start together and the bar visibly never
   reaches the end.
+- **`#tload.done` fades with `opacity` + `visibility:hidden`, NEVER `display:none`.** The
+  title content is a vertically-centred flex block, so removing the bar from layout shrinks
+  the block and shifts *every* element down ~25px the instant loading finishes — a visible
+  jump. Keeping the element in flow holds the layout perfectly still (verified: the Enter
+  button stays at the same pixel across the whole load *and* fade). The reserved ~50px still
+  fits down to a 900×600 viewport.
 - **Adding a load stage:** add `[key, weight]` to `LOAD_STAGES` **and** call
   `beginLoadStage(key, caption)` at the boundary. A key not in the table sets index −1 and
   silently freezes the bar. Cross-check:
@@ -259,28 +265,28 @@ opens long after init. Keep it above.
 
 | System | Function | ~Line |
 |---|---|---|
-| **Load stage table (weighted)** | `LOAD_STAGES` | ~623 |
-| **Advance load stage** | `beginLoadStage` | ~655 |
-| **Finish + fade loading screen** | `finishLoading` | ~5118 |
-| Floor gate (movement/pathing) | `isFloorCell` | ~1366 |
-| Placement/target gate | `isCellFree` | ~1376 |
-| Body-circle vs props | `propsBlockCircle` | ~1408 |
-| Tangential prop slide | `propSlideStep` | ~1429 |
-| Prop-aware arrival radius | `pathArriveR` | ~1454 |
-| **Global pause flag (declare high!)** | `gamePaused` | ~1695 |
-| **Ability explainer table (lazy!)** | `LEARN_INFO` | ~1706 |
-| Open/close explainer | `openLearn` / `closeLearn` | ~1758 |
-| **Buy consumable potion** | `buyPotion` | ~1846 |
-| Store render (2 sections) | `renderStore` | ~1863 |
-| Mob steer / pursue / return home | `mobSteer` / `mobPursue` / `mobReturnHome` | ~1936 / 1976 / 2036 |
+| **Load stage table (weighted)** | `LOAD_STAGES` | ~628 |
+| **Advance load stage** | `beginLoadStage` | ~660 |
+| **Finish + fade loading screen** | `finishLoading` | ~5123 |
+| Floor gate (movement/pathing) | `isFloorCell` | ~1371 |
+| Placement/target gate | `isCellFree` | ~1381 |
+| Body-circle vs props | `propsBlockCircle` | ~1413 |
+| Tangential prop slide | `propSlideStep` | ~1434 |
+| Prop-aware arrival radius | `pathArriveR` | ~1459 |
+| **Global pause flag (declare high!)** | `gamePaused` | ~1700 |
+| **Ability explainer table (lazy!)** | `LEARN_INFO` | ~1711 |
+| Open/close explainer | `openLearn` / `closeLearn` | ~1763 |
+| **Buy consumable potion** | `buyPotion` | ~1851 |
+| Store render (2 sections) | `renderStore` | ~1868 |
+| Mob steer / pursue / return home | `mobSteer` / `mobPursue` / `mobReturnHome` | ~1941 / 1981 / 2041 |
 | Hero steer (+prop slide) | `Hero._steer` | ~2729 |
-| A* (floor-only + cross cost) | `findPath` | ~3100 |
-| Fire Rain shader / spawn | `FIRERAIN_VERT` / `spawnFireRain` | ~3382 / 3467 |
-| **Store potion prices** | `STORE_POTIONS` | ~3651 |
-| Measure + register collider | `addPropColliderFromInstance` | ~4533 |
-| Level build | `build` | ~4588 |
-| genLevel (+BGM) | `genLevel` | ~5045 |
-| **Tooltip glyphs / resolver** | `PICKUP_TIP_GLYPH` / `hoverTipFor` | ~5615 / 5623 |
+| A* (floor-only + cross cost) | `findPath` | ~3105 |
+| Fire Rain shader / spawn | `FIRERAIN_VERT` / `spawnFireRain` | ~3387 / 3472 |
+| **Store potion prices** | `STORE_POTIONS` | ~3656 |
+| Measure + register collider | `addPropColliderFromInstance` | ~4538 |
+| Level build | `build` | ~4593 |
+| genLevel (+BGM) | `genLevel` | ~5050 |
+| **Tooltip glyphs / resolver** | `PICKUP_TIP_GLYPH` / `hoverTipFor` | ~5622 / 5630 |
 
 ---
 
@@ -310,7 +316,10 @@ as pre-existing rather than claimed as v18 work.)*
   `finishLoading` needing a double rAF or the bar never visibly completes; **bar initially
   built on `#loading`, where the opaque title screen covers it — invisible in practice, caught
   only when the user reported not seeing it.** Lesson: verify a UI element is actually
-  *on screen*, not merely present and correctly styled.
+  *on screen*, not merely present and correctly styled. Also shipped with the bar hidden via
+  `display:none`, which re-flowed the centred title block and jumped everything ~25px — again
+  caught by the user, not by any assertion I had written. Both are the same class of miss:
+  the code was correct in isolation and wrong in situ.
 
 ---
 
