@@ -1,4 +1,4 @@
-# Dungeon Maze — Handoff (v18)
+# Dungeon Maze — Handoff (v19)
 
 Single-file browser dungeon crawler on **three.js r160**. Click-to-move hero fights through
 **4 procedurally generated levels** to a boss on L4. `index.html` is ~5,720 lines.
@@ -287,6 +287,69 @@ opens long after init. Keep it above.
 | Level build | `build` | ~4593 |
 | genLevel (+BGM) | `genLevel` | ~5050 |
 | **Tooltip glyphs / resolver** | `PICKUP_TIP_GLYPH` / `hoverTipFor` | ~5622 / 5630 |
+
+---
+
+## LEVEL REWARD GATE (v19) — L1 / L2 only
+
+Exit-room pickups on **L1 and L2** are no longer spawned at build time. They are **held**
+until the floor is cleared, then released as completion rewards, and **descending is blocked
+until every released reward is collected**. L3 and L4 are untouched (L3 still just needs the
+red exit alive; L4 is the boss floor).
+
+**State** (declared ~line 1715, above every user — same TDZ discipline as `gamePaused`):
+
+| Symbol | Meaning |
+|---|---|
+| `LEVEL_REWARDS` | `Set([1,2])` — depths that gate. **Add a depth here and it gates; that's the whole switch.** |
+| `pendingRewards` | `[{cell, drop}]` held, not yet spawned |
+| `rewardsDropped` | true once released this level (makes release idempotent) |
+| `rewardsRemaining` | released-but-uncollected count |
+
+**Three states, and the distinction is load-bearing:** *pending* (enemies alive, nothing
+spawned) and *dropped-but-uncollected* both block descent, but only the first is waiting on
+`checkLevelCleared()`. Collapsing them into one flag loses the ability to tell "not yet
+earned" from "earned, go get it".
+
+**Flow:**
+- `build()` calls **`resetLevelRewards()`** right after `clearWorldPickups()`, then in the
+  drops IIFE branches on `LEVEL_REWARDS.has(depth)` — **note that's build()'s `depth`
+  PARAMETER, which shadows the module-level `let depth`.** Correct here (they agree), but
+  don't "fix" the shadow without checking both.
+  Gated drops get `isReward=true` and go to `pendingRewards`; ungated ones spawn as before.
+  The **cell is resolved at build time**, so the reward lands in the exit room chosen for it
+  rather than wherever the hero happened to finish the fight.
+- **`checkLevelCleared()`** runs per-frame from the animate loop (skipped while `gamePaused`).
+  Early-outs on `rewardsDropped`, on an empty `pendingRewards`, on `creatures.length===0`
+  (**that guard matters — without it an empty pre-spawn `creatures` array reads as "cleared"
+  and dumps the rewards on frame 1**), then on the first live creature.
+- **`releaseLevelRewards()`** spawns from `pendingRewards`, seeds `rewardsRemaining`, toasts
+  and sets status. Idempotent via `rewardsDropped`.
+- Collection decrements `rewardsRemaining` at the **single site in `Hero.update()`'s
+  `pickupTarget` branch**, keyed off the per-pickup `isReward` flag that `spawnPickup()` now
+  carries through from `opts`. Deliberately not `worldPickups.length` — that array could gain
+  a non-reward co-tenant later.
+
+**Descend is blocked at TWO places, and it has to be both:**
+1. `el('descend').onclick` — the panel button.
+2. The **exit-arrival branch in `Hero.update()`**, which previously just called
+   `el('descend').click()`. **A `disabled` button silently swallows `.click()`**, so once
+   `updateDescendBtn()` disables it, that path would fail *silently* with no toast. The gate
+   check is therefore duplicated inline there. If you ever re-enable the button while locked,
+   revisit this — otherwise leave both.
+
+`rewardsBlockDescend()` is the single predicate; `updateDescendBtn()` (per-frame, but
+**writes only on change** — cached in `_descendLocked`) disables the button, swaps in a
+`.locked` style, and relabels it "🔒 Collect Rewards First". `hoverTipFor()`'s exit branch
+reads the same predicate so the tooltip can't advertise a descent the click will refuse.
+
+**Not playtested in-session** — no `assets/`/`manifest.json` in the working set, so the game
+could not be booted. Verified by: `node --check` as a real ES module, a headless test of the
+state machine (15 assertions incl. partial clears, idempotent release, L3/L4 pass-through,
+stale-state reset, and the empty-`creatures` false-clear case), byte-comparison of 15 engine
+functions against v18 (**zero diffs — no collision/lighting/generation code touched**), and a
+declaration-order check for TDZ. **Live playtest still needed**, particularly: does the drop
+actually fire on the killing blow, and do the two reward icons land somewhere reachable.
 
 ---
 

@@ -43,6 +43,8 @@
   button:hover { background: #f4a850; }
   button.descend { background: #b23a3a; color: #fff; }
   button.descend:hover { background: #d04a4a; }
+  button.descend.locked, button.descend.locked:hover {
+    background: #3a2a2a; color: #8a7a72; cursor: not-allowed; }
   button.ghost { background: #2a2018; color: #d8c8b0; margin-top: 6px; }
   button.ghost:hover { background: #362a1e; }
   #status { margin-top: 10px; font-size: 11px; color: #7a6a58; min-height: 14px; line-height: 1.5; }
@@ -1675,7 +1677,8 @@ function spawnPickup(kind, cell, opts){
   root.position.set(wx, 50, wz);
   levelGroup.add(root);
   worldPickups.push({ kind, root, x:wx, z:wz, phase:Math.random()*Math.PI*2,
-                      onCollect:opts.onCollect, label:opts.label });
+                      onCollect:opts.onCollect, label:opts.label,
+                      isReward:!!opts.isReward });
 }
 function removePickup(p){
   if(p.root && p.root.parent) p.root.parent.remove(p.root);
@@ -1692,6 +1695,57 @@ function updateWorldPickups(t){
     p.root.rotation.y+=0.02;
   }
 }
+// ============================================================
+//  LEVEL REWARDS GATE (L1 / L2)
+//  On depths listed in LEVEL_REWARDS the exit-room pickups are NOT spawned at build
+//  time. They are held in `pendingRewards` and released by releaseLevelRewards() the
+//  moment the last creature on the floor dies. Descending is blocked until every
+//  released reward has been collected.
+//
+//  Three states, and the difference matters:
+//    rewardsPending  — enemies still alive, nothing spawned yet   -> descend blocked
+//    rewardsDropped  — spawned, some still on the floor           -> descend blocked
+//    (neither)       — all collected, or a depth with no rewards  -> descend allowed
+//
+//  `rewardsRemaining` is decremented at the single collection site in Hero.update()
+//  (the `pickupTarget` branch), NOT by counting worldPickups. worldPickups holds only
+//  rewards today but could gain a co-tenant later; an explicit counter, keyed off the
+//  per-pickup `isReward` flag, can't be broken by that.
+// ============================================================
+const LEVEL_REWARDS = new Set([1,2]);   // depths that gate the exit behind rewards
+let pendingRewards = [];      // [{cell, drop}] held until the floor is cleared
+let rewardsDropped = false;   // true once releaseLevelRewards() has run this level
+let rewardsRemaining = 0;     // uncollected reward pickups still on the floor
+
+// Does this level currently forbid descending?
+function rewardsBlockDescend(){
+  if(!LEVEL_REWARDS.has(depth)) return false;
+  return pendingRewards.length>0 || rewardsRemaining>0;
+}
+// Spawn the held rewards. Idempotent — safe to call from the per-frame clear check.
+function releaseLevelRewards(){
+  if(rewardsDropped || !pendingRewards.length) return;
+  rewardsDropped = true;
+  for(const r of pendingRewards) spawnPickup(r.drop.kind, r.cell, r.drop);
+  rewardsRemaining = pendingRewards.length;
+  pendingRewards = [];
+  setStatus('Level cleared! Collect your rewards, then descend.');
+  showToast('Level cleared \u2014 rewards revealed!', {dur:2200});
+  SFX.play('spellPickup', {volume:0.5});
+}
+// Poll: called each frame while rewards are still held. Cheap (early-outs on the
+// first live creature) and only runs on reward levels before the drop.
+function checkLevelCleared(){
+  if(rewardsDropped || !pendingRewards.length) return;
+  if(!creatures.length) return;             // level not populated yet
+  for(const c of creatures){ if(!c.dead) return; }
+  releaseLevelRewards();
+}
+// Called by build() so a re-gen / new run doesn't inherit the previous floor's state.
+function resetLevelRewards(){
+  pendingRewards = []; rewardsDropped = false; rewardsRemaining = 0;
+}
+
 // Global pause flag, shared by the LEARN modal and the town STORE. Declared here,
 // ABOVE both, deliberately: `let` is not hoisted-and-initialized, so a function that
 // assigns it would throw a ReferenceError if it ran before this line executed. The
@@ -4198,6 +4252,12 @@ class Hero{
         if(d<=CELL*0.7){
           if(typeof p.onCollect==='function') p.onCollect();
           removePickup(p);
+          // Reward bookkeeping: only pickups that were released as level rewards
+          // count against the descend gate (p.isReward is set in build()).
+          if(p.isReward && rewardsRemaining>0){
+            rewardsRemaining--;
+            if(rewardsRemaining===0) setStatus('All rewards collected \u2014 the exit is open.');
+          }
           this.pickupTarget=null; this.moveGoal=null; this.path=null;
           if(this.moveMark) this.moveMark.visible=false;
           this.setState('idle');
@@ -4237,6 +4297,14 @@ class Hero{
         this.exitTarget=false; this.moveGoal=null; this.path=null;
         if(this.moveMark) this.moveMark.visible=false;
         this.setState('idle');
+        // NOTE: a `disabled` button silently swallows .click(), so the gate is checked
+        // HERE rather than relying on the button's own handler to fire and toast. The
+        // button is disabled while locked, so this is the only path that can reach the
+        // player with the reminder after they walk to the exit.
+        if(rewardsBlockDescend()){
+          showToast('Collect rewards first!', {kind:'warn', dur:1800, key:'rewardgate'});
+          return;
+        }
         el('descend').click();   // generate the next level
         return;
       }
@@ -4608,6 +4676,7 @@ function build(GW, GH, roomMax, density, seed, depth){
                         // so a mid-cast descend doesn't leak the pool or orphan sprites
   clearWorldPotions();  // remove any un-picked-up floor potions from the old level
   clearWorldPickups();  // remove any un-collected ability pickups (lantern/scrolls)
+  resetLevelRewards();  // and drop any held-but-unreleased rewards from the old floor
   removePortal();       // any open town portal belongs to the old level
 
   const m = generateMaze(GW,GH,roomMax,seed);
@@ -4916,11 +4985,19 @@ function build(GW, GH, roomMax, density, seed, depth){
       drops.push({ kind:'scroll-firerain', build:()=>buildScrollIcon(0xff8a30), label:'Fire Rain Scroll',
                    onCollect:()=>learnSpell('firerain') });
     }
+    // On reward levels (L1/L2) the drops are HELD, not spawned. releaseLevelRewards()
+    // spawns them from pendingRewards once the last creature on the floor dies. The
+    // cell is resolved now so the reward lands in the exit room it was picked for,
+    // regardless of where the hero happens to be standing when the fight ends.
+    const gated = LEVEL_REWARDS.has(depth);
     for(let k=0;k<drops.length;k++){
       const cell=chosen[k]||chosen[chosen.length-1]||[m.ex[0],m.ex[1]];
-      spawnPickup(drops[k].kind, cell, drops[k]);
+      drops[k].isReward = gated;
+      if(gated) pendingRewards.push({ cell, drop:drops[k] });
+      else spawnPickup(drops[k].kind, cell, drops[k]);
     }
-    if(drops.length) console.log('L'+depth+' exit-room pickups:', drops.map(d=>d.label).join(', '));
+    if(drops.length) console.log('L'+depth+' exit-room pickups'+(gated?' (held as rewards)':'')+':',
+                                 drops.map(d=>d.label).join(', '));
   })();
 
   // entrance & exit markers
@@ -5051,9 +5128,30 @@ const genLevel=()=>{ BGM.setLevel(depth); return build(curLevel.w, curLevel.h, c
 
 el('descend').onclick=()=>{
   if(depth>=MAX_DEPTH){ setStatus('This is the final level — defeat the boss to win.'); return; }
+  // L1/L2 gate: clear the floor, then pick up everything it dropped for you.
+  // Single choke point on purpose — clicking the red exit routes here too (Hero.update
+  // calls el('descend').click()), so both paths get the same check and the same toast.
+  if(rewardsBlockDescend()){
+    showToast('Collect rewards first!', {kind:'warn', dur:1800, key:'rewardgate'});
+    return;
+  }
   depth++; curSeed=(((curSeed*2654435761 + depth*40503)>>>0) % 100000);
   applyLevelSize(depth); genLevel();
 };
+// Visual state for the Descend button. Called every frame but only WRITES on a
+// change — assigning .disabled/.textContent unconditionally every frame is a needless
+// style invalidation, and the label would fight anything else that sets it.
+let _descendLocked=null;
+function updateDescendBtn(){
+  const btn=el('descend'); if(!btn) return;
+  const locked=rewardsBlockDescend();
+  if(locked===_descendLocked) return;
+  _descendLocked=locked;
+  btn.disabled=locked;
+  btn.classList.toggle('locked', locked);
+  btn.innerHTML = locked ? '&#128274; Collect Rewards First'
+                         : '&#11015; Descend to Next Level';
+}
 // New Dungeon (random seed): fresh run from Level 1. Also clears the inventory.
 el('rand').onclick=()=>{ curSeed=Math.floor(Math.random()*99999); depth=1; gameWon=false; gold=0; _lastGold=-1;
   for(const k in inventory) delete inventory[k]; renderInventory();
@@ -5632,7 +5730,8 @@ function hoverTipFor(){
   if(pickPortal()) return '\uD83C\uDF00 Click to shop';
   // 2) red exit — matches the click handler's marker raycast exactly
   const exHit=ray.intersectObjects(markers.children,false).find(h=>h.object.name==='EXIT');
-  if(exHit) return '\u2B07\uFE0F Descend';
+  if(exHit) return rewardsBlockDescend() ? '\uD83D\uDD12 Collect rewards first'
+                                         : '\u2B07\uFE0F Descend';
   // 3) ability pickups (lantern + spell scrolls)
   const pk=pickPickup();
   if(pk){
@@ -5724,6 +5823,10 @@ let prevT=0;
     let anyAlive=false; for(const c of creatures){ if(!c.dead){ anyAlive=true; break; } }
     if(!anyAlive) winGame();
   }
+  // L1/L2: release the held rewards the moment the floor is clear. Early-outs on the
+  // first live creature, and does nothing at all once rewardsDropped is set.
+  if(!gamePaused){ try { checkLevelCleared(); } catch(err){ console.warn('reward check error (skipped):', err); } }
+  updateDescendBtn();
   // update hero + spell effects (frozen while the store is open)
   if(!gamePaused){ try { if(hero) hero.update(dt); } catch(err){ console.warn('hero update error (skipped):', err); } }
   try { updateFootsteps(dt); } catch(err){ console.warn('footstep error (skipped):', err); }
