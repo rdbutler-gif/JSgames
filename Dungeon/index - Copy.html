@@ -1458,213 +1458,6 @@ function propSlideStep(m, x, z, mx, mz, R){
 // it. If the waypoint's cell holds a collider, count the node "reached" once the body
 // is just outside touch distance, so it starts cutting toward the NEXT node and slides
 // around the prop instead of orbiting an unreachable center.
-// ---- BODY-PASSABLE TRANSITIONS (v20) ---------------------------------------
-// THE BUG THIS FIXES. Two definitions of "passable" disagreed with each other:
-//   * GENERATION (reachableCount) guarantees the FREE cells are 4-CONNECTED, and a
-//     body always fits through those orthogonal seams — measured across 40 synthetic
-//     levels at the generator's own prop density: zero sealed free-to-free seams.
-//   * PATHING (findPath) searches 8-CONNECTED and treats propped cells as
-//     passable-at-a-cost.
-// So A* was free to hand a mover a diagonal squeeze between two props, or a transit
-// straight through a prop's own cell, that the BODY cannot physically make. The mover
-// then grinds against the obstacle indefinitely: it has a path, it is following the
-// path, and the path is a lie. That is the stall — and no amount of steering,
-// stall-detection or route-memory cleverness fixes it, because the route was already
-// wrong before the first step.
-//
-// Fix: decide ONCE PER LEVEL which cell-to-cell transitions a body can actually make,
-// and let A* refuse the rest. Per-frame cost is nil — a Set lookup replaces geometry
-// that was never being run at all — and searches get slightly CHEAPER because bad
-// neighbours are pruned before expansion.
-//
-// Deliberately NOT done two other ways:
-//   - per-search body-fit geometry inside findPath: correct but pays the cost on every
-//     search, every frame, forever. That is how you get a laggy dungeon.
-//   - "propped cells block A*": the v15 notes warn against this and they are right —
-//     it refuses routes a body genuinely CAN take, and reintroduces the wedge grind.
-
-// ---- BODY NAVIGATION DATA, computed once per level ------------------------
-// Two products, both derived from the same lattice sweep:
-//
-//   m.spot    — for every propped cell, the body-free point NEAREST its centre.
-//               Path nodes are cell centres, and the centre of a cell holding a fat
-//               prop is inside the prop: unreachable. A mover aimed at it closes to the
-//               collider, never registers arrival, never advances to the next node, and
-//               grinds there for good. Aiming at a reachable spot instead makes every
-//               waypoint on every route physically attainable.
-//   m.noCross — transitions the body cannot make, spot to spot. A* refuses these, so it
-//               stops emitting diagonal squeezes between props and routes through cells
-//               that cannot be crossed.
-//
-// Both are pure precompute: a few tens of milliseconds at level build, behind the
-// loading moment, and ZERO cost per frame afterwards. That is the whole point — the
-// alternative is running body-fit geometry inside every A* search, which is correct and
-// unaffordable.
-const SEAM_STEP=50;      // lattice pitch for the free-space sweep
-const BODY_R_PLAN=150;   // largest body in the game (boss). Mobs and hero are 140, so
-                         // planning at 150 is conservative for them by 10 units.
-
-// Mirrors the movement gate exactly: floor under 4 corners + centre, and no prop overlap.
-function bodyFitsAt(m, x, z, R){
-  if(!isFloorCell(m,Math.round((x-R)/CELL),Math.round((z-R)/CELL))) return false;
-  if(!isFloorCell(m,Math.round((x+R)/CELL),Math.round((z-R)/CELL))) return false;
-  if(!isFloorCell(m,Math.round((x-R)/CELL),Math.round((z+R)/CELL))) return false;
-  if(!isFloorCell(m,Math.round((x+R)/CELL),Math.round((z+R)/CELL))) return false;
-  if(!isFloorCell(m,Math.round(x/CELL),Math.round(z/CELL))) return false;
-  return !propsBlockCircle(m,x,z,R);
-}
-// The point a mover should actually aim at for a path node in this cell.
-function nodePoint(m, ci, cj){
-  const s = m && m.spot && m.spot.get(ci+','+cj);
-  return s || {x:ci*CELL, z:cj*CELL};
-}
-// Lattice of "can the body stand here", memoised in a flat typed array. A string-keyed
-// Map was the single biggest cost in an earlier draft of this pass (600ms+ per level);
-// the array brings the whole precompute under ~50ms.
-function navLattice(m, R){
-  const PAD=2;
-  const LW=Math.round((m.GW*CELL)/SEAM_STEP)+2*PAD, LH=Math.round((m.GH*CELL)/SEAM_STEP)+2*PAD;
-  const cell=new Int8Array(LW*LH);   // 0 unknown, 1 free, 2 blocked
-  return {
-    PAD, LW, LH,
-    idx:(nx,nz)=>(nx+PAD)*LH+(nz+PAD),
-    free(nx,nz){
-      if(nx+PAD<0||nx+PAD>=LW||nz+PAD<0||nz+PAD>=LH) return false;
-      const k=(nx+PAD)*LH+(nz+PAD);
-      let v=cell[k];
-      if(v===0){ v=cell[k]=bodyFitsAt(m,nx*SEAM_STEP,nz*SEAM_STEP,R)?1:2; }
-      return v===1;
-    }
-  };
-}
-// Body-free point nearest the cell centre, or null if the body fits nowhere in the cell.
-function cellSpot(m, ci, cj, R, lat){
-  const n0x=Math.round((ci*CELL-290)/SEAM_STEP), n1x=Math.round((ci*CELL+290)/SEAM_STEP);
-  const n0z=Math.round((cj*CELL-290)/SEAM_STEP), n1z=Math.round((cj*CELL+290)/SEAM_STEP);
-  let best=null, bd=Infinity;
-  for(let nx=n0x;nx<=n1x;nx++) for(let nz=n0z;nz<=n1z;nz++){
-    if(!lat.free(nx,nz)) continue;
-    const x=nx*SEAM_STEP, z=nz*SEAM_STEP;
-    const d=(x-ci*CELL)*(x-ci*CELL)+(z-cj*CELL)*(z-cj*CELL);
-    if(d<bd){ bd=d; best={x,z}; }
-  }
-  return best;
-}
-// Can the body get from cell a's aim point to cell b's aim point, staying within those
-// two cells? Restricted to the pair on purpose: a route that has to detour through a
-// third cell is a different route, and A* should be made to plan it as one.
-function seamOpen(m, ai, aj, bi, bj, R, lat){
-  const A=nodePoint(m,ai,aj), B=nodePoint(m,bi,bj);
-  // FAST PATH: most transitions near a prop are still trivially clear. Sampling the
-  // straight line settles those without touching the flood at all.
-  {
-    let clear=true;
-    for(let t=0;t<=1.0001;t+=1/12){
-      if(!bodyFitsAt(m, A.x+(B.x-A.x)*t, A.z+(B.z-A.z)*t, R)){ clear=false; break; }
-    }
-    if(clear) return true;
-  }
-  const ax=Math.round(A.x/SEAM_STEP), az=Math.round(A.z/SEAM_STEP);
-  const bx=Math.round(B.x/SEAM_STEP), bz=Math.round(B.z/SEAM_STEP);
-  if(!lat.free(ax,az) || !lat.free(bx,bz)) return false;
-  const cellOf=(n)=>Math.round(n*SEAM_STEP/CELL);
-  const nx0=Math.round((Math.min(ai,bi)*CELL-300)/SEAM_STEP);
-  const nx1=Math.round((Math.max(ai,bi)*CELL+300)/SEAM_STEP);
-  const nz0=Math.round((Math.min(aj,bj)*CELL-300)/SEAM_STEP);
-  const nz1=Math.round((Math.max(aj,bj)*CELL+300)/SEAM_STEP);
-  const seen=new Set([ax+','+az]); const stack=[[ax,az]];
-  while(stack.length){
-    const [nx,nz]=stack.pop();
-    if(nx===bx && nz===bz) return true;
-    for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++){
-      if(!dx&&!dz) continue;
-      const mx=nx+dx, mz=nz+dz;
-      if(mx<nx0||mx>nx1||mz<nz0||mz>nz1) continue;
-      const k=mx+','+mz; if(seen.has(k)) continue;
-      seen.add(k);
-      const ci=cellOf(mx), cj=cellOf(mz);
-      if(!((ci===ai&&cj===aj)||(ci===bi&&cj===bj))) continue;
-      if(lat.free(mx,mz)) stack.push([mx,mz]);
-    }
-  }
-  return false;
-}
-// Fill in m.spot and m.noCross, then REPAIR: the filter is deliberately strict, and on
-// a small number of layouts strictness strands a free cell that generation guaranteed
-// was reachable. Rather than loosen the test everywhere (which would let real squeezes
-// back in), give back the minimum number of transitions needed to make the level whole
-// again. Over-blocking a route is a detour; over-blocking a region is a broken level.
-function buildBodyNav(m, R){
-  m.spot=new Map(); m.noCross=new Set();
-  if(!m || !m.propGrid || m.propGrid.size===0) return;
-  const {GW,GH}=m;
-  const lat=navLattice(m,R);
-  const near=(i,j)=>{
-    for(let a=-1;a<=1;a++) for(let b=-1;b<=1;b++) if(m.propGrid.has((i+a)+','+(j+b))) return true;
-    return false;
-  };
-  for(let i=0;i<GW;i++) for(let j=0;j<GH;j++){
-    if(!isFloorCell(m,i,j) || !m.propGrid.has(i+','+j)) continue;
-    const sp=cellSpot(m,i,j,R,lat);
-    if(sp) m.spot.set(i+','+j, sp);
-  }
-  const steps=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-  for(let i=0;i<GW;i++) for(let j=0;j<GH;j++){
-    if(!isFloorCell(m,i,j) || !near(i,j)) continue;
-    for(const [di,dj] of steps){
-      const ni=i+di, nj=j+dj;
-      if(!isFloorCell(m,ni,nj)) continue;
-      if(!seamOpen(m,i,j,ni,nj,R,lat)) m.noCross.add(i+','+j+'>'+ni+','+nj);
-    }
-  }
-  repairBodyNav(m);
-}
-// Walk the transition graph from the entrance; if any FREE cell is unreachable, hand
-// back blocked transitions on its frontier (orthogonal first — those are the ones
-// generation's own connectivity guarantee relies on) until everything is reachable.
-function repairBodyNav(m){
-  if(!m.noCross.size) return 0;
-  const {GW,GH}=m;
-  const ortho=[[1,0],[-1,0],[0,1],[0,-1]], steps=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-  const start=(m.ent && isFloorCell(m,m.ent[0],m.ent[1])) ? m.ent : (()=>{
-    for(let i=0;i<GW;i++) for(let j=0;j<GH;j++) if(isCellFree(m,i,j)) return [i,j];
-    return null; })();
-  if(!start) return 0;
-  let given=0;
-  for(let pass=0; pass<400; pass++){
-    const seen=new Set([start[0]+','+start[1]]), st=[start];
-    while(st.length){
-      const [i,j]=st.pop();
-      for(const [di,dj] of steps){
-        const ni=i+di, nj=j+dj;
-        if(!isFloorCell(m,ni,nj)) continue;
-        if(di&&dj && (!isFloorCell(m,i+di,j)||!isFloorCell(m,i,j+dj))) continue;
-        if(m.noCross.has(i+','+j+'>'+ni+','+nj)) continue;
-        const k=ni+','+nj; if(seen.has(k)) continue;
-        seen.add(k); st.push([ni,nj]);
-      }
-    }
-    let fixed=false;
-    outer:
-    for(let i=0;i<GW && !fixed;i++) for(let j=0;j<GH && !fixed;j++){
-      if(!isCellFree(m,i,j) || seen.has(i+','+j)) continue;
-      // this free cell is cut off — reopen a transition from the reachable side
-      for(const list of [ortho, steps]){
-        for(const [di,dj] of list){
-          const pi=i-di, pj=j-dj;
-          if(!seen.has(pi+','+pj)) continue;
-          const key=pi+','+pj+'>'+i+','+j;
-          if(!m.noCross.has(key)) continue;
-          m.noCross.delete(key); m.noCross.delete(i+','+j+'>'+pi+','+pj);
-          given+=2; fixed=true; break outer;
-        }
-      }
-    }
-    if(!fixed) break;
-  }
-  if(given) console.log('  body nav repair: '+given+' transitions handed back to keep the level whole');
-  return given;
-}
 function pathArriveR(bodyR, ci, cj, base){
   const g=currentMaze&&currentMaze.propGrid;
   const l=g&&g.get(ci+','+cj);
@@ -2230,22 +2023,12 @@ function mobFlee(self, dt){
   const px=self.root.position.x, pz=self.root.position.z;
   const away=Math.atan2(px-hx, pz-hz);   // heading pointing from hero -> self (away)
   const reach=(self.moveSpeed||300)*Math.max(dt,0.016)*3;   // look a few steps ahead
-  // HEADING COMMITMENT. Re-picking the sidestep sense from scratch every frame makes
-  // her jitter in a pocket: +1.0 rad clears this frame, -1.0 clears the next, and she
-  // shivers between them instead of leaving. Hold a working escape heading briefly,
-  // and drop it the moment it stops being walkable.
-  if((self._fleeT||0)>0 && self._fleeH!==undefined){
-    self._fleeT-=dt;
-    const tx=px+Math.sin(self._fleeH)*reach, tz=pz+Math.cos(self._fleeH)*reach;
-    if(mobWalkable(self, tx, tz)){ mobSteer(self, dt, tx, tz); return true; }
-  }
   // candidate retreat headings: straight away, then progressively more sideways
   for(const off of [0, 0.5, -0.5, 1.0, -1.0, 1.7, -1.7]){
     const h=away+off;
     const tx=px+Math.sin(h)*reach, tz=pz+Math.cos(h)*reach;
-    if(mobWalkable(self, tx, tz)){ self._fleeH=h; self._fleeT=0.35; mobSteer(self, dt, tx, tz); return true; }
+    if(mobWalkable(self, tx, tz)){ mobSteer(self, dt, tx, tz); return true; }
   }
-  self._fleeT=0;
   return false;   // cornered — nowhere to run
 }
 // Beeline on line of sight, else A* toward the hero's cell (repaths ~2.5x/sec).
@@ -2262,7 +2045,7 @@ function mobPursue(self, dt){
   // the prop. Mirrors the hero's proven anti-grind logic.
   const _px=self.root.position.x, _pz=self.root.position.z;
   const commitActive = (self._pathCommit||0) > 0;
-  if(!commitActive && losWalkable(floor,GW,GH,a,b,currentMaze.noCross)){
+  if(!commitActive && lineOfSight(floor,GW,GH,a,b)){
     mobSteer(self, dt, hero.root.position.x, hero.root.position.z);
     self.path=null;
     // did we actually move? if not, start counting toward a stall.
@@ -2277,24 +2060,18 @@ function mobPursue(self, dt){
     self.repathTimer=0.4;
     let goal=b;
     if(!isCellFree(currentMaze,goal[0],goal[1])) goal=nearestFloor(floor,GW,GH,goal,blocked)||goal;
-    const path=findPath(floor,GW,GH,a,goal,blocked,currentMaze.noCross);
+    const path=findPath(floor,GW,GH,a,goal,blocked);
     if(path && path.length>1){ self.path=path; self.pathIdx=1; } else self.path=null;
   }
   if(self.path && self.pathIdx<self.path.length){
     const [ci,cj]=self.path[self.pathIdx];
-    const np=nodePoint(currentMaze, ci, cj);   // reachable aim point (see buildBodyNav)
-    const left=mobSteer(self, dt, np.x, np.z);
+    const left=mobSteer(self, dt, ci*CELL, cj*CELL);
     if(left<pathArriveR(self.bodyR||150, ci, cj, 40)) self.pathIdx++;   // propped node: arrive at touch distance
     // Even on the A* path, watch for a grind (path node sits past a prop corner). If we
     // stop making progress, bump the repath so a fresh route is computed next tick.
     const moved=Math.hypot(self.root.position.x-_px, self.root.position.z-_pz);
     self._stall = (moved < (self.moveSpeed||300)*dt*0.35) ? (self._stall||0)+dt : 0;
-    // Skip the snagged node. NOTE: this deliberately does NOT also zero repathTimer.
-    // Doing both is self-defeating — the forced repath on the very next frame rebuilds
-    // the path and resets pathIdx to 1, throwing away the skip that was just made, so
-    // the mover re-targets the same snagged node forever. Let the skip stand; the
-    // normal repath cadence refreshes the route soon enough anyway.
-    if(self._stall>0.4){ self._stall=0; self.pathIdx++; }
+    if(self._stall>0.4){ self._stall=0; self.repathTimer=0; self.pathIdx++; }   // skip the snagged node
   } else {
     mobSteer(self, dt, hero.root.position.x, hero.root.position.z);
   }
@@ -2345,17 +2122,16 @@ function mobReturnHome(self, dt){
     self.repathTimer=0.4;
     let g=goal;
     if(!isCellFree(currentMaze,g[0],g[1])) g=nearestFloor(floor,GW,GH,g,blocked)||g;
-    const path=findPath(floor,GW,GH,a,g,blocked,currentMaze.noCross);
+    const path=findPath(floor,GW,GH,a,g,blocked);
     if(path && path.length>1){ self.path=path; self.pathIdx=1; } else self.path=null;
   }
   if(self.path && self.pathIdx<self.path.length){
     const [ci,cj]=self.path[self.pathIdx];
-    const np=nodePoint(currentMaze, ci, cj);   // reachable aim point (see buildBodyNav)
-    const left=steer(dt, np.x, np.z);
+    const left=steer(dt, ci*CELL, cj*CELL);
     if(left<pathArriveR(self.bodyR||150, ci, cj, 40)) self.pathIdx++;   // propped node: arrive at touch distance
     const moved=Math.hypot(self.root.position.x-_px, self.root.position.z-_pz);
     self._stall = (moved < (self.moveSpeed||300)*dt*0.35) ? (self._stall||0)+dt : 0;
-    if(self._stall>0.4){ self._stall=0; self.pathIdx++; }   // skip the snagged node (see mobPursue)
+    if(self._stall>0.4){ self._stall=0; self.repathTimer=0; self.pathIdx++; }
   } else {
     steer(dt, gx, gz);
   }
@@ -2373,7 +2149,6 @@ function deaggroCreature(c){
   c.provoked=false;
   c.path=null; c.pathIdx=1; c.repathTimer=0;
   c._stall=0; c._pathCommit=0;   // fresh stuck-detection state for the walk home
-  c._fleeing=false; c._fleeT=0;  // drop the sorceress kite latch + committed flee heading
   c.target=null;
   // cancel any committed action state so they don't finish a swing/cast at empty air
   if('castedThisClip' in c) c.castedThisClip=false;
@@ -2451,18 +2226,10 @@ class Skeleton{
     if(!hero||!hero.root) return Infinity;
     return Math.hypot(hero.root.position.x-this.root.position.x, hero.root.position.z-this.root.position.z);
   }
-  _faceHero(dt){
-    // dt OMITTED -> instant snap (one-shot moments: taking a hit, starting a swing).
-    // dt PASSED  -> rate-limited turn, for anything that runs EVERY FRAME. Snapping
-    // per-frame is what makes a mob visibly flicker: two branches alternating between
-    // a snapped face-the-hero heading and a steered one flip the model back and forth
-    // sixty times a second.
+  _faceHero(){
     if(!hero||!hero.root) return;
     const dx=hero.root.position.x-this.root.position.x, dz=hero.root.position.z-this.root.position.z;
-    const want=Math.atan2(dx,dz);
-    if(dt===undefined){ this.heading=want; this.root.rotation.y=want; return; }
-    let dh=want-this.heading; while(dh>Math.PI)dh-=2*Math.PI; while(dh<-Math.PI)dh+=2*Math.PI;
-    this.heading+=dh*Math.min(1,dt*10); this.root.rotation.y=this.heading;
+    this.heading=Math.atan2(dx,dz); this.root.rotation.y=this.heading;
   }
   play(name, fade=0.25){
     const next=this.actions[name]; if(!next) return;
@@ -2627,18 +2394,10 @@ class Zombie{
     } catch(e){ console.warn('zombie play('+name+') failed:', e); }
   }
   setState(s){ if(this.state===s) return; this.state=s; this.stateTime=0; this.play(s); }
-  _faceHero(dt){
-    // dt OMITTED -> instant snap (one-shot moments: taking a hit, starting a swing).
-    // dt PASSED  -> rate-limited turn, for anything that runs EVERY FRAME. Snapping
-    // per-frame is what makes a mob visibly flicker: two branches alternating between
-    // a snapped face-the-hero heading and a steered one flip the model back and forth
-    // sixty times a second.
+  _faceHero(){
     if(!hero||!hero.root) return;
     const dx=hero.root.position.x-this.root.position.x, dz=hero.root.position.z-this.root.position.z;
-    const want=Math.atan2(dx,dz);
-    if(dt===undefined){ this.heading=want; this.root.rotation.y=want; return; }
-    let dh=want-this.heading; while(dh>Math.PI)dh-=2*Math.PI; while(dh<-Math.PI)dh+=2*Math.PI;
-    this.heading+=dh*Math.min(1,dt*10); this.root.rotation.y=this.heading;
+    this.heading=Math.atan2(dx,dz); this.root.rotation.y=this.heading;
   }
   update(dt, floor, GW, GH){
     // CORPSE FAST-PATH (see Skeleton.update): freeze dead bodies once the death clip ends.
@@ -2768,18 +2527,10 @@ class Sorceress{
     this.target=null;
     this._faceHero();
   }
-  _faceHero(dt){
-    // dt OMITTED -> instant snap (one-shot moments: taking a hit, starting a swing).
-    // dt PASSED  -> rate-limited turn, for anything that runs EVERY FRAME. Snapping
-    // per-frame is what makes a mob visibly flicker: two branches alternating between
-    // a snapped face-the-hero heading and a steered one flip the model back and forth
-    // sixty times a second.
+  _faceHero(){
     if(!hero||!hero.root) return;
     const dx=hero.root.position.x-this.root.position.x, dz=hero.root.position.z-this.root.position.z;
-    const want=Math.atan2(dx,dz);
-    if(dt===undefined){ this.heading=want; this.root.rotation.y=want; return; }
-    let dh=want-this.heading; while(dh>Math.PI)dh-=2*Math.PI; while(dh<-Math.PI)dh+=2*Math.PI;
-    this.heading+=dh*Math.min(1,dt*10); this.root.rotation.y=this.heading;
+    this.heading=Math.atan2(dx,dz); this.root.rotation.y=this.heading;
   }
   _distToHero(){
     if(!hero||!hero.root) return Infinity;
@@ -2824,7 +2575,7 @@ class Sorceress{
 
     // --- CAST: launch the ice bolt once, partway through the clip ---
     if(this.state==='cast'){
-      this._faceHero(dt);
+      this._faceHero();
       if(!this.castedThisClip && this.stateTime>0.55){
         this.castedThisClip=true;
         if(hero && !hero.dead && this._seesHero()){
@@ -2864,36 +2615,21 @@ class Sorceress{
       }
       const canCast = this.castTimer<=0 && this.mana>=SORC_MANA_COST;
       if(d<=SORC_CAST_RANGE && canCast && this._seesHero()){
-        this._fleeing=false;
         this.path=null; this._faceHero(); this.castedThisClip=false; this.setState('cast'); return;
       }
       // Can't cast right now (dry or on cooldown). If the hero is close, KITE: flee to
       // open the gap while mana regenerates, then the branch above fires the moment she
-      // has enough — turn, cast, and (now dry again) flee once more.
-      //
-      // The kite decision is LATCHED, not retaken every frame. Deciding it fresh at a
-      // single distance threshold makes her oscillate right on the boundary: one frame
-      // running away, the next turning to face, sixty times a second — which is the
-      // "stalls and flickers back and forth" report. She commits to fleeing inside the
-      // comfort radius and only drops it once she is back at full cast range, or the
-      // instant she can actually fire.
-      const FLEE_UNTIL = SORC_CAST_RANGE*0.85;   // comfort radius while recovering
-      if(this._fleeing && (d>=SORC_CAST_RANGE || canCast)) this._fleeing=false;
-      else if(!this._fleeing && d<FLEE_UNTIL && !canCast) this._fleeing=true;
-      if(this._fleeing){
+      // has enough — turn, cast, and (now dry again) flee once more. She only bothers
+      // running when he's inside a comfort radius; if he's already far she holds and faces.
+      const FLEE_UNTIL = SORC_CAST_RANGE*0.85;   // keep this much distance while recovering
+      if(d < FLEE_UNTIL){
+        if(this.state!=='walk') this.setState('walk');
         const ran = mobFlee(this, dt);
-        if(ran){ if(this.state!=='walk') this.setState('walk'); }
-        // Cornered: STAND and face him, rather than treadmilling the walk cycle on the
-        // spot (the old branch left her in 'walk' whether she moved or not).
-        else { if(this.state!=='idle') this.setState('idle'); this._faceHero(dt); }
+        if(!ran){ this._faceHero(); }   // cornered: at least face him (maybe he walks into range of a melee)
         return;
       }
-      // Comfortably far and recovering: hold and face until mana returns or he closes
-      // in. Hold in the IDLE stance — the old code held in whatever state she arrived
-      // in, so a sorceress that had been walking stood still playing the walk cycle.
-      if(d<=SORC_CAST_RANGE && this._seesHero()){
-        this.path=null; if(this.state!=='idle') this.setState('idle'); this._faceHero(dt); return;
-      }
+      // Comfortably far and recovering: hold and face until mana returns or he closes in.
+      if(d<=SORC_CAST_RANGE && this._seesHero()){ this.path=null; this._faceHero(); return; }
       // Out of range or no LOS: advance toward the hero to get a shot.
       if(this.state!=='walk') this.setState('walk');
       mobPursue(this, dt);
@@ -3003,18 +2739,10 @@ class Boss{
     this.repathTimer=0;
     this._faceHero();
   }
-  _faceHero(dt){
-    // dt OMITTED -> instant snap (one-shot moments: taking a hit, starting a swing).
-    // dt PASSED  -> rate-limited turn, for anything that runs EVERY FRAME. Snapping
-    // per-frame is what makes a mob visibly flicker: two branches alternating between
-    // a snapped face-the-hero heading and a steered one flip the model back and forth
-    // sixty times a second.
+  _faceHero(){
     if(!hero||!hero.root) return;
     const dx=hero.root.position.x-this.root.position.x, dz=hero.root.position.z-this.root.position.z;
-    const want=Math.atan2(dx,dz);
-    if(dt===undefined){ this.heading=want; this.root.rotation.y=want; return; }
-    let dh=want-this.heading; while(dh>Math.PI)dh-=2*Math.PI; while(dh<-Math.PI)dh+=2*Math.PI;
-    this.heading+=dh*Math.min(1,dt*10); this.root.rotation.y=this.heading;
+    this.heading=Math.atan2(dx,dz); this.root.rotation.y=this.heading;
   }
   _distToHero(){
     if(!hero||!hero.root) return Infinity;
@@ -3086,7 +2814,7 @@ class Boss{
     const b=worldToCell(hero.root.position.x,hero.root.position.z);
     const _px=this.root.position.x, _pz=this.root.position.z;
     const commitActive=(this._pathCommit||0)>0;
-    if(!commitActive && losWalkable(floor,GW,GH,a,b,currentMaze.noCross)){
+    if(!commitActive && lineOfSight(floor,GW,GH,a,b)){
       this._steer(dt, hero.root.position.x, hero.root.position.z);
       this.path=null;
       const moved=Math.hypot(this.root.position.x-_px, this.root.position.z-_pz);
@@ -3100,13 +2828,12 @@ class Boss{
       this.repathTimer=0.4;
       let goal=b;
       if(!isCellFree(currentMaze,goal[0],goal[1])) goal=nearestFloor(floor,GW,GH,goal,blocked)||goal;
-      const path=findPath(floor,GW,GH,a,goal,blocked,currentMaze.noCross);
+      const path=findPath(floor,GW,GH,a,goal,blocked);
       if(path && path.length>1){ this.path=path; this.pathIdx=1; } else this.path=null;
     }
     if(this.path && this.pathIdx<this.path.length){
       const [ci,cj]=this.path[this.pathIdx];
-      const np=nodePoint(currentMaze, ci, cj);   // reachable aim point (see buildBodyNav)
-      const left=this._steer(dt, np.x, np.z);
+      const left=this._steer(dt, ci*CELL, cj*CELL);
       if(left<pathArriveR(150, ci, cj, 40)) this.pathIdx++;   // propped node: arrive at touch distance
       const moved=Math.hypot(this.root.position.x-_px, this.root.position.z-_pz);
       this._stall = (moved < BOSS_MOVE_SPEED*dt*0.35) ? (this._stall||0)+dt : 0;
@@ -3429,7 +3156,7 @@ function makeMoveMarker(){
 // which is what fed the repath-into-the-same-wall wedge loop). Extra cost only ever
 // ADDS to an edge, so the octile heuristic stays admissible.
 const PROP_CROSS_COST=2.0;
-function findPath(floor, GW, GH, start, goal, blocked, noCross){
+function findPath(floor, GW, GH, start, goal, blocked){
   if(!floor) return null;
   const key=(i,j)=>i*GH+j;
   const bl = blocked || new Set();
@@ -3467,13 +3194,6 @@ function findPath(floor, GW, GH, start, goal, blocked, noCross){
         if(!inb(cur[0]+di,cur[1]) || !inb(cur[0],cur[1]+dj)) continue;
       }
       const nk=key(ni,nj); if(seen.has(nk)) continue;
-      // BODY PASSABILITY (see buildBodyNav): drop transitions the body cannot make.
-      // Honoured strictly, with NO exemptions — an earlier draft exempted the step
-      // into the goal (reasoning that pathArriveR halts the body short anyway) and
-      // that single exemption re-admitted the exact squeeze this is here to reject,
-      // because the goal is usually where the mover is trying to squeeze TO. The
-      // whole-search fallback below covers the genuinely-stranded case instead.
-      if(noCross && noCross.has(cur[0]+','+cur[1]+'>'+ni+','+nj)) continue;
       const tentative=(g.get(ck)??Infinity)+cost+(bl.has(ni+','+nj)?PROP_CROSS_COST:0);
       if(tentative<(g.get(nk)??Infinity)){
         came.set(nk,cur); g.set(nk,tentative); f.set(nk,tentative+h(ni,nj));
@@ -3481,11 +3201,6 @@ function findPath(floor, GW, GH, start, goal, blocked, noCross){
       }
     }
   }
-  // FALLBACK: the body-passability filter found nothing. Rather than report no route
-  // at all — which strands a mover that is genuinely wedged, and is a worse failure
-  // than an optimistic route — search again with the filter off and let the steering
-  // and stall detection deal with it. Costs a second search only in this rare case.
-  if(noCross) return findPath(floor, GW, GH, start, goal, blocked, null);
   return null; // unreachable
 }
 const worldToCell=(x,z)=>[Math.round(x/CELL), Math.round(z/CELL)];
@@ -3521,30 +3236,6 @@ function lineOfSight(floor, GW, GH, a, b){
     if(e2>-dy){ err-=dy; x0+=sx; }
     if(e2<dx){ err+=dx; y0+=sy; }
     if(!inb(x0,y0)) return false;
-  }
-  return true;
-}
-// BODY-AWARE line of sight, for "can I just walk straight at him?" decisions.
-// lineOfSight above answers a VISION question — props are see-over, so it ignores
-// them, which is right for aggro and wrong for movement. Using it as a movement gate
-// is the second half of the stall bug: the mover concludes it has a clear run, walks
-// into a prop, grinds until the stall detector fires, commits to A* for 0.8s, then
-// beelines into the same prop again — a loop that reads as "stuck and twitching".
-// This walks the identical Bresenham cells and additionally refuses any step the body
-// cannot make, reusing the transitions computed once at level build. A few Set lookups;
-// no geometry, no per-frame cost worth measuring.
-function losWalkable(floor, GW, GH, a, b, noCross){
-  if(!lineOfSight(floor,GW,GH,a,b)) return false;
-  if(!noCross || noCross.size===0) return true;
-  let x0=a[0], y0=a[1]; const x1=b[0], y1=b[1];
-  const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
-  const sx=x0<x1?1:-1, sy=y0<y1?1:-1;
-  let err=dx-dy;
-  while(!(x0===x1&&y0===y1)){
-    const px=x0, py=y0, e2=2*err;
-    if(e2>-dy){ err-=dy; x0+=sx; }
-    if(e2<dx){ err+=dx; y0+=sy; }
-    if(noCross.has(px+','+py+'>'+x0+','+y0)) return false;
   }
   return true;
 }
@@ -4303,7 +3994,7 @@ class Hero{
     if(!isCellFree(currentMaze,goal[0],goal[1])){
       goal=nearestFloor(floor,GW,GH,goal,blocked)||start;
     }
-    const path=findPath(floor,GW,GH,start,goal,blocked,currentMaze.noCross);
+    const path=findPath(floor,GW,GH,start,goal,blocked);
     if(path && path.length>1){ this.path=path; this.pathIdx=1; this.setState('walk'); }
     else { this.path=null; this.setState('idle'); }
   }
@@ -4711,10 +4402,7 @@ class Hero{
   }
   _followPath(dt, stopEarlyForLock){
     if(!this.path || this.pathIdx>=this.path.length){ if(this.state==='walk') this.setState('idle'); return; }
-    // Aim at the reachable spot for this cell, not its bare centre (see buildBodyNav) —
-    // the hero grinds on furniture for exactly the same reason the mobs do.
-    const c=this.path[this.pathIdx]; const _np=nodePoint(currentMaze, c[0], c[1]);
-    const tx=_np.x, tz=_np.z;
+    const c=this.path[this.pathIdx]; const tx=c[0]*CELL, tz=c[1]*CELL;
     this.setState('walk');
     const distToWp=Math.hypot(tx-this.root.position.x, tz-this.root.position.z);
     const before=distToWp;
@@ -5203,15 +4891,6 @@ function build(GW, GH, roomMax, density, seed, depth){
   if(m.propColliders.length){
     const rs=m.propColliders.map(c=>Math.round(c.r));
     console.log('L'+depth+' PROP COLLIDERS:', rs.length, '(r '+Math.min(...rs)+'-'+Math.max(...rs)+')');
-  }
-  // Colliders are final for this level -> compute the aim points and the transitions a
-  // body can physically make, once, here (see buildBodyNav). Must run AFTER every prop
-  // and bowl-table collider is registered, and BEFORE anything paths.
-  {
-    const _t0=performance.now();
-    buildBodyNav(m, BODY_R_PLAN);
-    console.log('L'+depth+' BODY NAV: '+m.spot.size+' prop cells re-aimed, '
-      +m.noCross.size+' transitions blocked ('+(performance.now()-_t0).toFixed(0)+'ms)');
   }
 
   // ---- POTIONS (left-click pickups) — scattered on open floor, more on bigger levels.

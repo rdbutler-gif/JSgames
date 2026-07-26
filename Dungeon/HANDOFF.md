@@ -1,4 +1,4 @@
-# Dungeon Maze — Handoff (v19)
+# Dungeon Maze — Handoff (v20)
 
 Single-file browser dungeon crawler on **three.js r160**. Click-to-move hero fights through
 **4 procedurally generated levels** to a boss on L4. `index.html` is ~5,720 lines.
@@ -8,6 +8,10 @@ modals, potions in the shop, and a real loading bar — and touched **none** of 
 lighting, or generation code (verified by byte-comparing 24 functions against the previous
 build; see "Verification pattern" below). The engine notes in this doc are inherited from v15
 and remain accurate.
+
+**v20 was a PATHING session.** It fixed the long-standing "enemies stall and twitch" bug at
+its root and left collision, lighting and generation byte-identical (22 functions compared).
+Read "v20 — BODY-AWARE PATHING" below before touching anything under `mobPursue`/`findPath`.
 
 **No mandated job this session.** Ask the user. See "Suggested next steps".
 
@@ -280,7 +284,15 @@ opens long after init. Keep it above.
 | Store render (2 sections) | `renderStore` | ~1868 |
 | Mob steer / pursue / return home | `mobSteer` / `mobPursue` / `mobReturnHome` | ~1941 / 1981 / 2041 |
 | Hero steer (+prop slide) | `Hero._steer` | ~2729 |
-| A* (floor-only + cross cost) | `findPath` | ~3105 |
+| A* (floor-only + cross cost + `noCross`) | `findPath` | ~3105 |
+| **Body fits here?** | `bodyFitsAt` | ~1490 |
+| **Aim point for a path node** | `nodePoint` | ~1500 |
+| **Free-space lattice (typed array)** | `navLattice` | ~1505 |
+| **Standable spot in a propped cell** | `cellSpot` | ~1525 |
+| **Can the body make this transition?** | `seamOpen` | ~1540 |
+| **Build `m.spot` + `m.noCross`** | `buildBodyNav` | ~1590 |
+| **Give transitions back to keep level whole** | `repairBodyNav` | ~1630 |
+| **Body-aware LOS (movement gate)** | `losWalkable` | ~2190 |
 | Fire Rain shader / spawn | `FIRERAIN_VERT` / `spawnFireRain` | ~3387 / 3472 |
 | **Store potion prices** | `STORE_POTIONS` | ~3656 |
 | Measure + register collider | `addPropColliderFromInstance` | ~4538 |
@@ -353,6 +365,148 @@ actually fire on the killing blow, and do the two reward icons land somewhere re
 
 ---
 
+## v20 — BODY-AWARE PATHING (read before touching movement or A*)
+
+### The bug, precisely
+
+Two definitions of "passable" disagreed, and nothing reconciled them:
+
+| Layer | Model | Connectivity |
+|---|---|---|
+| **Generation** (`reachableCount`) | cells; a propped cell is not free | **4-connected** over FREE cells |
+| **Pathing** (`findPath`) | cells; propped cells passable at `PROP_CROSS_COST` | **8-connected**, props are a cost |
+| **Movement** (`propsBlockCircle`) | continuous; body circle vs prop circles | — |
+
+So A* could legally emit a route the body physically cannot walk — most often a **diagonal
+squeeze between two props** whose jitter pulled them together, or a transit **through a
+propped cell whose centre is inside the prop**. The mover then has a path, is following the
+path, and gets nowhere. That is the stall. It is not a steering bug and no amount of
+stall-detection, route-memory or repath cleverness fixes it, because **the route was already
+wrong before the first step**. (Two prior sessions attacked it from the steering side; that
+is what produced the lag, and it is the trap to avoid.)
+
+`lineOfSight` was the second half of it: it answers a **vision** question, so it ignores
+props — correct for aggro, wrong as the beeline movement gate it was also being used for.
+
+### The fix — two build-time precomputes, zero per-frame cost
+
+`buildBodyNav(m, BODY_R_PLAN)` runs **once per level**, immediately after the last prop
+collider is registered (right after the `PROP COLLIDERS` log) and **before anything paths**.
+It fills two fields on the maze:
+
+- **`m.spot`** — `Map "i,j" -> {x,z}`, the body-free point nearest the centre of each
+  **propped** cell. `nodePoint(m,ci,cj)` returns it, falling back to the bare cell centre.
+  All four path-followers aim at this instead of `ci*CELL, cj*CELL`.
+  *Why:* the centre of a cell holding a fat prop is inside the prop. A mover aimed there
+  closes to the collider, never satisfies `pathArriveR`, never advances to the next node.
+- **`m.noCross`** — `Set "i,j>ni,nj"` of transitions the body cannot make, tested **spot to
+  spot**. `findPath` skips them; `losWalkable` refuses a beeline that crosses one.
+
+**`BODY_R_PLAN=150`** (the boss; mobs and hero are 140) — planning for the largest body, so
+one table serves everyone. **`SEAM_STEP=50`** is the lattice pitch.
+
+### seamOpen — why it is a flood and not something cheaper
+
+Three cheaper tests were tried and each let real stalls through. Do not "simplify" back:
+
+1. **centre-to-centre lane sweep** — condemns every large prop, because the centre of its
+   cell is unreachable by design.
+2. **"is the shared gate open"** — checks each gate independently, and so misses the case
+   that actually bites: a cell whose east and north gates are both open at *opposite
+   corners*, with the prop's inflated circle covering everything between. Enter, no exit.
+3. **anchoring the flood on the cell instead of the aim point** — "can the body enter?"
+   says yes while the waypoint stays 452 units away against an arrival radius of 430.
+
+What survives: flood the body's free space over the **union of exactly the two cells**, from
+a's aim point to b's. Restricted to the pair on purpose — a route needing a third cell is a
+different route and A* should plan it as one. A straight-line fast path settles the large
+majority without flooding.
+
+### repairBodyNav — the filter is strict, so it must be repairable
+
+The transition filter is deliberately strict, and on a small number of layouts strictness
+strands a free cell that generation guaranteed was reachable. `repairBodyNav` walks the
+transition graph from `m.ent` and hands back the **minimum** number of transitions
+(orthogonal first) until every free cell is reachable again. Measured: **0/30 levels severed**
+after repair, vs 2/30 before it existed. *Over-blocking a route is a detour; over-blocking a
+region is a broken level.* If you tighten `seamOpen`, keep this.
+
+### Measured
+
+- **stall rate** on 388 generator-realistic propped rooms: **2.6% -> 0.5%**.
+- **transitions condemned:** ~9% of all transitions; **route length 1.004x** (no meaningful detour).
+- **`buildBodyNav`:** avg 53ms, max 109ms, once per level at build, behind the loading moment.
+- **A\* per search:** unchanged to slightly faster (pruned neighbours offset the Set lookup).
+- **22 engine functions byte-identical to v19** — `propsBlockCircle`, `propSlideStep`,
+  `pathArriveR`, `addPropCollider*`, `mobSteer`, `mobWalkable`, `reachableCount`,
+  `lineOfSight`, `place`, `generateMaze`, `spawnCreatures`, lighting, and the rest.
+
+**Remaining known gap (~0.5%):** a mover can still greedily slide itself into a dead-end
+pocket between two props that its route never asked it to enter. Different mechanism, much
+rarer; `_stall`/`_pathCommit` is the backstop. Deliberately not chased — see the note about
+the trap above.
+
+### Sorceress flicker (same session, unrelated mechanism)
+
+Four causes, all in v19, all local:
+
+- `_faceHero()` **snapped** the heading every frame. It now takes an **optional `dt`**:
+  omit it for one-shot moments (taking a hit, starting a swing) and the old instant snap is
+  byte-identical; pass it for anything per-frame and the turn is rate-limited. Only the
+  Sorceress passes `dt` — Skeleton/Zombie/Boss are untouched.
+- the **flee/hold decision was retaken every frame** at a single distance threshold, so she
+  oscillated on the boundary. Now latched in `_fleeing` with hysteresis: enter inside
+  `FLEE_UNTIL`, leave only at full `SORC_CAST_RANGE` or the moment she can fire.
+- **cornered and holding both left her in `walk`**, treadmilling the walk cycle on the spot.
+  Both now drop to `idle`.
+- `mobFlee` **re-picked its sidestep sense every frame**. It now commits to a working escape
+  heading for 0.35s (`_fleeH`/`_fleeT`), abandoning it the moment it stops being walkable.
+
+`deaggroCreature` clears `_fleeing`/`_fleeT`.
+
+### Also fixed
+
+`mobPursue`/`mobReturnHome`'s snagged-node recovery did `pathIdx++` **and**
+`repathTimer=0` together — the forced repath rebuilt the path and reset `pathIdx` to 1 the
+very next frame, discarding the skip. It now only skips.
+
+### Verification gap that bit us — add `refcheck.mjs` to the ritual
+
+v20 first shipped **broken**: `buildNoCross` was renamed to `buildBodyNav`, but a patch
+script aborted partway and the call site inside `build()` kept the old name. The game hung
+at "Carving the dungeon..." with `ReferenceError: buildNoCross is not defined`.
+
+**`node --check` did not catch it — it validates SYNTAX ONLY.** Neither did the headless
+suite, because those tests import the extracted helpers and call `buildBodyNav` *directly*,
+never going through `build()`. A function can be renamed out from under its only real
+caller and every check still passes.
+
+So the syntax check is now necessary but not sufficient. Run **both**:
+
+```
+sed -n '/<script type="module">/,/<\/script>/p' index.html | sed '1d;$d' > chk.mjs
+node --check chk.mjs        # syntax
+node refcheck.mjs chk.mjs   # every called identifier actually resolves
+```
+
+`refcheck.mjs` blanks comments and string literals, collects every definition (functions,
+consts, classes, class methods, parameters, destructured bindings, ES import bindings) and
+flags any bare call to something undefined. It reports clean on pristine v19, so a hit is a
+real finding rather than tool noise. **General lesson, and it is the same one v18 recorded
+about the loading bar: a change can be correct in isolation and wrong in situ. Test the
+call path, not just the function.**
+
+### Still not playtested
+
+No `assets/`/`manifest.json` in the working set, so the game could not be booted — same
+limitation as v18/v19. Verified by `node --check` as a real ES module, 14 headless
+assertions, a 388-room A/B soak, an over-blocking/severing audit, and the 22-function byte
+comparison. **Live playtest still needed**, particularly: sorceress kiting *feel*, level-load
+hitch on L3/L4 (where `buildBodyNav` has the most props to chew), and whether mobs now take
+visibly sillier-but-walkable routes around furniture.
+
+---
+
 ## Session changelog (v15 → v18)
 
 *(Fire Rain and the title screen landed between v15's doc and this one; they are folded in here
@@ -393,6 +547,11 @@ as pre-existing rather than claimed as v18 work.)*
 - **Real low-poly meshes** for lantern / scrolls / portal (still primitives).
 - **Delete `LANTERN_MANA_DRAIN`** (dead constant, contradicts actual behaviour).
 - **Restore/parity-check `test_collision.mjs`** — not present in the v18 working set.
+- **Fold the v20 pathing tests into a committed suite** — they live only in the v20 working
+  set (`test_v20.mjs`, `ab_soak.mjs`, `validate.mjs`) and are worth keeping.
+- **The last ~0.5% of stalls** (mover slides into a prop pocket its route never entered).
+  Would want a short reverse-out move on repeated stall; weigh against the over-engineering
+  trap described above.
 - **itch.io polish:** spell VFX, ambient/UI sound, mobile/touch input, economy balance
   (note: 10–100g per kill vs 100g potions / 500g+ upgrades — verify the curve in playtest).
 - **Per-track BGM volume** if some loops are hotter than others.
