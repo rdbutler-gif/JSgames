@@ -1,0 +1,1867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timmy — animation state machine</title>
+<!--
+  ============================================================================
+  TIMMY  —  Mixamo FBX locomotion, climbing and collision demo
+  ----------------------------------------------------------------------------
+  Drop this file in  C:\Users\Russ B\JSgames\Timmy\index.html
+  Animations live in  Timmy\assets\timmy\*.fbx
+  Serve over Live Server / http — file:// will fail on module + fetch rules.
+
+  WHAT THE FBX FILES ACTUALLY CONTAIN (verified, not guessed)
+  ----------------------------------------------------------------------------
+  All eleven files are binary FBX 7700 from mixamo.com via FBX SDK 2020.2, and
+  every one carries the FULL character, not just a skeleton:
+      65 LimbNode bones, prefix "mixamorig6:"   (identical across all files)
+      1 skinned mesh, 15,716 verts, material "Ch09_body"
+      4 EMBEDDED textures totalling ~32.6 MB per file  <-- this is the bloat
+      2 AnimationStacks: "Take 001" (0 tracks) and "mixamo.com" (53 tracks)
+      Units: centimetres. Mesh height 160.7 -> MODEL_SCALE 0.01. Y-up. 30 fps.
+
+  MEASURED CLIP DATA — root motion lives on the Hips, +Z is forward
+  ----------------------------------------------------------------------------
+    clip                        sec  frames   travel     rise     speed
+    Idle                     16.633     499   0.00 m       —        —     place
+    Walking                   0.967      29   0.95 m       —     0.99 m/s travel
+    Slow Run                  0.733      22   1.35 m       —     1.84 m/s travel
+    Fast Run                  0.533      16   1.77 m       —     3.33 m/s travel
+    Jump Running To Fast Run  0.767      23   1.72 m       —     2.24 m/s travel
+    Jump Running To Slow Run  2.033      61   4.23 m       —     2.08 m/s travel
+    Dance 1                   2.200      66   0.00 m       —        —     place
+    Dance 2                   4.867     146   0.00 m       —        —     place
+    Dance 3                   9.433     283   0.00 m       —        —     place
+    Climb Up                  2.167      65   1.36 m   +0.591 m         travel
+    Climb Down                3.067      92   0.95 m   -0.666 m         travel
+
+  THE BLOCK HEIGHT COMES FROM THE ANIMATION, NOT THE OTHER WAY ROUND
+  ----------------------------------------------------------------------------
+  The Hips are the wrong thing to measure for this. Climb Up lifts the Hips
+  62.6 cm, but it starts from a crouch and ends standing, so the FEET only
+  gain 59.1 cm — and the feet are what has to land on the block. Measured by
+  running forward kinematics on the rig and reading the lowest toe bone at the
+  first and last frame. Climb Down drops the feet 66.6 cm by the same method.
+
+  Those two disagree by 7 cm, so no single block height suits both. Blocks are
+  therefore built at a round LEVEL of 0.60 m and each climb's vertical root
+  motion is WARPED so the feet finish exactly on the real surface. Any ledge in
+  the 0.35-0.95 m band works, so the test area can mix heights freely, and the
+  numbers are re-measured at load, so swapping in different climb clips
+  recalibrates everything automatically.
+
+  A MIXAMO CLIMB IS NOT JUST THE CLIMB
+  ----------------------------------------------------------------------------
+  Climb Up opens with a 1.19 m walk-in: he strides forward, and only then
+  reaches up and pulls. Plant him a hand's width from the wall and that walk-in
+  spends itself marching straight through the solid block, so the pull-up
+  happens a metre inside the geometry and he surfaces in the middle of the
+  tread. calibrateClimb() exists to stop that.
+
+  It asks the feet where the animator put the wall. The last frame a toe is
+  still PLANTED on the lower surface is the last moment he is standing in front
+  of it, so face = that toe's Z plus a shoe length: 1.19 m. The first toe to
+  arrive on the ledge touches down at 1.27, 8 cm further on, which is exactly
+  the margin you would expect a foot to land past an edge. Two independent
+  measurements agreeing is how you know the anchor is real.
+
+  "Planted" needs both tests. Height alone is not enough — on the way down a
+  foot swings out past the lip and passes through surface height in mid-air.
+  Nor is horizontal speed enough: at the lip that foot drops almost straight
+  down, so its Z barely changes. A planted foot does not move in ANY direction.
+  With only the horizontal test, Climb Down reads its lip at 0.87 m instead of
+  0.28 m and stands him three quarters of a metre too far back.
+
+  Rather than make the player stand 1.19 m back — nobody does that, they walk
+  until the wall stops them — the walk-in is TRIMMED: scan for the last frame
+  that still has climbApproach left to travel and start the clip there. Climb
+  Up begins 18% in, mid-stride with the trailing foot already lifting. Climb
+  Down has no walk-in to trim, so it starts at frame 0 and simply reports the
+  0.28 m the animator drew. Whatever gap remains between where the player
+  actually stands and where the clip wants him is handed to a decaying offset
+  and slid away over a quarter second, rather than teleporting him.
+
+  Two more traps in the same area. Climb Down is authored standing ON a ledge,
+  so its feet begin 0.67 m above its own origin; plant that root on a block and
+  he floats a ledge-height in the air for the whole clip. And Climb Up's root
+  rises 0.70 m while its feet rise only 0.59 m, because he goes from a
+  mid-stride crouch into a full upright stand. Both are fixed by shifting the
+  flattened Hips Y, and there is only one constant to spend, so it is spent on
+  the LAST frame — that is where the animation hands over to idle and where the
+  player is looking. That restores the rule the rest of the code relies on:
+  pos.y is the surface he is standing on.
+
+  Related number: the jump's feet peak at 43.5 cm off the floor, below the
+  0.60 m ledge. He genuinely cannot jump onto a block — that is what the climb
+  is for. Blocks at 0.25 m are stepped over automatically instead.
+
+  COLLISION: TWO BUGS WORTH REMEMBERING
+  ----------------------------------------------------------------------------
+  1. TUNNELLING. Falling 0.60 m under this gravity means landing at 4.65 m/s,
+     which is 77 mm of travel in a 60 fps frame. Asking "is there ground at or
+     below where I ended up" only notices a ledge if the frame happens to end
+     inside a 20 mm band just above it — so walking off the 1.20 step onto the
+     0.60 step stepped 0.675 -> 0.520 clean over the lid and sealed him inside
+     the block, whose walls were then solid around him. resolveVertical() now
+     sweeps: the ceiling for the ground query is where he STARTED the frame, so
+     every surface crossed during it still counts. Falling also drops the
+     step-up tolerance to zero, because on the way down a kerb is a wall.
+
+  2. ROOT MOTION IGNORED WALLS. driveRootMotion() wrote straight into pos.x/z,
+     so a jump went through anything — which is also how he escaped bug 1.
+     Jumps now route through moveWithCollision; climbs still do not, because
+     they are authored to land on a ledge and are pre-checked by landingClear
+     instead. Reported speed comes from distance actually covered, so a jump
+     into a wall reads as stopped rather than sliding.
+
+  Two supporting details. moveWithCollision asks "does this move make things
+  worse" rather than "is the destination clear", so a character who is already
+  overlapping something can still walk out instead of being welded in place.
+  And sealedIn() deliberately tests the box FOOTPRINT, not the collision
+  radius: standing within a radius of a wall's side is normal — it happens
+  every time he steps off a ledge, since the support radius (0.15) is smaller
+  than the collision radius (0.28) — and treating that as stuck would fling him
+  back up onto the step he just left.
+
+  THE TEST AREA
+  ----------------------------------------------------------------------------
+                 z=22 +-------+                        E climbs a ledge in the
+                      | 1.20  |  gap platform          0.35-0.95 m band, up or
+                 19.1 +-------+                        down, and snaps him
+                          ^ 1.60 m gap: sprint it      square to the face first
+                 17.5 +-------+
+                      | 1.20  |  run-up                0.25 m risers are just
+                 15.0 +-------+                        walked over
+                      | 0.60  |
+                 13.0 +-------+                        1.35 m face is outside
+                                                       the band on purpose:
+        x=-9..-6            x=6..10                    E stays silent there
+      +--------+          +--------+  z=12
+      | 1.00   |          |  2.40  |
+      +--------+          +--------+  9
+      | 0.75   |          |  1.80  |
+      +--------+          +--------+  6
+      | 0.50   |          |  1.20  |
+      +--------+          +--------+  3
+      | 0.25   |          |  0.60  |
+      +--------+          +--------+  0
+       stairs              ziggurat        spawn at 0,0 — open lane runs -Z
+      (walk up)          (four climbs)     past the 5 m marker posts
+
+  TWO KINDS OF CLIP, HANDLED DIFFERENTLY
+  ----------------------------------------------------------------------------
+  TRAVELLING clips carry root motion: the Hips march away and never come back.
+  Those get measured, then their Hips X/Z flattened so the clip animates on the
+  spot and the controller owns the movement. Climbs also get their Hips Y
+  flattened, because for them the vertical IS the movement.
+
+  IN-PLACE clips return the Hips to where they started. Their X/Z excursion is
+  not travel, it is the performance: Dance 2 swings the Hips 66 cm sideways.
+  Flatten that and you pin the pelvis while the limbs keep swinging. So: only
+  flatten a track that actually goes somewhere. Net displacement is the test,
+  never peak excursion. Vertical bob is never touched on any clip.
+
+  Jumps and climbs replay their stored root curve as real world movement.
+
+  THE LEVEL
+  ----------------------------------------------------------------------------
+  A 33.7 m ascent to a 4.35 m summit, written as a spec in COURSE rather than
+  as coordinates, so the geometry stays honest to what the clips can do:
+
+        4.35 +---- PEAK, prize
+        3.75 +--/ 1.30 gap
+        3.15 +------ 1.80 gap (sprint only)
+        2.30 +- 0.25 steps
+        1.80 +-- 0.45 climb
+        1.35 +-- 0.60 climb
+        0.75 +--- 1.20 gap
+        0.00 +- three free 0.25 steps          spawn, facing down the course
+
+  Five climbs (0.60 / 0.45 / 0.85 / 0.60 / 0.60 — the band is 0.35-0.95 and
+  the warp handles each), five free 0.25 m steps, three gaps. Two gaps fall to
+  a jog; the 1.80 m one does not, because a jog jump covers 1.38 m and only a
+  sprint reaches 2.50 m. Nothing is reachable by accident: the jump's feet peak
+  at 0.435 m, so no climb on this course can be jumped instead.
+
+  There is no fail state. Miss a gap and he lands on the floor and walks back
+  round; R resets him and the prize together.
+
+  THE 380 MB PROBLEM
+  ----------------------------------------------------------------------------
+  Eleven copies of the same 32 MB texture set is ~359 MB of a ~380 MB folder.
+  Re-download the ten non-Idle clips from Mixamo with "Without Skin" checked
+  (~150 KB each) and this loads in about a second. The loader already discards
+  and disposes everything except the clip for those files, so either version
+  works with no code change.
+  ============================================================================
+-->
+<style>
+  :root{
+    --bg:        #0a0d11;
+    --panel:     rgba(12,17,22,0.86);
+    --rule:      rgba(150,190,210,0.20);
+    --ink:       #cbdde6;
+    --ink-dim:   #7b8f9b;
+    --amber:     #f0a323;
+    --green:     #49d68d;
+    --cyan:      #56c8e8;
+    --fault:     #ff5252;
+    --mono: ui-monospace, "Cascadia Mono", "Consolas", "DejaVu Sans Mono", monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+            font-family:var(--mono);overflow:hidden;-webkit-font-smoothing:antialiased}
+  canvas{display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+
+  .panel{
+    position:fixed;background:var(--panel);border:1px solid var(--rule);
+    backdrop-filter:blur(6px);padding:10px 12px;font-size:11px;line-height:1.5;
+    letter-spacing:.02em;box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 8px 24px rgba(0,0,0,.45);
+  }
+  .lbl{color:var(--ink-dim);text-transform:uppercase;letter-spacing:.16em;font-size:9px}
+  .rule{height:1px;background:var(--rule);margin:8px -12px}
+  b{color:#fff;font-weight:600}
+
+  /* ---------- annunciator: the live blend-weight strip ------------------- */
+  #annunciator{left:14px;top:14px;width:236px}
+  #annunciator h1{
+    font-size:12px;margin:0 0 2px;letter-spacing:.28em;text-transform:uppercase;
+    font-weight:600;color:var(--ink)
+  }
+  #annunciator h1 small{display:block;letter-spacing:.14em;font-size:9px;color:var(--ink-dim);margin-top:3px;font-weight:400}
+  .led-row{display:grid;grid-template-columns:9px 60px 1fr 30px;align-items:center;gap:7px;margin:4px 0}
+  .led{width:8px;height:8px;border:1px solid rgba(255,255,255,.22);background:#111a1f}
+  .led.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+  .led.air{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+  .led.climb{background:var(--cyan);box-shadow:0 0 6px var(--cyan)}
+  .led-name{font-size:10px;letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase}
+  .led-row.hot .led-name{color:var(--ink)}
+  .meter{height:4px;background:rgba(255,255,255,.06);position:relative;overflow:hidden}
+  .meter i{position:absolute;inset:0 auto 0 0;width:0;background:linear-gradient(90deg,var(--cyan),var(--green));transition:width .06s linear}
+  .pct{font-size:9px;color:var(--ink-dim);text-align:right;font-variant-numeric:tabular-nums}
+
+  /* ---------- telemetry -------------------------------------------------- */
+  #telemetry{left:14px;bottom:14px;width:236px}
+  .kv{display:flex;justify-content:space-between;gap:10px}
+  .kv span:last-child{font-variant-numeric:tabular-nums;color:#fff}
+
+  /* ---------- keys ------------------------------------------------------- */
+  #keys{right:14px;top:14px;width:230px}
+  .key{display:inline-block;min-width:19px;text-align:center;padding:1px 5px;margin-right:4px;
+       border:1px solid var(--rule);background:rgba(255,255,255,.05);color:var(--ink);font-size:10px}
+  .key.down{background:var(--green);color:#04120a;border-color:var(--green)}
+  .krow{display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:8px}
+  .krow em{font-style:normal;color:var(--ink-dim);font-size:10px}
+
+  /* ---------- clip inspector --------------------------------------------- */
+  #clips{right:14px;bottom:14px;width:304px}
+  table{width:100%;border-collapse:collapse;font-size:10px}
+  th{text-align:left;color:var(--ink-dim);font-weight:400;text-transform:uppercase;
+     letter-spacing:.12em;font-size:8.5px;padding:2px 0;border-bottom:1px solid var(--rule)}
+  td{padding:2px 0;border-bottom:1px solid rgba(150,190,210,.08);font-variant-numeric:tabular-nums}
+  td.n{text-align:right;color:var(--ink-dim)}
+  button{font:inherit;font-size:10px;color:var(--ink);background:rgba(255,255,255,.05);
+         border:1px solid var(--rule);padding:1px 6px;cursor:pointer;letter-spacing:.06em}
+  button:hover{background:rgba(86,200,232,.16);border-color:var(--cyan)}
+  button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  button.active{background:var(--amber);color:#160d00;border-color:var(--amber)}
+
+  /* ---------- contextual climb prompt ------------------------------------ */
+  #prompt{
+    position:fixed;left:50%;bottom:76px;transform:translateX(-50%);
+    display:none;align-items:center;gap:9px;padding:7px 14px;
+    background:rgba(12,17,22,.9);border:1px solid var(--cyan);
+    box-shadow:0 0 18px rgba(86,200,232,.28);font-size:12px;letter-spacing:.1em;
+  }
+  #prompt.show{display:flex}
+  #prompt .key{border-color:var(--cyan);color:var(--cyan);background:rgba(86,200,232,.12);
+               min-width:22px;font-size:12px;margin:0}
+
+  /* ---------- objective --------------------------------------------------- */
+  #objective{left:50%;top:14px;transform:translateX(-50%);width:290px;padding:9px 12px}
+  .obj-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:10px}
+  .obj-row span:last-child{font-variant-numeric:tabular-nums}
+  #obj-state{color:var(--amber);letter-spacing:.1em;text-transform:uppercase;font-size:10px}
+  #objective.done #obj-state{color:var(--green)}
+  .climbbar{height:4px;background:rgba(255,255,255,.07);margin:7px 0 5px;position:relative;overflow:hidden}
+  .climbbar i{position:absolute;inset:0 auto 0 0;width:0;
+              background:linear-gradient(90deg,var(--cyan),var(--amber));transition:width .12s linear}
+  #objective.done .climbbar i{background:var(--green)}
+
+  /* ---------- banner ------------------------------------------------------ */
+  #banner{
+    position:fixed;left:50%;top:38%;transform:translate(-50%,-50%) scale(.94);
+    padding:16px 34px;text-align:center;pointer-events:none;opacity:0;
+    background:rgba(12,17,22,.82);border:1px solid var(--amber);
+    box-shadow:0 0 34px rgba(240,163,35,.30);
+    font-size:17px;letter-spacing:.34em;text-transform:uppercase;color:var(--amber);
+    transition:opacity .5s ease, transform .5s ease;
+  }
+  #banner small{display:block;margin-top:9px;font-size:9px;letter-spacing:.16em;
+                color:var(--ink-dim);text-transform:none}
+  #banner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+
+  /* ---------- boot -------------------------------------------------------- */
+  #boot{position:fixed;inset:0;background:radial-gradient(120% 90% at 50% 0%,#141c22,#06080b 70%);
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:50}
+  #boot h2{margin:0;font-size:13px;letter-spacing:.42em;text-transform:uppercase;color:var(--ink)}
+  #boot .sub{font-size:10px;color:var(--ink-dim);letter-spacing:.1em;max-width:430px;text-align:center;line-height:1.7}
+  #bar{width:430px;max-width:80vw;height:3px;background:rgba(255,255,255,.08);position:relative}
+  #bar i{position:absolute;inset:0 auto 0 0;width:0;background:var(--green);transition:width .15s linear}
+  #bootlog{font-size:10px;color:var(--ink-dim);height:150px;width:430px;max-width:80vw;overflow:hidden;
+           display:flex;flex-direction:column-reverse;gap:1px}
+  #bootlog b{color:var(--green);font-weight:400}
+  .fault{color:var(--fault)!important}
+
+  @media (max-width:980px){
+    #clips,#keys{display:none}
+    #objective{width:212px}
+    #annunciator,#telemetry{width:196px;transform:scale(.86);transform-origin:left top}
+    #telemetry{transform-origin:left bottom}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="boot">
+  <h2>Timmy</h2>
+  <div class="sub">Loading eleven Mixamo FBX files, ~380 MB total.<br>
+  Each file carries a duplicate 32 MB texture set — that is the wait, not the animation.</div>
+  <div id="bar"><i></i></div>
+  <div id="bootlog"></div>
+</div>
+
+<div id="annunciator" class="panel" hidden>
+  <h1>Timmy<small>Animation blend weights</small></h1>
+  <div class="rule"></div>
+  <div id="leds"></div>
+</div>
+
+<div id="telemetry" class="panel" hidden>
+  <div class="lbl">Telemetry</div>
+  <div class="rule"></div>
+  <div class="kv"><span>state</span><span id="t-state">—</span></div>
+  <div class="kv"><span>speed</span><span id="t-speed">0.00 m/s</span></div>
+  <div class="kv"><span>altitude</span><span id="t-alt">0.00 m</span></div>
+  <div class="kv"><span>surface</span><span id="t-surf">ground</span></div>
+  <div class="kv"><span>heading</span><span id="t-head">0°</span></div>
+  <div class="kv"><span>position</span><span id="t-pos">0.0, 0.0</span></div>
+  <div class="kv"><span>dance in</span><span id="t-idle">—</span></div>
+  <div class="kv"><span>fps</span><span id="t-fps">—</span></div>
+</div>
+
+<div id="keys" class="panel" hidden>
+  <div class="lbl">Controls</div>
+  <div class="rule"></div>
+  <div class="krow"><span><span class="key" data-k="KeyW">W</span><span class="key" data-k="KeyA">A</span><span class="key" data-k="KeyS">S</span><span class="key" data-k="KeyD">D</span></span><em>move</em></div>
+  <div class="krow"><span><span class="key" data-k="ShiftLeft" style="min-width:52px">SHIFT</span></span><em>sprint</em></div>
+  <div class="krow"><span><span class="key" data-k="KeyX">X</span></span><em>walk</em></div>
+  <div class="krow"><span><span class="key" data-k="Space" style="min-width:52px">SPACE</span></span><em>jump</em></div>
+  <div class="krow"><span><span class="key" data-k="KeyE">E</span></span><em>climb up / down</em></div>
+  <div class="rule"></div>
+  <div class="krow"><span>stand still 30 s</span><em>he dances</em></div>
+  <div class="rule"></div>
+  <div class="krow"><span>sprint the long gap</span><em>jog won't reach</em></div>
+  <div class="rule"></div>
+  <div class="krow"><span>drag / wheel</span><em>orbit / zoom</em></div>
+  <div class="krow"><span><span class="key" data-k="KeyB">B</span></span><em>skeleton</em></div>
+  <div class="krow"><span><span class="key" data-k="KeyR">R</span></span><em>respawn</em></div>
+</div>
+
+<div id="clips" class="panel" hidden>
+  <div class="lbl">Clips — measured at load</div>
+  <div class="rule"></div>
+  <table>
+    <thead><tr><th>clip</th><th style="text-align:right">sec</th><th style="text-align:right">frm</th><th style="text-align:right">m/s</th><th style="text-align:right">rise</th><th style="text-align:right">appr</th><th></th></tr></thead>
+    <tbody id="cliprows"></tbody>
+  </table>
+  <div class="rule"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span class="lbl" id="mode-lbl">Mode · controller</span>
+    <button id="resume" hidden>Resume control</button>
+  </div>
+</div>
+
+<div id="objective" class="panel" hidden>
+  <div class="obj-row"><span class="lbl">Objective</span><span id="obj-state">Ascend to the peak</span></div>
+  <div class="climbbar"><i id="obj-fill"></i></div>
+  <div class="obj-row"><span id="obj-alt">0.00 / 0.00 m</span><span id="obj-dist">—</span></div>
+</div>
+
+<div id="banner">Prize recovered<small>press R to reset the ascent</small></div>
+
+<div id="prompt"><span class="key">E</span><span id="prompt-text">climb up</span></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+/* =========================================================================
+   1. CONFIG
+   ========================================================================= */
+const ASSET_DIR = 'assets/timmy/';
+
+const FILES = {
+  idle:      'Idle.fbx',
+  walk:      'Walking.fbx',
+  jog:       'Slow Run.fbx',
+  run:       'Fast Run.fbx',
+  jumpFast:  'Jump Running To Fast Run.fbx',
+  jumpSlow:  'Jump Running To Slow Run.fbx',
+  dance1:    'Dance 1.fbx',
+  dance2:    'Dance 2.fbx',
+  dance3:    'Dance 3.fbx',
+  climbUp:   'Climb Up.fbx',
+  climbDown: 'Climb Down.fbx',
+};
+
+// Clips that play through once and then hand control back.
+const DANCES   = ['dance1','dance2','dance3'];
+const CLIMBS   = ['climbUp','climbDown'];
+const ONE_SHOT = new Set(['jumpFast','jumpSlow', ...DANCES, ...CLIMBS]);
+
+const MODEL_SCALE = 0.01;
+const CHARACTER_FILE = 'idle';
+
+const TUNE = {
+  accel:        9.0,
+  decel:        12.0,
+  turnRate:     10.0,
+  airTurnRate:  2.5,
+  gravity:      18.0,   // m/s^2 — game gravity, not earth gravity
+  radius:       0.28,   // character collision cylinder
+  stepUp:       0.25,   // risers walked over without ceremony
+  supportR:     0.15,   // how far his centre may hang past an edge and still be held up
+  climbMin:     0.35,   // the ledge band these two clips are allowed to service
+  climbMax:     0.95,
+  climbReach:   0.55,   // how far in front of him a climbable face may be
+  climbApproach:0.45,   // where he should be standing when the climb takes over
+  toeMargin:    0.10,   // toe bone to the tip of the shoe
+  alignTime:    0.28,   // seconds to slide out the start-position correction
+  warpClamp:    [0.55, 1.6],
+  fallPose:     0.253,  // second of the jump clip held as a stand-in falling pose
+  camDist:      4.6,
+  camMin:       1.6,
+  camMax:       16.0,
+  camHeight:    1.25,
+  camLag:       9.0,
+  fadeTime:     0.18,
+  jumpFade:     0.10,
+  climbFade:    0.14,
+  rateClamp:    [0.55, 1.9],
+  jumpClip:     'jumpFast',
+  prizeReach:   1.05,   // how close he has to get to take it
+  idleBeforeDance: 30,
+  danceMinSeconds: 6,
+  danceFade:    0.45,
+  travelEpsilon: 0.25,
+  riseEpsilon:   0.10,  // net Hips Y past which a clip counts as vertical
+};
+
+/* -------------------------------------------------------------------------
+   THE ASCENT — a course, not a scatter of blocks.
+
+   Written as a spec rather than coordinates so the geometry stays honest to
+   what the animations can actually do. Each entry either raises the path by
+   `rise` over `depth` metres of tread, or opens a `gap`. Everything the player
+   can attempt is derived from measurements taken at load:
+
+     rise <= 0.25  he walks straight up it, no input needed  (TUNE.stepUp)
+     rise 0.35-0.95  E offers a climb                        (climbMin/Max)
+     rise > 0.95   impossible on purpose
+     gap <= 0.34   he can step over it at walking pace
+     gap <= 1.38   a jog jump clears it
+     gap <= 2.50   a sprint jump clears it, and nothing more
+
+   Tread depths are not arbitrary either. A climb finishes 0.44 m past the
+   face once his radius is counted, so a landing tread under about half a metre
+   gets the climb refused by landingClear rather than dropping him off the far
+   side. He also needs 0.46 m of standing room in front of a face to start one.
+   Every tread here is at least 0.9 m, with the run-ups much longer so there is
+   room to reach sprint speed (0.6 m of acceleration) before a gap.
+
+   The route runs in -Z, which is the direction W drives him with the camera
+   behind, so the whole ascent is laid out ahead of the player at spawn.
+   ------------------------------------------------------------------------- */
+const COURSE_ORIGIN = { x: 0, z: -3.0 };
+
+const COURSE = [
+  // three free steps: teaches that small risers need no input at all
+  { rise:0.25, depth:1.0, width:4.4, tag:'step'  },
+  { rise:0.25, depth:1.0, width:4.4, tag:'step'  },
+  { rise:0.25, depth:1.0, width:4.4, tag:'step'  },
+  { rise:0,    depth:3.6, width:4.4, tag:'run'   },   // run-up
+  { gap:1.20 },                                        // jog clears it
+  { rise:0,    depth:3.4, width:3.6, tag:'land'  },
+  { rise:0.60, depth:1.7, width:3.2, tag:'climb' },   // first climb
+  { rise:0.45, depth:1.6, width:3.2, tag:'climb' },   // shallower one
+  { rise:0.25, depth:0.9, width:2.8, tag:'step'  },   // steps mixed in
+  { rise:0.25, depth:0.9, width:2.8, tag:'step'  },
+  { rise:0.85, depth:3.6, width:2.8, tag:'climb' },   // tallest, then run-up
+  { gap:1.80 },                                        // sprint only
+  { rise:0,    depth:3.2, width:2.8, tag:'land'  },
+  { rise:0.60, depth:1.7, width:2.6, tag:'climb' },
+  { gap:1.30 },                                        // gap straight off a climb
+  { rise:0,    depth:2.8, width:2.6, tag:'land'  },
+  { rise:0.60, depth:3.0, width:2.4, tag:'peak'  },   // the summit
+];
+
+// Walk the spec once and turn it into boxes. Also hands back the numbers the
+// HUD and the objective need, so nothing is written down in two places.
+function buildCourse(){
+  const blocks = [], gaps = [];
+  let z = COURSE_ORIGIN.z, y = 0, peak = null;
+  for (const seg of COURSE){
+    if (seg.gap){
+      gaps.push({ near: z, far: z - seg.gap, span: seg.gap, y });
+      z -= seg.gap;
+      continue;
+    }
+    y += seg.rise || 0;
+    const half = seg.width / 2, zFar = z - seg.depth;
+    const b = { x:[COURSE_ORIGIN.x - half, COURSE_ORIGIN.x + half], z:[zFar, z],
+                top:y, tag:seg.tag, rise:seg.rise || 0 };
+    blocks.push(b);
+    if (seg.tag === 'peak') peak = b;
+    z = zFar;
+  }
+  return { blocks, gaps, peak, top: y, endZ: z };
+}
+
+const LEVEL = buildCourse();
+const WORLD = LEVEL.blocks;
+const PEAK_TOP = LEVEL.top;
+const PRIZE_AT = new THREE.Vector3(
+  COURSE_ORIGIN.x,
+  PEAK_TOP + 0.95,
+  (LEVEL.peak.z[0] + LEVEL.peak.z[1]) / 2 - 0.35
+);
+
+/* =========================================================================
+   2. RENDERER / SCENE
+   ========================================================================= */
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0d11);
+scene.fog = new THREE.Fog(0x0a0d11, 30, 110);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 500);
+
+scene.add(new THREE.HemisphereLight(0x9dc6e0, 0x1a2026, 1.35));
+
+const sun = new THREE.DirectionalLight(0xffeedd, 2.3);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 70;
+const SH = 16;
+sun.shadow.camera.left = -SH; sun.shadow.camera.right = SH;
+sun.shadow.camera.top  =  SH; sun.shadow.camera.bottom = -SH;
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.0012;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+const COLLIDERS = [];      // {minX,maxX,minZ,maxZ,top,tag}
+const BLOCK_MESHES = [];   // for camera collision
+buildEnvironment();
+
+function buildEnvironment(){
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(400, 400),
+    new THREE.MeshStandardMaterial({ color:0x252b31, roughness:0.97 })
+  );
+  ground.rotation.x = -Math.PI/2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  BLOCK_MESHES.push(ground);
+
+  const grid = new THREE.GridHelper(400, 400, 0x435663, 0x2b343b);
+  grid.material.transparent = true;
+  grid.material.opacity = 0.45;
+  grid.position.y = 0.002;
+  scene.add(grid);
+
+  // Blocks are colour-coded by what they ask of the player, so the route can be
+  // read at a glance from the bottom: cool grey you walk, warm amber you climb,
+  // gold is the summit. Lightness also tracks height as a second cue.
+  const PALETTE = {
+    step:  { h:0.55, s:0.10 },
+    run:   { h:0.55, s:0.06 },
+    land:  { h:0.55, s:0.06 },
+    climb: { h:0.09, s:0.30 },
+    peak:  { h:0.12, s:0.45 },
+  };
+  const edgeMat  = new THREE.LineBasicMaterial({ color:0x8fdcf2, transparent:true, opacity:0.45 });
+  const climbMat = new THREE.LineBasicMaterial({ color:0xffc061, transparent:true, opacity:0.85 });
+
+  for (const b of WORLD){
+    const w = b.x[1]-b.x[0], d = b.z[1]-b.z[0], h = b.top;
+    const pal = PALETTE[b.tag] || PALETTE.run;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(pal.h, pal.s, 0.17 + Math.min(h / PEAK_TOP, 1) * 0.16),
+        roughness: 0.9
+      })
+    );
+    mesh.position.set((b.x[0]+b.x[1])/2, h/2, (b.z[0]+b.z[1])/2);
+    mesh.castShadow = mesh.receiveShadow = true;
+    scene.add(mesh);
+    BLOCK_MESHES.push(mesh);
+
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),
+                                         b.rise > TUNE.stepUp ? climbMat : edgeMat);
+    edges.position.copy(mesh.position);
+    scene.add(edges);
+
+    COLLIDERS.push({ minX:b.x[0], maxX:b.x[1], minZ:b.z[0], maxZ:b.z[1], top:h, tag:b.tag });
+  }
+
+  // A lip stripe on the near edge of every gap: the one place where running
+  // forward without thinking costs you the climb you just made.
+  const lipMat = new THREE.MeshBasicMaterial({ color:0xff6a3d, transparent:true, opacity:0.75 });
+  for (const g of LEVEL.gaps){
+    const owner = WORLD.find(b => Math.abs(b.z[0] - g.near) < 1e-6);
+    const w = owner ? owner.x[1] - owner.x[0] : 3;
+    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(w, 0.16), lipMat);
+    stripe.rotation.x = -Math.PI/2;
+    stripe.position.set(COURSE_ORIGIN.x, g.y + 0.004, g.near + 0.09);
+    scene.add(stripe);
+  }
+}
+
+/* -------------------------------------------------------------------------
+   THE PRIZE
+   No shaders and no post-processing here, so "bright and shiny" is built the
+   old way: a hard emissive core, a counter-rotating wireframe shell, two
+   additive spheres standing in for bloom, and a point light so it actually
+   throws colour onto the summit it is sitting on. A tall additive column marks
+   it from the ground, which matters when it is 33 m away and 4.35 m up.
+   ------------------------------------------------------------------------- */
+const prize = new THREE.Group();
+let prizeCore, prizeHalo, prizeLight, prizeBeacon;
+const prizeState = { collected:false, fade:0 };
+buildPrize();
+
+function buildPrize(){
+  prizeCore = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.24, 0),
+    new THREE.MeshStandardMaterial({ color:0xffe6a8, emissive:0xffa81f,
+                                     emissiveIntensity:2.6, roughness:0.2, metalness:0.7 })
+  );
+  prizeHalo = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.46, 0),
+    new THREE.MeshBasicMaterial({ color:0xffcf6b, wireframe:true, transparent:true, opacity:0.55 })
+  );
+  const glowMat = o => new THREE.MeshBasicMaterial({ color:0xffb64d, transparent:true,
+                          opacity:o, blending:THREE.AdditiveBlending, depthWrite:false });
+  const g1 = new THREE.Mesh(new THREE.SphereGeometry(0.62, 18, 12), glowMat(0.13));
+  const g2 = new THREE.Mesh(new THREE.SphereGeometry(1.05, 18, 12), glowMat(0.055));
+  prizeLight = new THREE.PointLight(0xffc061, 4.0, 14, 2);
+  prize.add(prizeCore, prizeHalo, g1, g2, prizeLight);
+  prize.position.copy(PRIZE_AT);
+  scene.add(prize);
+
+  prizeBeacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.30, 0.30, 26, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color:0xffb64d, transparent:true, opacity:0.07,
+                                  blending:THREE.AdditiveBlending, depthWrite:false,
+                                  side:THREE.DoubleSide })
+  );
+  prizeBeacon.position.set(PRIZE_AT.x, PRIZE_AT.y + 12, PRIZE_AT.z);
+  scene.add(prizeBeacon);
+}
+
+function updatePrize(dt, t){
+  if (!prize.visible) return;
+  prizeCore.rotation.y += dt * 0.9;
+  prizeCore.rotation.x += dt * 0.33;
+  prizeHalo.rotation.y -= dt * 0.55;
+  prizeHalo.rotation.z += dt * 0.40;
+
+  if (!prizeState.collected){
+    prize.position.y = PRIZE_AT.y + Math.sin(t * 1.7) * 0.13;
+    const d = Math.hypot(player.pos.x - PRIZE_AT.x, player.pos.z - PRIZE_AT.z);
+    if (d < TUNE.prizeReach && Math.abs(player.pos.y - PEAK_TOP) < 1.2){
+      prizeState.collected = true;
+      prizeState.fade = 0;
+      el('banner').classList.add('show');
+    }
+  } else {
+    prizeState.fade += dt;
+    const k = Math.max(0, 1 - prizeState.fade * 1.8);
+    prize.scale.setScalar(Math.max(0.001, k) * (1 + prizeState.fade * 2.2));
+    prizeCore.material.emissiveIntensity = 2.6 * k;
+    prizeLight.intensity = 4.0 * k;
+    prizeBeacon.material.opacity = 0.07 * k;
+    if (k <= 0){ prize.visible = false; prizeBeacon.visible = false; }
+  }
+}
+
+function resetPrize(){
+  prizeState.collected = false;
+  prizeState.fade = 0;
+  prize.visible = prizeBeacon.visible = true;
+  prize.scale.setScalar(1);
+  prize.position.copy(PRIZE_AT);
+  prizeCore.material.emissiveIntensity = 2.6;
+  prizeLight.intensity = 4.0;
+  prizeBeacon.material.opacity = 0.07;
+  el('banner').classList.remove('show');
+}
+
+/* =========================================================================
+   3. COLLISION
+   Cylinder against axis-aligned boxes. Every box sits on the ground, so a box
+   is fully described by its footprint and its top.
+   ========================================================================= */
+const clamp = THREE.MathUtils.clamp;
+
+// squared XZ distance from a point to a box footprint (0 when inside)
+function distSqToBox(x, z, b){
+  const cx = clamp(x, b.minX, b.maxX), cz = clamp(z, b.minZ, b.maxZ);
+  return (x-cx)*(x-cx) + (z-cz)*(z-cz);
+}
+
+// Highest surface at or below ceilY that can hold him up at (x,z).
+function groundAt(x, z, ceilY){
+  let best = 0, tag = 'ground';
+  const r2 = TUNE.supportR * TUNE.supportR;
+  for (const b of COLLIDERS){
+    if (b.top > ceilY || b.top <= best) continue;
+    if (distSqToBox(x, z, b) <= r2){ best = b.top; tag = b.tag; }
+  }
+  return { y: best, tag };
+}
+
+// How deep his cylinder is inside a wall at (x,z) with his feet at y; 0 when
+// clear. tol is how far he may climb over on the way past: a step's worth while
+// walking, but ZERO while falling. Descending, anything above his feet is a
+// wall, not a kerb — otherwise a drop that clips the corner of a taller block
+// lets him slide in under its lid.
+function penetration(x, z, y, tol = TUNE.stepUp){
+  let worst = 0;
+  for (const b of COLLIDERS){
+    if (b.top <= y + tol) continue;              // low enough to step onto
+    const d2 = distSqToBox(x, z, b);
+    if (d2 >= TUNE.radius * TUNE.radius) continue;
+    const p = TUNE.radius - Math.sqrt(d2);
+    if (p > worst) worst = p;
+  }
+  return worst;
+}
+const blocked = (x, z, y, tol) => penetration(x, z, y, tol) > 0;
+
+// One axis at a time, so walls slide instead of stopping him dead. The test is
+// "does this move make things worse", not "is the destination clear": if he is
+// already overlapping something he must still be able to walk out of it, and a
+// flat clear/not-clear test would weld him in place instead.
+function moveWithCollision(pos, dx, dz, tol){
+  const p0 = penetration(pos.x, pos.z, pos.y, tol);
+  if (dx && penetration(pos.x + dx, pos.z, pos.y, tol) <= p0) pos.x += dx;
+  if (dz && penetration(pos.x, pos.z + dz, pos.y, tol) <= p0) pos.z += dz;
+}
+
+// Is his centre literally inside a box whose lid is over his head? That is the
+// only thing that counts as sealed in, and it is why this asks for the
+// footprint rather than reusing blocked(). Standing within a radius of a
+// wall's SIDE is completely normal — it happens every time he steps off a
+// ledge, because the support radius is smaller than the collision radius.
+// Treating that as stuck would fling him back up onto the step he just left.
+function sealedIn(x, z, y){
+  let top = null;
+  for (const b of COLLIDERS){
+    if (b.top <= y + TUNE.stepUp) continue;
+    if (distSqToBox(x, z, b) > 0) continue;
+    if (top === null || b.top > top) top = b.top;
+  }
+  return top;
+}
+
+// Last line of defence. Nothing should ever put him inside a block, but being
+// sealed in one is the worst failure a character controller has, so if it ever
+// happens he gets lifted onto the lid rather than left to claw his way out.
+function unstick(){
+  if (player.climb) return false;
+  const top = sealedIn(player.pos.x, player.pos.z, player.pos.y);
+  if (top === null) return false;
+  player.offset.y += player.pos.y - top;         // slide, do not snap
+  player.pos.y = top;
+  player.vy = 0;
+  if (player.falling) land();
+  return true;
+}
+
+// The area is axis-aligned, so "which way is he facing" has four answers and
+// snapping to one of them is exact rather than approximate.
+function facingAxis(yaw){
+  const fx = Math.sin(yaw), fz = Math.cos(yaw);
+  return Math.abs(fx) > Math.abs(fz)
+    ? { axis:'x', sign: fx >= 0 ? 1 : -1, yaw: fx >= 0 ? Math.PI/2 : -Math.PI/2 }
+    : { axis:'z', sign: fz >= 0 ? 1 : -1, yaw: fz >= 0 ? 0 : Math.PI };
+}
+
+/* -------------------------------------------------------------------------
+   Climb probes. Each returns a plan or null: where to stand, which way to
+   face, how far he is going, and where he will end up.
+
+   Every plan is checked against the geometry before it is offered. The clip
+   carries him a known distance past the face (info.exit, measured at load), so
+   we can look at exactly where he will be standing when it finishes and refuse
+   the climb if that spot is not solid ground, or is inside something taller.
+   That is the collision test that matters here: a mid-clip one would only make
+   his feet skate, because root motion is driving him and there is nothing to
+   push back against.
+   ------------------------------------------------------------------------- */
+// Where his cylinder's LEADING EDGE finishes, measured from the face he is
+// climbing. He starts `approach` behind it and the clip carries him
+// approach+exit forward, so the root ends `exit` past the face and his front
+// is a radius beyond that. Measuring from `stand` and forgetting the approach
+// puts the probe 2 cm BEHIND the face, which is the lower ground — it only
+// ever passed because supportR is slack enough to catch the block anyway.
+function landingClear(f, edge, targetY, info){
+  const d = info.exit + TUNE.radius;
+  const lx = edge.x + (f.axis === 'x' ? f.sign * d : 0);
+  const lz = edge.z + (f.axis === 'z' ? f.sign * d : 0);
+  const g = groundAt(lx, lz, targetY + 0.05);
+  return Math.abs(g.y - targetY) < 0.01 && !blocked(lx, lz, targetY);
+}
+
+function findClimbUp(){
+  const info = CLIPS.climbUp;
+  const f = facingAxis(player.yaw);
+  const fx = f.axis === 'x' ? f.sign : 0;
+  const fz = f.axis === 'z' ? f.sign : 0;
+  const px = player.pos.x + fx * (TUNE.radius + TUNE.climbReach);
+  const pz = player.pos.z + fz * (TUNE.radius + TUNE.climbReach);
+
+  let best = null;
+  for (const b of COLLIDERS){
+    const rise = b.top - player.pos.y;
+    if (rise < TUNE.climbMin || rise > TUNE.climbMax) continue;
+    if (distSqToBox(px, pz, b) > 0.01) continue;        // probe must land on the block
+    if (!best || b.top < best.top) best = b;            // lowest qualifying ledge
+  }
+  if (!best) return null;
+
+  const face = f.axis === 'x' ? (f.sign > 0 ? best.minX : best.maxX)
+                              : (f.sign > 0 ? best.minZ : best.maxZ);
+  const stand = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
+  stand[f.axis] = face - f.sign * info.approach;
+
+  const edge = { x: player.pos.x, z: player.pos.z };
+  edge[f.axis] = face;
+  if (!landingClear(f, edge, best.top, info)) return null;
+
+  return { key:'climbUp', stand, yaw:f.yaw, targetY:best.top, rise:best.top - player.pos.y };
+}
+
+function findClimbDown(){
+  const info = CLIPS.climbDown;
+  const f = facingAxis(player.yaw);
+  const fx = f.axis === 'x' ? f.sign : 0;
+  const fz = f.axis === 'z' ? f.sign : 0;
+
+  const here = groundAt(player.pos.x, player.pos.z, player.pos.y + 0.02);
+  if (here.y <= 0.001) return null;                     // already on the floor
+
+  const ahead = groundAt(player.pos.x + fx * 0.75, player.pos.z + fz * 0.75, player.pos.y - 0.05);
+  const drop = player.pos.y - ahead.y;
+  if (drop < TUNE.climbMin || drop > TUNE.climbMax) return null;
+
+  // find the lip of the block he is standing on, along his facing axis
+  let ledge = null;
+  for (const b of COLLIDERS){
+    if (Math.abs(b.top - here.y) > 0.001) continue;
+    if (distSqToBox(player.pos.x, player.pos.z, b) > TUNE.supportR * TUNE.supportR) continue;
+    ledge = b; break;
+  }
+  if (!ledge) return null;
+
+  const edge = f.axis === 'x' ? (f.sign > 0 ? ledge.maxX : ledge.minX)
+                              : (f.sign > 0 ? ledge.maxZ : ledge.minZ);
+  if (Math.abs(edge - player.pos[f.axis]) > 0.85) return null;   // not near the lip yet
+
+  const stand = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
+  stand[f.axis] = edge - f.sign * info.approach;
+
+  const lip = { x: player.pos.x, z: player.pos.z };
+  lip[f.axis] = edge;
+  if (!landingClear(f, lip, ahead.y, info)) return null;
+
+  return { key:'climbDown', stand, yaw:f.yaw, targetY:ahead.y, rise:ahead.y - player.pos.y };
+}
+
+/* =========================================================================
+   4. LOADING
+   ========================================================================= */
+const bootEl = document.getElementById('boot');
+const barEl  = document.querySelector('#bar i');
+const logEl  = document.getElementById('bootlog');
+const log = (msg, cls='') => {
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.innerHTML = msg;
+  logEl.prepend(d);
+};
+
+const loader = new FBXLoader();
+const loadFBX = (url, onProgress) => new Promise((res, rej) =>
+  loader.load(url, res, onProgress, () => rej(new Error('could not load ' + url))));
+
+const CLIPS = {};
+let character = null;
+let skeletonHelper = null;
+const footBones = [];
+const toeBones  = [];
+let hipsBone = null;
+
+const keysInOrder = Object.keys(FILES);
+
+async function loadEverything(){
+  for (let i = 0; i < keysInOrder.length; i++){
+    const key  = keysInOrder[i];
+    const file = FILES[key];
+    log(`[${i+1}/${keysInOrder.length}] ${file} …`);
+
+    const group = await loadVariant(file, e => {
+      const frac = e.lengthComputable ? e.loaded / e.total : 0;
+      barEl.style.width = (((i + frac) / keysInOrder.length) * 100).toFixed(1) + '%';
+    });
+
+    const clip = pickClip(group.animations, file);
+
+    if (key === CHARACTER_FILE){
+      character = group;
+      prepareCharacter(character);
+    }
+
+    const info = prepareClip(clip, key);
+    CLIPS[key] = info;
+    log(`&nbsp;&nbsp;<b>ok</b> ${info.frames} frames · ${info.duration.toFixed(2)}s · ` +
+        (info.vertical
+          ? `feet ${info.footRise >= 0 ? '+' : ''}${info.footRise.toFixed(3)} m`
+          : info.travels ? `${info.speed.toFixed(2)} m/s` : 'in place'));
+
+    if (key !== CHARACTER_FILE) disposeTree(group);
+  }
+  barEl.style.width = '100%';
+}
+
+// Mixamo downloads land with spaces, some machines end up with underscores.
+async function loadVariant(file, onProgress){
+  const tried = [];
+  for (const v of [file, file.replace(/ /g,'_'), file.replace(/_/g,' ')]){
+    if (tried.includes(v)) continue;
+    tried.push(v);
+    try {
+      const g = await loadFBX(encodeURI(ASSET_DIR + v), onProgress);
+      if (v !== file) log(`&nbsp;&nbsp;found as <b>${v}</b>`);
+      return g;
+    } catch (e){ /* try the next spelling */ }
+  }
+  throw new Error('could not load ' + ASSET_DIR + tried.join(' | '));
+}
+
+function pickClip(anims, file){
+  if (!anims || !anims.length) throw new Error('no animation in ' + file);
+  const withTracks = anims.filter(a => a.tracks.length > 0);
+  if (!withTracks.length) throw new Error('no keyframe tracks in ' + file);
+  return withTracks.find(a => /mixamo/i.test(a.name)) ||
+         withTracks.sort((a,b) => b.duration - a.duration)[0];
+}
+
+function prepareCharacter(group){
+  group.scale.setScalar(MODEL_SCALE);
+  group.traverse(o => {
+    if (o.isMesh){
+      o.castShadow = true;
+      o.frustumCulled = false;          // skinned bounds go stale once animated
+      for (const m of [].concat(o.material)){
+        if (!m) continue;
+        if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+      }
+    }
+    if (o.isBone){
+      const short = o.name.replace(/^mixamorig\d*:?/, '');
+      if (/Toe|Foot/.test(short)) footBones.push(o);
+      if (/^(Left|Right)ToeBase$/.test(short)) toeBones.push(o);
+      if (short === 'Hips') hipsBone = o;
+    }
+  });
+  scene.add(group);
+  skeletonHelper = new THREE.SkeletonHelper(group);
+  skeletonHelper.visible = false;
+  skeletonHelper.material.depthTest = false;
+  scene.add(skeletonHelper);
+}
+
+function disposeTree(obj){
+  obj.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    for (const m of [].concat(o.material || [])){
+      if (!m) continue;
+      for (const k of ['map','normalMap','specularMap','emissiveMap','alphaMap','bumpMap','roughnessMap','metalnessMap','aoMap']){
+        if (m[k]) m[k].dispose();
+      }
+      m.dispose();
+    }
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Run the clip on the real rig and read the lowest toe bone at the first and
+   last frame. This is the only honest way to ask "how high does this animation
+   put his feet" — the Hips give a different answer because the start and end
+   stances are not the same.
+   ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+   calibrateClimb — work out where the animator put the wall.
+
+   A Mixamo climb is not just the climb. Climb Up opens with a 1.19 m walk-in:
+   he strides forward, THEN reaches up and pulls. Plant him a hand's width from
+   the wall and that walk-in spends itself marching straight through the solid
+   block, so the pull-up happens a metre inside the geometry and he surfaces in
+   the middle of the tread. That is the bug this function exists to kill.
+
+   The clip tells us where its wall is, if we ask the feet:
+     the last frame a toe is still planted on the LOWER surface is the last
+     moment he is standing in front of the wall, so face = that toe's Z plus a
+     shoe length. For Climb Up that lands at z 1.19; the first toe to arrive on
+     the ledge touches down at 1.27, 8 cm further on, which is exactly the
+     margin you would expect a foot to land past an edge. Two independent
+     measurements agreeing is how you know the anchor is real.
+
+   Then, rather than making the player stand 1.19 m back — nobody does that,
+   they walk until the wall stops them — we TRIM the walk-in: scan for the last
+   frame at which the animation still has climbApproach left to travel, and
+   start the clip there. Climb Up begins 18% in, mid-stride with the trailing
+   foot already lifting. Climb Down has no walk-in to trim (its whole first
+   third is a weight shift on the spot), so it starts at frame 0 and simply
+   reports the standing distance the animator drew, 0.28 m from the lip.
+
+   Everything downstream — foot height, root rise, the vertical warp — is then
+   measured from that start frame rather than from frame 0.
+   ------------------------------------------------------------------------- */
+const _v = new THREE.Vector3();
+function lowestFootY(){
+  let low = Infinity;
+  for (const b of footBones){ b.getWorldPosition(_v); if (_v.y < low) low = _v.y; }
+  return low;
+}
+
+function calibrateClimb(clip, info){
+  if (!character || !toeBones.length || !hipsBone) return false;
+
+  const keepPos = character.position.clone(), keepRot = character.rotation.y;
+  character.position.set(0,0,0);
+  character.rotation.y = 0;
+
+  const m = new THREE.AnimationMixer(character);
+  const a = m.clipAction(clip);
+  a.setLoop(THREE.LoopOnce, 1);
+  a.clampWhenFinished = true;
+  a.play();
+
+  const N = Math.max(24, Math.round(clip.duration * 60));
+  const F = [];
+  for (let i = 0; i <= N; i++){
+    const t = clip.duration * i / N;
+    m.setTime(t);
+    character.updateMatrixWorld(true);
+    const toes = toeBones.map(b => { b.getWorldPosition(_v); return { y:_v.y, z:_v.z }; });
+    hipsBone.getWorldPosition(_v);
+    F.push({ t, toes, hipZ:_v.z, low: Math.min(...toes.map(o => o.y)), foot: lowestFootY() });
+  }
+
+  m.stopAllAction();
+  m.uncacheClip(clip);
+  character.position.copy(keepPos);
+  character.rotation.y = keepRot;
+
+  const startSurface = F[0].low;
+  const rising = F[N].low > startSurface;
+
+  // the frame he commits: rising, both feet have left the floor; falling, a
+  // foot has dropped below the surface he was standing on
+  let iAction = F.findIndex(r => rising ? r.low > startSurface + 0.05
+                                        : r.toes.some(o => o.y < startSurface - 0.08));
+  if (iAction < 1) iAction = Math.max(1, Math.round(N * 0.5));
+
+  // Furthest toe still PLANTED on the starting surface before that. Height
+  // alone is not enough: on the way down, a foot swings out past the lip and
+  // passes through surface height in mid-air. Nor is horizontal speed enough —
+  // at the lip that foot drops almost straight down, so its Z barely changes.
+  // A planted foot does not move in ANY direction, so test the full speed.
+  // That one detail is the difference between reading the lip at 0.29 and 0.87.
+  const dt = clip.duration / N;
+  let contactZ = -Infinity;
+  for (let i = 1; i < iAction; i++){
+    for (let j = 0; j < F[i].toes.length; j++){
+      const o = F[i].toes[j], was = F[i-1].toes[j];
+      if (o.y > startSurface + 0.03) continue;                 // not on the surface
+      if (Math.hypot(o.z - was.z, o.y - was.y) / dt > 0.35) continue;   // moving: in the air
+      if (o.z > contactZ) contactZ = o.z;
+    }
+  }
+  if (contactZ === -Infinity) contactZ = F[0].toes[0].z;
+
+  const faceZ = contactZ + TUNE.toeMargin;
+
+  // last frame that still has a full approach left to walk
+  let iStart = 0;
+  for (let i = 0; i < iAction; i++) if (faceZ - F[i].hipZ >= TUNE.climbApproach) iStart = i;
+
+  info.startTime = F[iStart].t;
+  info.approach  = faceZ - F[iStart].hipZ;      // where to stand, in metres behind the face
+  info.footStart = F[iStart].foot;              // his foot height on that frame
+  info.footEnd   = F[N].foot;
+  info.footRise  = info.footEnd - info.footStart;
+  info.trimmed   = iStart / N;
+  return true;
+}
+
+/* -------------------------------------------------------------------------
+   prepareClip
+   1. measure NET Hips displacement, first key to last
+   2. keep the XZ (and for climbs, Y) curve for root-motion playback
+   3. flatten what was kept, so the clip animates on the spot
+   ------------------------------------------------------------------------- */
+function prepareClip(clip, key){
+  clip.name = key;
+  const hips = clip.tracks.find(t => /Hips\.position$/.test(t.name));
+  const info = { clip, duration: clip.duration, frames: 0, speed: 0, distance: 0,
+                 rise: 0, footRise: 0, footStart: 0, footEnd: 0, startResidual: 0,
+                 startTime: 0, approach: 0, exit: 0, trimmed: 0,
+                 travels: false, vertical: false,
+                 root: null, key };
+
+  if (!hips){
+    info.frames = Math.round(clip.duration * 30);
+    return info;
+  }
+
+  const t = hips.times, v = hips.values, n = t.length;
+  info.frames = n;
+
+  const x0 = v[0], y0 = v[1], z0 = v[2];
+  const dx = v[(n-1)*3]     - x0;
+  const dy = v[(n-1)*3 + 1] - y0;
+  const dz = v[(n-1)*3 + 2] - z0;
+
+  info.distance = Math.hypot(dx, dz) * MODEL_SCALE;
+  info.rise     = dy * MODEL_SCALE;                      // root rise, Hips-based
+  info.travels  = info.distance > TUNE.travelEpsilon;
+  info.vertical = Math.abs(info.rise) > TUNE.riseEpsilon;
+  info.speed    = info.travels && !info.vertical && clip.duration > 0
+                    ? info.distance / clip.duration : 0;
+
+  if (!info.travels && !info.vertical) return info;      // in place — leave every key alone
+
+  const rx = new Float32Array(n), ry = new Float32Array(n), rz = new Float32Array(n);
+  for (let i = 0; i < n; i++){
+    rx[i] = (v[i*3]     - x0) * MODEL_SCALE;
+    ry[i] = (v[i*3 + 1] - y0) * MODEL_SCALE;
+    rz[i] = (v[i*3 + 2] - z0) * MODEL_SCALE;
+  }
+  info.root = { times: t, x: rx, y: ry, z: rz };
+
+  if (info.vertical){
+    // ask the clip where its wall is and where the climb really begins
+    if (!calibrateClimb(clip, info)){ info.footStart = 0; info.footRise = info.rise; }
+
+    const atStart = sampleRoot(info.root, info.startTime);
+    const atEnd   = sampleRoot(info.root, clip.duration);
+    info.rise = atEnd.y - atStart.y;                     // root rise from the START FRAME
+    info.exit = (atEnd.z - atStart.z) - info.approach;   // how far past the face he finishes
+
+    // The clip's root rises 0.70 m while its feet rise 0.59 m, because he goes
+    // from a mid-stride crouch into a full upright stand. Only one constant is
+    // available to align them, so it has to be spent at the end: that is where
+    // the animation hands over to idle and where the player is looking. Anchor
+    // there and the last frame is exact. The 0.11 m the start is then out by
+    // gets seeded into the alignment offset, which slides it away during the
+    // first quarter second — in the direction he is already travelling, so it
+    // reads as him gathering himself rather than as a glitch.
+    info.startResidual = info.rise - info.footRise;
+
+    // Climb Down is authored standing ON a ledge: its feet begin 0.67 m above
+    // its own origin. Plant that root on a block and he floats a ledge-height
+    // in the air. Shifting the flattened Y by the start frame's foot height
+    // puts the root back under the feet, so "pos.y is the surface he stands
+    // on" stays true for climbs as it is everywhere else. Translating the Hips
+    // translates the whole skeleton rigidly, so this costs nothing.
+    const yFlat = y0 + (atEnd.y - info.footEnd) / MODEL_SCALE;
+    for (let i = 0; i < n; i++){ v[i*3] = x0; v[i*3 + 2] = z0; v[i*3 + 1] = yFlat; }
+  } else {
+    for (let i = 0; i < n; i++){ v[i*3] = x0; v[i*3 + 2] = z0; }
+  }
+  return info;
+}
+
+// If a clip came from a differently-numbered rig (mixamorig2 vs mixamorig6),
+// rewrite the prefix so the tracks bind. Not needed for these files.
+function retargetTrackNames(clip, toPrefix){
+  for (const track of clip.tracks) track.name = track.name.replace(/^mixamorig\d*/, toPrefix);
+  return clip;
+}
+
+function sampleRoot(root, time){
+  const { times, x, y, z } = root;
+  let i = 1;
+  while (i < times.length - 1 && times[i] < time) i++;
+  const t0 = times[i-1], t1 = times[i];
+  const a = t1 > t0 ? clamp((time - t0) / (t1 - t0), 0, 1) : 0;
+  return {
+    x: x[i-1] + (x[i] - x[i-1]) * a,
+    y: y[i-1] + (y[i] - y[i-1]) * a,
+    z: z[i-1] + (z[i] - z[i-1]) * a,
+  };
+}
+
+/* =========================================================================
+   5. STATE MACHINE
+   ========================================================================= */
+let mixer, actions = {}, current = 'idle';
+let THRESH = [0.12, 1.40, 2.55];
+
+const player = {
+  pos: new THREE.Vector3(0, 0, 0),
+  yaw: Math.PI,        // spawn looking down the course
+  speed: 0,            // what he is asking for
+  actual: 0,           // what he actually covered last frame
+  vy: 0,
+  offset: new THREE.Vector3(),   // visual-only smoothing, decays to zero
+  grounded: true,
+  airborne: false,     // inside a jump clip
+  falling: false,      // unsupported, gravity driving it
+  jumpKey: null,
+  prev: 0,             // last sampled clip time, for root-motion deltas
+  jumpMomentum: 1,
+  climb: null,         // { key, plan, warp, prev }
+  dancing: null,
+  lastDance: null,
+  idleTime: 0,
+  surface: 'ground',
+};
+
+function buildActions(){
+  mixer = new THREE.AnimationMixer(character);
+  for (const key of keysInOrder){
+    actions[key] = mixer.clipAction(CLIPS[key].clip);
+    restoreLoop(key);
+  }
+  const s = k => CLIPS[k].speed;
+  THRESH = [ s('walk') * 0.15, (s('walk') + s('jog')) / 2, (s('jog') + s('run')) / 2 ];
+
+  actions.idle.play();
+  current = 'idle';
+
+  mixer.addEventListener('finished', e => {
+    if (player.airborne && e.action === actions[player.jumpKey]) endJump();
+    else if (player.climb && e.action === actions[player.climb.key]) endClimb();
+    else if (player.dancing && e.action === actions[player.dancing]) stopDance();
+  });
+}
+
+function restoreLoop(key){
+  const a = actions[key];
+  if (DANCES.includes(key)){
+    // Dance 1 is only 2.2 s, so it runs three times; the others once.
+    const reps = Math.max(1, Math.round(TUNE.danceMinSeconds / CLIPS[key].duration));
+    a.setLoop(THREE.LoopRepeat, reps);
+    a.clampWhenFinished = true;
+  } else if (ONE_SHOT.has(key)){
+    a.setLoop(THREE.LoopOnce, 1);
+    a.clampWhenFinished = true;
+  } else {
+    a.setLoop(THREE.LoopRepeat, Infinity);
+    a.clampWhenFinished = false;
+  }
+}
+
+function fadeTo(key, dur = TUNE.fadeTime){
+  if (current === key) return;
+  const next = actions[key], prev = actions[current];
+  next.enabled = true;
+  next.paused = false;
+  next.setEffectiveTimeScale(1).setEffectiveWeight(1);
+  if (ONE_SHOT.has(key)) next.reset();   // a spent one-shot sits paused on its last frame
+  next.play();
+  if (prev) prev.crossFadeTo(next, dur, false); else next.fadeIn(dur);
+  current = key;
+}
+
+const gaitFor = speed =>
+  speed < THRESH[0] ? 'idle' : speed < THRESH[1] ? 'walk' : speed < THRESH[2] ? 'jog' : 'run';
+
+const busy = () => player.airborne || player.falling || !!player.climb;
+
+/* ---- jump --------------------------------------------------------------- */
+function jump(){
+  if (busy() || preview || !player.grounded) return;
+  const key = TUNE.jumpClip;
+  player.airborne = true;
+  player.jumpKey = key;
+  player.prev = 0;
+  // Scale the clip's own travel by takeoff momentum: sprint into it and the
+  // leap carries the sprint's speed; from a standstill it becomes a small hop.
+  player.jumpMomentum = clamp(player.speed / (CLIPS[key].speed || 1), 0.20, 1.50);
+  fadeTo(key, TUNE.jumpFade);
+}
+
+function endJump(){
+  player.airborne = false;
+  if (unstick()) return;
+  const g = groundAt(player.pos.x, player.pos.z, player.pos.y + 0.02);
+  if (g.y < player.pos.y - 0.02) startFall();       // he leapt out over a drop
+  else { player.pos.y = g.y; fadeTo(gaitFor(player.speed), 0.15); }
+}
+
+/* ---- falling ------------------------------------------------------------
+   There is no fall clip in the set. The jump's airborne pose stands in: hold
+   the jump action paused at 0.253 s, its apex, where the feet are 43 cm up and
+   the legs are tucked. An honest stand-in, not a real fall animation.      */
+function startFall(){
+  if (player.falling) return;
+  player.falling = true;
+  player.vy = Math.min(player.vy, 0);
+  fadeTo(TUNE.jumpClip, 0.12);
+  const a = actions[TUNE.jumpClip];
+  a.time = TUNE.fallPose;
+  a.paused = true;
+}
+
+function land(){
+  player.falling = false;
+  player.vy = 0;
+  actions[TUNE.jumpClip].paused = false;
+  fadeTo(gaitFor(player.speed), 0.14);
+}
+
+/* ---- climbing -----------------------------------------------------------
+   Root motion drives this one outright: X and Z from the clip, Y from the clip
+   scaled so the feet finish exactly on the target surface.                 */
+function startClimb(plan){
+  if (!plan) return;
+  const info = CLIPS[plan.key];
+  if (!info.root) return;
+
+  // He is somewhere in the 0.28–0.83 m band the probe allows; the clip wants
+  // him at info.approach. Rather than teleport, hand the difference to a
+  // decaying offset so he slides into place over the first fifth of a second
+  // while the animation is already moving his feet. Under ~0.4 m it reads as
+  // adjusting his footing.
+  player.offset.add(player.pos).sub(plan.stand);
+  player.offset.y -= info.startResidual;   // start on the surface, not above it
+  player.pos.set(plan.stand.x, plan.stand.y, plan.stand.z);
+  player.yaw = plan.yaw;
+  player.speed = 0;
+  player.idleTime = 0;
+
+  // With the flatten anchored on the last frame, the root simply has to travel
+  // the real ledge height, so the warp is the ratio of wanted to authored.
+  const warp = clamp(plan.rise / (info.rise || 1), ...TUNE.warpClamp);
+
+  player.climb = { key: plan.key, plan, warp, prev: info.startTime };
+  fadeTo(plan.key, TUNE.climbFade);
+  // fadeTo reset the action to frame 0; skip past the clip's built-in walk-in
+  actions[plan.key].time = info.startTime;
+}
+
+function endClimb(){
+  if (!player.climb) return;
+  const { plan, key, prev } = player.climb;
+  const info = CLIPS[key];
+
+  // the finished event fires inside mixer.update, so the last frame's slice of
+  // root motion has not been applied yet — spend it before letting go
+  if (info.root){
+    const now  = sampleRoot(info.root, info.duration);
+    const then = sampleRoot(info.root, prev);
+    tmp.set(now.x - then.x, 0, now.z - then.z).applyAxisAngle(UP, player.yaw);
+    player.pos.x += tmp.x;
+    player.pos.z += tmp.z;
+  }
+
+  player.climb = null;
+  player.vy = 0;
+  player.speed = 0;
+  // The feet finish exactly on the target surface; the root does not, because
+  // the clip's last pose carries its own foot-to-root offset — 3.5 cm on the
+  // way up. Snap the root where it belongs, then hand the difference to a
+  // decaying visual offset so the body slides that 3.5 cm out over the blend
+  // to idle instead of popping in one frame.
+  const g = groundAt(player.pos.x, player.pos.z, plan.targetY + 0.25);
+  player.offset.y += player.pos.y - g.y;
+  player.pos.y = g.y;
+  player.surface = g.tag;
+  fadeTo('idle', 0.18);
+}
+
+/* ---- idle dances -------------------------------------------------------- */
+function startDance(){
+  const pool = DANCES.filter(k => k !== player.lastDance);
+  const key = pool[Math.floor(Math.random() * pool.length)];
+  player.dancing = key;
+  player.lastDance = key;
+  player.idleTime = 0;
+  fadeTo(key, TUNE.danceFade);
+}
+
+function stopDance(){
+  if (!player.dancing) return;
+  const key = player.dancing;
+  player.dancing = null;
+  player.idleTime = 0;
+  fadeTo(gaitFor(player.speed), TUNE.danceFade);
+  restoreLoop(key);
+}
+
+/* =========================================================================
+   6. INPUT
+   ========================================================================= */
+const down = new Set();
+const keyEls = [...document.querySelectorAll('.key[data-k]')];
+let climbPlan = null;
+
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  down.add(e.code);
+  if (e.code === 'Space'){ e.preventDefault(); if (player.dancing) stopDance(); jump(); }
+  if (e.code === 'KeyE'){
+    if (player.dancing) stopDance();
+    if (!busy() && !preview) startClimb(climbPlan);
+  }
+  if (e.code === 'KeyB' && skeletonHelper) skeletonHelper.visible = !skeletonHelper.visible;
+  if (e.code === 'KeyR') respawn();
+  if (e.code === 'Escape' && preview) exitPreview();
+  syncKeyLights();
+});
+addEventListener('keyup', e => { down.delete(e.code); syncKeyLights(); });
+addEventListener('blur', () => { down.clear(); syncKeyLights(); });
+
+function respawn(){
+  player.pos.set(COURSE_ORIGIN.x, 0, 0);
+  player.yaw = Math.PI;          // looking down the course, away from the camera
+  player.speed = 0; player.vy = 0;
+  resetPrize();
+  player.falling = false; player.airborne = false; player.climb = null;
+  player.offset.set(0,0,0);
+  if (player.dancing) stopDance(); else fadeTo('idle', 0.1);
+}
+
+function syncKeyLights(){
+  for (const el of keyEls){
+    const k = el.dataset.k;
+    el.classList.toggle('down', down.has(k) ||
+      (k === 'ShiftLeft' && (down.has('ShiftLeft') || down.has('ShiftRight'))));
+  }
+}
+
+let camYaw = 0, camPitch = 0.28, camDist = TUNE.camDist, dragging = false;
+
+// Right-drag to orbit means the browser also wants to open its context menu on
+// the way down. Cancelling it on the CANVAS only leaves the HUD panels alone,
+// so right-click still works normally over the readouts if you want to inspect
+// one. preventDefault on pointerdown kills the other two defaults that get in
+// the way of a drag: text-selection ghosting, and middle-click autoscroll.
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+renderer.domElement.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  dragging = true;
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+const endDrag = e => {
+  dragging = false;
+  if (renderer.domElement.hasPointerCapture(e.pointerId))
+    renderer.domElement.releasePointerCapture(e.pointerId);
+};
+renderer.domElement.addEventListener('pointerup', endDrag);
+renderer.domElement.addEventListener('pointercancel', endDrag);   // no stuck orbit
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  camYaw   -= e.movementX * 0.0045;
+  camPitch  = clamp(camPitch + e.movementY * 0.0035, -0.35, 1.15);
+});
+renderer.domElement.addEventListener('wheel', e => {
+  e.preventDefault();
+  camDist = clamp(camDist * (1 + Math.sign(e.deltaY) * 0.12), TUNE.camMin, TUNE.camMax);
+}, { passive:false });
+
+/* =========================================================================
+   7. UPDATE
+   ========================================================================= */
+const UP = new THREE.Vector3(0,1,0);
+const tmp = new THREE.Vector3();
+const camTarget = new THREE.Vector3();
+const camRay = new THREE.Raycaster();
+let preview = null;
+
+function update(dt){
+  mixer.update(dt);
+  if (preview){ updateCamera(dt); return; }
+
+  // ---- input -------------------------------------------------------------
+  let ix = 0, iz = 0;
+  if (down.has('KeyW') || down.has('ArrowUp'))    iz -= 1;
+  if (down.has('KeyS') || down.has('ArrowDown'))  iz += 1;
+  if (down.has('KeyA') || down.has('ArrowLeft'))  ix -= 1;
+  if (down.has('KeyD') || down.has('ArrowRight')) ix += 1;
+  const moving = (ix || iz);
+
+  if (moving && player.dancing) stopDance();
+
+  const locked = !!player.climb;          // the climb owns him until it ends
+  const sprint = down.has('ShiftLeft') || down.has('ShiftRight');
+  const slow   = down.has('KeyX');
+  const target = (!moving || locked) ? 0
+               : sprint ? CLIPS.run.speed
+               : slow   ? CLIPS.walk.speed
+                        : CLIPS.jog.speed;
+
+  const rate = target > player.speed ? TUNE.accel : TUNE.decel;
+  player.speed = clamp(player.speed + Math.sign(target - player.speed) * rate * dt,
+                       Math.min(player.speed, target), Math.max(player.speed, target));
+
+  // ---- heading -----------------------------------------------------------
+  if (moving && !locked){
+    // Rotate the input by the camera yaw, then read its heading. Facing at yaw
+    // a is (sin a, cos a), so heading = atan2(x, z). W gives iz = -1 -> yaw =
+    // PI -> away from the camera, which is what forward means on a follow cam.
+    const wantYaw = Math.atan2(ix, iz) + camYaw;
+    const slew = ((player.airborne || player.falling) ? TUNE.airTurnRate : TUNE.turnRate) * dt;
+    let diff = wantYaw - player.yaw;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // shortest way around
+    player.yaw += clamp(diff, -slew, slew);
+  }
+
+  // ---- movement ----------------------------------------------------------
+  unstick();
+  const wasX = player.pos.x, wasZ = player.pos.z;
+
+  if (player.climb){
+    // The climb is authored and pre-checked by landingClear, so it moves him
+    // without collision: clamping it mid-clip would only make his feet skate.
+    driveRootMotion(player.climb.key, player.climb, player.climb.warp, 1, false);
+
+  } else if (player.airborne){
+    driveRootMotion(player.jumpKey, player, 0, player.jumpMomentum, true);
+
+  } else {
+    tmp.set(0, 0, player.speed * dt).applyAxisAngle(UP, player.yaw);
+    moveWithCollision(player.pos, tmp.x, tmp.z, player.falling ? 0 : TUNE.stepUp);
+    resolveVertical(dt);
+
+    if (!player.dancing && !player.falling){
+      const gait = gaitFor(player.speed);
+      fadeTo(gait);
+      const cs = CLIPS[gait].speed;
+      actions[gait].setEffectiveTimeScale(cs > 0 ? clamp(player.speed / cs, ...TUNE.rateClamp) : 1);
+    }
+  }
+
+  player.grounded = !player.falling && !player.airborne && !player.climb;
+
+  // How far he ACTUALLY got, which is not player.speed. player.speed is what
+  // he is asking for; hold W against a climbable face and it still reads
+  // 1.84 m/s while he stands perfectly still. Gating the climb prompt on that
+  // suppressed it at exactly the moment the player wanted it — walk up to a
+  // ledge, hold forward, and E never lights. Gate on distance covered instead.
+  player.actual = Math.hypot(player.pos.x - wasX, player.pos.z - wasZ) / Math.max(dt, 1e-5);
+
+  // ---- what would E do right now -----------------------------------------
+  climbPlan = (player.grounded && !player.dancing && player.actual < 0.6)
+              ? (findClimbUp() || findClimbDown()) : null;
+
+  // ---- idle watchdog ------------------------------------------------------
+  const settled = !moving && player.grounded && player.speed < THRESH[0];
+  if (settled && !player.dancing){
+    player.idleTime += dt;
+    if (player.idleTime >= TUNE.idleBeforeDance) startDance();
+  } else if (!settled){
+    player.idleTime = 0;
+  }
+
+  player.offset.multiplyScalar(Math.exp(-dt / (TUNE.alignTime / 3)));   // bleeds out
+  character.position.copy(player.pos).add(player.offset);
+  character.rotation.y = player.yaw;
+
+  sun.position.set(player.pos.x + 9, player.pos.y + 16, player.pos.z + 7);
+  sun.target.position.copy(player.pos);
+  sun.target.updateMatrixWorld();
+
+  updateCamera(dt);
+}
+
+/* -------------------------------------------------------------------------
+   Gravity, landing, and stepping up. Split into its own function so a test can
+   drive it directly at any frame rate, which is exactly how the bug below was
+   caught and is the only way to be sure it stays dead.
+
+   THE SWEEP. Falling 0.60 m under this gravity means arriving at 4.65 m/s,
+   which is 77 mm of travel in a 60 fps frame — and more than twice that if the
+   tab is busy. Asking "is there ground at or below where I ended up" only sees
+   a ledge if the frame happens to end inside a 20 mm band just above it. It
+   usually does not: he steps 0.675 -> 0.520 straight over a 0.600 lid and
+   keeps going, ending up sealed inside the block with its walls now solid
+   around him. The query has to be swept: the ceiling is where he STARTED the
+   frame, so every surface he crossed during it is still a candidate.
+   ------------------------------------------------------------------------- */
+function resolveVertical(dt){
+  if (player.falling){
+    const prevY = player.pos.y;
+    player.vy -= TUNE.gravity * dt;
+    player.pos.y += player.vy * dt;
+    const g = groundAt(player.pos.x, player.pos.z, prevY + 0.02);
+    if (player.pos.y <= g.y){ player.pos.y = g.y; player.surface = g.tag; land(); }
+  } else {
+    // stand on whatever is under him, stepping up small risers for free
+    const g = groundAt(player.pos.x, player.pos.z, player.pos.y + TUNE.stepUp);
+    player.surface = g.tag;
+    if (g.y < player.pos.y - 0.02) startFall();          // walked off an edge
+    else player.pos.y = g.y;                             // includes the step up
+  }
+}
+
+/* Replay a clip's stored root curve as real world movement. XZ is rotated by
+   his heading; Y only moves when a warp factor is supplied (climbs). Jumps
+   collide, climbs do not — see the call sites for why. */
+function driveRootMotion(key, state, warpY, momentum, collide){
+  const info = CLIPS[key];
+  const a = actions[key];
+  if (!info || !info.root) return;
+  const now  = sampleRoot(info.root, a.time);
+  const then = sampleRoot(info.root, state.prev);
+  tmp.set((now.x - then.x) * momentum, 0, (now.z - then.z) * momentum)
+     .applyAxisAngle(UP, player.yaw);
+
+  const wasX = player.pos.x, wasZ = player.pos.z;
+  if (collide) moveWithCollision(player.pos, tmp.x, tmp.z, TUNE.stepUp);
+  else { player.pos.x += tmp.x; player.pos.z += tmp.z; }
+  if (warpY) player.pos.y += (now.y - then.y) * warpY;
+
+  // report what he ACTUALLY covered, not what the clip asked for, so a jump
+  // into a wall reads as stopped and lands in idle rather than sliding
+  const dts = Math.max(a.time - state.prev, 1e-5);
+  player.speed = Math.hypot(player.pos.x - wasX, player.pos.z - wasZ) / dts;
+  state.prev = a.time;
+}
+
+function updateCamera(dt){
+  camTarget.set(player.pos.x, player.pos.y + TUNE.camHeight, player.pos.z);
+  const cp = Math.cos(camPitch);
+  tmp.set(Math.sin(camYaw) * cp * camDist,
+          Math.sin(camPitch) * camDist + 0.55,
+          Math.cos(camYaw) * cp * camDist);
+
+  // keep the camera out of the scenery
+  const len = tmp.length();
+  camRay.set(camTarget, tmp.clone().normalize());
+  camRay.far = len;
+  const hit = camRay.intersectObjects(BLOCK_MESHES, false)[0];
+  tmp.setLength(hit ? Math.max(hit.distance - 0.35, 0.8) : len).add(camTarget);
+
+  camera.position.lerp(tmp, 1 - Math.exp(-TUNE.camLag * dt));
+  camera.lookAt(camTarget);
+}
+
+/* =========================================================================
+   8. HUD
+   ========================================================================= */
+const el = id => document.getElementById(id);
+const ledRows = {};
+
+const LABELS = { idle:'idle', walk:'walk', jog:'slow run', run:'fast run',
+                 jumpFast:'jump→fast', jumpSlow:'jump→slow',
+                 dance1:'dance 1', dance2:'dance 2', dance3:'dance 3',
+                 climbUp:'climb up', climbDown:'climb down' };
+const label = k => LABELS[k] || k;
+
+function buildHUD(){
+  const ledsEl = el('leds');
+  for (const key of keysInOrder){
+    const row = document.createElement('div');
+    row.className = 'led-row';
+    row.innerHTML = `<div class="led"></div><div class="led-name">${label(key)}</div>
+                     <div class="meter"><i></i></div><div class="pct">—</div>`;
+    ledsEl.appendChild(row);
+    ledRows[key] = { row, led: row.querySelector('.led'),
+                     bar: row.querySelector('.meter i'), pct: row.querySelector('.pct') };
+  }
+
+  const rows = el('cliprows');
+  for (const key of keysInOrder){
+    const c = CLIPS[key];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${label(key)}</td><td class="n">${c.duration.toFixed(2)}</td>
+                    <td class="n">${c.frames}</td>
+                    <td class="n">${c.travels && !c.vertical ? c.speed.toFixed(2) : '—'}</td>
+                    <td class="n">${c.vertical ? (c.footRise >= 0 ? '+' : '') + c.footRise.toFixed(2) : '—'}</td>
+                    <td class="n">${c.vertical ? c.approach.toFixed(2) : '—'}</td>
+                    <td style="text-align:right"><button data-clip="${key}">play</button></td>`;
+    rows.appendChild(tr);
+  }
+  rows.addEventListener('click', e => {
+    const b = e.target.closest('button[data-clip]');
+    if (b) enterPreview(b.dataset.clip);
+  });
+  el('resume').addEventListener('click', exitPreview);
+
+  for (const id of ['annunciator','telemetry','keys','clips','objective']) el(id).hidden = false;
+}
+
+function enterPreview(key){
+  preview = key;
+  for (const k of keysInOrder) actions[k].stop();
+  const a = actions[key];
+  a.reset();
+  a.setLoop(THREE.LoopRepeat, Infinity);
+  a.clampWhenFinished = false;
+  a.paused = false;
+  a.setEffectiveTimeScale(1).setEffectiveWeight(1).play();
+  current = key;
+  player.airborne = false; player.falling = false; player.climb = null;
+  player.dancing = null; player.idleTime = 0; player.speed = 0; player.offset.set(0,0,0);
+  el('resume').hidden = false;
+  el('mode-lbl').textContent = 'Mode · preview ' + label(key);
+  document.querySelectorAll('[data-clip]').forEach(b =>
+    b.classList.toggle('active', b.dataset.clip === key));
+}
+
+function exitPreview(){
+  if (!preview) return;
+  for (const k of keysInOrder) restoreLoop(k);
+  preview = null;
+  for (const k of keysInOrder) actions[k].stop();
+  current = 'idle';
+  actions.idle.reset().setEffectiveWeight(1).play();
+  el('resume').hidden = true;
+  el('mode-lbl').textContent = 'Mode · controller';
+  document.querySelectorAll('[data-clip]').forEach(b => b.classList.remove('active'));
+}
+
+let fpsAcc = 0, fpsCount = 0;
+function updateHUD(dt){
+  for (const key of keysInOrder){
+    const a = actions[key];
+    const w = (a.isRunning() || a.paused) ? a.getEffectiveWeight() : 0;
+    const r = ledRows[key];
+    r.bar.style.width = (w * 100).toFixed(0) + '%';
+    r.pct.textContent = w > 0.005 ? w.toFixed(2).slice(1) : '—';
+    const on = w > 0.5;
+    r.led.classList.toggle('on', on && !ONE_SHOT.has(key));
+    r.led.classList.toggle('air', on && key.startsWith('jump'));
+    r.led.classList.toggle('climb', on && (CLIMBS.includes(key) || DANCES.includes(key)));
+    r.row.classList.toggle('hot', w > 0.02);
+  }
+
+  el('t-state').textContent = preview ? 'preview'
+                            : player.climb   ? label(player.climb.key)
+                            : player.falling ? 'falling'
+                            : player.airborne? 'airborne'
+                            : label(current);
+  el('t-speed').textContent = player.speed.toFixed(2) + ' m/s';
+  el('t-alt').textContent   = player.pos.y.toFixed(2) + ' m';
+  el('t-surf').textContent  = player.grounded ? player.surface : 'air';
+  el('t-head').textContent  = (((-player.yaw * 180/Math.PI) % 360 + 360) % 360).toFixed(0) + '°';
+  el('t-pos').textContent   = player.pos.x.toFixed(1) + ', ' + player.pos.z.toFixed(1);
+  el('t-idle').textContent  = player.dancing ? 'dancing'
+                            : player.idleTime > 0
+                              ? (TUNE.idleBeforeDance - player.idleTime).toFixed(1) + ' s' : '—';
+
+  const obj = el('objective');
+  const climbed = clamp(player.pos.y / PEAK_TOP, 0, 1);
+  el('obj-fill').style.width = (climbed * 100).toFixed(1) + '%';
+  el('obj-alt').textContent = player.pos.y.toFixed(2) + ' / ' + PEAK_TOP.toFixed(2) + ' m';
+  if (prizeState.collected){
+    obj.classList.add('done');
+    el('obj-state').textContent = 'Prize recovered';
+    el('obj-dist').textContent = 'R to reset';
+  } else {
+    obj.classList.remove('done');
+    el('obj-state').textContent = 'Ascend to the peak';
+    el('obj-dist').textContent =
+      Math.hypot(player.pos.x - PRIZE_AT.x, player.pos.z - PRIZE_AT.z).toFixed(1) + ' m away';
+  }
+
+  const p = el('prompt');
+  if (climbPlan && !preview){
+    p.classList.add('show');
+    el('prompt-text').textContent =
+      (climbPlan.key === 'climbUp' ? 'climb up ' : 'climb down ') +
+      Math.abs(climbPlan.rise).toFixed(2) + ' m';
+  } else p.classList.remove('show');
+
+  fpsAcc += dt; fpsCount++;
+  if (fpsAcc > 0.5){
+    el('t-fps').textContent = (fpsCount / fpsAcc).toFixed(0);
+    fpsAcc = 0; fpsCount = 0;
+  }
+}
+
+/* =========================================================================
+   9. BOOT
+   ========================================================================= */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+let elapsed = 0;
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);   // an alt-tab must not teleport him
+  elapsed += dt;
+  update(dt);
+  updatePrize(dt, elapsed);
+  updateHUD(dt);
+  renderer.render(scene, camera);
+}
+
+loadEverything().then(() => {
+  buildActions();
+  buildHUD();
+  const climbs = WORLD.filter(b => b.rise > TUNE.stepUp);
+  const steps  = WORLD.filter(b => b.rise > 0 && b.rise <= TUNE.stepUp);
+  log(`&nbsp;&nbsp;course: peak ${PEAK_TOP.toFixed(2)} m · ${climbs.length} climbs ` +
+      `(${climbs.map(b => b.rise.toFixed(2)).join(', ')}) · ${steps.length} free steps · ` +
+      `${LEVEL.gaps.length} gaps (${LEVEL.gaps.map(g => g.span.toFixed(2)).join(', ')})`);
+  for (const k of CLIMBS){
+    const c = CLIPS[k];
+    log(`&nbsp;&nbsp;${label(k)}: stand ${c.approach.toFixed(2)} m back, ` +
+        `walk-in trimmed ${(c.trimmed*100).toFixed(0)}%, exits ${c.exit.toFixed(2)} m past the face`);
+  }
+  bootEl.remove();
+  clock.getDelta();
+  tick();
+}).catch(err => {
+  console.error(err);
+  log('<b class="fault">FAULT</b> ' + err.message, 'fault');
+  log(`expected files in <b>${ASSET_DIR}</b> — check names and that you are on http, not file://`, 'fault');
+});
+</script>
+</body>
+</html>
