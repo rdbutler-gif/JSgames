@@ -412,6 +412,56 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
    1. CONFIG
    ========================================================================= */
 const ASSET_DIR = 'assets/timmy/';
+const TEX_DIR   = 'assets/textures/';
+
+/* -------------------------------------------------------------------------
+   THE ARENA
+
+   The playground used to be a 400 m plane with a grid on it, which is another
+   way of saying it had no edges at all — walk far enough and you are standing
+   on nothing, looking at nothing. It is now a closed 80 x 80 box centred on
+   the spawn, walled on all four sides.
+
+   Timmy spawns at 0,0 facing -Z, and the course runs from z = -3.0 to
+   z = -36.7, so the ascent fills the front half and the back half is empty
+   floor waiting for whatever goes there next.
+
+   The walls sit OUTSIDE the 80 m, so their inner faces are flush with the
+   edge of the ground plane at exactly +-40. They are 5 m tall on purpose:
+   that is above the 4.35 m summit, so groundAt's `b.top > ceilY` test skips
+   them from every height he can legitimately reach and he can never end up
+   standing on the parapet. It also puts their rise well outside the
+   0.35-0.95 m climb band, so E is never offered on a wall.
+   ------------------------------------------------------------------------- */
+const ARENA = {
+  half:    40,    // world runs -40..+40 on both x and z
+  wallH:   5.0,   // taller than PEAK_TOP (4.35) — see above
+  wallT:   1.0,   // thickness; far more than the 0.28 m collision radius
+  tile:    2.4,   // metres of world per texture tile
+  wallTile:1.8,   // walls tile a little tighter so they read as masonry
+
+  /* Normal map strength.
+
+     This pack's normal maps are authored shallow — blue channel averages 254
+     of 255, R/G stray only about +-40 either side of neutral. Fed in at 1.0
+     they do almost nothing.
+
+     It was briefly at 3.0 as an experiment and that was the wrong tree to be
+     barking up: normalScale only changes how light falls on a flat surface, so
+     past about 2.5 it stops reading as depth and starts reading as foil. The
+     depth in this scene now comes from actual rocks (section 2c), so this is
+     back to a value that just sharpens the texture rather than trying to fake
+     relief on its own. */
+  normalScale: 1.8,
+
+  /* Displacement — see section 2c. */
+  amp:         0.13,  // metres, peak to trough, of real relief
+  groundQuads: 1024,  // across the whole 80 m => 7.8 cm between vertices
+  groundChunks:8,     // 8 x 8 grid, for frustum culling
+  boxSpacing:  0.09,  // vertex spacing on block faces
+  wallSpacing: 0.16,  // walls are huge and seen edge-on; coarser is fine
+  groundSelfShadow: true,
+};
 
 const FILES = {
   idle:      'Idle.fbx',
@@ -577,61 +627,548 @@ sun.shadow.camera.left = -SH; sun.shadow.camera.right = SH;
 sun.shadow.camera.top  =  SH; sun.shadow.camera.bottom = -SH;
 sun.shadow.camera.updateProjectionMatrix();
 sun.shadow.bias = -0.0012;
+// Depth bias alone is a blunt instrument once there are 20 cm rocks in the
+// scene: enough of it to stop acne on the big flat ground plane is enough to
+// detach a small rock's shadow from its base. normalBias offsets the sample
+// along the surface normal instead, which scales with the geometry rather than
+// with the depth range, so the pebbles keep their shadows anchored.
+sun.shadow.normalBias = 0.022;
 sun.shadow.normalBias = 0.02;
 scene.add(sun, sun.target);
 
+/* =========================================================================
+   2b. TEXTURES
+
+   The nafgames "4 stones on grass" pack ships seven maps per set. Only four
+   of them are worth loading, and one of those needed changing before it was
+   any use, so the folder on disk is a converted 1024 JPG set rather than the
+   original 2048 PNGs:
+
+     diffuseOriginal -> diffuse.jpg     colour, needs SRGBColorSpace
+     normal          -> normal.jpg      tangent space, OpenGL +Y — three's own
+                                        convention, so it goes straight in
+     smoothness      -> roughness.jpg   INVERTED. Unity ships smoothness,
+                                        three wants roughness. Feed it in raw
+                                        and the grass comes out glossier than
+                                        the stones.
+     ao              -> ao.jpg
+
+   Dropped, with reasons:
+     metallic  every pixel lands between 96 and 160, std dev 3.6. It is a flat
+               0.5 grey plate, not a metalness map. Wire it up and every
+               surface in the scene turns into half-polished lead. metalness
+               is therefore pinned at 0 below, which is correct for rock.
+     edge      std dev 0.73. Solid grey. A curvature map for a texturing tool
+               with nothing to say at runtime.
+     height    not loaded. Two things have been tried with it and both were
+               wrong. Displacement needs a tessellated ground, which breaks a
+               controller built on a flat floor at y = 0. Parallax occlusion
+               mapping cost up to 32 texture fetches per pixel across a
+               full-screen ground plane, which is exactly the lag it caused,
+               and it was still a shading trick — flat geometry, painted
+               depth, no silhouette. Rocks that stick up are real meshes.
+               See section 2c.
+
+   That is 78 MB of PNG down to 1.8 MB of JPG, and roughly 270 MB of texture
+   memory down to 67 MB, for a texture nobody will ever see closer than a
+   metre away.
+   ========================================================================= */
+const texLoader = new THREE.TextureLoader();
+const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
+
+// Every map in a set shares the same wrap and filtering. Repeat is deliberately
+// left at 1: tiling comes from world-space UVs baked into each mesh, so one
+// texture object can serve the ground, a 4.4 m block and a 1 m block without
+// any of them needing a private clone.
+function loadSet(n){
+  const dir = `${TEX_DIR}stone${n}/`;
+  const cfg = (t, srgb) => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = MAX_ANISO;              // keeps the ground sharp at grazing angles
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const ao = cfg(texLoader.load(dir + 'ao.jpg'));
+  // Stated rather than assumed. Since r151 every map picks its UV set from
+  // texture.channel, and aoMap is the one people get bitten by because the old
+  // API hard-wired it to uv2. r180 defaults channel to 0 -> attribute "uv",
+  // which is the only UV set Box/PlaneGeometry produce, so this line changes
+  // nothing today. It is here so that it stays true if the default moves.
+  ao.channel = 0;
+  return {
+    maps: {
+      map:          cfg(texLoader.load(dir + 'diffuse.jpg'), true),
+      normalMap:    cfg(texLoader.load(dir + 'normal.jpg')),
+      roughnessMap: cfg(texLoader.load(dir + 'roughness.jpg')),
+      aoMap:        ao,
+    },
+  };
+}
+const TEX = { 1:loadSet(1), 2:loadSet(2), 3:loadSet(3), 4:loadSet(4) };
+
+// A material that keeps the texture honest: no metalness (see above), full
+// roughness range handed to the map, and a tint that MULTIPLIES the diffuse
+// rather than replacing it.
+function surface(set, tint, normalScale = ARENA.normalScale){
+  return new THREE.MeshStandardMaterial({
+    ...TEX[set].maps,
+    color: tint,
+    metalness: 0,
+    roughness: 1,           // scales the map; 1 = use it as authored
+    normalScale: new THREE.Vector2(normalScale, normalScale),
+  });
+}
+
+/* -------------------------------------------------------------------------
+   TILING
+
+   Every surface derives its UVs from WORLD position — u = x/tile, v = z/tile on
+   horizontal faces, and the corresponding pair on vertical ones. That is the
+   whole reason the displacement lands on the painted stones: the vertex shader
+   samples the diffuse at the same coordinate the mesh builder sampled the
+   height at, so the bump and the stone are the same feature by construction
+   rather than by luck.
+
+   It also means one texture object serves every mesh with no per-mesh clone
+   and no texture.repeat anywhere, and that a block's surface is continuous
+   with the floor it stands on instead of restarting the texture at its own
+   corner.
+   ------------------------------------------------------------------------- */
+
+/* =========================================================================
+   2c. DISPLACEMENT — geometry driven by the height map
+
+   The height map is a per-texel elevation field. It is the 3D information in
+   the pack, and it is the ONLY map here that carries any. The correction to
+   everything before this: the previous version scattered procedurally
+   generated rocks with sine-wave noise, which had no relationship to the
+   height map or to the painted stones whatsoever. They could not line up with
+   the texture because they were never derived from it. Wrong problem solved.
+
+   This displaces real vertices by the height field, sampled at the SAME UV the
+   diffuse map is sampled at. That is what makes the bumps land on the stones:
+   not approximately, but by construction. Every tile gets its relief, because
+   the relief IS the tile.
+
+   HOW MUCH MESH IT TAKES
+   Measured off the pack rather than guessed. A radial power spectrum of the
+   height maps puts 95% of the relief energy below 8 cycles per 2.4 m tile —
+   in other words the real features are 30 cm across and larger, and there is
+   almost nothing finer. Four vertices per cycle to make a bump read gives
+   7.5 cm between vertices, so 80 m needs about 1024 quads a side. That is
+   ~2.1M triangles, static, in 64 frustum-culled chunks.
+
+   Sounds enormous and is not. Triangles are cheap; the parallax attempt that
+   caused the lag was doing up to 32 dependent texture fetches on every pixel
+   of a full-screen plane, which is a completely different kind of cost. A
+   static vertex buffer is uploaded once and then just drawn.
+
+   NORMALS COME FROM THE FIELD, NOT THE MESH
+   computeVertexNormals would average face normals inside each chunk and get
+   the chunk seams wrong, giving you a visible grid of creases across the
+   floor. Taking the normal from the analytic gradient of the height field
+   instead is both exact and seamless, because neighbouring chunks sample the
+   same continuous function at the same place.
+
+   COLLISION IS UNCHANGED
+   Amplitude is 13 cm peak to trough, so the walking surface deviates about
+   +-6.5 cm from the flat y = 0 floor the controller assumes. At that scale it
+   is not perceptible underfoot, and nothing about the collision code, the
+   climb bands or the ledge tests has to move. This is the reason the amplitude
+   is what it is — go much past 20 cm and Timmy starts visibly wading.
+   ========================================================================= */
+
+/* Pull a height map into a Float32Array. Normalised to full range, then
+   centred on zero so displacing by it raises and lowers the surface about its
+   original position instead of shifting the whole thing upward. */
+async function loadHeightField(n){
+  const img = await new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error(`${TEX_DIR}stone${n}/height.png did not load`));
+    im.src = `${TEX_DIR}stone${n}/height.png`;
+  });
+  const N = img.width;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = N;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, N, N).data;
+
+  /* THE ROW REVERSAL IS LOAD-BEARING. Do not remove it.
+
+     THREE.Texture.flipY defaults to true, so when the diffuse is uploaded to
+     the GPU it gets flipped vertically: v = 1 lands on PNG row 0, and v = 0
+     lands on the LAST row. getImageData does no such thing — it hands back raw
+     rows, top first. Sample both at the same v and you are reading opposite
+     ends of the image.
+
+     The result was a mesh whose bumps had no relationship to the painted
+     stones: correlation between vertex height and the brightness the shader
+     actually paints there was +0.106, i.e. noise. Reversing the rows here so
+     the height field is stored in the same orientation the shader sees takes
+     it to +0.606, which is the ceiling the data allows — the pack's own
+     internal height-to-diffuse correlation is +0.595.
+
+     Note this fixes every face at once, not just the floor. It aligns this
+     sampler's v axis with the shader's v axis, so it holds regardless of which
+     world axes a given face projects its UVs from. */
+  const d = new Float32Array(N*N);
+  let lo = 1, hi = 0;
+  for (let j = 0; j < N; j++){
+    const srcRow = (N - 1 - j) * N;          // <-- flipY
+    for (let i = 0; i < N; i++){
+      const v = px[(srcRow + i)*4]/255;
+      d[j*N + i] = v;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  const span = (hi - lo) || 1;
+  let mean = 0;
+  for (let i = 0; i < N*N; i++){ d[i] = (d[i]-lo)/span; mean += d[i]; }
+  mean /= N*N;
+  for (let i = 0; i < N*N; i++) d[i] -= mean;
+  // The field is normalised to a span of 1 and centred on its mean, so after
+  // centring the maximum is exactly 1 - mean. Displacement is measured DOWN
+  // from that, which is what keeps geometry inside the collision volume.
+  return { n: N, d, hi: 1 - mean };
+}
+
+// Bilinear, wrapping. Wrapping matters: the maps tile, so a vertex at u = 33.4
+// has to read the same value as one at u = 0.4 or the tiles get seams.
+function sampleH(hf, u, v){
+  const N = hf.n, d = hf.d;
+  const x = u*N - 0.5, y = v*N - 0.5;
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0;
+  const i0 = ((x0 % N) + N) % N, i1 = (i0 + 1) % N;
+  const j0 = ((y0 % N) + N) % N, j1 = (j0 + 1) % N;
+  const a = d[j0*N+i0], b = d[j0*N+i1], c = d[j1*N+i0], e = d[j1*N+i1];
+  return (a + (b-a)*fx) + ((c + (e-c)*fx) - (a + (b-a)*fx)) * fy;
+}
+
+/* Analytic surface normal. h(world) = amp * H(u,v) with u = x/tile, so
+   dh/dx = amp/tile * dH/du, and the normal is (-dh/dx, 1, -dh/dz) normalised.
+   Central difference over one texel keeps it smooth without chasing noise. */
+function fieldNormal(hf, u, v, amp, tile, out){
+  const e = 1/hf.n;
+  const k = amp / tile;
+  const du = (sampleH(hf, u+e, v) - sampleH(hf, u-e, v)) / (2*e) * k;
+  const dv = (sampleH(hf, u, v+e) - sampleH(hf, u, v-e)) / (2*e) * k;
+  const l = Math.hypot(du, 1, dv) || 1;
+  out[0] = -du/l; out[1] = 1/l; out[2] = -dv/l;
+  return out;
+}
+
+/* A displaced grid over one rectangular face.
+
+   `frame` maps grid coordinates (a,b in metres, across the face) to world
+   position, and gives the outward normal and the tangent basis, so the same
+   routine serves the flat ground and all six sides of a box.
+
+   `taper` fades displacement to zero within `fade` metres of the face border.
+   Without it, two faces of a box displace along different normals and pull
+   apart at the shared edge, and the ground pulls away from the base of the
+   wall. With it, the borders stay exactly where the collision box says they
+   are and the relief lives in the interior, which is where you look. */
+function displacedFace(frame, aLen, bLen, spacing, hf, amp, tile, fade = 0){
+  const na = Math.max(1, Math.round(aLen/spacing)), nb = Math.max(1, Math.round(bLen/spacing));
+  const vw = na+1, vh = nb+1, count = vw*vh;
+  const P = new Float32Array(count*3), N = new Float32Array(count*3), U = new Float32Array(count*2);
+  const nrm = [0,0,0], p = [0,0,0], uv = [0,0];
+
+  for (let j = 0; j < vh; j++){
+    const bb = bLen * j/nb;
+    for (let i = 0; i < vw; i++){
+      const aa = aLen * i/na;
+      frame(aa, bb, p, uv);
+      const u = uv[0]/tile, v = uv[1]/tile;
+
+      let t = 1;
+      if (fade > 0){
+        const da = Math.min(aa, aLen-aa), db = Math.min(bb, bLen-bb);
+        t = Math.min(1, da/fade) * Math.min(1, db/fade);
+        t = t*t*(3-2*t);                      // smoothstep, so no crease at the taper edge
+      }
+      // INWARD ONLY, and this is the invariant the whole thing rests on.
+      //
+      // Subtracting the field maximum puts h in [-amp, 0], so every displaced
+      // vertex sits at or behind the flat surface it started from. The
+      // collision box therefore remains the OUTER bound of everything visible:
+      // Timmy can never sink into a rock that has risen above the plane he is
+      // standing on, and he can never clip through a wall face that has bulged
+      // out past its collider. Centring the displacement instead would put
+      // half the relief on the wrong side of the collision surface and cost
+      // 6.5 cm of visible foot sinking on a 25 cm step.
+      //
+      // Physically it is also the right model: the stone tops ARE the walking
+      // surface, and the soil between them is what falls away.
+      const h = (sampleH(hf, u, v) - hf.hi) * amp * t;
+      const k = (j*vw+i)*3, k2 = (j*vw+i)*2;
+      P[k]   = p[0] + frame.nx*h;
+      P[k+1] = p[1] + frame.ny*h;
+      P[k+2] = p[2] + frame.nz*h;
+      U[k2] = u; U[k2+1] = v;
+
+      if (t <= 0.0001){ N[k] = frame.nx; N[k+1] = frame.ny; N[k+2] = frame.nz; }
+      else {
+        fieldNormal(hf, u, v, amp*t, tile, nrm);
+        // nrm is in face-local space (Y along the face normal); rotate it out
+        N[k]   = frame.tx*nrm[0] + frame.nx*nrm[1] + frame.bx*nrm[2];
+        N[k+1] = frame.ty*nrm[0] + frame.ny*nrm[1] + frame.by*nrm[2];
+        N[k+2] = frame.tz*nrm[0] + frame.nz*nrm[1] + frame.bz*nrm[2];
+      }
+    }
+  }
+
+  /* WINDING, DERIVED RATHER THAN HAND-ORDERED.
+
+     three culls back faces by default, so a triangle wound the wrong way is
+     invisible from the side you are meant to see it from — you look straight
+     through the block and out the other side. Shading looks fine from inside,
+     because the normals are written explicitly and were never wrong; only the
+     vertex order was.
+
+     Laid out below, vertex a sits at the frame origin, b at +A and c at +B, so
+     the pair (a,c,b) + (b,c,d) has geometric normal -(A x B). Whether that
+     agrees with the face's declared outward normal depends on the handedness
+     of the A/B pair the caller passed in, and getting that right by hand for
+     six faces is exactly the mistake that produced see-through walls: the two
+     horizontal faces happened to be correct and all four sides were reversed.
+
+     So it is measured here instead. One dot product decides the order, and the
+     caller can hand in the axes in whatever order is convenient for the UVs
+     without it being able to break the geometry. */
+  const cnx = frame.ty*frame.bz - frame.tz*frame.by;
+  const cny = frame.tz*frame.bx - frame.tx*frame.bz;
+  const cnz = frame.tx*frame.by - frame.ty*frame.bx;
+  const flip = (cnx*frame.nx + cny*frame.ny + cnz*frame.nz) > 0;
+
+  const idx = count > 65535 ? new Uint32Array(na*nb*6) : new Uint16Array(na*nb*6);
+  let o = 0;
+  for (let j = 0; j < nb; j++) for (let i = 0; i < na; i++){
+    const a0 = j*vw+i, b0 = a0+1, c0 = a0+vw, d0 = c0+1;
+    if (flip){ idx[o++]=a0; idx[o++]=b0; idx[o++]=c0;  idx[o++]=c0; idx[o++]=b0; idx[o++]=d0; }
+    else     { idx[o++]=a0; idx[o++]=c0; idx[o++]=b0;  idx[o++]=b0; idx[o++]=c0; idx[o++]=d0; }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(P,3));
+  geo.setAttribute('normal',   new THREE.BufferAttribute(N,3));
+  geo.setAttribute('uv',       new THREE.BufferAttribute(U,2));
+  geo.setIndex(new THREE.BufferAttribute(idx,1));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+// Helper to describe one face to displacedFace.
+function makeFrame(ox,oy,oz, ax,ay,az, bx,by,bz, nx,ny,nz, uFn){
+  const f = (a,b,p,uv) => {
+    p[0] = ox + ax*a + bx*b;
+    p[1] = oy + ay*a + by*b;
+    p[2] = oz + az*a + bz*b;
+    uFn(p, uv);
+  };
+  f.nx=nx; f.ny=ny; f.nz=nz;
+  f.tx=ax; f.ty=ay; f.tz=az;
+  f.bx=bx; f.by=by; f.bz=bz;
+  return f;
+}
+
+/* A box with all six faces displaced, tapered at every border so the silhouette
+   still matches the collision footprint exactly. World-space box projection for
+   UVs, same as the ground, so a block's surface is continuous with the floor it
+   stands on rather than restarting the texture at its own corner. */
+function displacedBoxGeometry(cx, cy, cz, w, h, d, spacing, hf, amp, tile){
+  const T = tile, hw=w/2, hh=h/2, hd=d/2;
+
+  /* Amplitude has to be clamped per box, and this is not cosmetic.
+
+     Displacement is inward-only, so every face pushes toward the interior. Two
+     opposite faces therefore close a gap of 2 x amp between them. The 0.25 m
+     step block is thinner than that: at the full 0.13 m the top face sinks to
+     0.12 and the bottom rises to 0.13, they cross, and the block turns itself
+     inside out through the middle.
+
+     Capping at 30% of the smallest dimension leaves the step 10 cm of clear
+     air between its faces and costs nothing anywhere else, since every other
+     box in the level is thick enough to take the full amount. */
+  const amp2 = Math.min(amp, Math.min(w, h, d) * 0.30);
+  const fade = Math.min(0.10, Math.min(w,h,d)*0.22);
+  const uvXZ = (p,uv)=>{ uv[0]=p[0]; uv[1]=p[2]; };
+  const uvZY = (p,uv)=>{ uv[0]=p[2]; uv[1]=p[1]; };
+  const uvXY = (p,uv)=>{ uv[0]=p[0]; uv[1]=p[1]; };
+
+  const faces = [
+    // +Y top, -Y bottom
+    [makeFrame(cx-hw, cy+hh, cz-hd,  1,0,0,  0,0,1,   0, 1,0, uvXZ), w, d],
+    [makeFrame(cx-hw, cy-hh, cz+hd,  1,0,0,  0,0,-1,  0,-1,0, uvXZ), w, d],
+    // +X, -X
+    [makeFrame(cx+hw, cy-hh, cz+hd,  0,0,-1, 0,1,0,   1,0,0,  uvZY), d, h],
+    [makeFrame(cx-hw, cy-hh, cz-hd,  0,0,1,  0,1,0,  -1,0,0,  uvZY), d, h],
+    // +Z, -Z
+    [makeFrame(cx-hw, cy-hh, cz+hd,  1,0,0,  0,1,0,   0,0,1,  uvXY), w, h],
+    [makeFrame(cx+hw, cy-hh, cz-hd, -1,0,0,  0,1,0,   0,0,-1, uvXY), w, h],
+  ];
+  const parts = faces.map(([f,a,b]) => displacedFace(f, a, b, spacing, hf, amp2, T, fade));
+  return mergeGeoms(parts);
+}
+
+// Minimal geometry merge — avoids pulling in BufferGeometryUtils for four lines.
+function mergeGeoms(list){
+  let nv = 0, ni = 0;
+  for (const g of list){ nv += g.attributes.position.count; ni += g.index.count; }
+  const P = new Float32Array(nv*3), N = new Float32Array(nv*3), U = new Float32Array(nv*2);
+  const I = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+  let vo = 0, io = 0;
+  for (const g of list){
+    P.set(g.attributes.position.array, vo*3);
+    N.set(g.attributes.normal.array,   vo*3);
+    U.set(g.attributes.uv.array,       vo*2);
+    const gi = g.index.array;
+    for (let i = 0; i < gi.length; i++) I[io+i] = gi[i] + vo;
+    vo += g.attributes.position.count; io += gi.length;
+    g.dispose();
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(P,3));
+  geo.setAttribute('normal',   new THREE.BufferAttribute(N,3));
+  geo.setAttribute('uv',       new THREE.BufferAttribute(U,2));
+  geo.setIndex(new THREE.BufferAttribute(I,1));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+/* The world's geometry now depends on pixel data, so it has to wait for it.
+   This is a module, so top-level await is legal and is much cleaner than
+   rebuilding the scene in a callback. The boot overlay is already up.
+
+   A missing file degrades to a flat field rather than throwing, because an
+   exception here would stop module evaluation and leave a black screen — a far
+   worse failure than a floor without bumps. */
+/* Flatten the floor back to y = 0 as it approaches the arena border, and blend
+   its normal back to straight up so there is no crease where the taper ends.
+
+   This has to run across the whole floor rather than inside displacedFace,
+   because displacedFace's taper works on the face it is given — apply it per
+   chunk and all 64 chunks flatten at their own edges, drawing you a neat 8 x 8
+   grid across the ground. Here the only edge that flattens is the real one. */
+function taperToArenaEdge(geo, fade){
+  const P = geo.attributes.position, N = geo.attributes.normal;
+  const lim = ARENA.half;
+  for (let i = 0; i < P.count; i++){
+    const dx = lim - Math.abs(P.getX(i)), dz = lim - Math.abs(P.getZ(i));
+    const d = Math.min(dx, dz);
+    if (d >= fade) continue;
+    let t = Math.max(0, Math.min(1, d/fade));
+    t = t*t*(3-2*t);
+    P.setY(i, P.getY(i) * t);
+    const nx = N.getX(i)*t, ny = N.getY(i)*t + (1-t), nz = N.getZ(i)*t;
+    const l = Math.hypot(nx,ny,nz) || 1;
+    N.setXYZ(i, nx/l, ny/l, nz/l);
+  }
+  P.needsUpdate = N.needsUpdate = true;
+  geo.computeBoundingSphere();
+}
+
+const HF = {};
+for (const n of [1,2,3,4]){
+  try {
+    HF[n] = await loadHeightField(n);
+  } catch (err) {
+    console.warn(`[displacement] ${err.message} — set ${n} will render flat.`);
+    HF[n] = { n: 4, d: new Float32Array(16) };
+  }
+}
+
+/* The world registries. These live here, immediately before the build, because
+   buildEnvironment fills both and everything downstream reads them: COLLIDERS
+   is the entire physical world as far as the controller is concerned, and
+   BLOCK_MESHES is what the camera raycasts against so it cannot back out
+   through a wall. */
 const COLLIDERS = [];      // {minX,maxX,minZ,maxZ,top,tag}
 const BLOCK_MESHES = [];   // for camera collision
+
 buildEnvironment();
 
 function buildEnvironment(){
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400),
-    new THREE.MeshStandardMaterial({ color:0x252b31, roughness:0.97 })
-  );
-  ground.rotation.x = -Math.PI/2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-  BLOCK_MESHES.push(ground);
+  const size = ARENA.half * 2;
 
-  const grid = new THREE.GridHelper(400, 400, 0x435663, 0x2b343b);
-  grid.material.transparent = true;
-  grid.material.opacity = 0.45;
-  grid.position.y = 0.002;
-  scene.add(grid);
+  // The floor. Set 4 — the fine dark cobble that used to be on the walls.
+  // The grid helper that used to sit on top of it is gone; the HUD reports his
+  // position to two decimals and that is a better ruler than lines you have to
+  // count.
+  const groundMat = surface(4, 0xffffff);
+  const CH = ARENA.groundChunks, chunk = size/CH;
+  const spacing = size / ARENA.groundQuads;
+  let gTris = 0;
+  for (let cz = 0; cz < CH; cz++) for (let cx = 0; cx < CH; cx++){
+    const x0 = -ARENA.half + cx*chunk, z0 = -ARENA.half + cz*chunk;
+    // +X across, +Z down, facing up. Taper only against the arena border, so
+    // the floor stays exactly at y = 0 where it meets the foot of the wall.
+    const f = makeFrame(x0, 0, z0,  1,0,0,  0,0,1,  0,1,0,
+                        (p,uv)=>{ uv[0]=p[0]; uv[1]=p[2]; });
+    const edgeFade = 0.6;
+    const geo = displacedFace(f, chunk, chunk, spacing, HF[4], ARENA.amp, ARENA.tile, 0);
+    // border taper is applied globally rather than per chunk, or every chunk
+    // would flatten at its own edges and you would see the 8 x 8 grid
+    taperToArenaEdge(geo, edgeFade);
+    const m = new THREE.Mesh(geo, groundMat);
+    m.receiveShadow = true;
+    // Self-shadowing is what makes 13 cm of relief read at a low sun. It is
+    // also the most likely source of shadow acne on a near-flat surface, so it
+    // is a switch: ARENA.groundSelfShadow = false if the floor speckles.
+    m.castShadow = ARENA.groundSelfShadow;
+    scene.add(m);
+    BLOCK_MESHES.push(m);
+    gTris += geo.index.count/3;
+  }
+  console.log(`[ground] ${gTris|0} triangles in ${CH*CH} chunks, ${(spacing*100).toFixed(1)} cm spacing`);
 
-  // Blocks are colour-coded by what they ask of the player, so the route can be
-  // read at a glance from the bottom: cool grey you walk, warm amber you climb,
-  // gold is the summit. Lightness also tracks height as a second cue.
+  buildWalls();
+
+  /* -----------------------------------------------------------------------
+     Blocks are colour-coded by what they ask of the player, so the route can
+     be read at a glance from the bottom: cool grey you walk, warm amber you
+     climb, gold is the summit. Lightness tracks height as a second cue.
+
+     That coding is gameplay information, so texturing must not throw it away.
+     All four sets in this pack are the same subject — stones sitting in grass
+     — and at thirty metres they do not read as four different things, so the
+     texture alone would flatten walk, climb and summit into one look. The
+     colours therefore survive as a TINT: three multiplies material.color
+     through the diffuse map, so the block keeps its hue and gains a surface.
+
+     The one real change is lightness. The old values ran 0.17-0.33, which was
+     fine when the colour WAS the block, but multiplying a texture by 0.17 is
+     just a way of painting it black. They now run 0.58-0.80, which reads as a
+     wash over the stone instead of a coat of paint over it. Saturation is up
+     slightly on climb and peak to hold the hue against all that green.
+     ----------------------------------------------------------------------- */
   const PALETTE = {
-    step:  { h:0.55, s:0.10 },
-    run:   { h:0.55, s:0.06 },
-    land:  { h:0.55, s:0.06 },
-    climb: { h:0.09, s:0.30 },
-    peak:  { h:0.12, s:0.45 },
+    step:  { h:0.55, s:0.14, set:2 },
+    run:   { h:0.55, s:0.10, set:2 },
+    land:  { h:0.55, s:0.10, set:2 },
+    climb: { h:0.08, s:0.38, set:3 },
+    peak:  { h:0.12, s:0.55, set:4 },
   };
-  const edgeMat  = new THREE.LineBasicMaterial({ color:0x8fdcf2, transparent:true, opacity:0.45 });
-  const climbMat = new THREE.LineBasicMaterial({ color:0xffc061, transparent:true, opacity:0.85 });
-
   for (const b of WORLD){
     const w = b.x[1]-b.x[0], d = b.z[1]-b.z[0], h = b.top;
     const pal = PALETTE[b.tag] || PALETTE.run;
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(pal.h, pal.s, 0.17 + Math.min(h / PEAK_TOP, 1) * 0.16),
-        roughness: 0.9
-      })
-    );
-    mesh.position.set((b.x[0]+b.x[1])/2, h/2, (b.z[0]+b.z[1])/2);
+    const geo = displacedBoxGeometry((b.x[0]+b.x[1])/2, h/2, (b.z[0]+b.z[1])/2,
+                                     w, h, d, ARENA.boxSpacing,
+                                     HF[pal.set], ARENA.amp, ARENA.tile);
+    const tint = new THREE.Color().setHSL(pal.h, pal.s,
+                   0.58 + Math.min(h / PEAK_TOP, 1) * 0.22);
+    // No EdgesGeometry outline any more. Those cyan and amber wireframes were
+    // there to give an untextured grey box a readable edge; a textured block
+    // already has one, and the line just sat on top of it looking like a
+    // debug overlay somebody forgot to switch off.
+    // geometry is already built in world space, so the mesh sits at the origin
+    const mesh = new THREE.Mesh(geo, surface(pal.set, tint));
     mesh.castShadow = mesh.receiveShadow = true;
     scene.add(mesh);
     BLOCK_MESHES.push(mesh);
-
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),
-                                         b.rise > TUNE.stepUp ? climbMat : edgeMat);
-    edges.position.copy(mesh.position);
-    scene.add(edges);
 
     COLLIDERS.push({ minX:b.x[0], maxX:b.x[1], minZ:b.z[0], maxZ:b.z[1], top:h, tag:b.tag });
   }
@@ -646,6 +1183,67 @@ function buildEnvironment(){
     stripe.rotation.x = -Math.PI/2;
     stripe.position.set(COURSE_ORIGIN.x, g.y + 0.004, g.near + 0.09);
     scene.add(stripe);
+  }
+}
+
+/* -------------------------------------------------------------------------
+   THE WALLS
+
+   Four boxes sitting just OUTSIDE the 80 m, so their inner faces land exactly
+   on the edge of the ground plane. They overlap at the corners, which is what
+   you want — no diagonal gap to squeeze through.
+
+   Nothing new was needed to make them solid. The collision system already
+   treats the world as a list of axis-aligned footprints with a lid on top, so
+   a wall is a very tall block and every existing rule falls out of that for
+   free:
+
+     penetration()  ignores boxes whose top is within a step of his feet. A 5 m
+                    lid never is, so he is pushed out on every axis, every
+                    frame, whether he is walking, sprinting or mid-jump. At
+                    3.33 m/s he covers 55 mm a frame against a 280 mm radius,
+                    so there is nothing to tunnel through.
+     findClimbUp()  only offers E for a rise of 0.35-0.95 m. A 5 m rise is
+                    refused without a special case.
+     groundAt()     skips anything above the ceiling passed in. 5 m clears the
+                    4.35 m summit, so no query he can make from anywhere in the
+                    arena will ever return a wall top and stand him on it.
+
+   He could not actually fall into the void before this either — groundAt
+   defaults to y = 0 everywhere, so the old 400 m plane was scenery and the
+   real floor was infinite. The walls make the floor and the boundary agree
+   with each other, which is the part that was missing.
+   ------------------------------------------------------------------------- */
+function buildWalls(){
+  const { half, wallH: H, wallT: T, wallTile } = ARENA;
+  const out = half + T / 2;        // centre line of a wall slab
+  const span = half * 2 + T * 2;   // long enough to close the corners
+
+  // Set 1 — the medium stones in grass that used to be underfoot, swapped up
+  // onto the walls. A cool desaturated tint keeps it from competing with the
+  // floor.
+  const tint = new THREE.Color().setHSL(0.55, 0.07, 0.60);
+
+  const slabs = [
+    { w: span, d: T,    x: 0,    z:  out },   // +Z, behind the spawn
+    { w: span, d: T,    x: 0,    z: -out },   // -Z, past the summit
+    { w: T,    d: span, x:  out, z: 0    },   // +X
+    { w: T,    d: span, x: -out, z: 0    },   // -X
+  ];
+
+  for (const s of slabs){
+    const geo = displacedBoxGeometry(s.x, H/2, s.z, s.w, H, s.d,
+                                     ARENA.wallSpacing, HF[1], ARENA.amp, wallTile);
+    const mesh = new THREE.Mesh(geo, surface(1, tint));
+    mesh.castShadow = mesh.receiveShadow = true;
+    scene.add(mesh);
+    BLOCK_MESHES.push(mesh);      // so the camera cannot back out through them
+
+    COLLIDERS.push({
+      minX: s.x - s.w / 2, maxX: s.x + s.w / 2,
+      minZ: s.z - s.d / 2, maxZ: s.z + s.d / 2,
+      top: H, tag: 'wall',
+    });
   }
 }
 
