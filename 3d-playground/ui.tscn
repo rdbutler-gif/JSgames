@@ -1,0 +1,65 @@
+[gd_scene format=3 uid="uid://bh7ylvf23y3o1"]
+
+[ext_resource type="Script" uid="uid://bkauf6hkjpgyd" path="res://ui.gd" id="1_27fn8"]
+[ext_resource type="FontFile" uid="uid://ysoqh6rn7eu8" path="res://assets/subatomic.tsoonami.ttf" id="1_m6e0p"]
+[ext_resource type="Texture2D" uid="uid://801vvbjb2rps" path="res://assets/MainShip.png" id="2_27fn8"]
+
+[node name="UI" type="CanvasLayer" unique_id=440556054 groups=["UI"]]
+script = ExtResource("1_27fn8")
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1180719627]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -86.5
+offset_right = 86.5
+offset_bottom = 44.0
+grow_horizontal = 2
+theme_override_constants/margin_top = 20
+
+[node name="Label" type="Label" parent="MarginContainer" unique_id=366123453]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9999855, 1.0039216, 0.555201, 1)
+theme_override_fonts/font = ExtResource("1_m6e0p")
+theme_override_font_sizes/font_size = 50
+text = "0"
+horizontal_alignment = 1
+
+[node name="MarginContainer2" type="MarginContainer" parent="." unique_id=36233730]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -40.0
+offset_right = 160.0
+grow_vertical = 0
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_bottom = 0
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer2" unique_id=572454758]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="TextureRect" type="TextureRect" parent="MarginContainer2/HBoxContainer" unique_id=151270821]
+layout_mode = 2
+texture = ExtResource("2_27fn8")
+expand_mode = 2
+
+[node name="TextureRect2" type="TextureRect" parent="MarginContainer2/HBoxContainer" unique_id=1020468470]
+layout_mode = 2
+texture = ExtResource("2_27fn8")
+expand_mode = 2
+
+[node name="TextureRect3" type="TextureRect" parent="MarginContainer2/HBoxContainer" unique_id=787810890]
+layout_mode = 2
+texture = ExtResource("2_27fn8")
+expand_mode = 2
+
+[node name="TextureRect4" type="TextureRect" parent="MarginContainer2/HBoxContainer" unique_id=1895152600]
+layout_mode = 2
+texture = ExtResource("2_27fn8")
+expand_mode = 2
+
+[node name="ScoreTimer" type="Timer" parent="." unique_id=2068463217]
+autostart = true
+
+[connection signal="timeout" from="ScoreTimer" to="." method="_on_score_timer_timeout"]

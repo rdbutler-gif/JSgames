@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://b2c3cembgl8pj"]
+
+[ext_resource type="Texture2D" uid="uid://c1jqdafsrubc7" path="res://assets/Smiley Sun.jpg" id="1_tcwo0"]
+
+[node name="Meteor" type="Node2D" unique_id=653899406]
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1274982182]
+position = Vector2(418.5, 269.5)
+scale = Vector2(0.030273438, 0.030273438)
+texture = ExtResource("1_tcwo0")

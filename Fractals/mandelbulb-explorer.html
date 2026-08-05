@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mandelbulb Explorer</title>
+<style>
+  :root{
+    --bg: #07090a;
+    --panel: #0d1210;
+    --panel-border: #1f2e28;
+    --text: #b9c9c0;
+    --text-dim: #5f7268;
+    --accent: #6dffb0;
+    --accent-dim: #2a5b45;
+    --amber: #d9a441;
+    --mono: ui-monospace, "Cascadia Code", "Fira Code", "SF Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;background:var(--bg);overflow:hidden;
+    font-family:var(--mono);color:var(--text);}
+  #glcanvas{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none;}
+  #glcanvas.dragging{cursor:grabbing;}
+
+  .scanlines{
+    position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:repeating-linear-gradient(rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.06) 3px);
+    mix-blend-mode:multiply;opacity:0.5;
+  }
+  .vignette{
+    position:fixed;inset:0;pointer-events:none;z-index:4;
+    box-shadow: inset 0 0 180px 40px rgba(0,0,0,0.65);
+  }
+
+  .hud{position:fixed;z-index:10;}
+
+  #title{
+    top:16px;left:16px;
+    font-size:12px;letter-spacing:2px;color:var(--accent);
+    text-transform:uppercase;display:flex;align-items:center;gap:8px;
+  }
+  #title .cursor{
+    width:7px;height:14px;background:var(--accent);
+    animation:blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink{50%{opacity:0;}}
+  #title .sub{color:var(--text-dim);font-size:10px;letter-spacing:1px;text-transform:none;margin-left:2px;}
+
+  #hint{
+    bottom:16px;left:16px;font-size:10px;color:var(--text-dim);letter-spacing:0.5px;
+    line-height:1.6;
+  }
+  #hint b{color:var(--text);font-weight:normal;}
+
+  #stats{
+    bottom:16px;right:16px;font-size:10px;color:var(--text-dim);text-align:right;line-height:1.6;
+  }
+  #stats span{color:var(--accent);}
+
+  #panel{
+    top:16px;right:16px;width:250px;
+    background:rgba(13,18,16,0.88);
+    border:1px solid var(--panel-border);
+    backdrop-filter: blur(2px);
+    padding:14px 14px 16px;
+    font-size:11px;
+  }
+  #panel h2{
+    margin:0 0 10px;font-size:10px;letter-spacing:2px;color:var(--text-dim);
+    text-transform:uppercase;font-weight:normal;
+    border-bottom:1px solid var(--panel-border);padding-bottom:8px;
+  }
+  .row{margin-bottom:10px;}
+  .row label{
+    display:flex;justify-content:space-between;margin-bottom:4px;
+    color:var(--text-dim);letter-spacing:0.5px;
+  }
+  .row label .val{color:var(--accent);}
+  input[type=range]{
+    -webkit-appearance:none;width:100%;height:2px;background:var(--panel-border);outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:10px;height:10px;background:var(--accent);
+    border-radius:0;cursor:pointer;margin-top:0;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:10px;height:10px;background:var(--accent);border:none;border-radius:0;cursor:pointer;
+  }
+  input[type=color]{
+    -webkit-appearance:none;width:26px;height:18px;border:1px solid var(--panel-border);
+    background:none;padding:0;cursor:pointer;
+  }
+  .colorrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .colorrow label{color:var(--text-dim);letter-spacing:0.5px;margin:0;}
+  .colorpair{display:flex;gap:6px;}
+
+  button{
+    font-family:var(--mono);background:none;border:1px solid var(--panel-border);
+    color:var(--text);font-size:10px;letter-spacing:1px;text-transform:uppercase;
+    padding:8px 10px;cursor:pointer;width:100%;transition:all .15s;
+  }
+  button:hover{border-color:var(--accent);color:var(--accent);}
+  button.primary{border-color:var(--accent-dim);color:var(--accent);margin-top:2px;}
+  button.primary:hover{background:var(--accent);color:#07090a;}
+  .btnrow{display:flex;gap:6px;margin-top:4px;}
+  .btnrow button{flex:1;}
+
+  #renderPanel{
+    top:16px;right:282px;width:230px;
+    background:rgba(13,18,16,0.92);
+    border:1px solid var(--panel-border);
+    padding:14px;font-size:11px;display:none;
+  }
+  #renderPanel.open{display:block;}
+  #renderPanel h2{
+    margin:0 0 10px;font-size:10px;letter-spacing:2px;color:var(--text-dim);
+    text-transform:uppercase;font-weight:normal;
+    border-bottom:1px solid var(--panel-border);padding-bottom:8px;
+  }
+  select{
+    width:100%;background:var(--bg);color:var(--text);border:1px solid var(--panel-border);
+    font-family:var(--mono);font-size:11px;padding:6px;
+  }
+  #renderStatus{
+    margin-top:10px;font-size:10px;color:var(--text-dim);min-height:14px;letter-spacing:0.5px;
+  }
+  #renderStatus.busy{color:var(--amber);}
+  #renderStatus.done{color:var(--accent);}
+  #downloadLink{
+    display:none;margin-top:8px;text-align:center;text-decoration:none;
+    border:1px solid var(--accent-dim);color:var(--accent);padding:8px;font-size:10px;
+    letter-spacing:1px;text-transform:uppercase;
+  }
+  #downloadLink.show{display:block;}
+
+  #collapseBtn{
+    position:fixed;top:16px;right:16px;z-index:11;
+    width:auto;padding:6px 9px;font-size:10px;
+  }
+  #panel.hidden, #renderPanel.hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<canvas id="glcanvas"></canvas>
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<div class="hud" id="title"><div class="cursor"></div>MANDELBULB EXPLORER <span class="sub">// raymarched · live</span></div>
+
+<div class="hud" id="hint">
+  <b>drag</b> orbit &nbsp;·&nbsp; <b>scroll</b> zoom &nbsp;·&nbsp; <b>shift+drag</b> pan
+</div>
+
+<div class="hud" id="stats">
+  <div><span id="fps">--</span> fps &nbsp; <span id="res">--</span></div>
+  <div id="quality">quality: live</div>
+</div>
+
+<div class="hud" id="panel">
+  <h2>Fractal</h2>
+  <div class="row">
+    <label>Power <span class="val" id="vPower">8.0</span></label>
+    <input type="range" id="power" min="2" max="12" step="0.1" value="8">
+  </div>
+  <div class="row">
+    <label>Iterations <span class="val" id="vIter">9</span></label>
+    <input type="range" id="iter" min="4" max="14" step="1" value="9">
+  </div>
+
+  <h2 style="margin-top:14px;">Light</h2>
+  <div class="row">
+    <label>Azimuth <span class="val" id="vLA">--</span></label>
+    <input type="range" id="lightAz" min="0" max="360" step="1" value="220">
+  </div>
+  <div class="row">
+    <label>Elevation <span class="val" id="vLE">--</span></label>
+    <input type="range" id="lightEl" min="5" max="85" step="1" value="45">
+  </div>
+
+  <h2 style="margin-top:14px;">Color</h2>
+  <div class="row">
+    <label>Mode</label>
+    <select id="colorMode">
+      <option value="0">Gradient (2-color)</option>
+      <option value="1">Spectrum (palette)</option>
+      <option value="2">Image Texture</option>
+    </select>
+  </div>
+  <div class="colorrow" id="gradientRow">
+    <label>Deep / Surface</label>
+    <div class="colorpair">
+      <input type="color" id="colA" value="#0a1210">
+      <input type="color" id="colB" value="#7fe8b8">
+    </div>
+  </div>
+  <div id="textureRow" style="display:none;">
+    <div class="row">
+      <label>Tile scale <span class="val" id="vTexScale">1.0</span></label>
+      <input type="range" id="texScale" min="0.1" max="4" step="0.1" value="1">
+    </div>
+    <div class="row" style="margin-bottom:0;">
+      <label style="margin-bottom:6px;">Upload image</label>
+      <input type="file" id="texUpload" accept="image/*" style="width:100%;font-size:9px;color:var(--text-dim);">
+    </div>
+  </div>
+
+  <h2 style="margin-top:14px;">Live Quality</h2>
+  <div class="row">
+    <label>Resolution <span class="val" id="vRes">60%</span></label>
+    <input type="range" id="resScale" min="25" max="100" step="5" value="60">
+  </div>
+
+  <div class="btnrow">
+    <button id="resetBtn">Reset View</button>
+    <button id="renderToggle" class="primary">Render...</button>
+  </div>
+</div>
+
+<div class="hud" id="renderPanel">
+  <h2>Render Still</h2>
+  <div class="row">
+    <label>Output size</label>
+    <select id="renderSize">
+      <option value="1024">1024 × 1024</option>
+      <option value="1600">1600 × 1600</option>
+      <option value="1920x1080">1920 × 1080</option>
+      <option value="2048" selected>2048 × 2048</option>
+      <option value="3840x2160">3840 × 2160 (4K)</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Quality <span class="val" id="vRQ">high</span></label>
+    <input type="range" id="renderQuality" min="1" max="3" step="1" value="2">
+  </div>
+  <div class="row" style="margin-bottom:0;">
+    <label style="margin-bottom:6px;">Supersample 2×</label>
+    <input type="checkbox" id="supersample" checked style="width:14px;height:14px;accent-color:#6dffb0;">
+  </div>
+  <button id="doRenderBtn" class="primary" style="margin-top:10px;">Render Image</button>
+  <div id="renderStatus"></div>
+  <a id="downloadLink" download="mandelbulb.png">Download PNG</a>
+</div>
+
+<script>
+(function(){
+
+// ---------------------------------------------------------------
+// Shader source
+// ---------------------------------------------------------------
+const VERT_SRC = `
+attribute vec2 aPos;
+void main(){
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}
+`;
+
+const FRAG_SRC = `
+precision highp float;
+
+uniform vec2 uRes;
+uniform vec3 uCamPos;
+uniform vec3 uCamRight;
+uniform vec3 uCamUp;
+uniform vec3 uCamFwd;
+uniform float uTanFov;
+uniform float uPower;
+uniform int uIterations;
+uniform int uMaxSteps;
+uniform vec3 uLightDir;
+uniform vec3 uColA;
+uniform vec3 uColB;
+uniform int uColorMode; // 0 = gradient, 1 = spectrum, 2 = texture
+uniform sampler2D uTex;
+uniform float uTexScale;
+
+const int MAX_ITER = 20;
+const int MAX_STEPS = 400;
+const float BAILOUT = 4.0;
+const float MAX_DIST = 8.0;
+
+// distance estimate + orbit trap
+vec2 mandelbulbDE(vec3 pos){
+  vec3 z = pos;
+  float dr = 1.0;
+  float r = 0.0;
+  float trap = 1e10;
+  for (int i = 0; i < MAX_ITER; i++){
+    if (i >= uIterations) break;
+    r = length(z);
+    if (r > BAILOUT) break;
+    trap = min(trap, r);
+    float theta = acos(clamp(z.z / r, -1.0, 1.0));
+    float phi = atan(z.y, z.x);
+    dr = pow(r, uPower - 1.0) * uPower * dr + 1.0;
+    float zr = pow(r, uPower);
+    theta *= uPower;
+    phi *= uPower;
+    z = zr * vec3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+    z += pos;
+  }
+  float dist = 0.5 * log(max(r, 1e-6)) * r / dr;
+  return vec2(dist, trap);
+}
+
+vec3 palette(float t){
+  vec3 a = vec3(0.55, 0.5, 0.5);
+  vec3 b = vec3(0.5, 0.45, 0.5);
+  vec3 c = vec3(1.0, 1.0, 0.9);
+  vec3 d = vec3(0.30, 0.55, 0.75);
+  return a + b * cos(6.28318 * (c * t + d));
+}
+
+vec3 triplanar(vec3 p, vec3 n, float scale){
+  vec3 blend = pow(abs(n), vec3(4.0));
+  blend /= (blend.x + blend.y + blend.z + 1e-5);
+  vec3 cx = texture2D(uTex, p.yz * scale).rgb;
+  vec3 cy = texture2D(uTex, p.xz * scale).rgb;
+  vec3 cz = texture2D(uTex, p.xy * scale).rgb;
+  return cx * blend.x + cy * blend.y + cz * blend.z;
+}
+
+vec3 calcNormal(vec3 p){
+  vec2 e = vec2(0.0009, 0.0);
+  return normalize(vec3(
+    mandelbulbDE(p + e.xyy).x - mandelbulbDE(p - e.xyy).x,
+    mandelbulbDE(p + e.yxy).x - mandelbulbDE(p - e.yxy).x,
+    mandelbulbDE(p + e.yyx).x - mandelbulbDE(p - e.yyx).x
+  ));
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy / uRes) * 2.0 - 1.0;
+  float aspect = uRes.x / uRes.y;
+  uv.x *= aspect;
+
+  vec3 rd = normalize(uCamFwd + uv.x * uTanFov * uCamRight + uv.y * uTanFov * uCamUp);
+  vec3 ro = uCamPos;
+
+  float t = 0.0;
+  float trapOut = 1e10;
+  int stepsTaken = 0;
+  bool hit = false;
+
+  for (int i = 0; i < MAX_STEPS; i++){
+    if (i >= uMaxSteps) break;
+    vec3 p = ro + rd * t;
+    vec2 de = mandelbulbDE(p);
+    float d = de.x;
+    stepsTaken = i;
+    if (d < 0.0006){ hit = true; trapOut = de.y; break; }
+    t += d * 0.92;
+    if (t > MAX_DIST) break;
+  }
+
+  vec3 col;
+  if (hit){
+    vec3 p = ro + rd * t;
+    vec3 n = calcNormal(p);
+    float diff = max(dot(n, uLightDir), 0.0);
+    float ao = 1.0 - float(stepsTaken) / float(uMaxSteps);
+    ao = clamp(ao * 1.3, 0.0, 1.0);
+    float rim = pow(1.0 - max(dot(n, -rd), 0.0), 2.5);
+
+    vec3 base;
+    if (uColorMode == 1){
+      base = palette(trapOut * 3.5);
+    } else if (uColorMode == 2){
+      base = triplanar(p, n, uTexScale);
+    } else {
+      float tr = clamp(trapOut, 0.0, 1.0);
+      base = mix(uColA, uColB, tr);
+    }
+
+    float amb = 0.16 + 0.10 * ao;
+    col = base * (diff * 0.85 + amb) + rim * uColB * 0.35;
+
+    float fog = 1.0 - exp(-t * 0.10);
+    col = mix(col, vec3(0.02, 0.03, 0.03), fog * 0.35);
+  } else {
+    float g = 0.02 + 0.03 * (1.0 - abs(rd.y));
+    col = vec3(g * 0.8, g, g * 0.95);
+  }
+
+  col = pow(col, vec3(0.85));
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+// ---------------------------------------------------------------
+// GL helpers
+// ---------------------------------------------------------------
+function compileShader(gl, type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    throw new Error(gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+
+function buildProgram(gl){
+  const vs = compileShader(gl, gl.VERTEX_SHADER, VERT_SRC);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_SRC);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)){
+    throw new Error(gl.getProgramInfoLog(prog));
+  }
+  const posBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+
+  const u = {};
+  ['uRes','uCamPos','uCamRight','uCamUp','uCamFwd','uTanFov','uPower','uIterations',
+   'uMaxSteps','uLightDir','uColA','uColB','uColorMode','uTex','uTexScale'].forEach(name => {
+    u[name] = gl.getUniformLocation(prog, name);
+  });
+
+  return { prog, posBuf, aPos, u };
+}
+
+function drawFrame(gl, ctx, res, camPos, right, up, fwd, tanFov, state){
+  gl.viewport(0, 0, res[0], res[1]);
+  gl.useProgram(ctx.prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, ctx.posBuf);
+  gl.enableVertexAttribArray(ctx.aPos);
+  gl.vertexAttribPointer(ctx.aPos, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(ctx.u.uRes, res[0], res[1]);
+  gl.uniform3f(ctx.u.uCamPos, camPos[0], camPos[1], camPos[2]);
+  gl.uniform3f(ctx.u.uCamRight, right[0], right[1], right[2]);
+  gl.uniform3f(ctx.u.uCamUp, up[0], up[1], up[2]);
+  gl.uniform3f(ctx.u.uCamFwd, fwd[0], fwd[1], fwd[2]);
+  gl.uniform1f(ctx.u.uTanFov, tanFov);
+  gl.uniform1f(ctx.u.uPower, state.power);
+  gl.uniform1i(ctx.u.uIterations, state.iterations);
+  gl.uniform1i(ctx.u.uMaxSteps, state.maxSteps);
+  gl.uniform3f(ctx.u.uLightDir, state.lightDir[0], state.lightDir[1], state.lightDir[2]);
+  gl.uniform3f(ctx.u.uColA, state.colA[0], state.colA[1], state.colA[2]);
+  gl.uniform3f(ctx.u.uColB, state.colB[0], state.colB[1], state.colB[2]);
+  gl.uniform1i(ctx.u.uColorMode, state.colorMode);
+  gl.uniform1f(ctx.u.uTexScale, state.texScale);
+  if (ctx.tex){
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, ctx.tex);
+    gl.uniform1i(ctx.u.uTex, 0);
+  }
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ---------------------------------------------------------------
+// Vector math (tiny)
+// ---------------------------------------------------------------
+function sub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function cross(a,b){return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];}
+function norm(a){const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}
+function hexToRgb(hex){
+  const n = parseInt(hex.slice(1),16);
+  return [((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255];
+}
+
+// ---------------------------------------------------------------
+// Texture helpers (triplanar source)
+// ---------------------------------------------------------------
+function makeDefaultTextureCanvas(){
+  const size = 512;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,size,size);
+  grad.addColorStop(0, '#3a4a44');
+  grad.addColorStop(0.5, '#8fd8b6');
+  grad.addColorStop(1, '#1a2622');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,size,size);
+  // brushed-metal speckle + streaks
+  for (let i=0;i<9000;i++){
+    const x = Math.random()*size, y = Math.random()*size;
+    const v = Math.random();
+    ctx.fillStyle = `rgba(${v>0.5?255:0},${v>0.5?255:0},${v>0.5?255:0},${0.03+Math.random()*0.05})`;
+    ctx.fillRect(x, y, 1 + Math.random()*2, 1);
+  }
+  for (let i=0;i<40;i++){
+    ctx.strokeStyle = `rgba(255,255,255,${0.02+Math.random()*0.04})`;
+    ctx.lineWidth = 0.5 + Math.random()*1.5;
+    ctx.beginPath();
+    const y = Math.random()*size;
+    ctx.moveTo(0,y);
+    ctx.lineTo(size, y + (Math.random()-0.5)*40);
+    ctx.stroke();
+  }
+  return c;
+}
+
+function imageToPOTCanvas(img, size){
+  size = size || 512;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, size, size);
+  return c;
+}
+
+function createTextureFromCanvas(gl, canvasSrc){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvasSrc);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  return tex;
+}
+
+// ---------------------------------------------------------------
+// App state
+// ---------------------------------------------------------------
+const state = {
+  target: [0,0,0],
+  distance: 3.2,
+  azimuth: 0.6,
+  elevation: 0.35,
+  fov: 45,
+  power: 8,
+  iterations: 9,
+  maxSteps: 90,
+  lightAz: 220,
+  lightEl: 45,
+  lightDir: [0.5,0.6,0.5],
+  colA: hexToRgb('#0a1210'),
+  colB: hexToRgb('#7fe8b8'),
+  colorMode: 0,
+  texScale: 1.0,
+  texImageSource: null,
+  resScale: 0.6,
+  interacting: false,
+};
+
+function updateLightDir(){
+  const az = state.lightAz * Math.PI/180;
+  const el = state.lightEl * Math.PI/180;
+  state.lightDir = norm([
+    Math.cos(el)*Math.sin(az),
+    Math.sin(el),
+    Math.cos(el)*Math.cos(az)
+  ]);
+}
+updateLightDir();
+
+function computeCamera(){
+  const camPos = [
+    state.target[0] + state.distance * Math.cos(state.elevation) * Math.sin(state.azimuth),
+    state.target[1] + state.distance * Math.sin(state.elevation),
+    state.target[2] + state.distance * Math.cos(state.elevation) * Math.cos(state.azimuth)
+  ];
+  const fwd = norm(sub(state.target, camPos));
+  const worldUp = [0,1,0];
+  let right = cross(fwd, worldUp);
+  if (Math.hypot(right[0],right[1],right[2]) < 1e-4) right = [1,0,0];
+  right = norm(right);
+  const up = norm(cross(right, fwd));
+  const tanFov = Math.tan((state.fov * Math.PI/180) / 2);
+  return {camPos, right, up, fwd, tanFov};
+}
+
+// ---------------------------------------------------------------
+// Live canvas setup
+// ---------------------------------------------------------------
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl', {preserveDrawingBuffer:true, antialias:false}) ||
+           canvas.getContext('experimental-webgl', {preserveDrawingBuffer:true});
+if (!gl){
+  document.body.innerHTML = '<div style="color:#b9c9c0;font-family:monospace;padding:40px;">WebGL is not available in this browser.</div>';
+  throw new Error('no webgl');
+}
+const liveCtx = buildProgram(gl);
+state.texImageSource = makeDefaultTextureCanvas();
+liveCtx.tex = createTextureFromCanvas(gl, state.texImageSource);
+
+function resizeCanvas(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const scale = state.interacting ? Math.min(state.resScale, 0.45) : state.resScale;
+  const w = Math.max(2, Math.floor(window.innerWidth * dpr * scale));
+  const h = Math.max(2, Math.floor(window.innerHeight * dpr * scale));
+  if (canvas.width !== w || canvas.height !== h){
+    canvas.width = w;
+    canvas.height = h;
+  }
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ---------------------------------------------------------------
+// Input: orbit / pan / zoom
+// ---------------------------------------------------------------
+let dragging = false, panning = false, lastX = 0, lastY = 0;
+let idleTimer = null;
+
+function markInteracting(){
+  state.interacting = true;
+  document.getElementById('quality').textContent = 'quality: draft';
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    state.interacting = false;
+    document.getElementById('quality').textContent = 'quality: live';
+    resizeCanvas();
+  }, 220);
+}
+
+canvas.addEventListener('mousedown', e => {
+  dragging = true;
+  panning = e.shiftKey || e.button === 2;
+  lastX = e.clientX; lastY = e.clientY;
+  canvas.classList.add('dragging');
+});
+window.addEventListener('mouseup', () => { dragging = false; canvas.classList.remove('dragging'); });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  markInteracting();
+  if (panning){
+    const {right, up} = computeCamera();
+    const panSpeed = state.distance * 0.0016;
+    state.target[0] -= (right[0]*dx - up[0]*dy) * panSpeed;
+    state.target[1] -= (right[1]*dx - up[1]*dy) * panSpeed;
+    state.target[2] -= (right[2]*dx - up[2]*dy) * panSpeed;
+  } else {
+    state.azimuth -= dx * 0.006;
+    state.elevation += dy * 0.006;
+    state.elevation = Math.max(-1.5, Math.min(1.5, state.elevation));
+  }
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  markInteracting();
+  state.distance *= Math.exp(e.deltaY * 0.0012);
+  state.distance = Math.max(0.35, Math.min(9, state.distance));
+}, {passive:false});
+
+// touch
+let touchMode = null, lastTouchDist = 0;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1){
+    touchMode = 'orbit';
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+  } else if (e.touches.length === 2){
+    touchMode = 'pinch';
+    const [a,b] = e.touches;
+    lastTouchDist = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+  }
+}, {passive:true});
+canvas.addEventListener('touchmove', e => {
+  markInteracting();
+  if (touchMode === 'orbit' && e.touches.length === 1){
+    const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    state.azimuth -= dx * 0.006;
+    state.elevation += dy * 0.006;
+    state.elevation = Math.max(-1.5, Math.min(1.5, state.elevation));
+  } else if (touchMode === 'pinch' && e.touches.length === 2){
+    const [a,b] = e.touches;
+    const d = Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
+    const delta = lastTouchDist - d;
+    lastTouchDist = d;
+    state.distance *= Math.exp(delta * 0.004);
+    state.distance = Math.max(0.35, Math.min(9, state.distance));
+  }
+  e.preventDefault();
+}, {passive:false});
+canvas.addEventListener('touchend', () => { touchMode = null; });
+
+// ---------------------------------------------------------------
+// UI bindings
+// ---------------------------------------------------------------
+const $ = id => document.getElementById(id);
+
+$('power').addEventListener('input', e => {
+  state.power = parseFloat(e.target.value);
+  $('vPower').textContent = state.power.toFixed(1);
+});
+$('iter').addEventListener('input', e => {
+  state.iterations = parseInt(e.target.value);
+  $('vIter').textContent = state.iterations;
+});
+$('lightAz').addEventListener('input', e => {
+  state.lightAz = parseFloat(e.target.value);
+  $('vLA').textContent = state.lightAz + '°';
+  updateLightDir();
+});
+$('lightEl').addEventListener('input', e => {
+  state.lightEl = parseFloat(e.target.value);
+  $('vLE').textContent = state.lightEl + '°';
+  updateLightDir();
+});
+$('lightAz').dispatchEvent(new Event('input'));
+$('lightEl').dispatchEvent(new Event('input'));
+
+$('colA').addEventListener('input', e => { state.colA = hexToRgb(e.target.value); });
+$('colB').addEventListener('input', e => { state.colB = hexToRgb(e.target.value); });
+
+$('colorMode').addEventListener('change', e => {
+  state.colorMode = parseInt(e.target.value);
+  $('gradientRow').style.display = state.colorMode === 0 ? 'flex' : 'none';
+  $('textureRow').style.display = state.colorMode === 2 ? 'block' : 'none';
+});
+$('texScale').addEventListener('input', e => {
+  state.texScale = parseFloat(e.target.value);
+  $('vTexScale').textContent = state.texScale.toFixed(1);
+});
+$('texUpload').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    state.texImageSource = imageToPOTCanvas(img, 512);
+    gl.deleteTexture(liveCtx.tex);
+    liveCtx.tex = createTextureFromCanvas(gl, state.texImageSource);
+  };
+  img.src = URL.createObjectURL(file);
+});
+
+$('resScale').addEventListener('input', e => {
+  state.resScale = parseInt(e.target.value) / 100;
+  $('vRes').textContent = e.target.value + '%';
+  resizeCanvas();
+});
+
+$('resetBtn').addEventListener('click', () => {
+  state.target = [0,0,0];
+  state.distance = 3.2;
+  state.azimuth = 0.6;
+  state.elevation = 0.35;
+});
+
+$('renderToggle').addEventListener('click', () => {
+  $('renderPanel').classList.toggle('open');
+});
+$('renderQuality').addEventListener('input', e => {
+  const labels = {1:'draft', 2:'high', 3:'max'};
+  $('vRQ').textContent = labels[e.target.value];
+});
+
+// ---------------------------------------------------------------
+// Live render loop
+// ---------------------------------------------------------------
+let frameCount = 0, lastFpsT = performance.now(), fps = 0;
+
+function tick(){
+  const {camPos, right, up, fwd, tanFov} = computeCamera();
+  const steps = state.interacting ? Math.max(35, Math.floor(state.maxSteps*0.55)) : state.maxSteps;
+  const iters = state.interacting ? Math.max(4, Math.min(state.iterations, 7)) : state.iterations;
+  const drawState = Object.assign({}, state, {maxSteps: steps, iterations: iters});
+
+  drawFrame(gl, liveCtx, [canvas.width, canvas.height], camPos, right, up, fwd, tanFov, drawState);
+
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsT > 500){
+    fps = Math.round(frameCount * 1000 / (now - lastFpsT));
+    frameCount = 0; lastFpsT = now;
+    $('fps').textContent = fps;
+    $('res').textContent = canvas.width + '×' + canvas.height;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// ---------------------------------------------------------------
+// High-res still render
+// ---------------------------------------------------------------
+$('doRenderBtn').addEventListener('click', () => {
+  const statusEl = $('renderStatus');
+  const linkEl = $('downloadLink');
+  linkEl.classList.remove('show');
+  statusEl.className = 'busy';
+  statusEl.textContent = 'rendering...';
+
+  requestAnimationFrame(() => setTimeout(() => {
+    try {
+      const sizeVal = $('renderSize').value;
+      let w, h;
+      if (sizeVal.includes('x')){ [w,h] = sizeVal.split('x').map(Number); }
+      else { w = h = parseInt(sizeVal); }
+
+      const superSample = $('supersample').checked ? 2 : 1;
+      const qLevel = parseInt($('renderQuality').value);
+      const qualityPreset = {
+        1: {steps: 140, iters: Math.min(state.iterations+1, 12)},
+        2: {steps: 220, iters: Math.min(state.iterations+2, 14)},
+        3: {steps: 320, iters: 14},
+      }[qLevel];
+
+      const rw = w * superSample, rh = h * superSample;
+
+      const off = document.createElement('canvas');
+      off.width = rw; off.height = rh;
+      const rgl = off.getContext('webgl', {preserveDrawingBuffer:true, antialias:false});
+      const maxDim = rgl.getParameter(rgl.MAX_VIEWPORT_DIMS);
+      const cappedW = Math.min(rw, maxDim[0]);
+      const cappedH = Math.min(rh, maxDim[1]);
+      off.width = cappedW; off.height = cappedH;
+
+      const rctx = buildProgram(rgl);
+      rctx.tex = createTextureFromCanvas(rgl, state.texImageSource);
+      const {camPos, right, up, fwd} = computeCamera();
+      const aspect = w / h;
+      const tanFov = Math.tan((state.fov * Math.PI/180) / 2);
+
+      const renderState = Object.assign({}, state, {
+        maxSteps: qualityPreset.steps,
+        iterations: qualityPreset.iters,
+      });
+
+      drawFrame(rgl, rctx, [cappedW, cappedH], camPos, right, up, fwd, tanFov, renderState);
+
+      let finalCanvas = off;
+      if (superSample > 1){
+        const down = document.createElement('canvas');
+        down.width = w; down.height = h;
+        const dctx = down.getContext('2d');
+        dctx.imageSmoothingEnabled = true;
+        dctx.imageSmoothingQuality = 'high';
+        dctx.drawImage(off, 0, 0, w, h);
+        finalCanvas = down;
+      }
+
+      finalCanvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        linkEl.href = url;
+        linkEl.download = `mandelbulb_${w}x${h}.png`;
+        linkEl.classList.add('show');
+        statusEl.className = 'done';
+        statusEl.textContent = `done — ${w}×${h}`;
+      }, 'image/png');
+
+    } catch (err){
+      statusEl.className = 'busy';
+      statusEl.textContent = 'error: ' + err.message;
+      console.error(err);
+    }
+  }, 30));
+});
+
+})();
+</script>
+</body>
+</html>

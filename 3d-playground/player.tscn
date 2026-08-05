@@ -1,0 +1,63 @@
+[gd_scene format=3 uid="uid://c0m30cjh76be3"]
+
+[ext_resource type="Texture2D" uid="uid://801vvbjb2rps" path="res://assets/MainShip.png" id="1_4flbx"]
+[ext_resource type="Script" uid="uid://dj0crf6tvdond" path="res://player.gd" id="1_onrkg"]
+[ext_resource type="AudioStream" uid="uid://cel6qqv2pjf27" path="res://assets/audio/Laser.ogg" id="3_i3pqv"]
+[ext_resource type="AudioStream" uid="uid://mo3ap71u68oc" path="res://assets/audio/Damage.ogg" id="4_hqtel"]
+
+[sub_resource type="Gradient" id="Gradient_hqtel"]
+offsets = PackedFloat32Array(0.17922607, 0.7535642, 1)
+colors = PackedColorArray(1, 1, 1, 1, 0.97759676, 0.97759676, 0.97759676, 1, 0, 0, 0, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_duswq"]
+gradient = SubResource("Gradient_hqtel")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_kaape"]
+particle_flag_disable_z = true
+emission_shape_scale = Vector3(12, 1, 1)
+emission_shape = 1
+emission_sphere_radius = 1.0
+gravity = Vector3(0, 98, 0)
+scale_min = 0.5
+scale_max = 5.0
+color = Color(1, 0.5686275, 0, 1)
+color_ramp = SubResource("GradientTexture1D_duswq")
+
+[node name="Player" type="CharacterBody2D" unique_id=445976471]
+light_mask = 2
+collision_mask = 6
+script = ExtResource("1_onrkg")
+speed = 200
+
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="." unique_id=1140715369]
+position = Vector2(1.0282316, 2.5995388)
+scale = Vector2(2.0564518, 2.199074)
+polygon = PackedVector2Array(-14.601962, 8.822104, -15, 5, -6, -4, -3.903924, -7.0936847, -0.50000274, -18.462105, 2.9039183, -7.548422, 6, -3, 13.601956, 3.8199992, 13.601956, 8.367368, 6.794114, 7.0031567, 4.3627415, 16.097893, -4.876473, 16.097893, -6.821571, 7.0031567)
+
+[node name="PlayerImage" type="Sprite2D" parent="." unique_id=1391804740]
+position = Vector2(-1.9073486e-06, 0)
+scale = Vector2(0.09335937, 0.09335937)
+texture = ExtResource("1_4flbx")
+
+[node name="LaserStartPos" type="Marker2D" parent="." unique_id=1739044514]
+position = Vector2(0, 11)
+gizmo_extents = 0.0
+
+[node name="LaserTimer" type="Timer" parent="." unique_id=1247383617]
+wait_time = 0.5
+one_shot = true
+
+[node name="LaserSound" type="AudioStreamPlayer2D" parent="." unique_id=1466581467]
+stream = ExtResource("3_i3pqv")
+
+[node name="DamageSound" type="AudioStreamPlayer2D" parent="." unique_id=332238304]
+stream = ExtResource("4_hqtel")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=885281016]
+enabled = false
+
+[node name="GPUParticles2D" type="GPUParticles2D" parent="." unique_id=552010353]
+position = Vector2(0, 34)
+process_material = SubResource("ParticleProcessMaterial_kaape")
+
+[connection signal="timeout" from="LaserTimer" to="." method="_on_laser_timer_timeout"]

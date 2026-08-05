@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://dth5uagrln3po"]
+
+[ext_resource type="Texture2D" uid="uid://c0pgcni3vy4gt" path="res://assets/mandelbulb_3840x2160 (2).png" id="1_mx8sn"]
+[ext_resource type="Script" uid="uid://chh6cvvwms7uo" path="res://scenes/bg.gd" id="2_ppgk2"]
+[ext_resource type="PackedScene" uid="uid://bejiujpv27xxe" path="res://scenes/player.tscn" id="2_w8frs"]
+
+[node name="Level" type="Node2D" unique_id=1154138655]
+
+[node name="BG" type="Sprite2D" parent="." unique_id=1433255698]
+position = Vector2(639.83325, 360)
+scale = Vector2(0.33342016, 0.33333337)
+texture = ExtResource("1_mx8sn")
+script = ExtResource("2_ppgk2")
+
+[node name="Player" parent="." unique_id=454169417 instance=ExtResource("2_w8frs")]
+position = Vector2(591, 391)

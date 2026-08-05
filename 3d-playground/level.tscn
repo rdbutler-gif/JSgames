@@ -1,0 +1,178 @@
+[gd_scene format=3 uid="uid://btvus5ievyh22"]
+
+[ext_resource type="Script" uid="uid://bwr3cbet6kemx" path="res://level.gd" id="1_f2txt"]
+[ext_resource type="Texture2D" uid="uid://bmv4j3lonmf28" path="res://assets/andromeda.jpg" id="1_oi3di"]
+[ext_resource type="PackedScene" uid="uid://c0m30cjh76be3" path="res://player.tscn" id="1_u52ul"]
+[ext_resource type="PackedScene" uid="uid://cjgmkv16201vy" path="res://laser.tscn" id="4_0b4ue"]
+[ext_resource type="Texture2D" uid="uid://qhs2t8nure6m" path="res://assets/Star-Portal/portal_01.png" id="4_8cye3"]
+[ext_resource type="Texture2D" uid="uid://dn1cthav6unm" path="res://assets/Star-Portal/portal_02.png" id="5_2orkt"]
+[ext_resource type="Texture2D" uid="uid://bel37tefsvbho" path="res://assets/Star-Portal/portal_03.png" id="6_aicyk"]
+[ext_resource type="Texture2D" uid="uid://chtd0ak1lg5yd" path="res://assets/Star-Portal/portal_04.png" id="7_8b0r0"]
+[ext_resource type="Texture2D" uid="uid://bxalob47ht871" path="res://assets/Star-Portal/portal_05.png" id="8_h6smj"]
+[ext_resource type="Texture2D" uid="uid://cu0r1eeedrt7f" path="res://assets/Star-Portal/portal_06.png" id="9_v5j5c"]
+[ext_resource type="PackedScene" uid="uid://bh7ylvf23y3o1" path="res://ui.tscn" id="11_2orkt"]
+[ext_resource type="AudioStream" uid="uid://ddjsyv7nijbvk" path="res://assets/audio/title_music.mp3" id="12_aicyk"]
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_kaape"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("4_8cye3")
+}, {
+"duration": 1.0,
+"texture": ExtResource("5_2orkt")
+}, {
+"duration": 1.0,
+"texture": ExtResource("6_aicyk")
+}, {
+"duration": 1.0,
+"texture": ExtResource("7_8b0r0")
+}, {
+"duration": 1.0,
+"texture": ExtResource("8_h6smj")
+}, {
+"duration": 1.0,
+"texture": ExtResource("9_v5j5c")
+}],
+"loop": 1,
+"name": &"default",
+"speed": 10.0
+}]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_kaape"]
+size = Vector2(22, 740)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_duswq"]
+size = Vector2(1280, 20)
+
+[node name="Level" type="Node2D" unique_id=519970073]
+script = ExtResource("1_f2txt")
+
+[node name="Laser" parent="." unique_id=2135424300 instance=ExtResource("4_0b4ue")]
+position = Vector2(575, 367)
+
+[node name="BG" type="Sprite2D" parent="." unique_id=1861735123]
+position = Vector2(640.25006, 358.5)
+texture = ExtResource("1_oi3di")
+metadata/_edit_lock_ = true
+
+[node name="Stars" type="Node2D" parent="." unique_id=582154363]
+metadata/_edit_lock_ = true
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="Stars" unique_id=935989217]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D2" type="AnimatedSprite2D" parent="Stars" unique_id=955661093]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D3" type="AnimatedSprite2D" parent="Stars" unique_id=1209286827]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D4" type="AnimatedSprite2D" parent="Stars" unique_id=1020368220]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D5" type="AnimatedSprite2D" parent="Stars" unique_id=1413601641]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D6" type="AnimatedSprite2D" parent="Stars" unique_id=45937342]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D7" type="AnimatedSprite2D" parent="Stars" unique_id=69982266]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D8" type="AnimatedSprite2D" parent="Stars" unique_id=1333728513]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D9" type="AnimatedSprite2D" parent="Stars" unique_id=929225525]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="AnimatedSprite2D10" type="AnimatedSprite2D" parent="Stars" unique_id=1128490444]
+sprite_frames = SubResource("SpriteFrames_kaape")
+autoplay = "default"
+frame = 4
+frame_progress = 0.5657333
+
+[node name="Player" parent="." unique_id=1613272110 instance=ExtResource("1_u52ul")]
+position = Vector2(534, 380)
+speed = 500
+
+[node name="Borders" type="Node2D" parent="." unique_id=300080508]
+metadata/_edit_lock_ = true
+
+[node name="StaticBody2D" type="StaticBody2D" parent="Borders" unique_id=926858523]
+collision_layer = 4
+
+[node name="RightSide" type="CollisionShape2D" parent="Borders/StaticBody2D" unique_id=1983154164]
+position = Vector2(1291, 355)
+shape = SubResource("RectangleShape2D_kaape")
+metadata/_edit_lock_ = true
+
+[node name="StaticBody2D2" type="StaticBody2D" parent="Borders" unique_id=1379102401]
+collision_layer = 4
+
+[node name="LeftSide" type="CollisionShape2D" parent="Borders/StaticBody2D2" unique_id=991874333]
+position = Vector2(-11, 361)
+shape = SubResource("RectangleShape2D_kaape")
+metadata/_edit_lock_ = true
+
+[node name="StaticBody2D3" type="StaticBody2D" parent="Borders" unique_id=1201584993]
+collision_layer = 4
+
+[node name="Top" type="CollisionShape2D" parent="Borders/StaticBody2D3" unique_id=821391213]
+position = Vector2(640, -10)
+shape = SubResource("RectangleShape2D_duswq")
+metadata/_edit_lock_ = true
+
+[node name="StaticBody2D4" type="StaticBody2D" parent="Borders" unique_id=1666282549]
+collision_layer = 4
+
+[node name="Bottom" type="CollisionShape2D" parent="Borders/StaticBody2D4" unique_id=562927550]
+position = Vector2(640, 730)
+shape = SubResource("RectangleShape2D_duswq")
+metadata/_edit_lock_ = true
+
+[node name="MeteorTimer" type="Timer" parent="." unique_id=1642523035]
+wait_time = 0.129
+autostart = true
+
+[node name="Meteors" type="Node2D" parent="." unique_id=63262956]
+metadata/_edit_lock_ = true
+
+[node name="Lasers" type="Node2D" parent="." unique_id=1618647839]
+
+[node name="UI" parent="." unique_id=440556054 instance=ExtResource("11_2orkt")]
+
+[node name="Music" type="AudioStreamPlayer" parent="." unique_id=1272982929]
+stream = ExtResource("12_aicyk")
+volume_db = -20.0
+autoplay = true
+
+[connection signal="laser" from="Player" to="." method="_on_player_laser"]
+[connection signal="timeout" from="MeteorTimer" to="." method="_on_meteor_timer_timeout"]

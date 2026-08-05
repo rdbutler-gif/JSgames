@@ -1,0 +1,74 @@
+[gd_scene format=3 uid="uid://b73l7njkd4bgr"]
+
+[ext_resource type="FontFile" uid="uid://ysoqh6rn7eu8" path="res://assets/subatomic.tsoonami.ttf" id="1_y26ei"]
+[ext_resource type="Script" uid="uid://djurfj6m50dra" path="res://game_over.gd" id="1_yxx3c"]
+[ext_resource type="AudioStream" uid="uid://csp68g5pt4eqg" path="res://assets/audio/game_music.mp3" id="3_ccer4"]
+
+[node name="GameOver" type="Control" unique_id=931581893]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_yxx3c")
+
+[node name="BG" type="ColorRect" parent="." unique_id=169305992]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.22745098, 0.18039216, 0.24705882, 1)
+metadata/_edit_lock_ = true
+
+[node name="CenterContainer" type="CenterContainer" parent="." unique_id=1666290484]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer" unique_id=952535617]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="CenterContainer/VBoxContainer" unique_id=1398304951]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("1_y26ei")
+theme_override_font_sizes/font_size = 60
+text = "Game Over"
+horizontal_alignment = 1
+
+[node name="Label2" type="Label" parent="CenterContainer/VBoxContainer" unique_id=1010073281]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("1_y26ei")
+theme_override_font_sizes/font_size = 25
+text = "Score:"
+horizontal_alignment = 1
+
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=41649718]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -100.5
+offset_top = -40.0
+offset_right = 100.5
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/margin_bottom = 7
+
+[node name="Label" type="Label" parent="MarginContainer" unique_id=1430756266]
+layout_mode = 2
+theme_override_fonts/font = ExtResource("1_y26ei")
+theme_override_font_sizes/font_size = 20
+text = "Press Space to Start Again"
+
+[node name="Music" type="AudioStreamPlayer" parent="." unique_id=1861050934]
+stream = ExtResource("3_ccer4")
+volume_db = -20.0
+autoplay = true

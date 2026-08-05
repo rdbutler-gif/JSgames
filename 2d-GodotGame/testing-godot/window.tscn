@@ -1,0 +1,4 @@
+[gd_scene format=3 uid="uid://cmom6k1dmhxub"]
+
+[node name="Window" type="Window" unique_id=1692401082]
+oversampling_override = 1.0
