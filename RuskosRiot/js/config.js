@@ -119,7 +119,16 @@ RR.CFG = {
 
   /* --- player ------------------------------------------------------------ */
   SHIRTS: 3,                  // clean shirts == lives
-  RESPAWN_DELAY: 1.6,
+  RESPAWN_DELAY: 1.9,         // just longer than SHIRT_SHOW, so play resumes
+                              // as the shirt card clears rather than under it
+
+  /* --- the shirt card ----------------------------------------------------
+     Every time you get splatted, all three shirts fill the screen with the
+     ruined ones wearing the food that actually hit them. Hits 1 and 2 flash
+     past; hit 3 holds and offers the laundry.                              */
+  SHIRT_SHOW: 1.7,            // seconds the card is up on hits 1 and 2
+  SHIRT_FADE: 0.28,           // fade in / fade out
+  LAUNDRY_RESTORES: 3,        // clean shirts a trip to the laundry gives back
 
   /* --- the tray shield ---------------------------------------------------
      Tray up = safe, tray down = you can shoot and you can be hit. It drops

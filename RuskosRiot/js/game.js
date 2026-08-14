@@ -113,6 +113,12 @@ const pops   = [];        // floating score text
 const peels  = [];        // banana peels on the floor  { slot, fy, wx }
 let fullSplat = null;     // the you-got-hit screen wipe
 
+/* Which food ruined which shirt. Index 0..SHIRTS-1; null means still clean.
+   Stored per shirt (not just a count) so the card can show the exact splat
+   that did the damage -- bananas on one, cookies on the next, and so on. */
+let shirtSplats = new Array(CFG.SHIRTS).fill(null);
+let shirtCard = null;     // { t, dur, hold, justHit }
+
 /* --------------------------------------------------------------------------
    HELPERS TIED TO THE ART
    -------------------------------------------------------------------------- */
@@ -141,6 +147,35 @@ const spriteFor = () => ({
   duck: 'duck', ready: 'ready', throw: 'throw',
   angry: 'angry', surprised: 'surprised'
 })[enemy.state];
+
+/* --------------------------------------------------------------------------
+   SHIRTS
+   Each ruined shirt is baked once into an offscreen canvas: draw the shirt,
+   flip to 'source-atop', then draw the splat. The splat is therefore clipped
+   to the shirt's own silhouette instead of floating over it as a sticker.
+   -------------------------------------------------------------------------- */
+const shirtCache = {};
+function shirtCanvas(food) {
+  if (!food) return A.get('props.shirt');
+  if (shirtCache[food]) return shirtCache[food];
+
+  const im = A.get('props.shirt');
+  const w = im.naturalWidth || 392, h = im.naturalHeight || 392;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+
+  x.drawImage(im, 0, 0, w, h);
+  x.globalCompositeOperation = 'source-atop';   // <- clips the splat to the shirt
+  const key = 'food.' + food + '_splat';
+  const sp = A.get(key), sd = A.dim(key);
+  if (sp && sd) {
+    const sw = w * 1.15, sh = sw * (sd.dh / sd.dw);
+    x.drawImage(sp, (w - sw) / 2, h * 0.46 - sh / 2, sw, sh);
+  }
+  shirtCache[food] = c;
+  return c;
+}
 
 /* --------------------------------------------------------------------------
    ENEMY STATE MACHINE
@@ -380,8 +415,12 @@ function updateInbound(dt) {
 }
 
 function loseShirt() {
+  const food = G.level.signature;          // whatever he actually threw
   G.shirts--;
   G.forcedDown++;
+  shirtSplats[CFG.SHIRTS - G.shirts - 1] = food;
+  shirtCard = { t: 0, dur: CFG.SHIRT_SHOW, hold: G.shirts <= 0,
+                justHit: CFG.SHIRTS - G.shirts - 1 };
   player.dead = true; player.deadT = 0;
   player.drawing = false;
   fullSplat = { t: 0, dur: 1.5, sprite: 'food.' + G.level.signature + '_splat' };
@@ -390,16 +429,68 @@ function loseShirt() {
   breakCombo();
   Snd.splat(); Snd.lose();
 
-  /* ------------------------------------------------------------------
-     FUTURE / MONETISATION HOOK
-     This is where a "You're covered in banana. Buy a clean shirt to keep
-     going?" interstitial ad would go in a later version -- rewarded video
-     or IAP grants +1 shirt and resumes instead of falling through to the
-     game-over screen below. Keep the pause here so the ad has somewhere
-     to live without restructuring the state machine.
-     ------------------------------------------------------------------ */
-  if (G.shirts <= 0) { G.mode = 'over'; }
+  // Out of shirts: the card holds instead of fading and offers the laundry.
+  if (G.shirts <= 0) { G.mode = 'laundry'; }
 }
+
+/* ==========================================================================
+   THE LAUNDRY  --  rewarded-ad continue
+   ==========================================================================
+   AD MECHANICS ARE NOT WIRED UP YET. watchAdForLaundry() currently behaves as
+   though an ad was shown and completed successfully, so the flow is playable
+   end to end.
+
+   To integrate for real, replace the marked block with the ad SDK call and
+   branch on its result:
+
+       adSDK.showRewarded({
+         onReward:   grantLaundry,       // completed -> clean shirts
+         onSkipped:  declineLaundry,     // bailed early -> no reward, game over
+         onFailed:   declineLaundry      // no fill / offline -> do not punish,
+       });                               //   consider granting it anyway
+
+   Everything below the SDK boundary is already written, so wiring it up is a
+   single function body. Keep grantLaundry() as the only path that hands out
+   shirts, so a broken SDK can never silently award them.
+   ========================================================================== */
+function watchAdForLaundry() {
+  /* ---- BEGIN AD SDK STUB ------------------------------------------------
+     Real implementation: pause audio, call the rewarded placement, and only
+     call grantLaundry() from its success callback. For now we assume the
+     player watched it.                                                     */
+  const adCompleted = true;
+  /* ---- END AD SDK STUB ------------------------------------------------- */
+
+  if (adCompleted) grantLaundry(); else declineLaundry();
+}
+
+function grantLaundry() {
+  G.shirts = CFG.LAUNDRY_RESTORES;
+  shirtSplats = new Array(CFG.SHIRTS).fill(null);
+  shirtCard = null;
+  fullSplat = null;
+  player.dead = false; player.deadT = 0; player.drawing = false;
+  tray.raise = 1;
+  drag = null;
+  setState('hidden', 1.2);
+  G.mode = 'play';
+  Snd.win();
+}
+
+function declineLaundry() {
+  shirtCard = null;
+  G.mode = 'over';
+}
+
+/** Button rects, shared by the renderer and the hit test so they cannot
+    drift apart. */
+function laundryButtons() {
+  return {
+    yes: { x: CX - 400, y: 1618, w: 800, h: 158 },
+    no:  { x: CX - 400, y: 1812, w: 800, h: 118 }
+  };
+}
+function inRect(p, r) { return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; }
 
 /* --------------------------------------------------------------------------
    FX
@@ -434,6 +525,7 @@ function startLevel() {
   enemy.hp = enemy.maxHp = G.level.hp;
   enemy.slot = 4; setState('hidden', 1.0); enemy.pop = 0;
   ball = null; inbound = null; fullSplat = null;
+  shirtSplats = new Array(CFG.SHIRTS).fill(null); shirtCard = null;
   splats.length = 0; pops.length = 0; peels.length = 0;
   player.dead = false; player.drawing = false; player.lastShot = -9;
 }
@@ -461,6 +553,15 @@ function pressAnywhere() {
 
 cvs.addEventListener('pointerdown', e => {
   e.preventDefault();
+  // the laundry offer is the one screen where a tap has to mean something
+  // specific, so it gets first refusal on the event
+  if (G.mode === 'laundry') {
+    Snd.on();
+    const p = toCanvas(e), B = laundryButtons();
+    if (inRect(p, B.yes)) watchAdForLaundry();
+    else if (inRect(p, B.no)) declineLaundry();
+    return;
+  }
   if (pressAnywhere()) return;
   if (G.mode !== 'play' || player.dead || ball) return;
   const p = toCanvas(e);
@@ -494,6 +595,12 @@ addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   keys[k] = true;
   if (k === CFG.DEBUG_KEY) G.debug = !G.debug;
+  if (G.mode === 'laundry') {
+    Snd.on();
+    if (k === 'y' || k === '1' || k === 'enter' || k === ' ') { e.preventDefault(); watchAdForLaundry(); }
+    if (k === 'n' || k === '2' || k === 'escape')             { e.preventDefault(); declineLaundry(); }
+    return;
+  }
   if (k === ' ' || k === 'enter') {
     e.preventDefault();
     if (pressAnywhere()) return;
@@ -547,6 +654,10 @@ function update(dt) {
   for (let i = splats.length - 1; i >= 0; i--) { splats[i].t += dt; if (splats[i].t > splats[i].dur) splats.splice(i, 1); }
   for (let i = pops.length   - 1; i >= 0; i--) { pops[i].t   += dt; if (pops[i].t   > pops[i].dur)   pops.splice(i, 1); }
   if (fullSplat) { fullSplat.t += dt; if (fullSplat.t > fullSplat.dur) fullSplat = null; }
+  if (shirtCard) {
+    shirtCard.t += dt;                       // always advance, so the pop-in
+    if (!shirtCard.hold && shirtCard.t > shirtCard.dur) shirtCard = null;
+  }
 
   if (G.mode !== 'play') return;
 
@@ -846,15 +957,18 @@ function drawArc(aim, ox, oy) {
 }
 
 /* ---- HUD ---------------------------------------------------------------- */
-function shirtIcon(x, y, s, filled) {
-  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-  ctx.beginPath();
-  ctx.moveTo(-30, -22); ctx.lineTo(-12, -30); ctx.lineTo(12, -30); ctx.lineTo(30, -22);
-  ctx.lineTo(20, -4);   ctx.lineTo(24, 30);  ctx.lineTo(-24, 30); ctx.lineTo(-20, -4);
-  ctx.closePath();
-  ctx.fillStyle = filled ? '#6fbf5f' : 'rgba(255,255,255,0.18)';
-  ctx.fill();
-  ctx.lineWidth = 4; ctx.strokeStyle = filled ? '#2f5d27' : 'rgba(255,255,255,0.35)'; ctx.stroke();
+/** One shirt at (x,y) centre, h tall. Ruined shirts wear the splat that
+    actually got them. */
+function drawShirt(x, y, h, food, alpha) {
+  const src = shirtCanvas(food);
+  if (!src) return;
+  const w = h;                                   // the sprite is square
+  ctx.save();
+  ctx.globalAlpha = alpha == null ? 1 : alpha;
+  if (!food) {                                   // clean shirts read brighter
+    ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 14;
+  }
+  ctx.drawImage(src, x - w / 2, y - h / 2, w, h);
   ctx.restore();
 }
 
@@ -880,8 +994,11 @@ function drawHUD() {
   ctx.fillStyle = '#fff'; ctx.font = 'bold 74px system-ui, sans-serif';
   ctx.fillText(G.score.toLocaleString(), 52, 116);
 
-  // shirts
-  for (let i = 0; i < CFG.SHIRTS; i++) shirtIcon(W - 90 - i * 92, 86, 1.25, i < G.shirts);
+  // shirts, newest damage on the left of the stack
+  panel(W - 88 - (CFG.SHIRTS - 1) * 96 - 62, 26, (CFG.SHIRTS - 1) * 96 + 124, 124, 26);
+  for (let i = 0; i < CFG.SHIRTS; i++) {
+    drawShirt(W - 88 - i * 96, 88, 128, shirtSplats[i], shirtSplats[i] ? 0.85 : 1);
+  }
 
   // clock
   panel(W / 2 - 130, 28, 260, 84);
@@ -946,6 +1063,102 @@ function drawHUD() {
     ];
     lines.forEach((l, i) => ctx.fillText(l, 30, 560 + i * 38));
   }
+}
+
+/** Draw centred text, shrinking the font until it fits maxW. Stops any
+    heading from running off the edge on a narrow canvas. */
+function fitText(text, x, y, size, maxW, weight) {
+  let s = size;
+  do {
+    ctx.font = (weight || 'bold') + ' ' + s + 'px system-ui, sans-serif';
+    if (ctx.measureText(text).width <= maxW || s <= 18) break;
+    s -= 3;
+  } while (true);
+  ctx.fillText(text, x, y);
+  return s;
+}
+
+/* ---- the three-shirt card ---------------------------------------------- */
+function drawShirtCard() {
+  if (!shirtCard) return;
+  const C = shirtCard;
+  const F = CFG.SHIRT_FADE;
+
+  // fade in, hold, fade out -- unless this is the last shirt, in which case
+  // it stays up and the laundry offer is drawn over it
+  let a = clamp(C.t / F, 0, 1);
+  if (!C.hold) a = Math.min(a, clamp((C.dur - C.t) / F, 0, 1));
+
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.fillStyle = C.hold ? 'rgba(24,6,6,0.90)' : 'rgba(8,12,20,0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  const ruined = shirtSplats.filter(Boolean).length;
+  const heading = C.hold ? 'NO CLEAN SHIRTS'
+                : ruined === 1 ? 'SHIRT RUINED' : 'THAT IS TWO';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = C.hold ? '#ff8080' : '#ffd23f';
+  fitText(heading, CX, C.hold ? 640 : 820, 92, W - 90);
+
+  const size = C.hold ? 280 : 300;
+  const gap  = 40;
+  const total = CFG.SHIRTS * size + (CFG.SHIRTS - 1) * gap;
+  const y = C.hold ? 1080 : 1220;
+  for (let i = 0; i < CFG.SHIRTS; i++) {
+    const x = (W - total) / 2 + size / 2 + i * (size + gap);
+    // the shirt that just took it pops in slightly oversized
+    let s = size;
+    if (i === C.justHit) {
+      const k = clamp(C.t / 0.30, 0, 1);
+      s = size * lerp(1.42, 1, ease(k));
+      ctx.save();
+      ctx.globalAlpha = a * (1 - k) * 0.7;
+      ctx.beginPath(); ctx.arc(x, y, s * 0.72, 0, 7);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.restore();
+    }
+    drawShirt(x, y, s, shirtSplats[i], 1);
+  }
+
+  ctx.fillStyle = 'rgba(255,255,255,0.82)';
+  const left = CFG.SHIRTS - ruined;
+  fitText(left === 0 ? 'NONE LEFT' : left + (left === 1 ? ' CLEAN SHIRT LEFT' : ' CLEAN SHIRTS LEFT'),
+          CX, y + size * 0.72 + 58, 40, W - 120);
+
+  if (C.hold) drawLaundryOffer(a);
+  ctx.restore();
+}
+
+function drawLaundryOffer(a) {
+  const B = laundryButtons();
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = '#fff';
+  fitText('Fancy a trip to the laundry?', CX, 1540, 52, W - 90);
+
+  // yes
+  ctx.fillStyle = '#2f7d32';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(B.yes.x, B.yes.y, B.yes.w, B.yes.h, 28); else ctx.rect(B.yes.x, B.yes.y, B.yes.w, B.yes.h);
+  ctx.fill();
+  ctx.strokeStyle = '#8ef58a'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 54px system-ui, sans-serif';
+  ctx.fillText('WATCH AN AD', CX, B.yes.y + 66);
+  ctx.font = 'bold 34px system-ui, sans-serif'; ctx.fillStyle = '#cdf3cb';
+  ctx.fillText('three clean shirts, keep your score', CX, B.yes.y + 118);
+
+  // no
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(B.no.x, B.no.y, B.no.w, B.no.h, 24); else ctx.rect(B.no.x, B.no.y, B.no.w, B.no.h);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 4; ctx.stroke();
+  ctx.fillStyle = '#e8edf7'; ctx.font = 'bold 44px system-ui, sans-serif';
+  ctx.fillText('GO HOME DIRTY', CX, B.no.y + 76);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '30px system-ui, sans-serif';
+  ctx.fillText('tap, or press Y / N', CX, B.no.y + 168);
 }
 
 /* ---- full screen overlays ---------------------------------------------- */
@@ -1046,6 +1259,7 @@ function render() {
   drawFullSplat();
   if (G.flash > 0) { ctx.fillStyle = 'rgba(255,255,255,' + G.flash * 0.5 + ')'; ctx.fillRect(0, 0, W, H); }
   if (G.mode === 'play') drawHUD();
+  drawShirtCard();
   if (G.mode === 'title') drawTitle();
   if (G.mode === 'clear') drawClear();
   if (G.mode === 'over')  drawOver();
@@ -1091,5 +1305,11 @@ A.load((done, total) => { if (bar) bar.style.width = Math.round(done / total * 1
    if (loadEl) loadEl.innerHTML = '<p style="color:#f88">Could not load assets.<br>' + err + '</p>';
  });
 
-window.RRDebug = { G, enemy, player, tray, trayHits, CFG, get ball() { return ball; } };
+window.RRDebug = {
+  G, enemy, player, tray, trayHits, CFG,
+  get ball()        { return ball; },
+  get shirtSplats() { return shirtSplats; },   // getters: these are reassigned
+  get shirtCard()   { return shirtCard; },     // so a plain ref would go stale
+  watchAdForLaundry, grantLaundry, declineLaundry, laundryButtons
+};
 })();

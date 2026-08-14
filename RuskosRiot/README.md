@@ -176,6 +176,55 @@ up because it is a smooth wooden object with no fine detail — but if you have
 the source, a 600 px-wide re-export would be pin sharp. Drop it in the folder
 and I will re-run the pipeline; nothing in the game code needs to change.
 
+## Shirts, and the laundry
+
+Lives are three clean shirts, drawn from `shirt_alpha.png`. The game records
+**which food ruined which shirt** (`shirtSplats[]`, one entry per shirt) rather
+than just a count, so every splat shown is the one that actually got you — this
+matters from level 2, when Mrs. Gabel's cookies and Coach Ken's tomatoes start
+appearing on the same run.
+
+Each ruined shirt is baked once into an offscreen canvas:
+
+```js
+x.drawImage(shirt, 0, 0, w, h);
+x.globalCompositeOperation = 'source-atop';   // clips the splat to the shirt
+x.drawImage(splat, ...);
+```
+
+`source-atop` means the splat is trimmed to the shirt's own silhouette instead
+of floating over it as a sticker. One canvas per food type, built on first use.
+
+**The card.** Every hit fills the screen with all three shirts, the ruined ones
+wearing their splat, and the one you just lost popping in oversized with a
+flash ring. Hits 1 and 2 fade after `SHIRT_SHOW` (1.7 s) and play resumes —
+`RESPAWN_DELAY` is 1.9 s so the game comes back just as the card clears, not
+underneath it. Hit 3 holds the card and offers the laundry.
+
+## The laundry (rewarded-ad continue)
+
+**Ad mechanics are not wired up yet.** `watchAdForLaundry()` currently behaves
+as though an ad played and completed, so the whole flow is playable end to end:
+tap WATCH AN AD (or press `Y`) and you get three clean shirts and keep your
+score. GO HOME DIRTY (or `N`) ends the run.
+
+To integrate for real, replace the block marked `BEGIN/END AD SDK STUB` with
+the SDK call and branch on its result:
+
+```js
+adSDK.showRewarded({
+  onReward:  grantLaundry,     // completed -> clean shirts
+  onSkipped: declineLaundry,   // bailed early -> no reward
+  onFailed:  declineLaundry    // no fill / offline -> consider granting anyway
+});
+```
+
+Everything below that boundary is already written. `grantLaundry()` is
+deliberately the **only** path that hands out shirts, so a broken or spoofed
+SDK cannot silently award them. Button rectangles come from `laundryButtons()`,
+shared by the renderer and the hit test so they cannot drift apart.
+`LAUNDRY_RESTORES` in config sets how many shirts a trip is worth.
+
 ## Layering: what "blocked" looks like
 
 Billy's food and the mess it makes are drawn **under** the tray, so a raised
