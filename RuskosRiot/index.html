@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0a0e18">
+<meta name="description" content="Rusko's Riot - Food Fight. A cafeteria slingshot standoff.">
+<title>Rusko's Riot &mdash; Food Fight</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8D%8C%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div id="stage">
+    <canvas id="game" width="1084" height="2340"></canvas>
+  </div>
+
+  <div id="loading">
+    <h1>RUSKO'S RIOT</h1>
+    <p>Loading the cafeteria&hellip;</p>
+    <div id="track"><div id="bar"></div></div>
+  </div>
+
+  <!-- config first: game.js reads RR.CFG at load time -->
+  <script src="js/config.js"></script>
+  <script src="js/assets.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

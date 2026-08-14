@@ -1,0 +1,87 @@
+/* ===========================================================================
+   RUSKO'S RIOT  --  style.css
+   The canvas renders at a fixed 1084 x 2340 and is scaled by JS to fit.
+   Everything here just gets the browser out of the way.
+   =========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #070b14;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #e8edf7;
+  /* stop mobile browsers hijacking the drag gesture */
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #16203a 0%, #070b14 70%);
+}
+
+#game {
+  display: block;
+  touch-action: none;
+  image-rendering: auto;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.75);
+  border-radius: 6px;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* --- loading splash ------------------------------------------------------ */
+#loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: #070b14;
+  z-index: 10;
+  text-align: center;
+  padding: 24px;
+}
+
+#loading h1 {
+  margin: 0;
+  font-size: clamp(28px, 7vw, 54px);
+  letter-spacing: 2px;
+  color: #ffd23f;
+}
+
+#loading p {
+  margin: 0;
+  color: #8892a8;
+  font-size: clamp(14px, 3.4vw, 18px);
+}
+
+#track {
+  width: min(320px, 70vw);
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+#bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd23f, #8ef58a);
+  transition: width 0.15s linear;
+}

@@ -1,0 +1,291 @@
+{
+ "bg": {
+  "cafeteria": [
+   "bg/cafeteria.jpg",
+   1084,
+   2340,
+   1084,
+   2340
+  ]
+ },
+ "char": {
+  "billy": {
+   "throw": [
+    "char/billy_throw.png",
+    538,
+    778,
+    747,
+    1080
+   ],
+   "angry": [
+    "char/billy_angry.png",
+    538,
+    778,
+    747,
+    1080
+   ],
+   "duck": [
+    "char/billy_duck.png",
+    538,
+    778,
+    747,
+    1080
+   ],
+   "idle": [
+    "char/billy_idle.png",
+    538,
+    778,
+    747,
+    1080
+   ],
+   "ready": [
+    "char/billy_ready.png",
+    538,
+    778,
+    747,
+    1080
+   ],
+   "surprised": [
+    "char/billy_surprised.png",
+    538,
+    778,
+    747,
+    1080
+   ]
+  },
+  "coach": {
+   "throw": [
+    "char/coach_throw.png",
+    623,
+    864,
+    865,
+    1200
+   ],
+   "angry": [
+    "char/coach_angry.png",
+    623,
+    864,
+    865,
+    1200
+   ],
+   "duck": [
+    "char/coach_duck.png",
+    623,
+    864,
+    865,
+    1200
+   ],
+   "idle": [
+    "char/coach_idle.png",
+    623,
+    864,
+    865,
+    1200
+   ],
+   "ready": [
+    "char/coach_ready.png",
+    623,
+    864,
+    865,
+    1200
+   ],
+   "surprised": [
+    "char/coach_surprised.png",
+    623,
+    864,
+    865,
+    1200
+   ]
+  },
+  "gabel": {
+   "throw": [
+    "char/gabel_throw.png",
+    645,
+    864,
+    896,
+    1200
+   ],
+   "angry": [
+    "char/gabel_angry.png",
+    645,
+    864,
+    896,
+    1200
+   ],
+   "duck": [
+    "char/gabel_duck.png",
+    645,
+    864,
+    896,
+    1200
+   ],
+   "idle": [
+    "char/gabel_idle.png",
+    645,
+    864,
+    896,
+    1200
+   ],
+   "ready": [
+    "char/gabel_ready.png",
+    645,
+    864,
+    896,
+    1200
+   ],
+   "surprised": [
+    "char/gabel_surprised.png",
+    645,
+    864,
+    896,
+    1200
+   ]
+  },
+  "dan": {
+   "throw": [
+    "char/dan_throw.png",
+    561,
+    826,
+    780,
+    1147
+   ],
+   "angry": [
+    "char/dan_angry.png",
+    561,
+    826,
+    780,
+    1147
+   ],
+   "duck": [
+    "char/dan_duck.png",
+    561,
+    826,
+    780,
+    1147
+   ],
+   "idle": [
+    "char/dan_idle.png",
+    561,
+    826,
+    780,
+    1147
+   ],
+   "ready": [
+    "char/dan_ready.png",
+    561,
+    826,
+    780,
+    1147
+   ],
+   "surprised": [
+    "char/dan_surprised.png",
+    561,
+    826,
+    780,
+    1147
+   ]
+  }
+ },
+ "props": {
+  "table": [
+   "props/table.png",
+   900,
+   355,
+   967,
+   381
+  ],
+  "steamtable": [
+   "props/steamtable.png",
+   900,
+   398,
+   930,
+   411
+  ],
+  "divider": [
+   "props/divider.png",
+   788,
+   780,
+   788,
+   780
+  ],
+  "matstack": [
+   "props/matstack.png",
+   347,
+   864,
+   347,
+   864
+  ],
+  "tray": [
+   "props/tray.png",
+   900,
+   397,
+   1100,
+   485
+  ],
+  "slingshot": [
+   "props/slingshot.png",
+   193,
+   320,
+   280,
+   464
+  ]
+ },
+ "food": {
+  "banana": [
+   "food/banana.png",
+   384,
+   255,
+   300,
+   200
+  ],
+  "banana_splat": [
+   "food/banana_splat.png",
+   1400,
+   1102,
+   900,
+   708
+  ],
+  "cookie": [
+   "food/cookie.png",
+   384,
+   383,
+   300,
+   299
+  ],
+  "cookie_splat": [
+   "food/cookie_splat.png",
+   1400,
+   1342,
+   900,
+   863
+  ],
+  "tomato": [
+   "food/tomato.png",
+   384,
+   367,
+   300,
+   287
+  ],
+  "tomato_splat": [
+   "food/tomato_splat.png",
+   1400,
+   1197,
+   900,
+   769
+  ],
+  "watermelon": [
+   "food/watermelon.png",
+   384,
+   394,
+   300,
+   308
+  ],
+  "watermelon_splat": [
+   "food/watermelon_splat.png",
+   1381,
+   1400,
+   900,
+   912
+  ]
+ }
+}
