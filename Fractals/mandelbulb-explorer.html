@@ -184,6 +184,7 @@
       <option value="0">Gradient (2-color)</option>
       <option value="1">Spectrum (palette)</option>
       <option value="2">Image Texture</option>
+      <option value="3">Fractal Skin (Julia)</option>
     </select>
   </div>
   <div class="colorrow" id="gradientRow">
@@ -193,15 +194,37 @@
       <input type="color" id="colB" value="#7fe8b8">
     </div>
   </div>
-  <div id="textureRow" style="display:none;">
+  <div id="patternScaleRow" style="display:none;">
     <div class="row">
-      <label>Tile scale <span class="val" id="vTexScale">1.0</span></label>
+      <label>Pattern scale <span class="val" id="vTexScale">1.0</span></label>
       <input type="range" id="texScale" min="0.1" max="4" step="0.1" value="1">
     </div>
+  </div>
+  <div id="textureRow" style="display:none;">
     <div class="row" style="margin-bottom:0;">
       <label style="margin-bottom:6px;">Upload image</label>
       <input type="file" id="texUpload" accept="image/*" style="width:100%;font-size:9px;color:var(--text-dim);">
     </div>
+  </div>
+  <div id="skinRow" style="display:none;">
+    <div class="row">
+      <label>Julia c_real <span class="val" id="vSkinRe">-0.70</span></label>
+      <input type="range" id="skinRe" min="-1" max="1" step="0.005" value="-0.7">
+    </div>
+    <div class="row">
+      <label>Julia c_imag <span class="val" id="vSkinIm">0.27</span></label>
+      <input type="range" id="skinIm" min="-1" max="1" step="0.005" value="0.27">
+    </div>
+    <div class="row" style="margin-bottom:0;">
+      <label>Engrave depth <span class="val" id="vSkinBump">0.6</span></label>
+      <input type="range" id="skinBump" min="0" max="2" step="0.05" value="0.6">
+    </div>
+  </div>
+
+  <h2 style="margin-top:14px;">Texture</h2>
+  <div class="row" style="margin-bottom:0;">
+    <label>Surface bump <span class="val" id="vBump">0.3</span></label>
+    <input type="range" id="bumpStrength" min="0" max="1" step="0.02" value="0.3">
   </div>
 
   <h2 style="margin-top:14px;">Live Quality</h2>
@@ -269,14 +292,18 @@ uniform int uMaxSteps;
 uniform vec3 uLightDir;
 uniform vec3 uColA;
 uniform vec3 uColB;
-uniform int uColorMode; // 0 = gradient, 1 = spectrum, 2 = texture
+uniform int uColorMode; // 0 = gradient, 1 = spectrum, 2 = texture, 3 = fractal skin
 uniform sampler2D uTex;
 uniform float uTexScale;
+uniform float uBumpStrength;
+uniform vec2 uSkinC;
+uniform float uSkinBump;
 
 const int MAX_ITER = 20;
 const int MAX_STEPS = 400;
 const float BAILOUT = 4.0;
 const float MAX_DIST = 8.0;
+const int MAX_SKIN_ITER = 40;
 
 // distance estimate + orbit trap
 vec2 mandelbulbDE(vec3 pos){
@@ -319,6 +346,60 @@ vec3 triplanar(vec3 p, vec3 n, float scale){
   return cx * blend.x + cy * blend.y + cz * blend.z;
 }
 
+// --- fractal (fBm) noise, used as a universal micro-bump so the surface
+// isn't perfectly smooth. Self-similar octaves = literally fractal texture. ---
+float hash13(vec3 p3){
+  p3 = fract(p3 * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float noise3(vec3 x){
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash13(i+vec3(0,0,0)), hash13(i+vec3(1,0,0)), f.x),
+        mix(hash13(i+vec3(0,1,0)), hash13(i+vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash13(i+vec3(0,0,1)), hash13(i+vec3(1,0,1)), f.x),
+        mix(hash13(i+vec3(0,1,1)), hash13(i+vec3(1,1,1)), f.x), f.y), f.z);
+}
+float fbm(vec3 p){
+  float v = 0.0, amp = 0.5;
+  for (int i = 0; i < 5; i++){
+    v += amp * noise3(p);
+    p *= 2.02;
+    amp *= 0.5;
+  }
+  return v;
+}
+vec3 bumpNormal(vec3 p, vec3 n, float strength){
+  float e = 0.012;
+  float f0 = fbm(p * 9.0);
+  float fx = fbm((p + vec3(e,0.0,0.0)) * 9.0);
+  float fy = fbm((p + vec3(0.0,e,0.0)) * 9.0);
+  float fz = fbm((p + vec3(0.0,0.0,e)) * 9.0);
+  vec3 grad = vec3(fx - f0, fy - f0, fz - f0) / e;
+  grad -= n * dot(grad, n); // keep the perturbation tangential
+  return normalize(n - grad * strength);
+}
+
+// --- a second, independent fractal (2D Julia set) evaluated on the
+// mandelbulb's own surface via triplanar projection. This paints Julia-set
+// iteration bands onto the bulb and can also emboss them as real bumps. ---
+float juliaIter(vec2 z, vec2 c){
+  for (int i = 0; i < MAX_SKIN_ITER; i++){
+    if (dot(z,z) > 4.0) return float(i) / float(MAX_SKIN_ITER);
+    z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
+  }
+  return 1.0;
+}
+float skinField(vec3 p, vec3 blend, float scale){
+  float ix = juliaIter(p.yz * scale, uSkinC);
+  float iy = juliaIter(p.xz * scale, uSkinC);
+  float iz = juliaIter(p.xy * scale, uSkinC);
+  return ix * blend.x + iy * blend.y + iz * blend.z;
+}
+
 vec3 calcNormal(vec3 p){
   vec2 e = vec2(0.0009, 0.0);
   return normalize(vec3(
@@ -356,20 +437,40 @@ void main(){
   if (hit){
     vec3 p = ro + rd * t;
     vec3 n = calcNormal(p);
-    float diff = max(dot(n, uLightDir), 0.0);
-    float ao = 1.0 - float(stepsTaken) / float(uMaxSteps);
-    ao = clamp(ao * 1.3, 0.0, 1.0);
-    float rim = pow(1.0 - max(dot(n, -rd), 0.0), 2.5);
+
+    if (uBumpStrength > 0.0005){
+      n = bumpNormal(p, n, uBumpStrength);
+    }
+
+    vec3 blend = pow(abs(n), vec3(4.0));
+    blend /= (blend.x + blend.y + blend.z + 1e-5);
 
     vec3 base;
     if (uColorMode == 1){
       base = palette(trapOut * 3.5);
     } else if (uColorMode == 2){
       base = triplanar(p, n, uTexScale);
+    } else if (uColorMode == 3){
+      float h0 = skinField(p, blend, uTexScale);
+      base = palette(h0);
+      if (uSkinBump > 0.0005){
+        float e = 0.015;
+        float hx = skinField(p + vec3(e,0.0,0.0), blend, uTexScale);
+        float hy = skinField(p + vec3(0.0,e,0.0), blend, uTexScale);
+        float hz = skinField(p + vec3(0.0,0.0,e), blend, uTexScale);
+        vec3 gradSkin = vec3(hx - h0, hy - h0, hz - h0) / e;
+        gradSkin -= n * dot(gradSkin, n);
+        n = normalize(n - gradSkin * uSkinBump);
+      }
     } else {
       float tr = clamp(trapOut, 0.0, 1.0);
       base = mix(uColA, uColB, tr);
     }
+
+    float diff = max(dot(n, uLightDir), 0.0);
+    float ao = 1.0 - float(stepsTaken) / float(uMaxSteps);
+    ao = clamp(ao * 1.3, 0.0, 1.0);
+    float rim = pow(1.0 - max(dot(n, -rd), 0.0), 2.5);
 
     float amb = 0.16 + 0.10 * ao;
     col = base * (diff * 0.85 + amb) + rim * uColB * 0.35;
@@ -416,7 +517,8 @@ function buildProgram(gl){
 
   const u = {};
   ['uRes','uCamPos','uCamRight','uCamUp','uCamFwd','uTanFov','uPower','uIterations',
-   'uMaxSteps','uLightDir','uColA','uColB','uColorMode','uTex','uTexScale'].forEach(name => {
+   'uMaxSteps','uLightDir','uColA','uColB','uColorMode','uTex','uTexScale',
+   'uBumpStrength','uSkinC','uSkinBump'].forEach(name => {
     u[name] = gl.getUniformLocation(prog, name);
   });
 
@@ -444,6 +546,9 @@ function drawFrame(gl, ctx, res, camPos, right, up, fwd, tanFov, state){
   gl.uniform3f(ctx.u.uColB, state.colB[0], state.colB[1], state.colB[2]);
   gl.uniform1i(ctx.u.uColorMode, state.colorMode);
   gl.uniform1f(ctx.u.uTexScale, state.texScale);
+  gl.uniform1f(ctx.u.uBumpStrength, state.bumpStrength);
+  gl.uniform2f(ctx.u.uSkinC, state.skinC[0], state.skinC[1]);
+  gl.uniform1f(ctx.u.uSkinBump, state.skinBump);
   if (ctx.tex){
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, ctx.tex);
@@ -538,6 +643,9 @@ const state = {
   colorMode: 0,
   texScale: 1.0,
   texImageSource: null,
+  bumpStrength: 0.3,
+  skinC: [-0.7, 0.27],
+  skinBump: 0.6,
   resScale: 0.6,
   interacting: false,
 };
@@ -711,7 +819,9 @@ $('colB').addEventListener('input', e => { state.colB = hexToRgb(e.target.value)
 $('colorMode').addEventListener('change', e => {
   state.colorMode = parseInt(e.target.value);
   $('gradientRow').style.display = state.colorMode === 0 ? 'flex' : 'none';
+  $('patternScaleRow').style.display = (state.colorMode === 2 || state.colorMode === 3) ? 'block' : 'none';
   $('textureRow').style.display = state.colorMode === 2 ? 'block' : 'none';
+  $('skinRow').style.display = state.colorMode === 3 ? 'block' : 'none';
 });
 $('texScale').addEventListener('input', e => {
   state.texScale = parseFloat(e.target.value);
@@ -727,6 +837,23 @@ $('texUpload').addEventListener('change', e => {
     liveCtx.tex = createTextureFromCanvas(gl, state.texImageSource);
   };
   img.src = URL.createObjectURL(file);
+});
+
+$('bumpStrength').addEventListener('input', e => {
+  state.bumpStrength = parseFloat(e.target.value);
+  $('vBump').textContent = state.bumpStrength.toFixed(2);
+});
+$('skinRe').addEventListener('input', e => {
+  state.skinC[0] = parseFloat(e.target.value);
+  $('vSkinRe').textContent = state.skinC[0].toFixed(2);
+});
+$('skinIm').addEventListener('input', e => {
+  state.skinC[1] = parseFloat(e.target.value);
+  $('vSkinIm').textContent = state.skinC[1].toFixed(2);
+});
+$('skinBump').addEventListener('input', e => {
+  state.skinBump = parseFloat(e.target.value);
+  $('vSkinBump').textContent = state.skinBump.toFixed(2);
 });
 
 $('resScale').addEventListener('input', e => {
