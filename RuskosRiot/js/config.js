@@ -64,6 +64,14 @@ RR.CFG = {
   MAX_DRAG: 620,             // px of pull for 100% power (~26% of screen height)
   MIN_DRAG: 34,               // below this a release is an abort, not a shot
 
+  /* --- ricochet ----------------------------------------------------------
+     Cookies are the only ammo that survives a miss. They skip off the floor
+     and bank off the side walls, so a shot that falls short or drifts wide
+     still has a second life -- and reaching a target the long way round is
+     worth more than hitting it straight.                                    */
+  WALL_X: 960,                // lateral wall position in design units
+  BROKEN_COVER_H: 120,        // what is left of a prop after a melon finds it
+
   /* --- hit boxes (design units) ----------------------------------------- */
   HIT_HALF_W: 210,            // lateral tolerance on a body hit
   HEAD_FRAC: 0.26,            // top 26% of the exposed band counts as a head shot
@@ -80,17 +88,31 @@ RR.CFG = {
     },
     cookie: {
       label: 'Cookie',  sprite: 'cookie',  splat: 'cookie_splat',
-      dmg: 2, count: 8, ricochet: true,
-      blurb: 'Flies like a discus and banks off cover.'
+      dmg: 2, count: 6, ricochet: true,
+      bounceKeep: 0.52,       // vertical energy kept per floor skip
+      maxBounces: 2,          // skips before it finally dies
+      blurb: 'Hard as a hockey puck. Skips off the floor and banks off walls.'
     },
     tomato: {
       label: 'Tomato',  sprite: 'tomato',  splat: 'tomato_splat',
-      dmg: 3, count: 5, splash: 340,
-      blurb: 'Heavy arc, wide splatter.'
+      /* Splash is the tomato's whole identity. With one enemy on screen at a
+         time, "hits adjacent targets" would mean nothing -- so instead the
+         tomato does not need a direct hit at all. Get it to their depth and
+         anywhere within `splash` of them still connects, including a shot
+         that smacks into the cover they are hiding behind. That makes it the
+         answer to somebody who ducks, at half damage and only five a level. */
+      dmg: 4, count: 5, splash: 360,
+      splashDmg: 0.5,         // fraction of damage a non-direct hit deals
+      blurb: 'You do not have to hit him. Anything close enough still wears it.'
     },
     watermelon: {
       label: 'Melon',   sprite: 'watermelon', splat: 'watermelon_splat',
-      dmg: 5, count: 3, breaksCover: true,
+      /* The melon is the only ammo that changes the room. Put one into a
+         piece of cover and that cover is gone for the rest of the fight --
+         which means the slot behind it stops being a hiding place. You only
+         get four, so every one is a choice: damage now, or an easier shot
+         for the rest of the fight. */
+      dmg: 5, count: 4, breaksCover: true,
       blurb: 'Slow, enormous, and it takes the furniture with it.'
     }
   },
@@ -113,8 +135,113 @@ RR.CFG = {
       throwFlight: 0.78,        // seconds for his banana to reach the camera
       dodgeChance: 0.30,        // chance he bobs down mid-idle
       rageScale: 0.55           // timings multiply toward this as his HP drops
+    },
+    {
+      id: 2, char: 'gabel', name: 'Mrs. Gabel',
+      subtitle: 'Lunch Lady, Armed With Cookies',
+      /* She is a wall compared to Billy. 20 HP against a 2-damage cookie
+         means five perfect Own Medicine body shots -- or, realistically, a
+         handful of cookies padded out with bananas. Cookies are capped at 6
+         a level, so every one you waste is a real loss.                    */
+      hp: 20, signature: 'cookie', ownMedicine: true,
+      unlocked: ['banana', 'cookie'],
+      ammoCounts: { cookie: 6 },
+      favouriteSlot: 2,         // the steam table is her turf
+      favouriteBias: 0.42,      // chance she returns to it instead of rolling
+      aimArc: 0.45,             // more of the arc revealed than level 1
+      hideTime: [0.34, 0.82],
+      idleTime: [0.92, 1.52],
+      readyTime: 0.86,
+      throwFlight: 0.72,
+      burst: 2,                 // she throws a PAIR of cookies, not one
+      burstGap: 0.30,           // seconds between them -- stay down for both
+      dodgeChance: 0.40,
+      rageScale: 0.48,
+      tagline: 'she throws in pairs',
+      time: 110
+    },
+    {
+      id: 3, char: 'coach', name: 'Coach Ken',
+      subtitle: 'Gym Teacher, Bucket of Tomatoes',
+      /* Ken's gimmick is that he REACTS. Fire at him and he has a real chance
+         of dropping behind cover while your shot is still in the air, which
+         no earlier enemy does. Direct hits cannot reach a ducked target --
+         but a tomato does not need a direct hit, and that is the whole point
+         of unlocking it here. Five tomatoes, 4 damage doubled to 8 by Own
+         Medicine, or 4 on a splash. 26 HP is roughly four clean tomatoes. */
+      hp: 26, signature: 'tomato', ownMedicine: true,
+      unlocked: ['banana', 'cookie', 'tomato'],
+      ammoCounts: { cookie: 6, tomato: 5 },
+      favouriteSlot: 4,         // right up in your face at the near table
+      favouriteBias: 0.34,
+      aimArc: 0.65,
+      hideTime: [0.28, 0.68],
+      idleTime: [0.80, 1.30],
+      readyTime: 0.74,          // a shorter tell than either of them
+      throwFlight: 0.62,        // and it arrives faster
+      dodgeChance: 0.34,
+      reactDodge: 0.46,         // chance he drops WHILE your shot is in flight
+      rageScale: 0.44,
+      tagline: 'he ducks your shots - splash him anyway',
+      time: 120
+    },
+    {
+      /* =====================================================================
+         PRINCIPAL DAN  --  the boss
+         Three phases, driven off his remaining health. Each phase swaps in a
+         different behaviour block (see `phases` below), so he is not one
+         fight that speeds up -- he is three fights.
+         ===================================================================== */
+      id: 4, char: 'dan', name: 'Principal Dan',
+      subtitle: 'The Last Word In School Discipline',
+      hp: 48, signature: 'watermelon', ownMedicine: true,
+      unlocked: ['banana', 'cookie', 'tomato', 'watermelon'],
+      ammoCounts: { cookie: 6, tomato: 5, watermelon: 4 },
+      charScale: 1.34,          // he physically looms over everyone else
+      aimArc: 0.90,             // by now you can see almost the whole arc
+      throwFlight: 0.70,
+      burstGap: 0.26,
+      dodgeChance: 0.26,
+      reactDodge: 0.30,
+      rageScale: 1.0,           // phases do the escalating, not a slider
+      tagline: 'three phases, and he brings help',
+      boss: true,
+      time: 180,
+
+      phases: [
+        {
+          /* Slow, grand, and completely in control. Long tells, single
+             melons. This phase exists to teach you his rhythm. */
+          at: 1.00, name: 'THE ANNOUNCEMENT',
+          note: 'Take your time. So will he.',
+          burst: 1, readyTime: 1.10,
+          idleTime: [1.05, 1.60], hideTime: [0.50, 1.00],
+          cameo: false, standing: false
+        },
+        {
+          /* He starts throwing pairs AND sends for the others. Billy, Mrs.
+             Gabel and Coach Ken pop up to throw one each. You cannot kill
+             them, but you can hit them to cancel the throw. */
+          at: 0.66, name: 'DETENTION',
+          note: 'He is sending for the others.',
+          burst: 2, readyTime: 0.88,
+          idleTime: [0.80, 1.25], hideTime: [0.34, 0.70],
+          cameo: true, cameoEvery: [3.4, 5.6], standing: false
+        },
+        {
+          /* He stops hiding entirely: plants himself at the near table and
+             throws melons in threes. Impossible to miss, impossible to
+             ignore. */
+          at: 0.33, name: 'FINAL BELL',
+          note: 'He is not hiding any more.',
+          burst: 3, readyTime: 0.72,
+          idleTime: [0.55, 0.85], hideTime: [0.18, 0.34],
+          cameo: true, cameoEvery: [2.6, 4.2], standing: true
+        }
+      ],
+      cameoChars: ['billy', 'gabel', 'coach'],
+      cameoFood:  { billy: 'banana', gabel: 'cookie', coach: 'tomato' }
     }
-    // levels 2-4 (Mrs. Gabel / Coach Ken / Principal Dan) drop in here
   ],
 
   /* --- player ------------------------------------------------------------ */
@@ -148,7 +275,11 @@ RR.CFG = {
     quickWindow: 1.2,
     ownMedicine: 300,
     peelSlip: 500,
-    bankShot: 750,
+    bankShot: 750,            // cookie that banked off a wall first
+    skipShot: 400,            // cookie that skipped off the floor first
+    splashHit: 200,           // tomato that connected without a direct hit
+    cameoHit: 900,            // swatted one of Dan's helpers before they threw
+    caughtDucking: 600,       // ...on somebody who thought cover would save them
     doubleDip: 600,
     rindBreaker: 1000,
     comboStep: 0.10,          // +10% per consecutive hit
@@ -157,7 +288,8 @@ RR.CFG = {
     untouched: 2500,          // cleared without ever being forced down
     timeBonus: 10             // per second remaining on the clock
   },
-  LEVEL_TIME: 90,
+  LEVEL_TIME: 90,             // default; a level can override with `time`
+  CLEAR_SHIRT_BONUS: 1,       // clean shirts handed back for clearing a level
 
   /* --- the slingshot -----------------------------------------------------
      anchorL / anchorR are the two prong knobs expressed as a fraction of the

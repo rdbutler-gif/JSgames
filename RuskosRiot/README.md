@@ -1,5 +1,5 @@
 # Rusko's Riot — Food Fight
-### Level 1 vertical slice: Billy the Bully
+### Four levels: Billy, Mrs. Gabel, Coach Ken, and Principal Dan
 
 Drop this folder's contents next to your original PNGs and open `index.html`
 with Live Server. No build step, no dependencies, no bundler — plain
@@ -150,6 +150,158 @@ Flawless 5000, Untouched 2500, +10/second left on the clock.
 **Peels:** a missed banana that lands near a slot stays there. Next time
 Billy pops up at that slot he goes over on it — free damage, big bonus, and
 your misses stop feeling wasted.
+
+## Levels
+
+| # | Who | HP | Their food | Ammo you hold | `aimArc` |
+|---|---|---|---|---|---|
+| 1 | Billy the Bully | 6 | Bananas | banana (unlimited) | 0.28 |
+| 2 | Mrs. Gabel | 20 | Cookies | + **6 cookies** | 0.45 |
+| 3 | Coach Ken | 26 | Tomatoes | + **5 tomatoes** | 0.65 |
+| 4 | **Principal Dan** | 48 | Watermelons | + **4 melons** | 0.90 |
+
+Score and shirts **carry across the level break**; only the title screen starts
+a fresh run. Clearing a level launders one ruined shirt back
+(`CLEAR_SHIRT_BONUS`), so a bruising level does not bleed straight into the
+next one with nothing left.
+
+## Mrs. Gabel
+
+She is not just Billy with a bigger health bar.
+
+**She throws in pairs.** `burst: 2, burstGap: 0.30` — two cookies leave her
+hand 0.3 s apart, so getting your tray up for the first one is not enough. This
+is why `inbound` became `inbounds[]`: more than one thing can be in the air.
+
+**She favours her steam table.** `favouriteSlot: 2, favouriteBias: 0.42` — she
+drifts back to her own turf about two pop-ups in five. Readable enough that you
+can bait the slot, random enough that you cannot camp it.
+
+**She is faster and rages harder.** Shorter hide/idle windows, a tighter tell
+(0.86 s vs 0.95 s), higher dodge chance, and `rageScale: 0.48` so she winds up
+noticeably quicker as her health drops.
+
+## Cookies, and Own Medicine
+
+The cookie is the first food that rewards thinking rather than aiming.
+
+**Own Medicine** is live from this level: hitting an enemy with their own
+signature food does **double damage** and pays +300. Your unlock order means the
+food you just earned is always the current enemy's own, so every level has an
+efficient answer you have to ration. A cookie does 2, doubled to 4 against
+Gabel — five perfect body shots would take her 20 HP down. You only get six a
+level, so a wasted cookie is a real loss, and the unlimited banana is the grind
+you fall back to.
+
+**It ricochets, and only it does.**
+
+| | What happens | Bonus |
+|---|---|---|
+| Floor skip | Falls short → skips like a stone, up to 2 bounces at 52% energy | +400 |
+| Wall bank | Drifts past `WALL_X` (960) → reflects at 86% | +750 |
+
+Both turn a miss into a live shot, and a bank is the only way to reach someone
+tucked hard against a wall slot. Verified: a short cookie skips twice, a wide
+one banks at |wx| 960, and a banana does neither — it just sails past at 1540.
+
+## Ammo rail
+
+Tiles bottom-left, one per unlocked food, with live counts (∞ for bananas).
+Tap a tile or press `1`–`4`. Rects come from `ammoTiles()`, shared by the
+renderer and the hit test. The tile check runs **before** the drag handler, so
+selecting ammo never accidentally starts a shot. Spending your last cookie
+drops you back to the banana automatically — you are never left holding an
+empty slingshot.
+
+## Coach Ken
+
+His gimmick is that **he reacts to you**. Nobody before him does.
+
+`reactDodge: 0.46` — the moment you release, there is a 46% chance he drops
+behind cover 0.3-0.55 s later, while your shot is still in the air. Direct
+hits cannot reach a ducked target, so roughly half your careful shots at him
+simply do not land.
+
+He is also the fastest so far: a 0.74 s tell (against Billy's 0.95 s), a 0.62 s
+flight, shorter hide and idle windows, and `rageScale: 0.44`. And
+`favouriteSlot: 4` puts him at the near table more than anywhere else — a big,
+easy target that also gives you the least time to react.
+
+## Tomatoes, and what splash actually means here
+
+"Splash damage hits adjacent enemies" is meaningless when only one enemy is on
+screen. So the tomato's rule is different: **it does not need a direct hit.**
+
+If it reaches his depth anywhere within `splash` (360 units) of an exposed part
+of him, it connects for half damage — including a shot that smacks into the
+table in front of him, sails over his head, or drifts wide of the hit box. That
+makes it the answer to a man who ducks, which is exactly why it unlocks on his
+level.
+
+The gap is measured to the **nearest edge** of his exposed body, not his centre.
+Measuring to the centre meant a tomato bursting on the table directly in front
+of him scored as ~560 units away and did nothing — the precise opposite of what
+a tomato should do.
+
+Measured, all against Coach Ken at the near table:
+
+| Shot | Banana | Cookie | Tomato |
+|---|---|---|---|
+| Clean hit | 1 | 2 | **8** (direct + Own Medicine) |
+| Drifts wide of the hit box | 0 | 0 | **4** |
+| Smacks into the table | 0 | 0 | **4** |
+| He ducks mid-flight | 0 | 0 | **4** |
+| He is fully out of sight | 0 | 0 | 0 |
+
+Over 14 forced mid-flight dodges: bananas dealt **0**, tomatoes dealt **56**.
+That is the level in one number. Five tomatoes a level keeps it honest.
+
+Catching him behind cover pays `caughtDucking` (+600) on top of the splash
+bonus — a splash hit on a ducking Ken scores 1,200.
+
+## Principal Dan: the boss
+
+He is not one fight that speeds up. He is three fights, gated on his health.
+A phase is a block of behaviour merged over the level config into `G.pc`, so
+`updateEnemy` reads one object and never has to know it is fighting a boss.
+
+| | Phase | At | Behaviour |
+|---|---|---|---|
+| 1 | **THE ANNOUNCEMENT** | 100% | Single melons, 1.10 s tells, uses all five slots. Slow and completely in control — this phase exists to teach you his rhythm. |
+| 2 | **DETENTION** | 66% | Throws in pairs **and sends for the others**. |
+| 3 | **FINAL BELL** | 33% | Stops hiding. Plants himself at the near table and throws in threes. Impossible to miss, impossible to ignore. |
+
+He carries `charScale: 1.34`, so he physically looms over the three who came
+before him. The health bar shows the phase gates as notches, so you can see the
+next escalation coming.
+
+### The helpers
+
+From phase 2, Billy, Mrs. Gabel and Coach Ken pop up to throw one each — their
+own food, so you get bananas, cookies and tomatoes coming at you from a second
+direction while Dan works. **You cannot kill them**, but they wind up in plain
+sight for ~0.8 s, and hitting one in that window cancels the throw entirely and
+pays +900.
+
+They are "occupants" — the same geometry, clipping and hit-testing that serves
+the enemy, so this cost no duplicate code. That refactor (`dropY`, `hitBand`,
+`occH` taking an occupant instead of reading the global enemy) is the only
+structural change the boss needed.
+
+### Melons and demolition
+
+The melon is the only ammo that changes the room. Put one into a piece of cover
+and **it is gone for the rest of the fight** — the slot stays playable but
+leaves only rubble (`BROKEN_COVER_H`, 120 units) to hide behind, so whoever pops
+up there is nearly fully exposed.
+
+You get four. Every one is a choice: 10 damage now (5, doubled by Own Medicine),
+or a permanently easier shot for the rest of the fight. Rind Breaker pays +1000.
+
+Damage ladder against Dan, measured: **melon 10 > tomato 4 > banana 1.**
+
+Beating him reaches a proper victory screen rather than the normal level-clear
+card, with all four of them wearing it.
 
 ## The slingshot
 

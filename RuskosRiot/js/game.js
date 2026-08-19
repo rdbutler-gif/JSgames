@@ -72,8 +72,11 @@ const Snd = (function () {
    GAME STATE
    -------------------------------------------------------------------------- */
 const G = {
-  mode: 'load',            // load | title | play | clear | over
+  mode: 'load',            // load | title | play | clear | over | laundry
+  levelIdx: 0,
   level: CFG.LEVELS[0],
+  ammoLeft: {},            // per-level counts; banana is Infinity
+  banner: null,            // transient "LEVEL 2 / COOKIES UNLOCKED" strip
   t: 0, dt: 0,
   clock: CFG.LEVEL_TIME,
   score: 0, combo: 0, comboMul: 1,
@@ -103,11 +106,24 @@ const player = {
 
 const enemy = {
   slot: 4, state: 'hidden', t: 0, dur: 0.8, pop: 0,
-  hp: 6, maxHp: 6, poppedAt: 0, hitThisPop: false
+  hp: 6, maxHp: 6, poppedAt: 0, hitThisPop: false,
+  dodgeAt: 0,                 // Coach Ken: when to bail on a shot in flight
+  char: null, hscale: 1
 };
 
+/* Props a melon has destroyed, by slot index. Reset every level. */
+let slotBroken = [];
+
+/* One of Dan's helpers, mid-cameo. They cannot be killed, but hitting one
+   cancels the throw they were winding up. Only ever one at a time. */
+let cameo = null;
+let cameoTimer = 0;
+
 let ball = null;          // the player's food in flight
-let inbound = null;       // Billy's food coming back at you
+/* An array, not a single object: Mrs. Gabel throws cookies in PAIRS, so more
+   than one can be in the air at once. Each carries its own delay and flight
+   time and resolves independently. */
+let inbounds = [];
 const splats = [];        // world splats
 const pops   = [];        // floating score text
 const peels  = [];        // banana peels on the floor  { slot, fy, wx }
@@ -122,31 +138,65 @@ let shirtCard = null;     // { t, dur, hold, justHit }
 /* --------------------------------------------------------------------------
    HELPERS TIED TO THE ART
    -------------------------------------------------------------------------- */
-const charKey = st => 'char.' + G.level.char + '.' + st;
-const coverH  = slot => A.dim('props.' + slot.prop).dh;         // design units
-const charH   = () => A.dim(charKey('idle')).dh;
-const hideAmt = slot => charH() - coverH(slot) + 60;
+/* Everything below takes an "occupant" -- an object with {slot, pop, state,
+   char, hscale}. The boss and his cameo helpers are both occupants, so the
+   same geometry, clipping and hit-testing serves both without duplication. */
+const charKey = (st, char) => 'char.' + (char || G.level.char) + '.' + st;
 
-/** How far the enemy sprite is pushed down right now, in design units. */
-function dropY() {
-  const s = CFG.SLOTS[enemy.slot];
-  return (1 - enemy.pop) * hideAmt(s);
+/** Cover height for a slot, in design units. A slot whose prop has been
+    blown apart by a melon leaves only rubble to hide behind. */
+function coverH(slot) {
+  return slotBroken[CFG.SLOTS.indexOf(slot)] ? CFG.BROKEN_COVER_H
+                                             : A.dim('props.' + slot.prop).dh;
 }
 
-/** The vertical band of the enemy you can actually hit, in design units
-    measured up from the floor. Returns null when he is not exposed at all. */
-function hitBand() {
-  const s = CFG.SLOTS[enemy.slot];
+/** Standing height of an occupant. Principal Dan carries a charScale so he
+    physically looms over the three who came before him. */
+function occH(o) {
+  return A.dim(charKey('idle', o.char)).dh * (o.hscale || 1);
+}
+const hideAmt = (slot, o) => occH(o) - coverH(slot) + 60;
+
+/** How far this occupant's sprite is pushed down right now, in design units. */
+function dropY(o) {
+  o = o || enemy;
+  return (1 - o.pop) * hideAmt(CFG.SLOTS[o.slot], o);
+}
+
+/** The vertical band you can actually hit, in design units measured up from
+    the floor. Null when they are not exposed at all. */
+function hitBand(o) {
+  o = o || enemy;
+  const s = CFG.SLOTS[o.slot];
   const lo = coverH(s);
-  const hi = charH() - dropY();
+  const hi = occH(o) - dropY(o);
   return (hi - lo) > 40 ? { lo, hi } : null;
 }
 
-const spriteFor = () => ({
+const POSE = {
   hidden: 'idle', rising: 'idle', descend: 'idle', idle: 'idle',
   duck: 'duck', ready: 'ready', throw: 'throw',
   angry: 'angry', surprised: 'surprised'
-})[enemy.state];
+};
+const spriteFor = o => POSE[(o || enemy).state];
+
+/* --------------------------------------------------------------------------
+   AMMO
+   -------------------------------------------------------------------------- */
+const ammoCount = k => (G.ammoLeft[k] === undefined ? Infinity : G.ammoLeft[k]);
+const ammoList  = () => G.level.unlocked || ['banana'];
+
+function selectAmmo(k) {
+  if (!ammoList().includes(k) || ammoCount(k) <= 0) return false;
+  if (G.ammo !== k) { G.ammo = k; Snd.warn(); }
+  return true;
+}
+
+/** Drop back to the banana when a limited food runs dry -- you should never
+    be left holding an empty slingshot. */
+function ensureAmmo() {
+  if (ammoCount(G.ammo) <= 0) G.ammo = 'banana';
+}
 
 /* --------------------------------------------------------------------------
    SHIRTS
@@ -178,6 +228,38 @@ function shirtCanvas(food) {
 }
 
 /* --------------------------------------------------------------------------
+   BOSS PHASES
+   A phase is just a block of behaviour keyed to remaining health. G.pc is the
+   level config with the current phase merged over it, so updateEnemy reads
+   one object and never has to know whether it is fighting a boss or not.
+   -------------------------------------------------------------------------- */
+function refreshPhase(silent) {
+  const L = G.level;
+  if (!L.phases) { G.pc = L; G.phaseIdx = -1; return; }
+  const f = enemy.maxHp ? enemy.hp / enemy.maxHp : 1;
+  let idx = 0;
+  L.phases.forEach((ph, i) => { if (f <= ph.at) idx = i; });
+  if (idx === G.phaseIdx) return;
+
+  const first = G.phaseIdx < 0;
+  G.phaseIdx = idx;
+  G.pc = Object.assign({}, L, L.phases[idx]);
+
+  if (!first && !silent) {
+    const ph = L.phases[idx];
+    G.banner = { t: 0, dur: 3.0, title: 'PHASE ' + (idx + 1) + '  -  ' + ph.name,
+                 sub: ph.note, tip: null };
+    G.flash = 1; G.shake = 26; G.shakeT = 0.45;
+    inbounds.length = 0;
+    cameo = null;
+    cameoTimer = 1.2;
+    // he withdraws for a beat, then comes back meaner
+    setState('descend', CFG.POP_TIME);
+    Snd.lose();
+  }
+}
+
+/* --------------------------------------------------------------------------
    ENEMY STATE MACHINE
    -------------------------------------------------------------------------- */
 function setState(st, dur) { enemy.state = st; enemy.t = 0; enemy.dur = dur; }
@@ -189,6 +271,14 @@ function rage() {
 }
 
 function pickSlot() {
+  const L = G.level;
+  // Mrs. Gabel keeps drifting back to her steam table. It makes her readable
+  // in a way Billy is not -- you can bait that slot -- without making her
+  // predictable enough to camp.
+  if (L.favouriteSlot != null && enemy.slot !== L.favouriteSlot &&
+      Math.random() < (L.favouriteBias || 0)) {
+    enemy.slot = L.favouriteSlot; return;
+  }
   let i;
   do { i = Math.floor(Math.random() * CFG.SLOTS.length); } while (i === enemy.slot && CFG.SLOTS.length > 1);
   enemy.slot = i;
@@ -196,27 +286,35 @@ function pickSlot() {
 
 function updateEnemy(dt) {
   enemy.t += dt;
-  const L = G.level, done = enemy.t >= enemy.dur;
+  const L = G.pc || G.level, done = enemy.t >= enemy.dur;
 
   switch (enemy.state) {
     case 'hidden':
       enemy.pop = 0;
+      // FINAL BELL: he stops hiding. Plants himself at the near table and
+      // never goes back down -- trivial to hit, and relentless.
+      if (L.standing) { enemy.slot = 4; checkPeel(); setState('rising', CFG.POP_TIME); break; }
       if (done) { pickSlot(); checkPeel(); setState('rising', CFG.POP_TIME); }
       break;
 
     case 'rising':
       enemy.pop = ease(clamp(enemy.t / enemy.dur, 0, 1));
       if (done) {
-        enemy.pop = 1; enemy.hitThisPop = false; enemy.poppedAt = G.t;
+        enemy.pop = 1; enemy.hitThisPop = false; enemy.poppedAt = G.t; enemy.dodgeAt = 0;
         setState('idle', rnd(L.idleTime[0], L.idleTime[1]) * rage());
       }
       break;
 
     case 'idle':
       enemy.pop = 1;
+      // Coach Ken sees it coming and drops. Nobody before him reacts to the
+      // player at all, which is exactly why the tomato unlocks here.
+      if (!L.standing && enemy.dodgeAt && G.t >= enemy.dodgeAt) {
+        enemy.dodgeAt = 0; setState('duck', 0.62); break;
+      }
       // mid-idle bob: he drops behind cover for a moment, so you have to
       // read him rather than just holding the slingshot at full draw.
-      if (!done && enemy.t > enemy.dur * 0.4 && Math.random() < L.dodgeChance * dt) {
+      if (!L.standing && !done && enemy.t > enemy.dur * 0.4 && Math.random() < L.dodgeChance * dt) {
         setState('duck', 0.55); break;
       }
       if (done) { Snd.warn(); setState('ready', L.readyTime * rage()); }
@@ -229,18 +327,23 @@ function updateEnemy(dt) {
 
     case 'ready':                    // <- the GET DOWN tell
       enemy.pop = 1;
+      if (!L.standing && enemy.dodgeAt && G.t >= enemy.dodgeAt) {
+        enemy.dodgeAt = 0; setState('duck', 0.62); break;
+      }
       if (done) { throwAtPlayer(); setState('throw', 0.5); }
       break;
 
     case 'throw':
       enemy.pop = 1;
-      if (done) setState('descend', CFG.POP_TIME);
+      if (done) setState(L.standing ? 'idle' : 'descend',
+                         L.standing ? rnd(L.idleTime[0], L.idleTime[1]) : CFG.POP_TIME);
       break;
 
     case 'angry':
     case 'surprised':
       enemy.pop = 1;
-      if (done) setState('descend', CFG.POP_TIME);
+      if (done) setState(L.standing ? 'idle' : 'descend',
+                         L.standing ? rnd(L.idleTime[0], L.idleTime[1]) : CFG.POP_TIME);
       break;
 
     case 'descend':
@@ -263,16 +366,52 @@ function checkPeel() {
 /* --------------------------------------------------------------------------
    SHOOTING
    -------------------------------------------------------------------------- */
+
+/** Distance from the shot to the NEAREST exposed part of the enemy, in design
+    units -- not to his centre. Measuring to the centre meant a tomato bursting
+    on the table directly in front of him scored as ~560 units away and did
+    nothing, which is the opposite of what a tomato should do. Zero means the
+    shot is already inside his body box. */
+function splashGap(s) {
+  const lo  = coverH(s);
+  const top = Math.max(occH(enemy) - dropY(), lo);
+  const dy  = ball.h > top ? ball.h - top : (ball.h < lo ? lo - ball.h : 0);
+  const dx  = Math.max(0, Math.abs(ball.wx - s.wx) - CFG.HIT_HALF_W);
+  return Math.hypot(dx, dy);
+}
+
+/** Tomato logic: no direct hit required. If the shot reaches the enemy's depth
+    anywhere within `splash` of their body -- including smacking into the cover
+    in front of them -- it still connects, for a fraction of the damage. This
+    is the counter to anybody who ducks. */
+function trySplash(s) {
+  const a = CFG.AMMO[ball.ammo];
+  if (!a.splash || enemy.hitThisPop) return false;
+  if (enemy.pop < 0.06) return false;               // genuinely gone, not just low
+  if (splashGap(s) > a.splash) return false;
+  resolveHit(false, s, { splash: true, ducked: enemy.pop < 0.92 });
+  return true;
+}
 function fire(power, vwx) {
-  const a = CFG.AMMO[G.ammo];
+  ensureAmmo();
+  const key = G.ammo;
   ball = {
     fy: CFG.LAUNCH_FY, h: CFG.H0, wx: 0,
     vfy: -power * CFG.VFY,
     vh:  power * CFG.VH,
     vwx: clamp(vwx, -CFG.LAT_MAX, CFG.LAT_MAX),
-    rot: 0, ammo: G.ammo, dead: false, trail: []
+    rot: 0, ammo: key, dead: false, trail: [],
+    bounces: 0, banked: false, skipped: false
   };
+  if (G.ammoLeft[key] !== undefined) G.ammoLeft[key]--;
+
+  // roll the reactive dodge the instant you commit to the shot
+  const rd = (G.pc || G.level).reactDodge || 0;
+  enemy.dodgeAt = (rd && Math.random() < rd && (enemy.state === 'idle' || enemy.state === 'ready'))
+    ? G.t + rnd(0.30, 0.55) : 0;
+
   player.lastShot = G.t;
+  ensureAmmo();
   Snd.throw_();
 }
 
@@ -288,21 +427,74 @@ function updateBall(dt) {
   ball.trail.push({ fy: ball.fy, h: ball.h, wx: ball.wx });
   if (ball.trail.length > 14) ball.trail.shift();
 
+  const ammo0 = CFG.AMMO[ball.ammo];
+
+  // a melon takes out any cover it runs into, at any slot, before anything else
+  if (ammo0.breaksCover) {
+    for (let i = 0; i < CFG.SLOTS.length; i++) {
+      const sl = CFG.SLOTS[i];
+      if (slotBroken[i]) continue;
+      if (!(prevFy > sl.floorY && ball.fy <= sl.floorY)) continue;
+      if (ball.h > coverH(sl)) continue;                    // sailed clean over
+      if (Math.abs(ball.wx - sl.wx) > A.dim('props.' + sl.prop).dw * 0.5) continue;
+      breakCover(i, sl);
+      return;
+    }
+  }
+
+  // swat one of Dan's helpers out of their wind-up
+  if (cameo && cameo.pop > 0.5) {
+    const cs = CFG.SLOTS[cameo.slot];
+    if (prevFy > cs.floorY && ball.fy <= cs.floorY) {
+      const cb = hitBand(cameo);
+      if (cb && Math.abs(ball.wx - cs.wx) < CFG.HIT_HALF_W &&
+          ball.h >= cb.lo && ball.h <= cb.hi) { hitCameo(cs); return; }
+    }
+  }
+
   // did it cross the plane the enemy is standing on?
   const s = CFG.SLOTS[enemy.slot];
   if (prevFy > s.floorY && ball.fy <= s.floorY) {
-    const band = hitBand();
+    const band = hitBand(enemy);
     const near = Math.abs(ball.wx - s.wx) < CFG.HIT_HALF_W;
     if (band && near && ball.h >= band.lo && ball.h <= band.hi && !enemy.hitThisPop) {
       const headLo = band.hi - (band.hi - band.lo) * CFG.HEAD_FRAC;
       resolveHit(ball.h >= headLo, s);
       return;
     }
+    // no clean hit -- but a tomato does not need one
+    if (trySplash(s)) return;
     // close but no cigar -- he notices
     if (Math.abs(ball.wx - s.wx) < CFG.HIT_HALF_W * 2.6 && enemy.pop > 0.6 &&
         (enemy.state === 'idle' || enemy.state === 'ready')) {
       setState('surprised', 0.7);
     }
+  }
+
+  const a = CFG.AMMO[ball.ammo];
+
+  // Cookies bank off the side walls. Going the long way round is worth more
+  // than a straight hit, and it is the only way to reach somebody tucked in
+  // hard against a wall slot.
+  if (a.ricochet && Math.abs(ball.wx) > CFG.WALL_X && Math.sign(ball.wx) === Math.sign(ball.vwx)) {
+    ball.wx = Math.sign(ball.wx) * CFG.WALL_X;
+    ball.vwx *= -0.86;
+    ball.banked = true;
+    addSplat(ball.fy, ball.wx, a.splat, 0.20, ball.h);
+    Snd.hit();
+  }
+
+  // ...and skip off the floor, so a shot that falls short still has a life
+  // left in it.
+  if (a.ricochet && ball.h <= 0 && ball.bounces < a.maxBounces && ball.fy > CFG.FLOOR_TOP + 60) {
+    ball.h = 1;
+    ball.vh = Math.abs(ball.vh) * a.bounceKeep;
+    ball.vfy *= 0.88;
+    ball.bounces++;
+    ball.skipped = true;
+    addSplat(ball.fy, ball.wx, a.splat, 0.18, 0);
+    Snd.miss();
+    return;
   }
 
   if (ball.h <= 0 || ball.fy <= CFG.FLOOR_TOP) land();
@@ -330,19 +522,26 @@ function land() {
   ball = null;
 }
 
-function resolveHit(headshot, s) {
+function resolveHit(headshot, s, opt) {
+  opt = opt || {};
   const a   = CFG.AMMO[ball.ammo];
   const own = G.level.ownMedicine && ball.ammo === G.level.signature;
   let dmg = a.dmg * (headshot ? 2 : 1) * (own ? 2 : 1);
+  if (opt.splash) dmg = Math.max(1, Math.round(dmg * (a.splashDmg || 0.5)));
 
-  addSplat(s.floorY, s.wx, a.splat, 0.8, charH() * 0.55);
+  // grab the trick-shot flags BEFORE the ball is discarded
+  const skipped = ball.skipped, banked = ball.banked;
+  addSplat(s.floorY, s.wx, a.splat, opt.splash ? 1.15 : 0.8, occH(enemy) * 0.55);
   enemy.hitThisPop = true;
   ball = null;
 
   let label = headshot ? 'FACEPLANT!' : 'SPLAT!';
   let bonus = 0;
-  if (headshot) label = 'FACEPLANT!';
-  if (own) { bonus += CFG.SCORE.ownMedicine; label = 'OWN MEDICINE!'; }
+  if (own)          { bonus += CFG.SCORE.ownMedicine;  label = 'OWN MEDICINE!'; }
+  if (skipped)      { bonus += CFG.SCORE.skipShot;     label = 'SKIP SHOT!'; }
+  if (banked)       { bonus += CFG.SCORE.bankShot;     label = 'BANK SHOT!'; }
+  if (opt.splash)   { bonus += CFG.SCORE.splashHit;    label = 'SPLASH!'; }
+  if (opt.ducked)   { bonus += CFG.SCORE.caughtDucking; label = 'CAUGHT DUCKING!'; }
   if (G.t - enemy.poppedAt < CFG.SCORE.quickWindow) { bonus += CFG.SCORE.quickDraw; }
 
   damage(dmg, label, bonus, false, headshot);
@@ -363,36 +562,146 @@ function damage(dmg, label, bonus, isPeel, headshot) {
   pts = Math.round(pts * G.comboMul);
   G.score += pts;
 
-  addPop(slotX(s), s.floorY - charH() * scale(s.floorY) * 0.75, label, isPeel ? '#ffd23f' : '#fff', 1.1);
-  addPop(slotX(s), s.floorY - charH() * scale(s.floorY) * 0.55, '+' + pts, '#8ef58a', 1.0);
+  addPop(slotX(s), s.floorY - occH(enemy) * scale(s.floorY) * 0.75, label, isPeel ? '#ffd23f' : '#fff', 1.1);
+  addPop(slotX(s), s.floorY - occH(enemy) * scale(s.floorY) * 0.55, '+' + pts, '#8ef58a', 1.0);
 
   if (enemy.hp <= 0) { winLevel(); return; }
   if (!isPeel) setState('angry', 0.62);
+  refreshPhase();                     // may hand the fight to the next phase
 }
 
 function breakCombo() { G.misses++; G.combo = 0; G.comboMul = 1; }
+
+/* --------------------------------------------------------------------------
+   MELONS: DEMOLITION
+   A melon that runs into a piece of cover takes it out of the fight for good.
+   The slot stays playable but only leaves rubble to hide behind, so whoever
+   pops up there is almost fully exposed for the rest of the level.
+   -------------------------------------------------------------------------- */
+function breakCover(i, sl) {
+  const wasH = coverH(sl);
+  slotBroken[i] = true;
+  addSplat(sl.floorY, sl.wx, 'watermelon_splat', 1.6, wasH * 0.6);
+  const pts = Math.round(CFG.SCORE.rindBreaker * G.comboMul);
+  G.score += pts;
+  addPop(slotX(sl), sl.floorY - 240, 'RIND BREAKER!', '#ffd23f', 1.3);
+  addPop(slotX(sl), sl.floorY - 170, '+' + pts, '#8ef58a', 1.1);
+  G.shake = 30; G.shakeT = 0.42;
+  Snd.splat();
+  ball = null;
+}
+
+/* --------------------------------------------------------------------------
+   CAMEOS
+   From phase 2 Dan sends for the three you already beat. They cannot be
+   killed and they are not worth health -- but they wind up in plain sight,
+   and hitting one cancels the throw. Ignore them and you are eating food
+   from two directions at once.
+   -------------------------------------------------------------------------- */
+function spawnCameo() {
+  const L = G.pc || G.level;
+  const chars = L.cameoChars || [];
+  if (!chars.length) return;
+  let slot;
+  do { slot = Math.floor(Math.random() * CFG.SLOTS.length); } while (slot === enemy.slot);
+  cameo = {
+    char: chars[Math.floor(Math.random() * chars.length)],
+    slot, pop: 0, state: 'rising', t: 0, hscale: 1
+  };
+  cameo.food = (L.cameoFood || {})[cameo.char] || 'banana';
+}
+
+function cameoThrow() {
+  const s = CFG.SLOTS[cameo.slot];
+  inbounds.push({
+    t: 0, dur: (G.pc || G.level).throwFlight * 1.05,
+    x0: slotX(s), y0: s.floorY - occH(cameo) * scale(s.floorY) * 0.72,
+    s0: scale(s.floorY) * 0.55,
+    sprite: 'food.' + cameo.food,
+    splat: 'food.' + cameo.food + '_splat'
+  });
+  Snd.throw_();
+}
+
+function hitCameo(cs) {
+  const a = CFG.AMMO[ball.ammo];
+  const sc = scale(cs.floorY), h = occH(cameo);
+  addSplat(cs.floorY, cs.wx, a.splat, 0.8, h * 0.55);
+  const pts = Math.round(CFG.SCORE.cameoHit * G.comboMul);
+  G.score += pts;
+  addPop(slotX(cs), cs.floorY - h * sc * 0.78, 'SWATTED!', '#8ef58a', 1.2);
+  addPop(slotX(cs), cs.floorY - h * sc * 0.55, '+' + pts, '#8ef58a', 1.0);
+  cameo = null;
+  G.shake = CFG.SHAKE_HIT; G.shakeT = 0.2;
+  Snd.hit();
+  ball = null;
+}
+
+function updateCameo(dt) {
+  const L = G.pc || G.level;
+  if (!L.cameo || player.dead) { cameo = null; return; }
+  if (cameo) {
+    cameo.t += dt;
+    switch (cameo.state) {
+      case 'rising':
+        cameo.pop = ease(clamp(cameo.t / 0.30, 0, 1));
+        if (cameo.t >= 0.30) { cameo.pop = 1; cameo.state = 'ready'; cameo.t = 0; Snd.warn(); }
+        break;
+      case 'ready':                      // the window in which you can swat them
+        cameo.pop = 1;
+        if (cameo.t >= 0.78) { cameoThrow(); cameo.state = 'throw'; cameo.t = 0; }
+        break;
+      case 'throw':
+        cameo.pop = 1;
+        if (cameo.t >= 0.40) { cameo.state = 'descend'; cameo.t = 0; }
+        break;
+      case 'descend':
+        cameo.pop = 1 - ease(clamp(cameo.t / 0.30, 0, 1));
+        if (cameo.t >= 0.30) { cameo = null; cameoTimer = rnd(...(L.cameoEvery || [3.5, 5.5])); }
+        break;
+    }
+    return;
+  }
+  cameoTimer -= dt;
+  if (cameoTimer <= 0) spawnCameo();
+}
 
 /* --------------------------------------------------------------------------
    BILLY THROWING BACK
    -------------------------------------------------------------------------- */
 function throwAtPlayer() {
   const s = CFG.SLOTS[enemy.slot];
-  inbound = {
-    t: 0, dur: G.level.throwFlight,
-    x0: slotX(s), y0: s.floorY - charH() * scale(s.floorY) * 0.72,
-    s0: scale(s.floorY) * 0.55,
-    sprite: 'food.' + G.level.signature,
-    splat: 'food.' + G.level.signature + '_splat'
-  };
+  const L = G.pc || G.level;
+  const count = L.burst || 1;
+  for (let i = 0; i < count; i++) {
+    inbounds.push({
+      t: -i * (L.burstGap || 0.3),          // negative t = still winding up
+      dur: L.throwFlight,
+      x0: slotX(s) + (i ? rnd(-70, 70) : 0),
+      y0: s.floorY - occH(enemy) * scale(s.floorY) * 0.72,
+      s0: scale(s.floorY) * 0.55,
+      sprite: 'food.' + L.signature,
+      splat: 'food.' + L.signature + '_splat'
+    });
+  }
   Snd.throw_();
 }
 
-function updateInbound(dt) {
-  if (!inbound) return;
-  inbound.t += dt;
-  if (inbound.t < inbound.dur) return;
+function updateInbounds(dt) {
+  for (let i = inbounds.length - 1; i >= 0; i--) {
+    const inb = inbounds[i];
+    const wasWinding = inb.t < 0;
+    inb.t += dt;
+    if (wasWinding && inb.t >= 0) Snd.throw_();   // second cookie leaves her hand
+    if (inb.t < inb.dur) continue;
+    inbounds.splice(i, 1);
+    resolveInbound();
+  }
+}
+
+function resolveInbound() {
+  if (player.dead) return;              // already splatted by the first one
   const hit = player.exposed;
-  inbound = null;
   if (hit) loseShirt();
   else {
     // it smacks into the raised tray: harmless, but you feel it and the tray
@@ -423,6 +732,12 @@ function loseShirt() {
                 justHit: CFG.SHIRTS - G.shirts - 1 };
   player.dead = true; player.deadT = 0;
   player.drawing = false;
+  // getting hit cancels whatever shot was cocked -- without this the drag
+  // object survives the three-shirt card, and the pointerup that follows
+  // (a real player's hand is still mid-release when the hit lands) fires it
+  // anyway, wasting ammo on a shot the player never meant to take.
+  drag = null; kbCharge = 0;
+  inbounds.length = 0;              // the rest of the burst is moot now
   fullSplat = { t: 0, dur: 1.5, sprite: 'food.' + G.level.signature + '_splat' };
   G.shake = CFG.SHAKE_SPLAT; G.shakeT = 0.5;
   G.flash = 1;
@@ -513,21 +828,66 @@ function winLevel() {
   bonus += Math.max(0, Math.round(G.clock)) * CFG.SCORE.timeBonus;
   G.score += bonus;
   G.endBonus = bonus;
-  G.mode = 'clear';
-  ball = null; inbound = null;
+  // a clean shirt back for clearing -- keeps a bruising level from bleeding
+  // straight into the next one with nothing left
+  G.laundered = 0;
+  for (let i = CFG.SHIRTS - 1; i >= 0 && G.laundered < CFG.CLEAR_SHIRT_BONUS; i--) {
+    if (shirtSplats[i]) { shirtSplats[i] = null; G.shirts++; G.laundered++; }
+  }
+  G.mode = G.level.boss ? 'victory' : 'clear';
+  ball = null; inbounds.length = 0; cameo = null;
   Snd.win();
 }
 
-function startLevel() {
-  G.mode = 'play'; G.clock = CFG.LEVEL_TIME;
-  G.score = 0; G.combo = 0; G.comboMul = 1;
-  G.shirts = CFG.SHIRTS; G.misses = 0; G.hits = 0; G.forcedDown = 0;
-  enemy.hp = enemy.maxHp = G.level.hp;
-  enemy.slot = 4; setState('hidden', 1.0); enemy.pop = 0;
-  ball = null; inbound = null; fullSplat = null;
-  shirtSplats = new Array(CFG.SHIRTS).fill(null); shirtCard = null;
+const hasNextLevel = () => G.levelIdx + 1 < CFG.LEVELS.length;
+
+/** idx = which level; fresh = start a brand new run rather than continuing. */
+function startLevel(idx, fresh) {
+  G.levelIdx = clamp(idx || 0, 0, CFG.LEVELS.length - 1);
+  G.level = CFG.LEVELS[G.levelIdx];
+  const L = G.level;
+
+  G.mode = 'play';
+  G.clock = L.time || CFG.LEVEL_TIME;
+  G.combo = 0; G.comboMul = 1;
+  G.misses = 0; G.hits = 0; G.forcedDown = 0;
+
+  if (fresh) {
+    G.score = 0;
+    G.shirts = CFG.SHIRTS;
+    shirtSplats = new Array(CFG.SHIRTS).fill(null);
+  }
+
+  // ammo is restocked per level; banana stays unlimited
+  G.ammoLeft = {};
+  for (const k of (L.unlocked || ['banana'])) {
+    const c = (L.ammoCounts && L.ammoCounts[k] !== undefined) ? L.ammoCounts[k] : CFG.AMMO[k].count;
+    if (c !== Infinity) G.ammoLeft[k] = c;
+  }
+  G.ammo = (L.unlocked && L.unlocked.length > 1) ? L.signature : 'banana';
+  ensureAmmo();
+
+  enemy.hp = enemy.maxHp = L.hp;
+  enemy.slot = 4; setState('hidden', 1.0); enemy.pop = 0; enemy.dodgeAt = 0;
+  enemy.char = L.char; enemy.hscale = L.charScale || 1;
+  slotBroken = new Array(CFG.SLOTS.length).fill(false);
+  cameo = null; cameoTimer = 3.0;
+  G.phaseIdx = -1; G.pc = L; refreshPhase(true);
+  ball = null; inbounds.length = 0; fullSplat = null; shirtCard = null;
   splats.length = 0; pops.length = 0; peels.length = 0;
+  tray.raise = 1; drag = null;
   player.dead = false; player.drawing = false; player.lastShot = -9;
+
+  G.banner = {
+    t: 0, dur: 3.4,
+    title: 'LEVEL ' + L.id + '  -  ' + L.name.toUpperCase(),
+    sub: L.subtitle,
+    // the key hint has to track how many foods you actually hold
+    tip: L.unlocked.length > 1
+      ? CFG.AMMO[L.signature].label.toUpperCase() + ' UNLOCKED  -  tap a tile or press ' +
+        L.unlocked.map((_, i) => i + 1).join(' / ')
+      : null
+  };
 }
 
 /* --------------------------------------------------------------------------
@@ -546,9 +906,25 @@ function toCanvas(e) {
 
 function pressAnywhere() {
   Snd.on();
-  if (G.mode === 'title') { startLevel(); return true; }
-  if (G.mode === 'clear' || G.mode === 'over') { G.mode = 'title'; return true; }
+  if (G.mode === 'title') { startLevel(0, true); return true; }
+  if (G.mode === 'clear') {
+    // score and shirts carry forward; only the title screen starts fresh
+    if (hasNextLevel()) startLevel(G.levelIdx + 1, false);
+    else G.mode = 'title';
+    return true;
+  }
+  if (G.mode === 'over' || G.mode === 'victory') { G.mode = 'title'; return true; }
   return false;
+}
+
+/* --------------------------------------------------------------------------
+   AMMO RAIL  --  one tile per unlocked food, tap to select
+   Rects come from here for both the renderer and the hit test, so a tile can
+   never be drawn somewhere you cannot press.
+   -------------------------------------------------------------------------- */
+function ammoTiles() {
+  const list = ammoList(), size = 146, gap = 14;
+  return list.map((k, i) => ({ key: k, r: { x: 32 + i * (size + gap), y: 2142, w: size, h: size } }));
 }
 
 cvs.addEventListener('pointerdown', e => {
@@ -563,8 +939,15 @@ cvs.addEventListener('pointerdown', e => {
     return;
   }
   if (pressAnywhere()) return;
-  if (G.mode !== 'play' || player.dead || ball) return;
+  if (G.mode !== 'play' || player.dead) return;
   const p = toCanvas(e);
+
+  // an ammo tile gets the tap before the slingshot does
+  for (const t of ammoTiles()) {
+    if (inRect(p, t.r)) { selectAmmo(t.key); return; }
+  }
+  if (ball) return;
+
   drag = { sx: p.x, sy: p.y, x: p.x, y: p.y };
   player.drawing = true;
   try { cvs.setPointerCapture(e.pointerId); } catch (_) {}
@@ -580,8 +963,12 @@ function endDrag() {
   const pullY = drag.y - drag.sy;
   const mag = Math.hypot(pullX, pullY);
   player.drawing = false;
-  if (mag >= CFG.MIN_DRAG) fire(clamp(mag / CFG.MAX_DRAG, 0, 1), pullX * CFG.LAT_K);
   drag = null;
+  // belt and suspenders: loseShirt() already clears drag the instant the hit
+  // lands, but if a release event is somehow still in flight, dead must not
+  // be able to fire.
+  if (player.dead) return;
+  if (mag >= CFG.MIN_DRAG) fire(clamp(mag / CFG.MAX_DRAG, 0, 1), pullX * CFG.LAT_K);
 }
 cvs.addEventListener('pointerup',     e => { e.preventDefault(); endDrag(); });
 // safety net: a release that lands outside the canvas must still fire
@@ -605,6 +992,11 @@ addEventListener('keydown', e => {
     e.preventDefault();
     if (pressAnywhere()) return;
     if (G.mode === 'play' && !player.dead && !ball) { player.drawing = true; kbCharge = 0; Snd.draw(); }
+  }
+  // 1..4 pick a food
+  if (G.mode === 'play' && k >= '1' && k <= '4') {
+    const list = ammoList(), idx = +k - 1;
+    if (list[idx]) selectAmmo(list[idx]);
   }
   // abort the draw and drop back behind the tray
   if ((k === 'escape' || k === 's' || k === 'arrowdown') && player.drawing) {
@@ -674,12 +1066,15 @@ function update(dt) {
     return;
   }
 
+  if (G.banner) { G.banner.t += dt; if (G.banner.t > G.banner.dur) G.banner = null; }
+
   G.clock -= dt;
   if (G.clock <= 0) { G.clock = 0; G.mode = 'over'; Snd.lose(); return; }
 
   updateEnemy(dt);
+  updateCameo(dt);
   updateBall(dt);
-  updateInbound(dt);
+  updateInbounds(dt);
 }
 
 /* --------------------------------------------------------------------------
@@ -713,19 +1108,41 @@ function drawScene() {
   }
 }
 
+/** Draw one occupant (the enemy, or one of Dan's helpers) at a slot. */
+function drawOccupant(o, s, sc, x) {
+  const key = charKey(spriteFor(o), o.char);
+  const d = A.dim(key), hs = o.hscale || 1;
+  const w = d.dw * hs * sc, h = d.dh * hs * sc;
+  ctx.drawImage(A.get(key), x - w / 2, s.floorY - h + dropY(o) * sc, w, h);
+}
+
 function drawSlot(s, i) {
   const sc = scale(s.floorY), x = slotX(s);
   const ch = coverH(s) * sc;
   const coverTop = s.floorY - ch;
 
-  // enemy, clipped so he genuinely reads as being behind the furniture
-  if (i === enemy.slot && enemy.pop > 0.001) {
+  // occupants, clipped so they genuinely read as being behind the furniture
+  const here = [];
+  if (i === enemy.slot && enemy.pop > 0.001) here.push(enemy);
+  if (cameo && i === cameo.slot && cameo.pop > 0.001) here.push(cameo);
+  if (here.length) {
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, coverTop); ctx.clip();
-    drawImg(charKey(spriteFor()), x, s.floorY, sc, { dy: dropY() * sc });
+    for (const o of here) drawOccupant(o, s, sc, x);
     ctx.restore();
   }
-  drawImg('props.' + s.prop, x, s.floorY, sc);
+
+  if (slotBroken[i]) {
+    // the prop is gone -- all that is left is a smear of rind
+    const pw = A.dim('props.' + s.prop).dw * sc;
+    const sd = A.dim('food.watermelon_splat');
+    const rw = pw * 1.05, rh = rw * (sd.dh / sd.dw) * 0.42;
+    ctx.save(); ctx.globalAlpha = 0.92;
+    ctx.drawImage(A.get('food.watermelon_splat'), x - rw / 2, s.floorY - rh * 0.9, rw, rh);
+    ctx.restore();
+  } else {
+    drawImg('props.' + s.prop, x, s.floorY, sc);
+  }
 
   // a peel waiting to be stepped on
   const peel = peels.find(p => p.slot === i);
@@ -742,7 +1159,7 @@ function drawSlot(s, i) {
   }
 
   if (G.debug) {
-    const band = i === enemy.slot ? hitBand() : null;
+    const band = i === enemy.slot ? hitBand(enemy) : null;
     ctx.strokeStyle = '#0ff'; ctx.lineWidth = 3;
     ctx.strokeRect(x - CFG.HIT_HALF_W * sc, coverTop, CFG.HIT_HALF_W * 2 * sc, ch);
     if (band) {
@@ -1006,13 +1423,27 @@ function drawHUD() {
   ctx.font = 'bold 56px system-ui, sans-serif';
   ctx.fillText(Math.ceil(G.clock) + 's', W / 2, 90);
 
-  // Billy's health
+  // health bar. On the boss it also shows where the phase gates sit, so you
+  // can see the next escalation coming.
   const bw = 620, bx = (W - bw) / 2, by = 168;
-  panel(bx - 14, by - 12, bw + 28, 74, 20);
+  const boss = !!G.level.phases;
+  panel(bx - 14, by - 12, bw + 28, boss ? 104 : 74, 20);
   ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(bx, by, bw, 30);
-  ctx.fillStyle = '#e04b4b'; ctx.fillRect(bx, by, bw * (enemy.hp / enemy.maxHp), 30);
+  ctx.fillStyle = boss ? '#c9342f' : '#e04b4b';
+  ctx.fillRect(bx, by, bw * (enemy.hp / enemy.maxHp), 30);
+  if (boss) {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    for (const ph of G.level.phases) {
+      if (ph.at >= 1) continue;
+      ctx.fillRect(bx + bw * ph.at - 2, by - 4, 4, 38);
+    }
+  }
   ctx.fillStyle = '#fff'; ctx.font = 'bold 30px system-ui, sans-serif';
   ctx.fillText(G.level.name.toUpperCase(), W / 2, by + 62);
+  if (boss && G.pc && G.pc.name) {
+    ctx.fillStyle = '#ffd23f'; ctx.font = 'bold 28px system-ui, sans-serif';
+    ctx.fillText('PHASE ' + (G.phaseIdx + 1) + '  -  ' + G.pc.name, W / 2, by + 94);
+  }
 
   // combo
   if (G.combo > 1) {
@@ -1020,14 +1451,30 @@ function drawHUD() {
     ctx.fillText('COMBO x' + G.comboMul.toFixed(1), W / 2, 300);
   }
 
-  // ammo tile
-  const ax = 100, ay = 2200;
-  panel(ax - 78, ay - 78, 156, 156, 26);
-  const ak = 'food.' + CFG.AMMO[G.ammo].sprite, ad = A.dim(ak);
-  const asz = 108 / Math.max(ad.dw, ad.dh);
-  ctx.drawImage(A.get(ak), ax - ad.dw * asz / 2, ay - ad.dh * asz / 2, ad.dw * asz, ad.dh * asz);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 34px system-ui, sans-serif';
-  ctx.fillText('∞', ax + 46, ay + 62);
+  // ammo rail
+  for (const t of ammoTiles()) {
+    const sel = t.key === G.ammo, left = ammoCount(t.key), empty = left <= 0;
+    const cx0 = t.r.x + t.r.w / 2, cy0 = t.r.y + t.r.h / 2;
+
+    ctx.fillStyle = sel ? 'rgba(255,210,63,0.20)' : 'rgba(12,16,26,0.62)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(t.r.x, t.r.y, t.r.w, t.r.h, 26); else ctx.rect(t.r.x, t.r.y, t.r.w, t.r.h);
+    ctx.fill();
+    ctx.lineWidth = sel ? 6 : 3;
+    ctx.strokeStyle = sel ? '#ffd23f' : 'rgba(255,255,255,0.22)';
+    ctx.stroke();
+
+    const ak = 'food.' + CFG.AMMO[t.key].sprite, ad = A.dim(ak);
+    const asz = 96 / Math.max(ad.dw, ad.dh);
+    ctx.globalAlpha = empty ? 0.28 : 1;
+    ctx.drawImage(A.get(ak), cx0 - ad.dw * asz / 2, cy0 - ad.dh * asz / 2 - 8, ad.dw * asz, ad.dh * asz);
+    ctx.globalAlpha = 1;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = empty ? '#ff6b6b' : sel ? '#ffd23f' : '#c9d3e6';
+    ctx.font = 'bold 34px system-ui, sans-serif';
+    ctx.fillText(left === Infinity ? '∞' : left, cx0, t.r.y + t.r.h - 16);
+  }
 
   // exposure warning: this is the whole game in one indicator
   if (player.exposed) {
@@ -1040,6 +1487,20 @@ function drawHUD() {
     ctx.fillStyle = 'rgba(255,60,60,' + (0.6 + 0.4 * Math.sin(G.t * 20)) + ')';
     ctx.font = 'bold 88px system-ui, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('GET DOWN!', W / 2, 470);
+  }
+
+  // level banner
+  if (G.banner) {
+    const B = G.banner;
+    const a = Math.min(1, Math.min(B.t / 0.3, (B.dur - B.t) / 0.5));
+    ctx.save(); ctx.globalAlpha = clamp(a, 0, 1);
+    ctx.fillStyle = 'rgba(10,14,24,0.72)';
+    ctx.fillRect(0, 560, W, B.tip ? 250 : 190);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd23f'; fitText(B.title, CX, 640, 62, W - 80);
+    ctx.fillStyle = '#e8edf7'; fitText(B.sub, CX, 700, 40, W - 100);
+    if (B.tip) { ctx.fillStyle = '#8ef58a'; fitText(B.tip, CX, 768, 36, W - 100); }
+    ctx.restore();
   }
 
   // floating score text
@@ -1200,17 +1661,91 @@ function drawTitle() {
 }
 
 function drawClear() {
-  ctx.fillStyle = 'rgba(6,10,20,0.78)'; ctx.fillRect(0, 0, W, H);
-  centreText([
-    { t: 'BILLY IS DOWN', s: 108, c: '#8ef58a', gap: 30 },
-    { t: 'SCORE  ' + G.score.toLocaleString(), s: 72, gap: 30 },
-    { t: 'End of level bonus  +' + (G.endBonus || 0).toLocaleString(), s: 44, c: '#ffd23f' },
-    { t: G.misses === 0 ? 'FLAWLESS - not one wasted banana' : G.misses + ' misses', s: 40, c: '#c9d3e6' },
-    { t: G.forcedDown === 0 ? 'UNTOUCHED - never took a hit' : 'Shirts ruined: ' + G.forcedDown, s: 40, c: '#c9d3e6', gap: 60 },
-    { t: 'NEXT UP: MRS. GABEL AND HER COOKIES', s: 42, c: '#ffd23f', gap: 20 },
-    { t: '(level 2 not built yet)', s: 32, c: '#8892a8', gap: 40 },
-    { t: 'TAP OR PRESS SPACE', s: 48 }
-  ]);
+  ctx.fillStyle = 'rgba(6,10,20,0.80)'; ctx.fillRect(0, 0, W, H);
+  const next = hasNextLevel() ? CFG.LEVELS[G.levelIdx + 1] : null;
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#8ef58a';
+  fitText(G.level.name.toUpperCase() + ' IS DOWN', CX, 470, 100, W - 80);
+
+  ctx.fillStyle = '#fff';  fitText('SCORE  ' + G.score.toLocaleString(), CX, 600, 74, W - 80);
+  ctx.fillStyle = '#ffd23f'; fitText('End of level bonus  +' + (G.endBonus || 0).toLocaleString(), CX, 664, 42, W - 80);
+
+  ctx.fillStyle = '#c9d3e6';
+  fitText(G.misses === 0 ? 'FLAWLESS - not one wasted shot' : G.misses + ' misses', CX, 726, 40, W - 80);
+  fitText(G.forcedDown === 0 ? 'UNTOUCHED - never took a hit' : 'Shirts ruined: ' + G.forcedDown, CX, 778, 40, W - 80);
+  if (G.laundered) {
+    ctx.fillStyle = '#8ef58a';
+    fitText('+' + G.laundered + ' clean shirt for clearing the level', CX, 830, 38, W - 80);
+  }
+
+  if (next) {
+    // the unlock is the point of this screen, so give it the real estate
+    const newFood = (next.unlocked || []).filter(k => !(G.level.unlocked || []).includes(k));
+    if (newFood.length) {
+      const k = newFood[0], ak = 'food.' + CFG.AMMO[k].sprite, ad = A.dim(ak);
+      const sz = 300 / Math.max(ad.dw, ad.dh);
+      ctx.drawImage(A.get(ak), CX - ad.dw * sz / 2, 960, ad.dw * sz, ad.dh * sz);
+      ctx.fillStyle = '#ffd23f';
+      fitText(CFG.AMMO[k].label.toUpperCase() + ' UNLOCKED', CX, 1360, 74, W - 80);
+      ctx.fillStyle = '#c9d3e6';
+      fitText(CFG.AMMO[k].blurb, CX, 1424, 36, W - 110);
+    }
+    ctx.fillStyle = '#fff';
+    fitText('NEXT: ' + next.name.toUpperCase(), CX, 1580, 56, W - 80);
+    ctx.fillStyle = '#c9d3e6';
+    fitText(next.subtitle, CX, 1636, 36, W - 100);
+    ctx.fillStyle = '#ff9b9b';
+    fitText(next.hp + ' HIT POINTS' + (next.tagline ? '  -  ' + next.tagline : ''),
+            CX, 1700, 36, W - 100);
+  } else {
+    ctx.fillStyle = '#ffd23f';
+    fitText('THAT IS EVERY LEVEL BUILT SO FAR', CX, 1200, 52, W - 90);
+    ctx.fillStyle = '#8892a8';
+    fitText('Coach Ken and Principal Dan are next', CX, 1264, 38, W - 90);
+  }
+
+  ctx.fillStyle = '#fff';
+  fitText('TAP OR PRESS SPACE', CX, 1900, 52, W - 80);
+}
+
+function drawVictory() {
+  ctx.fillStyle = 'rgba(5,14,9,0.94)'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = '#8ef58a';
+  fitText('THE PRINCIPAL IS DOWN', CX, 470, 104, W - 70);
+  ctx.fillStyle = '#ffd23f';
+  fitText('YOU WON THE FOOD FIGHT', CX, 560, 56, W - 90);
+
+  // all four of them, wearing it
+  const chars = ['billy', 'gabel', 'coach', 'dan'];
+  const size = 244, gap = 12;
+  const total = chars.length * size + (chars.length - 1) * gap;
+  chars.forEach((c, i) => {
+    const k = 'char.' + c + '.surprised', d = A.dim(k);
+    if (!d) return;
+    const w = size, h = w * (d.dh / d.dw);
+    ctx.drawImage(A.get(k), (W - total) / 2 + i * (size + gap), 700, w, h);
+  });
+
+  ctx.fillStyle = '#fff';
+  fitText('FINAL SCORE  ' + G.score.toLocaleString(), CX, 1360, 84, W - 70);
+  ctx.fillStyle = '#ffd23f';
+  fitText('Last level bonus  +' + (G.endBonus || 0).toLocaleString(), CX, 1428, 42, W - 90);
+
+  ctx.fillStyle = '#c9d3e6';
+  fitText(G.misses === 0 ? 'FLAWLESS - not one wasted shot' : G.misses + ' shots wasted', CX, 1500, 40, W - 90);
+  fitText(G.forcedDown === 0 ? 'UNTOUCHED - he never landed one'
+                             : 'Shirts ruined in the final: ' + G.forcedDown, CX, 1552, 40, W - 90);
+  const broken = slotBroken.filter(Boolean).length;
+  fitText(broken ? broken + ' pieces of school furniture destroyed' : 'You left the furniture standing',
+          CX, 1604, 38, W - 90);
+
+  ctx.fillStyle = '#8ef58a';
+  fitText('Rusko\u2019s Riot  -  thanks for playing', CX, 1740, 44, W - 90);
+  ctx.fillStyle = '#fff';
+  fitText('TAP OR PRESS SPACE', CX, 1880, 52, W - 80);
 }
 
 function drawOver() {
@@ -1235,14 +1770,15 @@ function render() {
   // Billy's food and the mess it makes are drawn UNDER the tray. A raised tray
   // therefore physically occludes them -- the banana disappears behind the rim
   // and the splat sprays out around it, which is what "blocked" looks like.
-  if (inbound) {
-    const k = clamp(inbound.t / inbound.dur, 0, 1);
-    const x = lerp(inbound.x0, CX, ease(k));
-    const y = lerp(inbound.y0, 2120, k * k);
-    const s = lerp(inbound.s0, 1.5, k * k);
-    const d = A.dim(inbound.sprite);
+  for (const inb of inbounds) {
+    if (inb.t < 0) continue;                    // still in her hand
+    const k = clamp(inb.t / inb.dur, 0, 1);
+    const x = lerp(inb.x0, CX + (inb.x0 - CX) * 0.12, ease(k));
+    const y = lerp(inb.y0, 2120, k * k);
+    const s = lerp(inb.s0, 1.5, k * k);
+    const d = A.dim(inb.sprite);
     ctx.save(); ctx.translate(x, y); ctx.rotate(G.t * 9);
-    ctx.drawImage(A.get(inbound.sprite), -d.dw * s / 2, -d.dh * s / 2, d.dw * s, d.dh * s);
+    ctx.drawImage(A.get(inb.sprite), -d.dw * s / 2, -d.dh * s / 2, d.dw * s, d.dh * s);
     ctx.restore();
   }
   drawTrayHits();
@@ -1262,6 +1798,7 @@ function render() {
   drawShirtCard();
   if (G.mode === 'title') drawTitle();
   if (G.mode === 'clear') drawClear();
+  if (G.mode === 'victory') drawVictory();
   if (G.mode === 'over')  drawOver();
 }
 
@@ -1310,6 +1847,13 @@ window.RRDebug = {
   get ball()        { return ball; },
   get shirtSplats() { return shirtSplats; },   // getters: these are reassigned
   get shirtCard()   { return shirtCard; },     // so a plain ref would go stale
-  watchAdForLaundry, grantLaundry, declineLaundry, laundryButtons
+  get inbounds()    { return inbounds; },
+  get cameo()       { return cameo; },
+  get slotBroken()  { return slotBroken; },
+  spawnCameo, refreshPhase,
+  cameoTimerSet: v => { cameoTimer = v; },
+  watchAdForLaundry, grantLaundry, declineLaundry, laundryButtons,
+  __force: (power, vwx) => fire(power, vwx),     // test hook: fire directly
+  startLevel, ammoTiles, selectAmmo
 };
 })();
