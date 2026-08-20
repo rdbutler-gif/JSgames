@@ -125,6 +125,7 @@
     <div class="btnRow" style="margin-top:6px;">
       <button class="small" id="btnSound">🔊 SOUND: ON</button>
       <button class="small" id="btnAutofire">AUTO-FIRE: OFF</button>
+      <button class="small" id="btnInvertY">INVERT Y: OFF</button>
     </div>
     <div id="footer">three.js · single-file · keyboard · mouse · gamepad · touch</div>
   </div>
@@ -238,7 +239,7 @@ const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
 /* ---------------- SAVE / PROGRESSION ---------------- */
 const Save = {
-  data: { highScore: 0, stardust: 0, upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 } },
+  data: { highScore: 0, stardust: 0, autofire: false, invertY: false, upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 } },
   load(){
     try{
       const raw = localStorage.getItem('ruskoVoidSave');
@@ -357,7 +358,7 @@ const Audio_ = {
 const Input = {
   offset:{x:0,y:0}, // desired lateral position within tube, range ~[-1,1]*radius
   vel:{x:0,y:0},
-  fire:false, boost:false, heldBoost:false, pause:false, autofire:false,
+  fire:false, boost:false, heldBoost:false, pause:false, autofire:!!Save.data.autofire, invertY:!!Save.data.invertY,
   keys:{},
   mouseDelta:{x:0,y:0}, mouseDown:false,
   gpIndex:null, gamepadBlocked:false,
@@ -493,6 +494,10 @@ const Input = {
 
     // touch joystick
     if(this.joy.active){ ax += this.joy.x*1.4; ay += -this.joy.y*1.4; }
+
+    // invert Y — applied once, after all sources (keyboard/mouse/gamepad/
+    // touch) have summed into ay, so every input device flips together.
+    if(this.invertY) ay = -ay;
 
     // integrate velocity -> offset (smooth, acceleration based)
     const accel = 9.0, damp = 6.0, maxV=1;
@@ -1540,7 +1545,15 @@ el('btnSound').addEventListener('click', (e)=>{
 });
 el('btnAutofire').addEventListener('click', (e)=>{
   Input.autofire=!Input.autofire;
+  Save.data.autofire = Input.autofire;
+  Save.save();
   e.target.textContent='AUTO-FIRE: '+(Input.autofire?'ON':'OFF');
+});
+el('btnInvertY').addEventListener('click', (e)=>{
+  Input.invertY=!Input.invertY;
+  Save.data.invertY = Input.invertY;
+  Save.save();
+  e.target.textContent='INVERT Y: '+(Input.invertY?'ON':'OFF');
 });
 el('btnResume').addEventListener('click', ()=>resumeGame());
 el('btnPauseShop').addEventListener('click', ()=>openShop('menuPause'));
@@ -1550,7 +1563,8 @@ el('btnOverShop').addEventListener('click', ()=>openShop('menuOver'));
 el('btnOverMenu').addEventListener('click', ()=>quitToMenu());
 el('pauseBtn').addEventListener('click', ()=>{ if(G.state==='playing') pauseGame(); });
 
-if(isTouch){ Input.autofire=true; el('btnAutofire').textContent='AUTO-FIRE: ON'; }
+el('btnAutofire').textContent='AUTO-FIRE: '+(Input.autofire?'ON':'OFF');
+el('btnInvertY').textContent='INVERT Y: '+(Input.invertY?'ON':'OFF');
 
 function startRun(){
   resetRun();
