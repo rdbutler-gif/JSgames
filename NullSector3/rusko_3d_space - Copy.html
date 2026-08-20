@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RUSKO'S VOID — 3D SPACE SHOOTER</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@700;900&family=Audiowide&family=Exo+2:ital,wght@0,400;0,600;0,800;1,600&family=Rajdhani:wght@500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Orbitron:wght@700;900&display=swap');
   :root {
     --bg: #000;
     --neon: #00ff9c;
@@ -112,167 +112,6 @@
   @keyframes blink { to { opacity: 0; } }
   .legend { font-size: 15px; color: var(--neon-dim); margin-top: 16px; line-height: 1.6; }
   .legend b { color: var(--cyan); }
-
-  /* ---- Title-screen font & button revamp (Outer-Space-Week glow-up) ---- */
-  #title h1 {
-    font-family: 'Audiowide', 'Orbitron', sans-serif;
-    font-weight: 400;
-    font-size: 68px;
-    letter-spacing: 9px;
-    background: linear-gradient(180deg, #ecfff8 0%, #6dffc6 30%, #00ff9c 55%, #00b877 80%, #00ff9c 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    text-shadow: 0 0 18px rgba(0, 255, 156, 0.65), 0 0 46px rgba(0, 255, 156, 0.35);
-    margin-bottom: 10px;
-    animation: titleGlow 3.4s ease-in-out infinite;
-  }
-  @keyframes titleGlow {
-    0%, 100% { filter: drop-shadow(0 0 10px rgba(0, 255, 156, 0.55)); }
-    50% { filter: drop-shadow(0 0 24px rgba(40, 224, 255, 0.75)); }
-  }
-  #title.panel {
-    overflow-y: auto;
-    justify-content: safe center;
-    padding-top: max(20px, 3vh);
-    padding-bottom: max(20px, 3vh);
-  }
-  #title h1 {
-    font-size: clamp(40px, 9vw, 68px);
-    letter-spacing: clamp(3px, 1.6vw, 9px);
-  }
-  #title .sub {
-    font-family: 'Exo 2', sans-serif;
-    font-weight: 600;
-    font-style: italic;
-    font-size: clamp(16px, 3.8vw, 19px);
-    letter-spacing: clamp(2px, 1vw, 5px);
-  }
-  #title .legend {
-    font-family: 'Exo 2', sans-serif;
-    font-size: clamp(16px, 4vw, 19px);
-    line-height: 1.7;
-  }
-  #title .legend b {
-    font-family: 'Rajdhani', 'Exo 2', sans-serif;
-    font-weight: 700;
-    font-size: clamp(18px, 4.6vw, 21px);
-  }
-  #title .controls {
-    font-family: 'Rajdhani', sans-serif;
-    font-weight: 600;
-  }
-
-  /* ---- 3D shiny action buttons ---- */
-  #title .btn-3d {
-    position: relative;
-    font-family: 'Orbitron', sans-serif;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    border: none;
-    border-radius: 10px;
-    padding: 10px 18px;
-    white-space: nowrap;
-    cursor: pointer;
-    isolation: isolate;
-    transition: transform .12s ease, box-shadow .18s ease, filter .18s ease;
-  }
-  #title .btn-3d::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 55%);
-    opacity: 0.85;
-    pointer-events: none;
-  }
-  #title .btn-3d::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 -10px 14px rgba(0, 0, 0, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.5);
-    pointer-events: none;
-  }
-  #title .btn-3d:hover { transform: translateY(-3px); filter: brightness(1.12); }
-  #title .btn-3d:active { transform: translateY(2px); filter: brightness(0.95); }
-
-  #title .btn-3d.cyan {
-    color: #031a20;
-    background: linear-gradient(180deg, #b6f6ff 0%, #28e0ff 45%, #0a8fb0 100%);
-    box-shadow: 0 6px 0 #0a6b82, 0 10px 18px rgba(0, 0, 0, 0.55), 0 0 20px rgba(40, 224, 255, 0.55);
-  }
-  #title .btn-3d.cyan:hover { box-shadow: 0 6px 0 #0a6b82, 0 12px 22px rgba(0, 0, 0, 0.6), 0 0 32px rgba(40, 224, 255, 0.85); }
-  #title .btn-3d.cyan:active { box-shadow: 0 2px 0 #0a6b82, 0 4px 8px rgba(0, 0, 0, 0.5), 0 0 14px rgba(40, 224, 255, 0.6); }
-
-  #title .btn-3d.violet {
-    color: #14042c;
-    background: linear-gradient(180deg, #e3d1ff 0%, #b06bff 45%, #6a2fc9 100%);
-    box-shadow: 0 6px 0 #4a1f96, 0 10px 18px rgba(0, 0, 0, 0.55), 0 0 20px rgba(176, 107, 255, 0.55);
-  }
-  #title .btn-3d.violet:hover { box-shadow: 0 6px 0 #4a1f96, 0 12px 22px rgba(0, 0, 0, 0.6), 0 0 32px rgba(176, 107, 255, 0.85); }
-  #title .btn-3d.violet:active { box-shadow: 0 2px 0 #4a1f96, 0 4px 8px rgba(0, 0, 0, 0.5), 0 0 14px rgba(176, 107, 255, 0.6); }
-
-  #title .btn-launch {
-    color: #2b1600;
-    font-size: 27px;
-    padding: 15px 34px;
-    background: linear-gradient(180deg, #fff2c2 0%, #ffb000 45%, #b56d00 100%);
-    box-shadow: 0 8px 0 #7a4900, 0 14px 24px rgba(0, 0, 0, 0.6), 0 0 30px rgba(255, 176, 0, 0.7);
-    animation: launchPulse 2.2s ease-in-out infinite;
-  }
-  #title .btn-launch:hover { box-shadow: 0 8px 0 #7a4900, 0 16px 28px rgba(0, 0, 0, 0.65), 0 0 46px rgba(255, 176, 0, 1); }
-  #title .btn-launch:active { transform: translateY(4px); box-shadow: 0 3px 0 #7a4900, 0 6px 10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 176, 0, 0.8); }
-  @keyframes launchPulse {
-    0%, 100% { box-shadow: 0 8px 0 #7a4900, 0 14px 24px rgba(0, 0, 0, 0.6), 0 0 26px rgba(255, 176, 0, 0.6); }
-    50% { box-shadow: 0 8px 0 #7a4900, 0 14px 24px rgba(0, 0, 0, 0.6), 0 0 46px rgba(255, 176, 0, 1); }
-  }
-
-  /* ---- Touch controls (mobile/tablet) ----
-     Left half = dynamic thrust/roll stick (appears where you touch down,
-     follows your thumb, disappears on release). Right half = drag-to-look,
-     invisible, same idea as the desktop's right-click-drag. JS toggles
-     #touchControls on/off based on gameState so it never eats taps on the
-     title/upgrade/game-over screens. */
-  #touchControls {
-    display: none;
-    position: absolute;
-    inset: 0;
-    z-index: 40;
-  }
-  #touchLeftZone, #touchRightZone {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 50%;
-    touch-action: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-  #touchLeftZone { left: 0; }
-  #touchRightZone { right: 0; }
-  #touchStickBase, #touchStickThumb {
-    display: none;
-    position: absolute;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-  }
-  #touchStickBase {
-    width: 112px;
-    height: 112px;
-    background: rgba(40, 224, 255, 0.08);
-    border: 2px solid rgba(40, 224, 255, 0.5);
-    box-shadow: 0 0 20px rgba(40, 224, 255, 0.35), inset 0 0 14px rgba(40, 224, 255, 0.2);
-  }
-  #touchStickThumb {
-    width: 52px;
-    height: 52px;
-    background: radial-gradient(circle at 35% 30%, rgba(180, 246, 255, 0.9), rgba(40, 224, 255, 0.55) 70%);
-    box-shadow: 0 0 16px rgba(40, 224, 255, 0.8);
-  }
 </style>
 </head>
 <body>
@@ -283,21 +122,14 @@
   <div id="crt"></div>
   <div id="vig"></div>
 
-  <div id="touchControls">
-    <div id="touchLeftZone"></div>
-    <div id="touchRightZone"></div>
-    <div id="touchStickBase"></div>
-    <div id="touchStickThumb"></div>
-  </div>
-
   <div id="title" class="panel">
     <h1>RUSKO'S VOID</h1>
     <div class="sub">// DEEP SPACE COMBAT SIMULATOR</div>
     <div class="legend" style="margin-bottom: 14px;">
       <b>6-AXIS FIGHTER CONTROLS</b>
     </div>
-    <div class="controls" style="font-size: clamp(16px, 4vw, 19px); color: var(--cyan); margin-bottom: 18px; line-height: 1.75;">
-      <div style="display: grid; grid-template-columns: auto auto auto; gap: 7px 26px; justify-content: center; text-align: left; align-items: baseline;">
+    <div class="controls" style="font-size: 15px; color: var(--cyan); margin-bottom: 18px; line-height: 1.65;">
+      <div style="display: grid; grid-template-columns: auto auto auto; gap: 4px 22px; justify-content: center; text-align: left; align-items: baseline;">
         <div style="color: var(--neon-dim); text-align: right;">ACTION</div>
         <div style="color: var(--amber);">KEYBOARD / MOUSE</div>
         <div style="color: var(--alien);">XBOX PAD</div>
@@ -331,17 +163,17 @@
       Destroy all enemy fighters in 3D combat, then face the wave boss.<br>
       Each wave grows harder — and so does the boss.<br>
       <br>
-      <i style="font-size: clamp(14px, 3.4vw, 17px); color: var(--neon-dim);">NEW: Xbox controller support &amp; end-of-wave boss fights!</i>
+      <i style="font-size: 13px; color: var(--neon-dim);">NEW: Xbox controller support &amp; end-of-wave boss fights!</i>
     </div>
-    <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; font-size: clamp(15px, 3.8vw, 18px); color: var(--cyan); letter-spacing: 1px;">
+    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 18px; font-size: 15px; color: var(--cyan); letter-spacing: 1px;">
       <span>Invert Y-Axis:</span>
-      <button class="btn btn-3d cyan" id="invertYBtn" onclick="toggleInvertY()" style="font-size: clamp(16px, 3.8vw, 19px); padding: 5px 20px; margin: 0; min-width: 64px;">ON</button>
-      <span style="font-size: clamp(13px, 3.2vw, 16px); color: var(--neon-dim);">(controller aim)</span>
+      <button class="btn" id="invertYBtn" onclick="toggleInvertY()" style="font-size: 16px; padding: 4px 18px; margin: 0; min-width: 64px;">ON</button>
+      <span style="font-size: 12px; color: var(--neon-dim);">(controller aim)</span>
     </div>
-    <div style="display: flex; align-items: center; gap: 14px; justify-content: center; margin-top: 22px; flex-wrap: wrap;">
-      <button class="btn btn-3d cyan" id="newGameBtn" onclick="newGameWithReset()" style="flex: 0 1 auto; max-width: 190px;">NEW GAME</button>
-      <button class="btn btn-3d btn-launch" id="startBtn" style="flex: 0 1 auto; max-width: 250px;">🚀 LAUNCH&nbsp;<span style="font-size: 14px; color: #ffd77a; background: #2b1600; border-radius: 50%; padding: 1px 7px;">Ⓐ</span></button>
-      <button class="btn btn-3d violet" id="upgradeBtn" onclick="showUpgrades()" style="flex: 0 1 auto; max-width: 205px;">⚙ UPGRADE</button>
+    <div style="display: flex; gap: 12px; justify-content: center; margin-top: 20px;">
+      <button class="btn" id="newGameBtn" onclick="newGameWithReset()" style="flex: 1; max-width: 140px;">NEW GAME</button>
+      <button class="btn" id="startBtn" style="flex: 1; max-width: 140px;">LAUNCH&nbsp;<span style="font-size: 14px; color: var(--bg); background: var(--amber); border-radius: 50%; padding: 1px 7px;">Ⓐ</span></button>
+      <button class="btn" id="upgradeBtn" onclick="showUpgrades()" style="flex: 1; max-width: 140px;">⚙ UPGRADE</button>
     </div>
   </div>
 
@@ -1382,189 +1214,6 @@ function readPad() {
     laser: btn(6),   // LT
     mine:  btn(2)    // X
   };
-}
-
-// ====================================================================
-// TOUCH CONTROLS (mobile/tablet)
-// ====================================================================
-// Mirrors the gamepad's input shape so it drops into the existing thrust/
-// roll/yaw/pitch pipeline with no changes to ship physics:
-//   left stick (dynamic, appears where you first touch, follows your thumb,
-//               vanishes on release) -> touchMy (forward/back, like pad.my)
-//               and touchRoll (left/right — a touchscreen has no LB/RB
-//               bumpers to roll with, so the stick's horizontal axis does
-//               double duty for that here)
-//   right side (plain drag, no visual — same idea as the desktop's
-//               right-click-drag) -> feeds the same mouseDX/mouseDY
-//               accumulator the mouse-look already uses
-//   main gun   -> no dedicated fire button (the right side is busy orbiting
-//               the view). Auto-fires while at least one thumb is down AND
-//               an enemy is roughly in front of you — see
-//               touchAutoFireTargetInSight(). Silent the moment both thumbs
-//               lift, and silent while just cruising with nothing in sight,
-//               so it doesn't turn into a nonstop drone.
-const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-const TOUCH_STICK_MAX_RADIUS = 55;      // px the thumb can travel from the anchor before clamping
-const TOUCH_LOOK_SENSITIVITY = 0.0032;  // tuned to feel similar to the desktop mouse-look (0.003/px)
-const TOUCH_FIRE_RANGE = 350;           // matches enemies' own ENGAGEMENT_RANGE, for consistent feel
-const TOUCH_FIRE_CONE_COS = Math.cos(THREE.MathUtils.degToRad(14)); // ~14 deg half-angle, forgiving
-
-let touchMy = 0, touchRoll = 0;         // left-stick output, consumed in update() like pad.my/pad.roll
-let touchLeftId = null;                 // active touch identifier on the left stick (null = not held)
-let touchRightId = null;                // active touch identifier on the right look-drag (null = not held)
-let touchLeftAnchorX = 0, touchLeftAnchorY = 0;
-let touchRightPrevX = 0, touchRightPrevY = 0;
-
-let touchControlsEl, touchLeftZoneEl, touchRightZoneEl, touchStickBaseEl, touchStickThumbEl;
-
-function showTouchStick(x, y) {
-  touchStickBaseEl.style.left = x + 'px';
-  touchStickBaseEl.style.top = y + 'px';
-  touchStickThumbEl.style.left = x + 'px';
-  touchStickThumbEl.style.top = y + 'px';
-  touchStickBaseEl.style.display = 'block';
-  touchStickThumbEl.style.display = 'block';
-}
-
-function moveTouchStickThumb(dx, dy) {
-  touchStickThumbEl.style.left = (touchLeftAnchorX + dx) + 'px';
-  touchStickThumbEl.style.top = (touchLeftAnchorY + dy) + 'px';
-}
-
-function hideTouchStick() {
-  touchStickBaseEl.style.display = 'none';
-  touchStickThumbEl.style.display = 'none';
-}
-
-function handleLeftTouchStart(e) {
-  if (touchLeftId !== null) return; // already tracking a touch on this stick
-  const t = e.changedTouches[0];
-  touchLeftId = t.identifier;
-  touchLeftAnchorX = t.clientX;
-  touchLeftAnchorY = t.clientY;
-  showTouchStick(touchLeftAnchorX, touchLeftAnchorY);
-  ensureAudio();
-  e.preventDefault();
-}
-
-function handleLeftTouchMove(e) {
-  if (touchLeftId === null) return;
-  for (const t of e.changedTouches) {
-    if (t.identifier !== touchLeftId) continue;
-    let dx = t.clientX - touchLeftAnchorX;
-    let dy = t.clientY - touchLeftAnchorY;
-    const dist = Math.hypot(dx, dy);
-    if (dist > TOUCH_STICK_MAX_RADIUS) {
-      const scale = TOUCH_STICK_MAX_RADIUS / dist;
-      dx *= scale; dy *= scale;
-    }
-    moveTouchStickThumb(dx, dy);
-    const normX = dx / TOUCH_STICK_MAX_RADIUS;
-    const normY = dy / TOUCH_STICK_MAX_RADIUS;
-    touchMy = Math.max(-1, Math.min(1, -normY));   // thumb up = forward, like -lsY
-    touchRoll = Math.max(-1, Math.min(1, -normX)); // thumb left = roll left, matches KeyA/LB
-    e.preventDefault();
-  }
-}
-
-function handleLeftTouchEnd(e) {
-  for (const t of e.changedTouches) {
-    if (t.identifier !== touchLeftId) continue;
-    touchLeftId = null;
-    touchMy = 0;
-    touchRoll = 0;
-    hideTouchStick();
-  }
-}
-
-function handleRightTouchStart(e) {
-  if (touchRightId !== null) return;
-  const t = e.changedTouches[0];
-  touchRightId = t.identifier;
-  touchRightPrevX = t.clientX;
-  touchRightPrevY = t.clientY;
-  ensureAudio();
-  e.preventDefault();
-}
-
-function handleRightTouchMove(e) {
-  if (touchRightId === null) return;
-  for (const t of e.changedTouches) {
-    if (t.identifier !== touchRightId) continue;
-    const dx = t.clientX - touchRightPrevX;
-    const dy = t.clientY - touchRightPrevY;
-    // Same accumulator the desktop right-click-drag feeds — decayed each
-    // frame in update(), so no separate consumption path is needed.
-    mouseDX += dx * TOUCH_LOOK_SENSITIVITY;
-    mouseDY += dy * TOUCH_LOOK_SENSITIVITY;
-    touchRightPrevX = t.clientX;
-    touchRightPrevY = t.clientY;
-    e.preventDefault();
-  }
-}
-
-function handleRightTouchEnd(e) {
-  for (const t of e.changedTouches) {
-    if (t.identifier !== touchRightId) continue;
-    touchRightId = null;
-  }
-}
-
-// Show/hide the whole touch layer based on game state, called once per frame
-// from loop(). Keeps it out of the way on the title/upgrade/game-over screens
-// (which have their own DOM buttons) and releases any held touch state on the
-// way out so a stick can't appear "stuck" or fire keep going if a panel pops
-// up mid-drag (e.g. dying while dragging).
-function syncTouchControlsVisibility() {
-  if (!isTouchDevice || !touchControlsEl) return;
-  const show = gameState === 'play' && !pauseActive;
-  touchControlsEl.style.display = show ? 'block' : 'none';
-  if (!show) {
-    if (touchLeftId !== null) {
-      touchLeftId = null;
-      touchMy = 0;
-      touchRoll = 0;
-      hideTouchStick();
-    }
-    touchRightId = null;
-  }
-}
-
-// True when the boss or an enemy is within a forgiving cone in front of the
-// ship and in range — see the header comment above for why this gates fire.
-function touchAutoFireTargetInSight(forward) {
-  const toTarget = new THREE.Vector3();
-  const inSight = (obj) => {
-    if (!obj) return false;
-    toTarget.copy(obj.position).sub(player.position);
-    const dist = toTarget.length();
-    if (dist < 1 || dist > TOUCH_FIRE_RANGE) return false;
-    toTarget.normalize();
-    return toTarget.dot(forward) > TOUCH_FIRE_CONE_COS;
-  };
-  if (inSight(boss)) return true;
-  for (let i = 0; i < enemies.length; i++) {
-    if (inSight(enemies[i])) return true;
-  }
-  return false;
-}
-
-if (isTouchDevice) {
-  touchControlsEl = document.getElementById('touchControls');
-  touchLeftZoneEl = document.getElementById('touchLeftZone');
-  touchRightZoneEl = document.getElementById('touchRightZone');
-  touchStickBaseEl = document.getElementById('touchStickBase');
-  touchStickThumbEl = document.getElementById('touchStickThumb');
-
-  touchLeftZoneEl.addEventListener('touchstart', handleLeftTouchStart, { passive: false });
-  touchLeftZoneEl.addEventListener('touchmove', handleLeftTouchMove, { passive: false });
-  touchLeftZoneEl.addEventListener('touchend', handleLeftTouchEnd, { passive: false });
-  touchLeftZoneEl.addEventListener('touchcancel', handleLeftTouchEnd, { passive: false });
-
-  touchRightZoneEl.addEventListener('touchstart', handleRightTouchStart, { passive: false });
-  touchRightZoneEl.addEventListener('touchmove', handleRightTouchMove, { passive: false });
-  touchRightZoneEl.addEventListener('touchend', handleRightTouchEnd, { passive: false });
-  touchRightZoneEl.addEventListener('touchcancel', handleRightTouchEnd, { passive: false });
 }
 
 function createPlayerShip() {
@@ -2637,7 +2286,6 @@ function update(dt) {
   if (keys['KeyW']) thrustInput = 1;
   if (keys['KeyS']) thrustInput = -1;
   thrustInput += pad.my; // left stick forward/back
-  thrustInput += touchMy; // touch left-stick forward/back
   
   const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
   const thrustMult = 1.0 + (upgrades.shipSpeed || 0) * 0.15;
@@ -2661,7 +2309,6 @@ function update(dt) {
   if (keys['KeyA']) rollInput = 1;
   if (keys['KeyD']) rollInput = -1;
   rollInput += pad.roll; // LB/RB bumpers (digital, same sign convention as A/D)
-  rollInput += touchRoll; // touch left-stick left/right (no bumpers to roll with on a touchscreen)
   
   if (Math.abs(rollInput) > 0.05) {
     const localForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
@@ -2744,15 +2391,8 @@ function update(dt) {
   // recenters on the camera's final position this frame.
   updateCelestialBodies(celestialBodies, dt);
 
-  // ---- FIRE (LMB, Right Trigger, or touch auto-fire) ----
-  // Touch has no dedicated fire button (the right side of the screen is busy
-  // orbiting the view), so it auto-fires while at least one thumb is on a
-  // control and an enemy is roughly in front of the ship. See
-  // touchAutoFireTargetInSight() up in the touch-controls section.
-  const touchSticksActive = touchLeftId !== null || touchRightId !== null;
-  const touchFire = isTouchDevice && touchSticksActive &&
-    touchAutoFireTargetInSight(new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion));
-  const firing = leftMouseDown || pad.fire || touchFire;
+  // ---- FIRE (LMB or Right Trigger) ----
+  const firing = leftMouseDown || pad.fire;
   player.shotCooldown -= dt * 60;  // Scaled for 60fps baseline (deltaTime-independent)
   if (firing && player.shotCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
@@ -4180,7 +3820,6 @@ function loop() {
   
   try {
     pollMenuGamepad();   // menu navigation (A to continue on game-over)
-    syncTouchControlsVisibility();
     update(deltaTime);
     draw();
   } catch (err) {
