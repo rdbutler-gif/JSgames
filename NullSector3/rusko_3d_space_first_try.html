@@ -231,30 +231,28 @@
 
   /* ---- Touch controls (mobile/tablet) ----
      Left half = dynamic thrust/roll stick (appears where you touch down,
-     follows your thumb, disappears on release).
-     Right side = a FIXED stick "button" (always visible, bottom-right) for
-     orbit/look, with the laser and mine buttons arranged around it in a
-     small arc so the same thumb can reach them without leaving the stick's
-     neighborhood. JS toggles #touchControls on/off based on gameState so it
-     never eats taps on the title/upgrade/game-over screens. */
+     follows your thumb, disappears on release). Right half = drag-to-look,
+     invisible, same idea as the desktop's right-click-drag. JS toggles
+     #touchControls on/off based on gameState so it never eats taps on the
+     title/upgrade/game-over screens. */
   #touchControls {
     display: none;
     position: absolute;
     inset: 0;
     z-index: 40;
   }
-  #touchLeftZone {
+  #touchLeftZone, #touchRightZone {
     position: absolute;
     top: 0;
     bottom: 0;
-    left: 0;
     width: 50%;
     touch-action: none;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
   }
-  /* Left stick visuals: dynamic, hidden until a touch anchors them. */
+  #touchLeftZone { left: 0; }
+  #touchRightZone { right: 0; }
   #touchStickBase, #touchStickThumb {
     display: none;
     position: absolute;
@@ -262,72 +260,18 @@
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
-  /* Right stick visuals: a fixed "button", visible for the whole play
-     session (dim at rest, brighter while actively held) — positioned once
-     by JS and never hidden/shown per-touch like the left stick is. */
-  #touchRightStickBase, #touchRightStickThumb {
-    display: block;
-    position: absolute;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    opacity: 0.55;
-    transition: opacity .15s ease;
-  }
-  #touchRightStickBase.active, #touchRightStickThumb.active { opacity: 1; }
-  #touchStickBase, #touchRightStickBase {
+  #touchStickBase {
     width: 112px;
     height: 112px;
     background: rgba(40, 224, 255, 0.08);
     border: 2px solid rgba(40, 224, 255, 0.5);
     box-shadow: 0 0 20px rgba(40, 224, 255, 0.35), inset 0 0 14px rgba(40, 224, 255, 0.2);
   }
-  #touchStickThumb, #touchRightStickThumb {
+  #touchStickThumb {
     width: 52px;
     height: 52px;
     background: radial-gradient(circle at 35% 30%, rgba(180, 246, 255, 0.9), rgba(40, 224, 255, 0.55) 70%);
     box-shadow: 0 0 16px rgba(40, 224, 255, 0.8);
-  }
-  #touchRightStickZone {
-    display: block;
-    position: absolute;
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    touch-action: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-  }
-  .touch-action-btn {
-    display: flex;
-    position: absolute;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    align-items: center;
-    justify-content: center;
-    font-size: 26px;
-    line-height: 1;
-    touch-action: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-    opacity: 0.7;
-    transition: opacity .12s ease, transform .12s ease;
-  }
-  .touch-action-btn.pressed { opacity: 1; transform: translate(-50%, -50%) scale(0.9); }
-  #touchLaserBtn {
-    background: rgba(255, 176, 0, 0.12);
-    border: 2px solid rgba(255, 176, 0, 0.65);
-    box-shadow: 0 0 16px rgba(255, 176, 0, 0.4);
-  }
-  #touchMineBtn {
-    background: rgba(255, 45, 111, 0.12);
-    border: 2px solid rgba(255, 45, 111, 0.65);
-    box-shadow: 0 0 16px rgba(255, 45, 111, 0.4);
   }
 </style>
 </head>
@@ -335,21 +279,15 @@
 <div id="wrap">
   <canvas id="canvas"></canvas>
   <canvas id="hud"></canvas>
-  <canvas id="rearview" style="position: absolute; top: 20px; right: 20px; width: 180px; height: 180px; border: 2px solid rgba(40,224,255,0.6); background: #000; display: none; z-index: 50;"></canvas>
+  <canvas id="rearview" style="position: absolute; bottom: 20px; right: 20px; width: 180px; height: 180px; border: 2px solid rgba(40,224,255,0.6); background: #000; display: none; z-index: 50;"></canvas>
   <div id="crt"></div>
   <div id="vig"></div>
 
   <div id="touchControls">
     <div id="touchLeftZone"></div>
+    <div id="touchRightZone"></div>
     <div id="touchStickBase"></div>
     <div id="touchStickThumb"></div>
-
-    <div id="touchRightStickZone"></div>
-    <div id="touchRightStickBase"></div>
-    <div id="touchRightStickThumb"></div>
-
-    <div id="touchLaserBtn" class="touch-action-btn" aria-label="Space Laser">⚡</div>
-    <div id="touchMineBtn" class="touch-action-btn" aria-label="Space Mine">💣</div>
   </div>
 
   <div id="title" class="panel">
@@ -1451,43 +1389,33 @@ function readPad() {
 // ====================================================================
 // Mirrors the gamepad's input shape so it drops into the existing thrust/
 // roll/yaw/pitch pipeline with no changes to ship physics:
-//   left stick  (dynamic, appears where you first touch, follows your
-//               thumb, vanishes on release) -> touchMy (forward/back, like
-//               pad.my) and touchRoll (left/right — a touchscreen has no
-//               LB/RB bumpers to roll with, so the stick's horizontal axis
-//               does double duty for that here)
-//   right stick (FIXED "button", always visible bottom-right, doesn't
-//               move) -> touchAx/touchAy, deflection-based exactly like
-//               the gamepad's pad.ax/pad.ay (see the yaw/pitch block in
-//               update() where they're merged in) — a small fixed stick
-//               needs "hold-to-turn" behavior, not drag-distance, since
-//               there's only ~55px of thumb travel to work with.
-//   laser/mine  -> small buttons arranged around the right stick so the
-//               same thumb can tap them without hunting across the screen.
-//   main gun    -> no dedicated fire button (both hands are already busy).
-//               Auto-fires while at least one thumb is down AND an enemy
-//               is roughly in front of you — see
-//               touchAutoFireTargetInSight(). Silent the moment both
-//               thumbs lift, and silent while just cruising with nothing
-//               in sight, so it doesn't turn into a nonstop drone.
+//   left stick (dynamic, appears where you first touch, follows your thumb,
+//               vanishes on release) -> touchMy (forward/back, like pad.my)
+//               and touchRoll (left/right — a touchscreen has no LB/RB
+//               bumpers to roll with, so the stick's horizontal axis does
+//               double duty for that here)
+//   right side (plain drag, no visual — same idea as the desktop's
+//               right-click-drag) -> feeds the same mouseDX/mouseDY
+//               accumulator the mouse-look already uses
+//   main gun   -> no dedicated fire button (the right side is busy orbiting
+//               the view). Auto-fires while at least one thumb is down AND
+//               an enemy is roughly in front of you — see
+//               touchAutoFireTargetInSight(). Silent the moment both thumbs
+//               lift, and silent while just cruising with nothing in sight,
+//               so it doesn't turn into a nonstop drone.
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const TOUCH_STICK_MAX_RADIUS = 55;      // px the thumb can travel from the anchor before clamping
+const TOUCH_LOOK_SENSITIVITY = 0.0032;  // tuned to feel similar to the desktop mouse-look (0.003/px)
 const TOUCH_FIRE_RANGE = 350;           // matches enemies' own ENGAGEMENT_RANGE, for consistent feel
 const TOUCH_FIRE_CONE_COS = Math.cos(THREE.MathUtils.degToRad(14)); // ~14 deg half-angle, forgiving
-const TOUCH_RIGHT_STICK_MARGIN = 150;   // px from the bottom-right corner to the right stick's center
-const TOUCH_ACTION_BTN_RADIUS = 105;    // px from the right stick's center to the laser/mine buttons
 
 let touchMy = 0, touchRoll = 0;         // left-stick output, consumed in update() like pad.my/pad.roll
-let touchAx = 0, touchAy = 0;           // right-stick output, consumed like pad.ax/pad.ay
 let touchLeftId = null;                 // active touch identifier on the left stick (null = not held)
-let touchRightId = null;                // active touch identifier on the right stick (null = not held)
+let touchRightId = null;                // active touch identifier on the right look-drag (null = not held)
 let touchLeftAnchorX = 0, touchLeftAnchorY = 0;
-let touchRightAnchorX = 0, touchRightAnchorY = 0; // fixed center, recomputed on layout/resize
-let touchLaserHeld = false, touchMineHeld = false;
+let touchRightPrevX = 0, touchRightPrevY = 0;
 
-let touchControlsEl, touchLeftZoneEl, touchStickBaseEl, touchStickThumbEl,
-    touchRightStickZoneEl, touchRightStickBaseEl, touchRightStickThumbEl,
-    touchLaserBtnEl, touchMineBtnEl;
+let touchControlsEl, touchLeftZoneEl, touchRightZoneEl, touchStickBaseEl, touchStickThumbEl;
 
 function showTouchStick(x, y) {
   touchStickBaseEl.style.left = x + 'px';
@@ -1549,15 +1477,12 @@ function handleLeftTouchEnd(e) {
   }
 }
 
-// Right stick is fixed in place (see layoutRightStickCluster), so unlike the
-// left stick it doesn't relocate to the touch point — it just starts
-// tracking whichever finger lands inside its hit zone.
 function handleRightTouchStart(e) {
   if (touchRightId !== null) return;
   const t = e.changedTouches[0];
   touchRightId = t.identifier;
-  touchRightStickBaseEl.classList.add('active');
-  touchRightStickThumbEl.classList.add('active');
+  touchRightPrevX = t.clientX;
+  touchRightPrevY = t.clientY;
   ensureAudio();
   e.preventDefault();
 }
@@ -1566,20 +1491,14 @@ function handleRightTouchMove(e) {
   if (touchRightId === null) return;
   for (const t of e.changedTouches) {
     if (t.identifier !== touchRightId) continue;
-    let dx = t.clientX - touchRightAnchorX;
-    let dy = t.clientY - touchRightAnchorY;
-    const dist = Math.hypot(dx, dy);
-    if (dist > TOUCH_STICK_MAX_RADIUS) {
-      const scale = TOUCH_STICK_MAX_RADIUS / dist;
-      dx *= scale; dy *= scale;
-    }
-    touchRightStickThumbEl.style.left = (touchRightAnchorX + dx) + 'px';
-    touchRightStickThumbEl.style.top = (touchRightAnchorY + dy) + 'px';
-    // Deflection-based, like the gamepad's axes — NOT drag-distance — since
-    // this stick can't relocate, so "how far you're holding it" is all we
-    // have. touchAx/touchAy are merged with pad.ax/pad.ay in update().
-    touchAx = Math.max(-1, Math.min(1, dx / TOUCH_STICK_MAX_RADIUS));
-    touchAy = Math.max(-1, Math.min(1, dy / TOUCH_STICK_MAX_RADIUS));
+    const dx = t.clientX - touchRightPrevX;
+    const dy = t.clientY - touchRightPrevY;
+    // Same accumulator the desktop right-click-drag feeds — decayed each
+    // frame in update(), so no separate consumption path is needed.
+    mouseDX += dx * TOUCH_LOOK_SENSITIVITY;
+    mouseDY += dy * TOUCH_LOOK_SENSITIVITY;
+    touchRightPrevX = t.clientX;
+    touchRightPrevY = t.clientY;
     e.preventDefault();
   }
 }
@@ -1588,66 +1507,7 @@ function handleRightTouchEnd(e) {
   for (const t of e.changedTouches) {
     if (t.identifier !== touchRightId) continue;
     touchRightId = null;
-    touchAx = 0;
-    touchAy = 0;
-    touchRightStickThumbEl.style.left = touchRightAnchorX + 'px';
-    touchRightStickThumbEl.style.top = touchRightAnchorY + 'px';
-    touchRightStickBaseEl.classList.remove('active');
-    touchRightStickThumbEl.classList.remove('active');
   }
-}
-
-function handleLaserBtnStart(e) {
-  touchLaserHeld = true;
-  touchLaserBtnEl.classList.add('pressed');
-  ensureAudio();
-  e.preventDefault();
-}
-function handleLaserBtnEnd(e) {
-  touchLaserHeld = false;
-  touchLaserBtnEl.classList.remove('pressed');
-  e.preventDefault();
-}
-function handleMineBtnStart(e) {
-  touchMineHeld = true;
-  touchMineBtnEl.classList.add('pressed');
-  ensureAudio();
-  e.preventDefault();
-}
-function handleMineBtnEnd(e) {
-  touchMineHeld = false;
-  touchMineBtnEl.classList.remove('pressed');
-  e.preventDefault();
-}
-
-// Position the fixed right stick and its surrounding laser/mine buttons.
-// Called once at startup and again on resize/orientation change — nothing
-// here depends on touch state, it's pure layout.
-function layoutRightStickCluster() {
-  if (!touchRightStickZoneEl) return;
-  const cx = window.innerWidth - TOUCH_RIGHT_STICK_MARGIN;
-  const cy = window.innerHeight - TOUCH_RIGHT_STICK_MARGIN;
-  touchRightAnchorX = cx;
-  touchRightAnchorY = cy;
-
-  touchRightStickZoneEl.style.left = cx + 'px';
-  touchRightStickZoneEl.style.top = cy + 'px';
-  touchRightStickBaseEl.style.left = cx + 'px';
-  touchRightStickBaseEl.style.top = cy + 'px';
-  touchRightStickThumbEl.style.left = cx + 'px';
-  touchRightStickThumbEl.style.top = cy + 'px';
-
-  // Laser at ~155°, mine at ~25° (measuring counraclockwise from the +x
-  // axis, screen y flipped since CSS y grows downward) — both sit in a
-  // shallow arc above the stick, a short thumb-slide away in either
-  // direction, and clear of the stick's own travel radius.
-  const place = (el, angleDeg) => {
-    const rad = angleDeg * Math.PI / 180;
-    el.style.left = (cx + Math.cos(rad) * TOUCH_ACTION_BTN_RADIUS) + 'px';
-    el.style.top = (cy - Math.sin(rad) * TOUCH_ACTION_BTN_RADIUS) + 'px';
-  };
-  place(touchLaserBtnEl, 155);
-  place(touchMineBtnEl, 25);
 }
 
 // Show/hide the whole touch layer based on game state, called once per frame
@@ -1666,19 +1526,7 @@ function syncTouchControlsVisibility() {
       touchRoll = 0;
       hideTouchStick();
     }
-    if (touchRightId !== null) {
-      touchRightId = null;
-      touchAx = 0;
-      touchAy = 0;
-      touchRightStickThumbEl.style.left = touchRightAnchorX + 'px';
-      touchRightStickThumbEl.style.top = touchRightAnchorY + 'px';
-      touchRightStickBaseEl.classList.remove('active');
-      touchRightStickThumbEl.classList.remove('active');
-    }
-    touchLaserHeld = false;
-    touchMineHeld = false;
-    if (touchLaserBtnEl) touchLaserBtnEl.classList.remove('pressed');
-    if (touchMineBtnEl) touchMineBtnEl.classList.remove('pressed');
+    touchRightId = null;
   }
 }
 
@@ -1704,34 +1552,19 @@ function touchAutoFireTargetInSight(forward) {
 if (isTouchDevice) {
   touchControlsEl = document.getElementById('touchControls');
   touchLeftZoneEl = document.getElementById('touchLeftZone');
+  touchRightZoneEl = document.getElementById('touchRightZone');
   touchStickBaseEl = document.getElementById('touchStickBase');
   touchStickThumbEl = document.getElementById('touchStickThumb');
-  touchRightStickZoneEl = document.getElementById('touchRightStickZone');
-  touchRightStickBaseEl = document.getElementById('touchRightStickBase');
-  touchRightStickThumbEl = document.getElementById('touchRightStickThumb');
-  touchLaserBtnEl = document.getElementById('touchLaserBtn');
-  touchMineBtnEl = document.getElementById('touchMineBtn');
 
   touchLeftZoneEl.addEventListener('touchstart', handleLeftTouchStart, { passive: false });
   touchLeftZoneEl.addEventListener('touchmove', handleLeftTouchMove, { passive: false });
   touchLeftZoneEl.addEventListener('touchend', handleLeftTouchEnd, { passive: false });
   touchLeftZoneEl.addEventListener('touchcancel', handleLeftTouchEnd, { passive: false });
 
-  touchRightStickZoneEl.addEventListener('touchstart', handleRightTouchStart, { passive: false });
-  touchRightStickZoneEl.addEventListener('touchmove', handleRightTouchMove, { passive: false });
-  touchRightStickZoneEl.addEventListener('touchend', handleRightTouchEnd, { passive: false });
-  touchRightStickZoneEl.addEventListener('touchcancel', handleRightTouchEnd, { passive: false });
-
-  touchLaserBtnEl.addEventListener('touchstart', handleLaserBtnStart, { passive: false });
-  touchLaserBtnEl.addEventListener('touchend', handleLaserBtnEnd, { passive: false });
-  touchLaserBtnEl.addEventListener('touchcancel', handleLaserBtnEnd, { passive: false });
-
-  touchMineBtnEl.addEventListener('touchstart', handleMineBtnStart, { passive: false });
-  touchMineBtnEl.addEventListener('touchend', handleMineBtnEnd, { passive: false });
-  touchMineBtnEl.addEventListener('touchcancel', handleMineBtnEnd, { passive: false });
-
-  layoutRightStickCluster();
-  addEventListener('resize', layoutRightStickCluster);
+  touchRightZoneEl.addEventListener('touchstart', handleRightTouchStart, { passive: false });
+  touchRightZoneEl.addEventListener('touchmove', handleRightTouchMove, { passive: false });
+  touchRightZoneEl.addEventListener('touchend', handleRightTouchEnd, { passive: false });
+  touchRightZoneEl.addEventListener('touchcancel', handleRightTouchEnd, { passive: false });
 }
 
 function createPlayerShip() {
@@ -2837,25 +2670,21 @@ function update(dt) {
     player.quaternion.multiplyQuaternions(qRoll, player.quaternion);
   }
 
-  // ---- YAW / PITCH (RMB mouselook, right stick, or touch right stick) ----
+  // ---- YAW / PITCH (RMB mouselook or right stick) ----
   let yawInput = mouseDX;
   let pitchInput = mouseDY;
 
-  // Gamepad right stick and the touch right stick both add a steady turn
-  // rate while deflected (constant-rate feel, unlike the mouse's
-  // accumulate-and-decay). Scaled by deflection so a light push turns
-  // gently and a full push turns fast. Summed together since only one is
-  // ever actually deflected at a time in practice.
-  const stickAx = pad.ax + touchAx;
-  const stickAy = pad.ay + touchAy;
-  if (Math.hypot(stickAx, stickAy) > 0.001) {
+  // Right stick adds a steady turn rate while deflected (constant-rate feel,
+  // unlike the mouse's accumulate-and-decay). Scaled by stick deflection so a
+  // light push turns gently and a full push turns fast.
+  if (Math.hypot(pad.ax, pad.ay) > 0.001) {
     const STICK_TURN = 0.045;  // max per-frame turn at full deflection
-    yawInput   += stickAx * STICK_TURN;
+    yawInput   += pad.ax * STICK_TURN;
     // Pitch direction is controlled by the invertY setting (toggled on the title
     // screen). invertY = true  -> stick UP points the nose DOWN (flight-stick).
     //                  = false -> stick UP points the nose UP (non-inverted).
     const pitchSign = invertY ? -1 : 1;
-    pitchInput += pitchSign * stickAy * STICK_TURN;
+    pitchInput += pitchSign * pad.ay * STICK_TURN;
   }
 
   if (Math.abs(yawInput) > 0.002) {
@@ -2916,8 +2745,9 @@ function update(dt) {
   updateCelestialBodies(celestialBodies, dt);
 
   // ---- FIRE (LMB, Right Trigger, or touch auto-fire) ----
-  // Touch has no dedicated fire button, so it auto-fires while at least one
-  // thumb is on a stick and an enemy is roughly in front of the ship. See
+  // Touch has no dedicated fire button (the right side of the screen is busy
+  // orbiting the view), so it auto-fires while at least one thumb is on a
+  // control and an enemy is roughly in front of the ship. See
   // touchAutoFireTargetInSight() up in the touch-controls section.
   const touchSticksActive = touchLeftId !== null || touchRightId !== null;
   const touchFire = isTouchDevice && touchSticksActive &&
@@ -2943,9 +2773,9 @@ function update(dt) {
     // placeholder
   }
 
-  // ---- SPACE MINE (Q key, X button, or touch mine button) ----
+  // ---- SPACE MINE (Q key or X button) ----
   mineCooldown -= dt;  // Decrement by seconds elapsed
-  if ((keys['KeyQ'] || pad.mine || touchMineHeld) && upgrades.spaceMine > 0 && mineCooldown <= 0) {
+  if ((keys['KeyQ'] || pad.mine) && upgrades.spaceMine > 0 && mineCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const minePos = player.position.clone().addScaledVector(forward, 15); // Drop 15 units ahead
     const mineProximity = 10 + (upgrades.mineRadius - 1) * 2; // 10u base, +2u per mineRadius upgrade
@@ -2968,9 +2798,9 @@ function update(dt) {
     mineDropSound();
   }
 
-  // ---- SPACE LASER (E key, Left Trigger, or touch laser button) ----
+  // ---- SPACE LASER (E key or Left Trigger) ----
   laserCooldown -= dt;  // Decrement by seconds elapsed
-  if ((keys['KeyE'] || pad.laser || touchLaserHeld) && upgrades.spaceLaser > 0 && laserCooldown <= 0) {
+  if ((keys['KeyE'] || pad.laser) && upgrades.spaceLaser > 0 && laserCooldown <= 0) {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
     const laserDuration = 0.5 + (upgrades.spaceLaser - 1) * 0.5; // 0.5s base, +0.5s per upgrade (was 30 frames)
     lasers.push({
