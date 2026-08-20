@@ -1474,9 +1474,7 @@ const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0
 const TOUCH_STICK_MAX_RADIUS = 55;      // px the thumb can travel from the anchor before clamping
 const TOUCH_FIRE_RANGE = 350;           // matches enemies' own ENGAGEMENT_RANGE, for consistent feel
 const TOUCH_FIRE_CONE_COS = Math.cos(THREE.MathUtils.degToRad(14)); // ~14 deg half-angle, forgiving
-const TOUCH_RIGHT_STICK_MARGIN_X = 150; // px from the right edge to the right stick's center
-const TOUCH_RIGHT_STICK_MARGIN_Y = 75;  // px from the bottom edge to the right stick's center (low —
-                                         // just enough room for the thumb's downward travel + a little air)
+const TOUCH_RIGHT_STICK_MARGIN = 150;   // px from the bottom-right corner to the right stick's center
 const TOUCH_ACTION_BTN_RADIUS = 105;    // px from the right stick's center to the laser/mine buttons
 
 let touchMy = 0, touchRoll = 0;         // left-stick output, consumed in update() like pad.my/pad.roll
@@ -1627,8 +1625,8 @@ function handleMineBtnEnd(e) {
 // here depends on touch state, it's pure layout.
 function layoutRightStickCluster() {
   if (!touchRightStickZoneEl) return;
-  const cx = window.innerWidth - TOUCH_RIGHT_STICK_MARGIN_X;
-  const cy = window.innerHeight - TOUCH_RIGHT_STICK_MARGIN_Y;
+  const cx = window.innerWidth - TOUCH_RIGHT_STICK_MARGIN;
+  const cy = window.innerHeight - TOUCH_RIGHT_STICK_MARGIN;
   touchRightAnchorX = cx;
   touchRightAnchorY = cy;
 
