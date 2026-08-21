@@ -822,30 +822,51 @@ function spawnExplosion(x,y,z){
   const light = new THREE.PointLight(0xffaa55, 7, 100);
   light.position.set(x,y,z);
   scene.add(light);
-  explosions.push({sprite:spr, mat, light, life:0, maxLife:0.9});
+  explosions.push({sprite:spr, mat, light, life:0, maxLife:0.9, startScale:3, endScale:16, lightIntensity:7});
   // hot core shrapnel + a cooler, slower secondary layer -- reads as a real
   // fireball instead of one uniform puff
   spawnBurst(x,y,z, {r:1,g:0.75,b:0.3}, 140, 26);
   spawnBurst(x,y,z, {r:1,g:0.25,b:0.05}, 60, 12);
   flashScreen();
 }
+// Cheaper cousin of spawnExplosion() for asteroid kills -- same fireball
+// sprite technique (reuses fireballTex), but sized to the asteroid, shorter-
+// lived, no PointLight, and no screen flash. Deliberately lighter-weight:
+// a bullet can pop an asteroid several times a second in a dense field
+// (unlike the Rift heart, which dies at most once per ~7200-unit
+// encounter), so stacking a dynamic light and a full-screen flash per kill
+// would add real render cost and get visually obnoxious fast. The additive
+// sprite plus a two-tone rock-and-fire particle shower still reads as a
+// real blast without either of those.
+function spawnAsteroidBlast(x,y,z, scale){
+  const mat = new THREE.SpriteMaterial({map:fireballTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:1});
+  const spr = new THREE.Sprite(mat);
+  const startScale = 1.1*scale;
+  spr.position.set(x,y,z);
+  spr.scale.setScalar(startScale);
+  scene.add(spr);
+  explosions.push({sprite:spr, mat, light:null, life:0, maxLife:0.45, startScale, endScale:startScale+3.2*scale, lightIntensity:0});
+  spawnBurst(x,y,z, {r:0.7,g:0.6,b:0.5}, Math.round(16*scale), Math.round(9*scale));   // rock shrapnel
+  spawnBurst(x,y,z, {r:1,g:0.55,b:0.15}, Math.round(18*scale), Math.round(10*scale));  // fireball shower
+  Audio_.explode();
+}
 function updateExplosions(dt){
   for(let i=explosions.length-1;i>=0;i--){
     const e=explosions[i];
     e.life += dt;
     const t = Math.min(1, e.life/e.maxLife);
-    e.sprite.scale.setScalar(3 + t*13);      // fast expand
-    e.mat.opacity = 1 - t;                   // fade out over the full life
-    e.light.intensity = 7*(1-t);
+    e.sprite.scale.setScalar(e.startScale + t*(e.endScale-e.startScale)); // fast expand
+    e.mat.opacity = 1 - t;                                                // fade out over the full life
+    if(e.light) e.light.intensity = e.lightIntensity*(1-t);
     if(e.life>=e.maxLife){
       scene.remove(e.sprite); e.mat.dispose();
-      scene.remove(e.light);
+      if(e.light) scene.remove(e.light);
       explosions.splice(i,1);
     }
   }
 }
 function clearExplosions(){
-  for(const e of explosions){ scene.remove(e.sprite); e.mat.dispose(); scene.remove(e.light); }
+  for(const e of explosions){ scene.remove(e.sprite); e.mat.dispose(); if(e.light) scene.remove(e.light); }
   explosions.length=0;
 }
 
@@ -1026,7 +1047,16 @@ function spawnAsteroid(z){
   slot.mesh.position.set(p.x,p.y,z);
   slot.mesh.scale.setScalar(scale);
   slot.mesh.rotation.set(Math.random()*6,Math.random()*6,Math.random()*6);
-  resetEntity(slot, {type:'asteroid', r:0.9*scale, spinX:(Math.random()-0.5)*1.5, spinY:(Math.random()-0.5)*1.5, small:scale<1.3});
+  resetEntity(slot, {
+    type:'asteroid', r:0.9*scale, scale, spinX:(Math.random()-0.5)*1.5, spinY:(Math.random()-0.5)*1.5,
+    small:scale<1.3,
+    // Every asteroid is shootable now, not just small ones -- HP scales
+    // with size the same way spawnDrone() already scales drone HP, so a
+    // small rock still dies in exactly one hit (matches how boosting
+    // through one has always worked) while bigger ones (previously just
+    // swallowed a bullet for nothing at all) take 2-3 hits and pay out for it.
+    hp: Math.max(1, Math.round(scale)),
+  });
 }
 
 function spawnDrone(z, spawnDist){
@@ -1691,17 +1721,25 @@ function updateBullets(dt){
     // collide with drones (regular turrets and, during a Rift, orbiters)
     let hit = bulletHitsDronePool(dronePool, o) || bulletHitsDronePool(riftDronePool, o);
     if(hit) continue;
-    // collide with asteroids (destroy small ones)
+    // collide with asteroids -- every asteroid is shootable now (HP scales
+    // with size, see spawnAsteroid()). A non-killing hit still consumes
+    // the bullet and sparks so a multi-hit rock gives clear feedback that
+    // damage is actually landing; the kill blow gets the full
+    // spawnAsteroidBlast() treatment and pays out score scaled to size.
     for(const a of asteroidPool){
       if(!a.active) continue;
       const dx=a.mesh.position.x-o.mesh.position.x, dy=a.mesh.position.y-o.mesh.position.y, dz=a.mesh.position.z-o.mesh.position.z;
       if(Math.hypot(dx,dy,dz) < a.data.r+0.5){
-        if(a.data.small){
-          spawnBurst(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, {r:0.6,g:0.55,b:0.5}, 14, 8);
-          addScore(10);
-          a.active=false; a.mesh.visible=false;
-        }
+        a.data.hp -= G.stats.dmg;
         o.active=false; o.mesh.visible=false; hit=true;
+        if(a.data.hp<=0){
+          spawnAsteroidBlast(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, a.data.scale);
+          addScore(Math.round(10*a.data.scale));
+          a.active=false; a.mesh.visible=false;
+        } else {
+          spawnBurst(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, {r:0.75,g:0.65,b:0.55}, 8, 7);
+          Audio_.hit();
+        }
         break;
       }
     }
