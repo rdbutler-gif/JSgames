@@ -1,0 +1,135 @@
+
+  :root{
+    --cyan:#4ff2ff; --magenta:#ff4fd6; --gold:#ffd24f; --deep:#05040d; --panel:#0d0a1eee;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden;
+    font-family:'Segoe UI',Verdana,system-ui,sans-serif; color:#eafcff;}
+  #gameCanvas{position:fixed;inset:0;display:block;width:100%;height:100%;touch-action:none;}
+
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5;font-variant-numeric:tabular-nums;}
+  .hudTop{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .hudBox{background:var(--panel);border:1px solid #4ff2ff55;border-radius:8px;padding:6px 12px;font-size:14px;letter-spacing:.5px;backdrop-filter:blur(2px);}
+  .barWrap{width:140px;height:10px;background:#1a1430;border-radius:5px;overflow:hidden;border:1px solid #ffffff22;margin-top:3px;}
+  .barFill{height:100%;width:100%;background:linear-gradient(90deg,var(--cyan),#2a8fff);}
+  #shieldBar .barFill{background:linear-gradient(90deg,#4fff9e,#1fb56b);}
+  #boostBar .barFill{background:linear-gradient(90deg,var(--gold),#ff8a2b);}
+  #comboText{color:var(--magenta);font-weight:700;}
+  #distText{font-size:22px;color:var(--cyan);text-shadow:0 0 8px #4ff2ff88;}
+  #scoreText{font-size:14px;color:var(--gold);}
+  #stardustText{font-size:14px;color:var(--gold);}
+  /* Shared stylized popup box for every player-facing message -- flavor
+     banners (planet/rift approach), the Rift win/lose outcome banner, and
+     short toasts (pickups, combo) all render through the same panel
+     language as the menu overlays (.panel above), just smaller and
+     centered over the play area instead of full-screen. Two elements
+     share this base (#eventBanner for the bigger/rarer announcements,
+     #centerMsg for quick toasts) at two different vertical slots so they
+     can be visible at once without overlapping -- e.g. the Rift victory
+     banner and its "+500 stardust" reward toast fire back to back. */
+  .msgPopup{position:absolute;left:50%;max-width:min(90vw,480px);
+    background:var(--panel);border:1px solid #4ff2ff66;border-radius:12px;
+    padding:10px 22px;text-align:center;pointer-events:none;
+    box-shadow:0 0 30px #4ff2ff33;opacity:0;
+    transform:translate(-50%,-50%) scale(0.85);
+    transition:opacity .25s ease, transform .25s ease;}
+  .msgPopup.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  #eventBanner{top:40%;font-size:22px;font-weight:700;letter-spacing:2px;
+    color:var(--magenta);text-shadow:0 0 14px var(--magenta);
+    border-color:#ff4fd688;box-shadow:0 0 34px #ff4fd644;}
+  #centerMsg{top:58%;font-size:14px;color:#eafcff;padding:8px 18px;}
+  #riftHud{position:absolute;top:112px;left:50%;transform:translateX(-50%);
+    text-align:center;pointer-events:none;}
+  #riftHud.hidden{display:none;}
+  #riftHeartLabel{font-size:12px;letter-spacing:3px;color:var(--magenta);text-shadow:0 0 8px var(--magenta);margin-bottom:3px;}
+  #riftHeartBar{width:min(70vw,320px);height:12px;}
+  #riftHeartBar .barFill{background:linear-gradient(90deg,var(--magenta),#ff8a2b);transition:width .15s ease;}
+  #vignette{position:fixed;inset:0;pointer-events:none;z-index:4;box-shadow:inset 0 0 160px 40px #000000cc;opacity:0;transition:opacity .3s;}
+  #flash{position:fixed;inset:0;pointer-events:none;z-index:6;background:#ff2b4f;opacity:0;}
+
+  #introOverlay{position:fixed;inset:0;z-index:30;background:#000;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  #introOverlay video{width:100%;height:100%;object-fit:contain;background:#000;}
+  #introSkipHint{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);font-size:11px;letter-spacing:1px;color:#cfe9ffaa;pointer-events:none;text-shadow:0 0 6px #000;}
+  #btnSkipIntro{position:absolute;top:18px;right:18px;z-index:31;}
+
+  #countdownOverlay{position:fixed;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+  #countdownOverlay img{max-width:min(60vw,560px);max-height:min(34vh,320px);width:auto;height:auto;
+    filter:drop-shadow(0 0 30px #4ff2ff88);opacity:0;}
+  #countdownOverlay img.pulse{animation:countdownPulse .5s ease-out forwards;}
+  @keyframes countdownPulse{0%{opacity:0;transform:scale(1.8);}55%{opacity:1;}100%{opacity:1;transform:scale(1);}}
+
+  .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at center,#140a2ad0 0%,#020103f2 75%);}
+  .hidden{display:none !important;}
+  .panel{max-width:520px;width:92%;max-height:92vh;overflow:auto;background:var(--panel);
+    border:1px solid #4ff2ff55;border-radius:14px;padding:22px 26px;box-shadow:0 0 40px #4ff2ff22;}
+  h1.title{font-size:34px;margin:0 0 4px;letter-spacing:4px;
+    background:linear-gradient(90deg,var(--cyan),var(--magenta));-webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 0 30px #4ff2ff55; text-align:center;}
+  /* Main-menu title lockup: the "ETERNAL COMBAT" byline image shares the
+     same canvas dimensions as the main logo image and is pre-positioned
+     within it (bottom-left, under "VOID"), so it's laid directly on top
+     of the logo rather than placed separately — stacking them at 1:1
+     scale is what lines the two up. It starts invisible and eases in
+     after the logo's already had a moment on screen. Re-showing this
+     screen (e.g. quitting back to the main menu) replays the fade, since
+     toggling display:none resets a CSS animation's state. */
+  .titleLockup{position:relative;width:100%;max-width:440px;margin:0 auto;}
+  .titleLockup img{display:block;width:100%;height:auto;}
+  .titleLogo{filter:drop-shadow(0 0 22px #4ff2ff44);}
+  .titleByline{position:absolute;inset:0;opacity:0;animation:bylineFadeIn 1.6s ease-out .9s forwards;}
+  @keyframes bylineFadeIn{from{opacity:0;}to{opacity:1;}}
+  .subtitle{text-align:center;color:#9fd8ff;font-size:12px;letter-spacing:3px;margin-bottom:14px;opacity:.85;}
+  .lore{font-size:13px;line-height:1.6;color:#cfe9ff;background:#00000055;border-left:3px solid var(--magenta);
+    padding:10px 14px;border-radius:6px;margin-bottom:16px;}
+
+  /* Main-menu backstory crawl — a "porthole" onto the starfield with the
+     text tilted back in 3D and animated sliding up through it, Star Wars
+     opening-crawl style. perspective lives on the viewport (the "camera"),
+     the tilt lives on the stage (a fixed lean-back), and the scroll itself
+     is a plain translateY animation on the text — composing all three is
+     what makes farther-up lines read as smaller/more distant for free,
+     without hand-tuning a font-size ramp. Loops continuously (rather than
+     playing once and stopping) since this is a menu screen someone may
+     glance at any time, not a one-shot cutscene.  */
+  .crawlViewport{position:relative;height:250px;overflow:hidden;margin-bottom:16px;
+    background:radial-gradient(ellipse at 50% 30%,#140a2a 0%,#020103 85%);
+    border:1px solid #4ff2ff33;border-radius:8px;perspective:420px;perspective-origin:50% 85%;}
+  .crawlFade{position:absolute;left:0;right:0;height:64px;z-index:2;pointer-events:none;}
+  .crawlFade.top{top:0;background:linear-gradient(#020103,transparent);}
+  .crawlFade.bottom{bottom:0;background:linear-gradient(transparent,#020103);}
+  .crawlStage{position:absolute;left:0;right:0;bottom:0;transform:rotateX(28deg);transform-origin:50% 100%;}
+  .crawlText{width:86%;margin:0 auto;text-align:center;color:var(--gold);
+    font-size:20px;font-weight:700;letter-spacing:.5px;line-height:1.6;
+    text-shadow:0 0 12px #ffd24f66;animation:crawlUp 60s linear infinite;}
+  .crawlText p{margin:0 0 24px;}
+  .crawlText .crawlLead{color:var(--cyan);font-size:15px;letter-spacing:3px;margin-bottom:30px;text-shadow:0 0 10px #4ff2ff77;}
+  @keyframes crawlUp{0%{transform:translateY(115%);}100%{transform:translateY(-165%);}}
+  .btnRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px;}
+  button.big{background:linear-gradient(180deg,#1c1440,#0d0a1e);color:var(--cyan);border:1px solid var(--cyan);
+    border-radius:8px;padding:12px 22px;font-size:16px;letter-spacing:2px;cursor:pointer;transition:.15s;}
+  button.big:hover{background:var(--cyan);color:#02030a;box-shadow:0 0 16px var(--cyan);}
+  button.small{background:#140f2c;color:#cfe9ff;border:1px solid #4ff2ff55;border-radius:6px;padding:8px 14px;
+    font-size:12px;letter-spacing:1px;cursor:pointer;}
+  button.small:hover{border-color:var(--cyan);color:var(--cyan);}
+  button.small.active{background:var(--cyan);color:#02030a;}
+  .controlsGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;color:#b8d9ff;margin-top:10px;}
+  .controlsGrid b{color:var(--gold);}
+  .statRow{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-bottom:1px dashed #ffffff1a;}
+  .shopItem{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #ffffff14;}
+  .shopItem .info{font-size:13px;}
+  .shopItem .lvl{color:#8fc9ff;font-size:11px;}
+  .cost{color:var(--gold);font-size:12px;}
+  #joyZone,#actionZone{position:fixed;bottom:0;z-index:10;touch-action:none;}
+  #joyZone{left:0;width:46%;height:46%;}
+  #actionZone{right:0;width:46%;height:46%;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;padding:18px;gap:12px;}
+  #joyBase{position:absolute;width:100px;height:100px;border-radius:50%;border:2px solid #4ff2ff66;background:#0d0a1e55;}
+  #joyStick{position:absolute;width:46px;height:46px;border-radius:50%;background:#4ff2ff88;border:1px solid #4ff2ffcc;}
+  .touchBtn{width:70px;height:70px;border-radius:50%;background:#0d0a1e88;border:2px solid #ff4fd688;color:#ff4fd6;
+    display:flex;align-items:center;justify-content:center;font-size:11px;letter-spacing:1px;pointer-events:auto;}
+  .touchBtn.boost{border-color:#ffd24f88;color:#ffd24f;}
+  .touchBtn:active{background:#ff4fd644;}
+  #pauseBtn{position:fixed;top:68px;right:10px;z-index:15;pointer-events:auto;background:#0d0a1ecc;border:1px solid #4ff2ff55;
+    color:#cfe9ff;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;}
+  #footer{margin-top:10px;text-align:center;font-size:10px;color:#6c86b0;letter-spacing:1px;}
+  ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-thumb{background:#4ff2ff55;border-radius:3px;}
