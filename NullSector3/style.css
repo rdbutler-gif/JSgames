@@ -113,13 +113,40 @@
     font-size:12px;letter-spacing:1px;cursor:pointer;}
   button.small:hover{border-color:var(--cyan);color:var(--cyan);}
   button.small.active{background:var(--cyan);color:#02030a;}
+  /* Destructive-action styling (New Game / erase-progress) -- red instead of the
+     cyan/gold palette everything else uses, so a "this wipes your save" button
+     never blends in with normal navigation. */
+  button.danger{border-color:#ff4f4f;color:#ff8080;}
+  button.danger:hover{background:#ff4f4f;color:#1a0505;box-shadow:0 0 16px #ff4f4f;}
+  button.big.danger:hover{color:#1a0505;}
   .controlsGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;color:#b8d9ff;margin-top:10px;}
   .controlsGrid b{color:var(--gold);}
   .statRow{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-bottom:1px dashed #ffffff1a;}
-  .shopItem{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #ffffff14;}
-  .shopItem .info{font-size:13px;}
-  .shopItem .lvl{color:#8fc9ff;font-size:11px;}
-  .cost{color:var(--gold);font-size:12px;}
+  /* ---- Shipyard cards ----
+     Replaces the old plain text-row layout (name+level line, desc line,
+     separate cost readout, separate "UPGRADE" button — 4 lines of text
+     per row) with a compact stylized card: one header line (icon + name +
+     level pips), one short desc line, and a single full-width button that
+     carries the cost in its own label ("UPGRADE — ✦80"/"MAXED OUT") so
+     there's no redundant standalone price readout sitting next to it.
+     Pips give an at-a-glance read of how upgraded a stat already is
+     without needing "Lv.2/4" spelled out in text. */
+  .shopCard{background:linear-gradient(180deg,#140f2c,#0d0a1e);border:1px solid #4ff2ff33;
+    border-radius:10px;padding:10px 14px;margin-bottom:8px;transition:border-color .15s,box-shadow .15s;}
+  .shopCard:hover{border-color:#4ff2ff88;box-shadow:0 0 14px #4ff2ff22;}
+  .shopCard.maxed{border-color:#ffd24f55;}
+  .shopCardHead{display:flex;align-items:center;gap:8px;}
+  .shopIcon{font-size:16px;filter:drop-shadow(0 0 4px #4ff2ff88);}
+  .shopName{flex:1;font-size:14px;font-weight:600;color:#eafcff;letter-spacing:.5px;}
+  .shopPips{display:flex;gap:3px;}
+  .pip{width:7px;height:7px;border-radius:50%;background:#ffffff1a;border:1px solid #4ff2ff44;}
+  .pip.filled{background:var(--cyan);box-shadow:0 0 5px var(--cyan);border-color:var(--cyan);}
+  .shopCard.maxed .pip.filled{background:var(--gold);box-shadow:0 0 5px var(--gold);border-color:var(--gold);}
+  .shopDesc{font-size:11px;color:#8fc9ff;margin:4px 0 8px;letter-spacing:.3px;}
+  .shopBuyBtn{width:100%;background:linear-gradient(180deg,#1c1440,#0d0a1e);color:var(--gold);border:1px solid var(--gold);
+    border-radius:6px;padding:7px 10px;font-size:12px;letter-spacing:1px;cursor:pointer;font-weight:700;transition:.15s;}
+  .shopBuyBtn:hover:not(:disabled){background:var(--gold);color:#1c1440;box-shadow:0 0 12px var(--gold);}
+  .shopBuyBtn:disabled{border-color:#ffffff22;color:#ffffff55;cursor:default;background:transparent;}
   #joyZone,#actionZone{position:fixed;bottom:0;z-index:10;touch-action:none;}
   #joyZone{left:0;width:46%;height:46%;}
   #actionZone{right:0;width:46%;height:46%;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;padding:18px;gap:12px;}

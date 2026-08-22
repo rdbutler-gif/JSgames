@@ -158,11 +158,11 @@ const Save = {
 Save.load();
 
 const UPGRADES = {
-  hull:    { name:'Hull Plating',   desc:'+1 max shield',        max:3, baseCost:80,  step:1.7 },
-  weapon:  { name:'Pulse Cannons',  desc:'+18% fire rate & dmg',  max:4, baseCost:60,  step:1.6 },
-  thrust:  { name:'Thrusters',      desc:'+18% boost capacity',   max:4, baseCost:60,  step:1.6 },
-  magnet:  { name:'Tractor Coil',   desc:'+35% pickup radius',    max:3, baseCost:50,  step:1.6 },
-  plating: { name:'Reactive Armor', desc:'+0.3s invuln after hit',max:3, baseCost:70,  step:1.7 },
+  hull:    { name:'Hull Plating',   desc:'+1 max shield',        max:3, baseCost:80,  step:1.7, icon:'🛡️' },
+  weapon:  { name:'Pulse Cannons',  desc:'+18% fire rate & dmg',  max:4, baseCost:60,  step:1.6, icon:'⚡' },
+  thrust:  { name:'Thrusters',      desc:'+18% boost capacity',   max:4, baseCost:60,  step:1.6, icon:'🚀' },
+  magnet:  { name:'Tractor Coil',   desc:'+35% pickup radius',    max:3, baseCost:50,  step:1.6, icon:'🧲' },
+  plating: { name:'Reactive Armor', desc:'+0.3s invuln after hit',max:3, baseCost:70,  step:1.7, icon:'🔰' },
 };
 function upgradeCost(key){
   const u = UPGRADES[key], lvl = Save.data.upgrades[key];
@@ -785,6 +785,7 @@ function updateParticles(dt){
   particleGeo.attributes.position.needsUpdate=true;
   particleGeo.attributes.color.needsUpdate=true;
   updateExplosions(dt);
+  updateScorePopups(dt);
 }
 
 /* ---------------- BIG EXPLOSION EFFECT (Void Rift kill, etc.) ----------------
@@ -868,6 +869,60 @@ function updateExplosions(dt){
 function clearExplosions(){
   for(const e of explosions){ scene.remove(e.sprite); e.mat.dispose(); if(e.light) scene.remove(e.light); }
   explosions.length=0;
+}
+
+/* ---------------- FLOATING SCORE POPUPS ----------------
+   Players kept asking "did that combo actually apply?" -- a "+XXX" label
+   at the exact spot a kill/pickup/ring happened, showing the real
+   combo-multiplied number (see addScore() below, which now returns what
+   it actually added), answers that at a glance. Same procedural-canvas-
+   texture + Sprite billboard technique as the explosion effects above, so
+   it needs no manual screen-space projection. Text is cached per distinct
+   string (amounts repeat constantly -- "+30" every ring, "+75" every
+   turret) so a canvas isn't re-rendered for every single scoring event. */
+const scorePopupTexCache = new Map();
+function proceduralScorePopupTexture(text){
+  let tex = scorePopupTexCache.get(text);
+  if(tex) return tex;
+  const c=document.createElement('canvas'); c.width=256;c.height=96;
+  const ctx=c.getContext('2d');
+  ctx.font='bold 56px sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.lineWidth=8; ctx.strokeStyle='rgba(20,10,0,0.9)';
+  ctx.strokeText(text,128,48);
+  ctx.fillStyle='#ffe066';
+  ctx.fillText(text,128,48);
+  tex = new THREE.CanvasTexture(c);
+  scorePopupTexCache.set(text, tex);
+  return tex;
+}
+const scorePopups = [];
+function spawnScorePopup(x,y,z,amount){
+  if(!amount) return;
+  const text = (amount>0?'+':'')+amount;
+  const mat = new THREE.SpriteMaterial({map:proceduralScorePopupTexture(text), transparent:true, depthWrite:false, opacity:1});
+  const spr = new THREE.Sprite(mat);
+  spr.position.set(x,y,z);
+  spr.scale.set(3.2,1.2,1);
+  scene.add(spr);
+  scorePopups.push({sprite:spr, mat, life:0, maxLife:1.0, x,y,z});
+}
+function updateScorePopups(dt){
+  for(let i=scorePopups.length-1;i>=0;i--){
+    const p=scorePopups[i];
+    p.life += dt;
+    const t = Math.min(1, p.life/p.maxLife);
+    p.sprite.position.set(p.x, p.y + t*3.0, p.z);   // drifts upward as it fades
+    p.mat.opacity = 1 - t;
+    if(p.life>=p.maxLife){
+      scene.remove(p.sprite); p.mat.dispose();
+      scorePopups.splice(i,1);
+    }
+  }
+}
+function clearScorePopups(){
+  for(const p of scorePopups){ scene.remove(p.sprite); p.mat.dispose(); }
+  scorePopups.length=0;
 }
 
 /* ---------------- OBJECT POOLS: asteroids / drones / pickups / bullets / rings ---------------- */
@@ -1031,6 +1086,7 @@ function resetRun(){
   // right as/after a kill -- otherwise it'd be orphaned in the scene,
   // frozen mid-animation, for the rest of the page session.
   clearExplosions();
+  clearScorePopups();
 }
 
 /* ---------------- SPAWNING ---------------- */
@@ -1234,14 +1290,17 @@ function triggerRiftEvent(){
 }
 function endRiftEvent(success){
   G.rift.active=false;
+  let heartX=0, heartY=0, heartZ=0;
   if(G.rift.heartMesh){
-    if(success) spawnExplosion(G.rift.heartMesh.position.x, G.rift.heartMesh.position.y, G.rift.heartMesh.position.z);
+    heartX=G.rift.heartMesh.position.x; heartY=G.rift.heartMesh.position.y; heartZ=G.rift.heartMesh.position.z;
+    if(success) spawnExplosion(heartX, heartY, heartZ);
     scene.remove(G.rift.heartMesh); G.rift.heartMesh=null;
   }
   clearRiftOrbiters();
   document.getElementById('vignette').style.opacity='0';
   if(success){
-    addStardust(500); addScore(2500);
+    addStardust(500); const applied=addScore(2500);
+    spawnScorePopup(heartX, heartY, heartZ, applied);
     G.shield = Math.min(G.maxShield, G.shield+1);
     showBanner('The Void Rift Takes A Serious Blow!', 2600);
     showCenterMsg('+500 stardust, hull repaired', 2400);
@@ -1398,7 +1457,11 @@ function updateRift(dt){
 }
 
 /* ---------------- SCORE / STARDUST HELPERS ---------------- */
-function addScore(v){ const mult=1+G.combo*0.05; G.score += Math.round(v*mult); }
+// Returns the actual (combo-multiplied) amount just added, so callers can
+// hand that real number to spawnScorePopup() -- the popup must show what
+// the multiplier produced, not the raw base value, or it lies about the
+// thing it exists to prove.
+function addScore(v){ const mult=1+G.combo*0.05; const applied=Math.round(v*mult); G.score += applied; return applied; }
 function addStardust(v){ G.stardust += v; }
 function setCombo(v){ G.combo=Math.max(0,v); G.bestCombo=Math.max(G.bestCombo,G.combo); }
 
@@ -1555,7 +1618,7 @@ function updateAsteroids(dt){
       if(G.boosting && o.data.small){
         spawnBurst(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z, {r:0.6,g:0.55,b:0.5}, 14, 8);
         Audio_.hit();
-        addScore(20);
+        spawnScorePopup(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z, addScore(20));
         o.active=false; o.mesh.visible=false;
       } else {
         spawnBurst(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z, {r:0.6,g:0.55,b:0.5}, 20, 10);
@@ -1620,7 +1683,7 @@ function updatePickups(dt){
       Audio_.pickup();
       if(o.data.kind==='shield'){ G.shield=Math.min(G.maxShield,G.shield+1); showCenterMsg('Shield restored',1200); }
       else if(o.data.kind==='boost'){ G.boostFuel=G.boostMax; showCenterMsg('Boost refilled',1200); }
-      else { addStardust(5); addScore(5); }
+      else { addStardust(5); spawnScorePopup(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z, addScore(5)); }
       spawnBurst(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z, {r:1,g:0.85,b:0.3}, 10, 6);
       o.active=false; o.mesh.visible=false;
     }
@@ -1641,7 +1704,7 @@ function updateRings(dt){
       if(Math.hypot(dx,dy) < o.data.r-0.9){
         o.data.passed=true;
         setCombo(G.combo+1);
-        addScore(30);
+        spawnScorePopup(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z, addScore(30));
         Audio_.ring();
         showCenterMsg('COMBO x'+G.combo, 900);
       }
@@ -1703,7 +1766,7 @@ function bulletHitsDronePool(pool, o){
       if(d.data.hp<=0){
         spawnBurst(d.mesh.position.x,d.mesh.position.y,d.mesh.position.z, {r:1,g:0.2,b:0.4}, 26, 12);
         Audio_.explode();
-        addScore(75); addStardust(15);
+        spawnScorePopup(d.mesh.position.x,d.mesh.position.y,d.mesh.position.z, addScore(75)); addStardust(15);
         if(d.data.orbit){ const idx=G.rift.orbiters.indexOf(d); if(idx>=0) G.rift.orbiters.splice(idx,1); }
         d.active=false; d.mesh.visible=false;
       }
@@ -1734,7 +1797,7 @@ function updateBullets(dt){
         o.active=false; o.mesh.visible=false; hit=true;
         if(a.data.hp<=0){
           spawnAsteroidBlast(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, a.data.scale);
-          addScore(Math.round(10*a.data.scale));
+          spawnScorePopup(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, addScore(Math.round(10*a.data.scale)));
           a.active=false; a.mesh.visible=false;
         } else {
           spawnBurst(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, {r:0.75,g:0.65,b:0.55}, 8, 7);
@@ -1790,7 +1853,7 @@ function refreshHud(){
   }
 }
 function showScreen(id){
-  for(const s of ['menuStart','menuHelp','menuShop','menuPause','menuOver']) el(s).classList.add('hidden');
+  for(const s of ['menuStart','menuHelp','menuShop','menuPause','menuOver','menuResetConfirm']) el(s).classList.add('hidden');
   if(id) el(id).classList.remove('hidden');
 }
 function refreshMenuStats(){
@@ -1834,17 +1897,24 @@ function playIntro(){
   if(p && p.catch) p.catch(()=> finish(true));
 }
 function renderShop(container, onBuy){
+  // Card layout (see Feature History): one header line (icon + name + level
+  // pips), one desc line, one full-width button whose own label carries the
+  // cost -- "UPGRADE — ✦80" / "UPGRADE — FREE (DEBUG)" / "MAXED OUT" -- so
+  // there's no separate price readout sitting next to a same-purpose button.
   container.innerHTML='';
   for(const key in UPGRADES){
     const u=UPGRADES[key]; const lvl=Save.data.upgrades[key];
-    const row=document.createElement('div'); row.className='shopItem';
+    const row=document.createElement('div'); row.className='shopCard'+(lvl>=u.max?' maxed':'');
     const cost=upgradeCost(key); const maxed=lvl>=u.max;
-    row.innerHTML = `<div class="info"><div>${u.name} <span class="lvl">Lv.${lvl}/${u.max}</span></div>
-      <div class="lvl">${u.desc}</div></div>
-      <div style="text-align:right;">
-        <div class="cost">${maxed?'MAX':(DEBUG?'FREE (DEBUG)':'✦ '+cost)}</div>
-        <button class="small" ${maxed?'disabled':''} data-key="${key}">${maxed?'—':'UPGRADE'}</button>
-      </div>`;
+    let pips=''; for(let i=0;i<u.max;i++) pips+=`<span class="pip${i<lvl?' filled':''}"></span>`;
+    const btnLabel = maxed ? 'MAXED OUT' : (DEBUG ? 'UPGRADE — FREE (DEBUG)' : 'UPGRADE — ✦'+cost);
+    row.innerHTML = `<div class="shopCardHead">
+        <span class="shopIcon">${u.icon}</span>
+        <span class="shopName">${u.name}</span>
+        <span class="shopPips">${pips}</span>
+      </div>
+      <div class="shopDesc">${u.desc}</div>
+      <button class="shopBuyBtn" ${maxed?'disabled':''} data-key="${key}">${btnLabel}</button>`;
     container.appendChild(row);
   }
   container.querySelectorAll('button[data-key]').forEach(btn=>{
@@ -1906,6 +1976,21 @@ el('btnInvertY').addEventListener('click', (e)=>{
   Save.data.invertY = Input.invertY;
   Save.save();
   e.target.textContent='INVERT Y: '+(Input.invertY?'ON':'OFF');
+});
+// "NEW GAME" / erase-progress flow: NEW opens a confirmation screen rather than
+// wiping the save immediately -- a single misclick shouldn't be able to erase a
+// high score and every Shipyard upgrade. Only high score, stardust, and upgrade
+// levels are reset here; autofire/invertY/sound are player *preferences*, not
+// run progress, so they deliberately survive a reset.
+el('btnNew').addEventListener('click', ()=>showScreen('menuResetConfirm'));
+el('btnResetCancel').addEventListener('click', ()=>showScreen('menuStart'));
+el('btnResetConfirm').addEventListener('click', ()=>{
+  Save.data.highScore = 0;
+  Save.data.stardust = 0;
+  for(const key in Save.data.upgrades) Save.data.upgrades[key] = 0;
+  Save.save();
+  refreshMenuStats();
+  showScreen('menuStart');
 });
 el('btnResume').addEventListener('click', ()=>resumeGame());
 el('btnPauseShop').addEventListener('click', ()=>openShop('menuPause'));

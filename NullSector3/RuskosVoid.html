@@ -83,6 +83,7 @@
       <button class="small" id="btnSound">🔊 SOUND: ON</button>
       <button class="small" id="btnAutofire">AUTO-FIRE: OFF</button>
       <button class="small" id="btnInvertY">INVERT Y: OFF</button>
+      <button class="small danger" id="btnNew">NEW GAME</button>
     </div>
     <div id="footer">three.js · single-file · keyboard · mouse · gamepad · touch</div>
   </div>
@@ -144,6 +145,19 @@
       <button class="big" id="btnRetry">FLY AGAIN ▶</button>
       <button class="small" id="btnOverShop">SHIPYARD</button>
       <button class="small" id="btnOverMenu">MAIN MENU</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESET CONFIRM -->
+<div class="overlay hidden" id="menuResetConfirm">
+  <div class="panel">
+    <h1 class="title" style="font-size:22px;">ERASE ALL PROGRESS?</h1>
+    <div class="lore">This wipes your high score, banked stardust, and every Shipyard
+      upgrade back to zero. There is no undo — the Void does not do backsies.</div>
+    <div class="btnRow">
+      <button class="big danger" id="btnResetConfirm">ERASE IT ALL</button>
+      <button class="small" id="btnResetCancel">CANCEL</button>
     </div>
   </div>
 </div>
