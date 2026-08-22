@@ -128,6 +128,56 @@ const CFG = {
   tutorialTipMs: 4200,      // how long each tip stays on screen
 
   riftResultMs: 4200,       // how long the Void Rift victory/evaded banner stays up (own slot, see showRiftResultBanner())
+
+  // Player-ship engine flames (see ENGINE_POINTS/buildShip() below) --
+  // idle length multiplier is always 1.0; this is how far past that the
+  // four flames stretch while G.boosting is true, same lerp mechanic the
+  // old single thruster cone already used, just a bigger target so boost
+  // reads as a real streak rather than a slightly-longer flame.
+  engineBoostStretch: 3.0,
+
+  // Asteroid hit feedback (Russ's report: multi-hit rocks gave no visible
+  // sign a shot landed, felt very hard to hit at all, and a hit didn't buy
+  // any breathing room before the next one had to land). See the bullet-vs-
+  // asteroid block in updateBullets() and updateAsteroids() below.
+  asteroidHitGlowPeak: 1.25,   // emissiveIntensity at the instant of a hit -- bright enough to read clearly, low enough the rock's shape doesn't wash out to a white blob (the exact mistake #41/#42 made with the void heart's glow, worth avoiding here from the start)
+  asteroidHitGlowDecay: 3.2,   // per-second decay rate back to 0 (~0.5s fade)
+  // Knockback on a non-killing hit -- Russ's follow-up report: the first
+  // pass (an instant 4.5-unit position jump, no animation at all) was
+  // effectively invisible, both too small and, worse, an un-animated
+  // teleport has nothing for the eye to actually track. This is now a real
+  // decaying impulse, not a snap: the rock launches away from the ship at
+  // asteroidKnockbackVel and that speed bleeds off at asteroidKnockbackDecay
+  // per second, so it visibly rockets backward and eases to a stop --
+  // total distance covered works out to vel^2/(2*decay) = 80^2/(2*160) = 20
+  // units over about half a second, ~4.4x the old jump and, unlike the old
+  // version, something the player can actually see happen.
+  asteroidKnockbackVel: 80,    // units/sec, launched away from the ship the instant a non-killing hit lands
+  asteroidKnockbackDecay: 160, // units/sec^2 -- how fast that speed bleeds off
+
+  // Ring-combo payout multiplier -- the tutorial tip literally says "RING
+  // COMBO MULTIPLIES EVERYTHING" (see TUTORIAL_TIPS above), so both
+  // addScore() and addStardust() below read this same constant rather than
+  // each hardcoding their own rate (or, as addStardust() did until Russ
+  // flagged it, applying no combo bonus at all -- stardust pickups, turret
+  // kills, and the Rift heart's 500-stardust payout were all paying flat,
+  // un-multiplied amounts regardless of combo level, contradicting what the
+  // game itself tells the player).
+  //
+  // This is a full +100% per combo level -- i.e. an honest-to-god Nx
+  // multiplier, not a small percentage bonus. G.combo starts at 0 and the
+  // on-screen "COMBO x_" readout always shows 1+G.combo (see el('comboText')
+  // below), so comboMult() below (1 + G.combo*comboBonusPerLevel) lines up
+  // exactly with that displayed number: COMBO x1 (no rings passed yet) pays
+  // 1x, COMBO x2 (one ring) pays 2x, COMBO x3 pays 3x, COMBO x4 pays 4x, and
+  // so on, uncapped (matches G.combo's own lack of a cap). Applies uniformly
+  // to every score/stardust source that runs through addScore()/
+  // addStardust() -- asteroid kills (shot or boost-smashed), turret/drone
+  // kills, stardust-crystal pickups, the Rift heart's 2500/500 payout, and
+  // ring passes themselves (a ring's own addScore(30) already runs AFTER
+  // that ring's setCombo(G.combo+1), so it's paid at the combo level the
+  // ring itself just reached).
+  comboBonusPerLevel: 1,
 };
 
 // Distance-gated world events (planet flybys, the Void Rift, and whatever
@@ -701,15 +751,12 @@ scene.add(nebulaGroup);
 
 /* ----- player ship (loaded via GLTFLoader from assets/player_ship.glb) -----
    Was: a single flat-color low-poly mesh parsed by the hand-rolled
-   parseGLB()/buildGLBParts() pipeline below (still used, unchanged, by
-   the Rift drones and turrets -- both still simple flat-color kit
-   models). Russ's Tripo-generated replacement is a fully textured mesh
-   (baseColor/normal/metallicRoughness maps), which that tiny parser
-   can't handle, so the player ship alone now goes through a real
-   THREE.GLTFLoader (vendored from three@0.160.0, matching this
-   project's three.module.js build exactly -- see handoff.md) and loads
-   its .glb as an external asset file instead of an embedded base64
-   string. See buildShip() below for the load. */
+   parseGLB() pipeline. That pipeline is gone entirely now (see #40) --
+   it only ever existed for the Rift drones and regular turrets, both of
+   which have since moved to real GLTFLoader loads of textured Tripo
+   models (#39, #40), the same reason the player ship moved here first:
+   a flat-color-only parser can't handle a baseColorTexture. See
+   buildShip() below for the load. */
 const SHIP_GLB_URL = 'assets/player_ship.glb';
 const shipGLTFLoader = new GLTFLoader();
 
@@ -725,191 +772,56 @@ const SHIP_YAW_OFFSET = 0;
 // is a first-pass pick, not a verified one -- fly it and adjust by eye.
 const SHIP_SCALE = 3.13;
 
-function parseGLB(base64){
-  const raw = atob(base64);
-  const bytes = new Uint8Array(raw.length);
-  for(let i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i);
-  const dv = new DataView(bytes.buffer);
-  if(dv.getUint32(0,true) !== 0x46546C67) throw new Error('Not a GLB file');
-  const totalLength = dv.getUint32(8,true);
-  let offset=12, json=null, bin=null;
-  while(offset < totalLength){
-    const chunkLength = dv.getUint32(offset,true);
-    const chunkType = dv.getUint32(offset+4,true);
-    const chunkStart = offset+8;
-    if(chunkType===0x4E4F534A){ // 'JSON'
-      json = JSON.parse(new TextDecoder('utf-8').decode(bytes.subarray(chunkStart, chunkStart+chunkLength)));
-    } else if(chunkType===0x004E4942){ // 'BIN\0'
-      bin = bytes.subarray(chunkStart, chunkStart+chunkLength);
-    }
-    offset = chunkStart+chunkLength;
-  }
-  return {json, bin};
-}
+// Four engine attach points on the ship's back, replacing the old single
+// centered thruster cone (Russ's ask: remove the one flame, put a real
+// flame at each of the four engine nozzles instead). Found by loading the
+// raw mesh's vertex positions outside the game (a one-off Python/DBSCAN
+// pass against assets/player_ship.glb this session, not eyeballed) and
+// clustering the vertices sitting right on the tail face (z > 0.44 in the
+// model's own un-recentered units, out of a z range of roughly -0.49..0.49)
+// by their (x,y) position -- four tight, cleanly separated clusters came
+// out, symmetric about x=0 in an inner/outer pair on each side, exactly
+// where you'd expect four engine nozzle rims to sit. Each point below is
+// that cluster's centroid (x,y) and its max z (the nozzle's own back
+// face), already shifted by the model's bounding-box center the same way
+// loaded.position.sub(center) shifts the model itself in the load callback
+// below -- so, like SHIP_SCALE, these are ready to use directly against
+// the recentered model, just still needing *SHIP_SCALE to land in
+// outer/world-space units.
+const ENGINE_POINTS = [
+  { x:-0.1556, y:-0.0324, z:0.4821 }, // outer-left
+  { x:-0.1050, y:-0.0391, z:0.4901 }, // inner-left
+  { x: 0.1015, y:-0.0404, z:0.4901 }, // inner-right
+  { x: 0.1584, y:-0.0332, z:0.4821 }, // outer-right
+];
+// Bright blue per Russ's ask, additive-blended so the four flames read as
+// a glow rather than four flat-shaded cones sitting behind the ship.
+const ENGINE_FLAME_COLOR = 0x33d6ff;
 
-const GLB_COMPONENT_GETTERS = {5120:'getInt8',5121:'getUint8',5122:'getInt16',5123:'getUint16',5125:'getUint32',5126:'getFloat32'};
-const GLB_COMPONENT_SIZE = {5120:1,5121:1,5122:2,5123:2,5125:4,5126:4};
-const GLB_TYPE_COMPONENTS = {SCALAR:1,VEC2:2,VEC3:3,VEC4:4,MAT4:16};
+// The hand-rolled GLB parser that used to live here (parseGLB/
+// readGLBAccessor/extractMeshParts/meshBoundsFromPositions/buildGLBParts/
+// instanceGLBGroup/findMuzzlePoints/buildTurretRig/instanceTurretGroup) has
+// been removed entirely as of #40 -- it existed only to load the Rift
+// drones and regular turrets as flat-color, texture-less, single-material
+// kit models. Both have since moved to real GLTFLoader loads of Russ's
+// textured Tripo models (Rift drones in #39, turrets in #40, following
+// the same pattern #37 established for the player ship), and nothing else
+// in this file ever called into this parser -- keeping ~170 lines of
+// unreachable code around risked misleading a future session into
+// thinking it was still load-bearing, so it was deleted rather than left
+// commented out. If a future model genuinely needs a lightweight
+// flat-color-only loader again, this git/project history has the full
+// implementation to resurrect.
 
-function readGLBAccessor(json, bin, idx){
-  const acc = json.accessors[idx];
-  const bv = json.bufferViews[acc.bufferView];
-  const numComp = GLB_TYPE_COMPONENTS[acc.type];
-  const compSize = GLB_COMPONENT_SIZE[acc.componentType];
-  const getter = GLB_COMPONENT_GETTERS[acc.componentType];
-  const elemBytes = numComp*compSize;
-  const stride = bv.byteStride || elemBytes;
-  const byteOffset = (bv.byteOffset||0) + (acc.byteOffset||0);
-  const isFloat = acc.componentType===5126;
-  const out = isFloat ? new Float32Array(acc.count*numComp) : new Uint32Array(acc.count*numComp);
-  const length = (acc.count-1)*stride + elemBytes;
-  const dvLocal = new DataView(bin.buffer, bin.byteOffset+byteOffset, length);
-  for(let i=0;i<acc.count;i++){
-    for(let c=0;c<numComp;c++){
-      out[i*numComp+c] = dvLocal[getter](i*stride + c*compSize, true);
-    }
-  }
-  return out;
-}
-
-// Builds shared {geo,mat} parts for one mesh's primitives, optionally
-// shifting every vertex by -offset first (used to recenter a mesh on its
-// own bounding-box middle). Shared by buildGLBParts() (simple, single-mesh
-// models: the player ship, the Rift drones) and buildTurretRig() below
-// (a base+swiveling-head rig, two meshes/nodes).
-function extractMeshParts(json, bin, meshIndex, offset){
-  const off = offset || {cx:0,cy:0,cz:0};
-  const mesh = json.meshes[meshIndex];
-  const parts=[];
-  for(const prim of mesh.primitives){
-    const pos = readGLBAccessor(json, bin, prim.attributes.POSITION);
-    const nrm = prim.attributes.NORMAL!=null ? readGLBAccessor(json, bin, prim.attributes.NORMAL) : null;
-    const idx = readGLBAccessor(json, bin, prim.indices);
-    for(let i=0;i<pos.length;i+=3){ pos[i]-=off.cx; pos[i+1]-=off.cy; pos[i+2]-=off.cz; }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    if(nrm) geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-    geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    if(!nrm) geo.computeVertexNormals();
-    const matDef = json.materials[prim.material];
-    const [mr,mg,mb] = matDef.pbrMetallicRoughness.baseColorFactor;
-    const color = new THREE.Color(mr,mg,mb);
-    const mat = new THREE.MeshStandardMaterial({
-      color, metalness:0.55, roughness:0.4,
-      emissive:color.clone().multiplyScalar(0.12),
-    });
-    parts.push({geo,mat});
-  }
-  return parts;
-}
-function meshBoundsFromPositions(posAll){
-  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
-  for(let i=0;i<posAll.length;i+=3){
-    const x=posAll[i],y=posAll[i+1],z=posAll[i+2];
-    if(x<minX)minX=x; if(x>maxX)maxX=x;
-    if(y<minY)minY=y; if(y>maxY)maxY=y;
-    if(z<minZ)minZ=z; if(z>maxZ)maxZ=z;
-  }
-  return {minX,maxX,minY,maxY,minZ,maxZ};
-}
-// Parses a GLB once into a set of shared {geo,mat} parts (one per material
-// primitive), recentered on the mesh's own bounding-box middle. Meant for
-// anything that needs many identical instances (a pooled enemy, say):
-// parse once here, then call instanceGLBGroup() per instance — every copy
-// references the same geometries/materials, so nothing is re-parsed or
-// duplicated on the GPU no matter how many instances exist.
-function buildGLBParts(base64){
-  const {json, bin} = parseGLB(base64);
-  const posAll = readGLBAccessor(json, bin, json.meshes[0].primitives[0].attributes.POSITION);
-  const b = meshBoundsFromPositions(posAll);
-  const cx=(b.minX+b.maxX)/2, cy=(b.minY+b.maxY)/2, cz=(b.minZ+b.maxZ)/2;
-  const parts = extractMeshParts(json, bin, 0, {cx,cy,cz});
-  return {parts, bounds:b};
-}
-function instanceGLBGroup(built){
-  const g = new THREE.Group();
-  for(const {geo,mat} of built.parts) g.add(new THREE.Mesh(geo,mat));
-  return g;
-}
-
-// Parses a two-node "base + swiveling head" rig (a turret: a fixed base
-// and a head mounted on top that's meant to rotate independently to aim).
-// Expects the glTF scene root to be a node with its own mesh (the base)
-// and exactly one child node with its own mesh (the head) — that's the
-// shape Kenney-style turret kit pieces export as. The base is recentered
-// on its own bounding-box middle like buildGLBParts(); the head is left
-// at its authored local origin, since that origin *is* the swivel pivot
-// (its own Y range starts at 0 — it sits ON the mount point, doesn't
-// straddle it) and recentering it would rotate it around the wrong point.
-// Finds barrel muzzle points on the head mesh: takes the forward-most 12%
-// of its Z range (the barrel tips), splits that band by which side of
-// center (X) each vertex falls on, and averages each side into a point.
-// A single-barrel head collapses to one point (everything on one side);
-// a twin-barrel head like this turret naturally splits into two.
-function findMuzzlePoints(pos){
-  let maxZ=-Infinity, minZ=Infinity;
-  for(let i=0;i<pos.length;i+=3){ if(pos[i+2]>maxZ)maxZ=pos[i+2]; if(pos[i+2]<minZ)minZ=pos[i+2]; }
-  const thresh = maxZ - (maxZ-minZ)*0.12;
-  let lx=0,ly=0,lz=0,lc=0, rx=0,ry=0,rz=0,rc=0;
-  for(let i=0;i<pos.length;i+=3){
-    const x=pos[i],y=pos[i+1],z=pos[i+2];
-    if(z<thresh) continue;
-    if(x<0){ lx+=x;ly+=y;lz+=z;lc++; } else { rx+=x;ry+=y;rz+=z;rc++; }
-  }
-  const pts=[];
-  if(lc) pts.push({x:lx/lc, y:ly/lc, z:lz/lc});
-  if(rc) pts.push({x:rx/rc, y:ry/rc, z:rz/rc});
-  return pts.length ? pts : [{x:0, y:0, z:maxZ}];
-}
-function buildTurretRig(base64){
-  const {json, bin} = parseGLB(base64);
-  const rootIdx = json.scenes[json.scene].nodes[0];
-  const rootNode = json.nodes[rootIdx];
-  const baseMeshIdx = rootNode.mesh;
-  const posAll = readGLBAccessor(json, bin, json.meshes[baseMeshIdx].primitives[0].attributes.POSITION);
-  const bounds = meshBoundsFromPositions(posAll);
-  const cx=(bounds.minX+bounds.maxX)/2, cy=(bounds.minY+bounds.maxY)/2, cz=(bounds.minZ+bounds.maxZ)/2;
-  const baseParts = extractMeshParts(json, bin, baseMeshIdx, {cx,cy,cz});
-
-  const childIdx = (rootNode.children||[])[0];
-  let headParts=[], headOffset={x:0,y:0,z:0}, muzzles=[];
-  if(childIdx!=null){
-    const childNode = json.nodes[childIdx];
-    if(childNode.mesh!=null){
-      const headPosAll = readGLBAccessor(json, bin, json.meshes[childNode.mesh].primitives[0].attributes.POSITION);
-      muzzles = findMuzzlePoints(headPosAll);
-      headParts = extractMeshParts(json, bin, childNode.mesh, {cx:0,cy:0,cz:0});
-      const t = childNode.translation||[0,0,0];
-      headOffset = {x:t[0], y:t[1], z:t[2]};
-    }
-  }
-  return {baseParts, headParts, headOffset, muzzles, bounds};
-}
-function instanceTurretGroup(rig){
-  const g = new THREE.Group();
-  for(const {geo,mat} of rig.baseParts) g.add(new THREE.Mesh(geo,mat));
-  if(rig.headParts.length){
-    const head = new THREE.Group();
-    head.position.set(rig.headOffset.x, rig.headOffset.y, rig.headOffset.z);
-    for(const {geo,mat} of rig.headParts) head.add(new THREE.Mesh(geo,mat));
-    g.add(head);
-    g.userData.turretHead = head;
-    // muzzle points are read-only local offsets, safe to share the same
-    // array across every pooled instance rather than cloning per-copy.
-    g.userData.muzzles = rig.muzzles;
-  }
-  return g;
-}
 
 /* ----- player ship (loaded from SHIP_GLB_BASE64) ----- */
 function buildShip(){
-  // g is the outer group -- kept UNSCALED so the procedural thruster
-  // (below) stays its own authored size no matter what SHIP_SCALE the
-  // loaded model needs. Only modelScaleGroup, which holds just the
-  // loaded mesh, gets SHIP_SCALE -- scaling the whole outer group (the
-  // first-pass approach) would have blown the thruster cone up 3.13x
-  // right along with the ship, which is wrong: the thruster's size was
-  // tuned for the old model's units, not the new one's.
+  // g is the outer group -- kept UNSCALED so the procedural engine flames
+  // (below) stay their own authored size no matter what SHIP_SCALE the
+  // loaded model needs. Only modelScaleGroup, which holds just the loaded
+  // mesh, gets SHIP_SCALE -- scaling the whole outer group (the first-pass
+  // approach #37 caught and fixed for the old single thruster) would blow
+  // the flames up 3.13x right along with the ship.
   const g = new THREE.Group();
   const modelScaleGroup = new THREE.Group();
   modelScaleGroup.scale.setScalar(SHIP_SCALE);
@@ -917,17 +829,27 @@ function buildShip(){
   const modelGroup = new THREE.Group();
   modelScaleGroup.add(modelGroup);
 
-  // thruster glow (mounted at the tail, opposite the nose), in outer
-  // (unscaled) space. Placeholder position until the real model loads
-  // and its bounding box is known (see the load callback below, which
-  // repositions this using the model's own bbox * SHIP_SCALE so it still
-  // lands at the visual tail of the now-larger-looking ship).
-  const thrGeo = new THREE.ConeGeometry(0.28,1.1,8);
-  const thrMat = new THREE.MeshBasicMaterial({color:0xff8a2b, transparent:true, opacity:0.85});
-  const thruster = new THREE.Mesh(thrGeo, thrMat);
-  thruster.rotation.x = Math.PI/2; thruster.position.set(0,0,0.85);
-  g.add(thruster);
-  g.userData.thruster = thruster;
+  // Four engine flames at the ENGINE_POINTS attach points, in outer
+  // (unscaled) space -- unlike the old single thruster, these don't need
+  // to wait on the async model load to know where to sit: ENGINE_POINTS
+  // is already expressed in the model's own recentered units (see its
+  // comment above), so `*SHIP_SCALE` places them correctly immediately.
+  // The +0.35 z stand-off matches the old thruster's own offset past the
+  // model's tail face, keeping the flames clear of the hull instead of
+  // clipping into it.
+  const flameGeo = new THREE.ConeGeometry(0.11, 0.5, 8);
+  const engines = ENGINE_POINTS.map(pt => {
+    const mat = new THREE.MeshBasicMaterial({
+      color: ENGINE_FLAME_COLOR, transparent:true, opacity:0.85,
+      blending: THREE.AdditiveBlending, depthWrite:false,
+    });
+    const flame = new THREE.Mesh(flameGeo, mat);
+    flame.rotation.x = Math.PI/2;
+    flame.position.set(pt.x*SHIP_SCALE, pt.y*SHIP_SCALE, pt.z*SHIP_SCALE + 0.35);
+    g.add(flame);
+    return flame;
+  });
+  g.userData.engines = engines;
 
   g.rotation.y = SHIP_YAW_OFFSET;
 
@@ -939,18 +861,13 @@ function buildShip(){
     const loaded = gltf.scene;
     // recenter on the model's own bounding-box middle, same convention
     // the old parser used, computed here (before `loaded` is parented)
-    // so it isn't polluted by the ship's own in-run world position.
+    // so it isn't polluted by the ship's own in-run world position. This
+    // is the same center ENGINE_POINTS above was already computed against
+    // offline, so the flames need no adjustment once this resolves.
     const box = new THREE.Box3().setFromObject(loaded);
     const center = box.getCenter(new THREE.Vector3());
     loaded.position.sub(center);
     modelGroup.add(loaded);
-
-    // reposition the thruster at the (now-known, recentered) tail --
-    // halfDepth is in the loaded model's own (pre-SHIP_SCALE) units, so
-    // scale it up to land at the tail in outer/world-space units, same
-    // space the (unscaled) thruster itself lives in.
-    const halfDepth = (box.max.z - box.min.z)/2;
-    thruster.position.set(0,0, halfDepth*SHIP_SCALE + 0.35);
   }, undefined, (err) => {
     console.error('player ship model failed to load:', err);
   });
@@ -1057,14 +974,42 @@ function spawnExplosion(x,y,z){
 function spawnAsteroidBlast(x,y,z, scale){
   const mat = new THREE.SpriteMaterial({map:fireballTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:1});
   const spr = new THREE.Sprite(mat);
-  const startScale = 1.1*scale;
+  // Sized up from the original 1.1/+3.2/0.45 (~25-30% bigger, a bit longer-
+  // lived) per Russ's ask for a bigger kill blast -- still well under
+  // spawnExplosion()'s scale-16 Rift-kill ceiling, and still no PointLight/
+  // flashScreen(), see the no-light/no-flash reasoning above (a bullet can
+  // pop several of these a second in a dense field; that reasoning didn't
+  // change, only the sprite/shrapnel sizing did).
+  const startScale = 1.4*scale;
   spr.position.set(x,y,z);
   spr.scale.setScalar(startScale);
   scene.add(spr);
-  explosions.push({sprite:spr, mat, light:null, life:0, maxLife:0.45, startScale, endScale:startScale+3.2*scale, lightIntensity:0});
-  spawnBurst(x,y,z, {r:0.7,g:0.6,b:0.5}, Math.round(16*scale), Math.round(9*scale));   // rock shrapnel
-  spawnBurst(x,y,z, {r:1,g:0.55,b:0.15}, Math.round(18*scale), Math.round(10*scale));  // fireball shower
+  explosions.push({sprite:spr, mat, light:null, life:0, maxLife:0.55, startScale, endScale:startScale+4.4*scale, lightIntensity:0});
+  spawnBurst(x,y,z, {r:0.7,g:0.6,b:0.5}, Math.round(22*scale), Math.round(10*scale));   // rock shrapnel
+  spawnBurst(x,y,z, {r:1,g:0.55,b:0.15}, Math.round(24*scale), Math.round(11*scale));  // fireball shower
   Audio_.asteroidExplode();
+}
+// Void Rift heart hit-feedback (#43) -- Russ explicitly asked for the heart
+// to "emit and spew fiery flames when hit," having found the previous
+// magenta-emissive-pulse approach (#41/#42) unacceptably close to the old
+// pink-blob placeholder no matter how far the intensity was dialed down.
+// This replaces the plain tinted spawnBurst() that used to run alongside
+// the emissive pulse with a real fireball-sprite flare (same fireballTex/
+// explosions-array technique as spawnAsteroidBlast(), just smaller/shorter-
+// lived and no PointLight -- this can fire many times in one Rift fight,
+// unlike a one-off kill blast) plus a fire-colored particle spray. The
+// mesh's own brief fire-orange emissive flash (VOID_HEART_HIT_EMISSIVE_
+// BOOST, see updateRift()) still happens alongside this at the same
+// moment, so a hit reads as "catches fire," not "flashes pink."
+function spawnHeartFireHit(x,y,z){
+  const mat = new THREE.SpriteMaterial({map:fireballTex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, opacity:1});
+  const spr = new THREE.Sprite(mat);
+  const startScale = 1.4;
+  spr.position.set(x,y,z);
+  spr.scale.setScalar(startScale);
+  scene.add(spr);
+  explosions.push({sprite:spr, mat, light:null, life:0, maxLife:0.4, startScale, endScale:startScale+2.4, lightIntensity:0});
+  spawnBurst(x,y,z, {r:1,g:0.55,b:0.15}, 14, 10);
 }
 function updateExplosions(dt){
   for(let i=explosions.length-1;i>=0;i--){
@@ -1143,32 +1088,82 @@ function clearScorePopups(){
 /* ---------------- OBJECT POOLS: asteroids / drones / pickups / bullets / rings ---------------- */
 const asteroidGeoCache = [];
 for(let i=0;i<4;i++) asteroidGeoCache.push(new THREE.IcosahedronGeometry(1, 0));
-const asteroidMat = new THREE.MeshStandardMaterial({color:0x7a6a5c, roughness:0.9, metalness:0.1, flatShading:true});
+// emissive starts at 0 (invisible, no idle glow) -- CFG.asteroidHitGlowPeak
+// drives it up on a hit and updateAsteroids() decays it back down each
+// frame, same idle-plus-hit-boost shape the void heart's pulse already
+// uses. This is a TEMPLATE material only -- every asteroidPool slot below
+// clones its own copy so one rock's hit-flash can't bleed onto every other
+// rock on screen (see the pool builder just below for why that matters).
+const asteroidMat = new THREE.MeshStandardMaterial({color:0x7a6a5c, roughness:0.9, metalness:0.1, flatShading:true, emissive:0xfff0c0, emissiveIntensity:0});
 
-// Rift-drone model (the five that orbit the void heart during a Rift) —
-// low-poly glTF embedded as base64 GLB, same approach as the player ship.
-// Parsed once into shared parts; every instance below is a cheap
-// instanceGLBGroup() referencing those same parts.
-const RIFT_DRONE_GLB_BASE64 = "Z2xURgIAAAAcSwAAoAoAAEpTT057ImV4dGVuc2lvbnNVc2VkIjpbIktIUl9tYXRlcmlhbHNfdW5saXQiXSwiYXNzZXQiOnsiZ2VuZXJhdG9yIjoiVW5pR0xURi0xLjI3IiwidmVyc2lvbiI6IjIuMCJ9LCJidWZmZXJzIjpbeyJieXRlTGVuZ3RoIjoxNjQ4MH1dLCJidWZmZXJWaWV3cyI6W3siYnVmZmVyIjowLCJieXRlT2Zmc2V0IjowLCJieXRlTGVuZ3RoIjo0OTIwLCJ0YXJnZXQiOjM0OTYyfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6NDkyMCwiYnl0ZUxlbmd0aCI6NDkyMCwidGFyZ2V0IjozNDk2Mn0seyJidWZmZXIiOjAsImJ5dGVPZmZzZXQiOjk4NDAsImJ5dGVMZW5ndGgiOjMyODAsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0IjoxMzEyMCwiYnl0ZUxlbmd0aCI6NjAwLCJ0YXJnZXQiOjM0OTYzfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6MTM3MjAsImJ5dGVMZW5ndGgiOjg0MCwidGFyZ2V0IjozNDk2M30seyJidWZmZXIiOjAsImJ5dGVPZmZzZXQiOjE0NTYwLCJieXRlTGVuZ3RoIjo0NTYsInRhcmdldCI6MzQ5NjN9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0IjoxNTAxNiwiYnl0ZUxlbmd0aCI6MTQ2NCwidGFyZ2V0IjozNDk2M31dLCJhY2Nlc3NvcnMiOlt7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJWRUMzIiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjQxMCwibWF4IjpbMC42LDAuNzUsMS4wMTI4MzUyNl0sIm1pbiI6Wy0wLjYsMCwtMS4wMTI4MzUyNl0sIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjEsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJWRUMzIiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjQxMCwibm9ybWFsaXplZCI6ZmFsc2V9LHsiYnVmZmVyVmlldyI6MiwiYnl0ZU9mZnNldCI6MCwidHlwZSI6IlZFQzIiLCJjb21wb25lbnRUeXBlIjo1MTI2LCJjb3VudCI6NDEwLCJub3JtYWxpemVkIjpmYWxzZX0seyJidWZmZXJWaWV3IjozLCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiU0NBTEFSIiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjE1MCwibm9ybWFsaXplZCI6ZmFsc2V9LHsiYnVmZmVyVmlldyI6NCwiYnl0ZU9mZnNldCI6MCwidHlwZSI6IlNDQUxBUiIsImNvbXBvbmVudFR5cGUiOjUxMjUsImNvdW50IjoyMTAsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjUsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJTQ0FMQVIiLCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MTE0LCJub3JtYWxpemVkIjpmYWxzZX0seyJidWZmZXJWaWV3Ijo2LCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiU0NBTEFSIiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjM2Niwibm9ybWFsaXplZCI6ZmFsc2V9XSwibWF0ZXJpYWxzIjpbeyJuYW1lIjoibWV0YWwiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlswLjg0MzEzNzI2NCwwLjg3MDU4ODI0MywwLjkwOTgwMzksMV0sIm1ldGFsbGljRmFjdG9yIjoxLCJyb3VnaG5lc3NGYWN0b3IiOjF9LCJkb3VibGVTaWRlZCI6ZmFsc2UsImFscGhhTW9kZSI6Ik9QQVFVRSJ9LHsibmFtZSI6Im1ldGFsRGFyayIsInBick1ldGFsbGljUm91Z2huZXNzIjp7ImJhc2VDb2xvckZhY3RvciI6WzAuNjc1MDYyMywwLjcxMDAyMTksMC43NzM1ODQ5LDFdLCJtZXRhbGxpY0ZhY3RvciI6MSwicm91Z2huZXNzRmFjdG9yIjoxfSwiZG91YmxlU2lkZWQiOmZhbHNlLCJhbHBoYU1vZGUiOiJPUEFRVUUifSx7Im5hbWUiOiJkYXJrIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC4yNzQ1MDk4MTcsMC4yOTgwMzkyMjgsMC4zNDExNzY0OCwxXSwibWV0YWxsaWNGYWN0b3IiOjEsInJvdWdobmVzc0ZhY3RvciI6MX0sImRvdWJsZVNpZGVkIjpmYWxzZSwiYWxwaGFNb2RlIjoiT1BBUVVFIn0seyJuYW1lIjoibWV0YWxSZWQiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlsxLDAuNjI4NTI0MjQ0LDAuMjAyODMwMiwxXSwibWV0YWxsaWNGYWN0b3IiOjEsInJvdWdobmVzc0ZhY3RvciI6MX0sImRvdWJsZVNpZGVkIjpmYWxzZSwiYWxwaGFNb2RlIjoiT1BBUVVFIn1dLCJtZXNoZXMiOlt7Im5hbWUiOiJNZXNoIGNyYWZ0X3JhY2VyIiwicHJpbWl0aXZlcyI6W3sibW9kZSI6NCwiaW5kaWNlcyI6MywiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjB9LHsibW9kZSI6NCwiaW5kaWNlcyI6NCwiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjF9LHsibW9kZSI6NCwiaW5kaWNlcyI6NSwiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjJ9LHsibW9kZSI6NCwiaW5kaWNlcyI6NiwiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjN9XX1dLCJub2RlcyI6W3siY2hpbGRyZW4iOlsxXSwibmFtZSI6InRtcFBhcmVudCIsInRyYW5zbGF0aW9uIjpbMCwwLDBdLCJyb3RhdGlvbiI6WzAsMCwwLDFdLCJzY2FsZSI6WzEsMSwxXX0seyJuYW1lIjoiY3JhZnRfcmFjZXIiLCJ0cmFuc2xhdGlvbiI6WzIsMCwxLjVdLCJyb3RhdGlvbiI6WzAsMCwwLDFdLCJzY2FsZSI6WzEsMSwxXSwibWVzaCI6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AACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAC75ZD8u+eS+AAAAAC75ZD8u+eS+AAAAAC75ZD8u+eS+AAAAAC75ZD8u+eS+AAAAAOnccj+b6KE+AAAAAOnccj+b6KE+AAAAAOnccj+b6KE+AAAAAOnccj+b6KE+AAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAOnccj+b6KE+AAAAAOnccj+b6KE+AAAAAOnccj+b6KE+AAAAAOnccj+b6KE+AACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAC75ZL8u+eS+AAAAAC75ZL8u+eS+AAAAAC75ZL8u+eS+AAAAAC75ZL8u+eS+AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAACqNwz6gl2y/AAAAACqNwz6gl2y/AAAAACqNwz6gl2y/AAAAACqNwz6gl2y/JLxEv/GGDT8b8aS+JLxEv/GGDT8b8aS+JLxEv/GGDT8b8aS+AAAAADIrcD+4QbG+AAAAADIrcD+4QbG+AAAAADIrcD+4QbG+AAAAADIrcD+4QbG+JLxEP/GGDT8b8aS+JLxEP/GGDT8b8aS+JLxEP/GGDT8b8aS+AAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACA8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/8wQ1vwAAAADzBDW/AACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAG8mdj8/qIw+AAAAAG8mdj8/qIw+AAAAAG8mdj8/qIw+AAAAAG8mdj8/qIw+AAAAAG8mdj8/qIw+AAAAAG8mdj8/qIw+AAAAAG8mdj8/qIw+AAAAAG8mdj8/qIw+AACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAF4+aT+rB9O+AAAAAF4+aT+rB9O+AAAAAF4+aT+rB9O+AAAAAF4+aT+rB9O+AAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACAAAAAAAAAgL8AAACA8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/8wQ1PwAAAADzBDW/AACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAKSufz90CUy9AAAAAKSufz90CUy9AAAAAKSufz90CUy9AAAAAKSufz90CUy9AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAACAPwAAAAAAAACAAAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AAAAAIbVfL+9iyC+AACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAACAvwAAAAAAAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAAAAAAAAAgD8AAACAd7uNwfD3O8D2eh3B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JQEAACMBAAAlAQAAJgEAACYBAAAlAQAAJwEAACgBAAAiAQAAIwEAACIBAAAoAQAAKQEAACkBAAAoAQAAJwEAACkBAAAnAQAAJQEAACkBAAAlAQAAKgEAACkBAAAqAQAAKwEAAC0BAABbAAAALAEAAFsAAAAtAQAAXQAAAF0AAAAtAQAAXgAAAF4AAAAtAQAALgEAADEBAAAwAQAALwEAADABAAAxAQAAaQAAADABAABpAAAAMgEAADIBAABpAAAAMwEAADMBAABpAAAAagAAADQBAAAvAQAAMAEAADcBAAA2AQAANQEAADgBAAA2AQAANwEAADgBAAA5AQAANgEAADoBAAA5AQAAOAEAADoBAAA7AQAAOQEAADsBAAA6AQAAPAEAAD8BAAA+AQAAPQEAAD4BAAA/AQAAQAEAAEMBAABCAQAAQQEAAEIBAABDAQAARAEAAEcBAABGAQAARQEAAEYBAABHAQAASAEAAEsBAABKAQAASQEAAEoBAABLAQAATAEAAE8BAABOAQAATQEAAE4BAABPAQAAUAEAAFMBAABSAQAAUQEAAFIBAABTAQAAVAEAAFUBAACNAAAAjAAAAI0AAABVAQAAVgEAAFcBAACTAAAAlgAAAJMAAABXAQAAWAEAAFgBAABXAQAAWQEAAFkBAABXAQAAWgEAAF0BAABcAQAAWwEAAFwBAABdAQAAXgEAAFwBAABeAQAAXwEAAF8BAABeAQAAYAEAAGEBAABbAQAAXAEAAFsBAABhAQAAYgEAAGIBAABhAQAAYAEAAGIBAABgAQAAXgEAAGIBAABeAQAAYwEAAGIBAABjAQAAZAEAAGUBAACIAAAAhwAAAGYBAACIAAAAZQEAAGcBAACIAAAAZgEAAIgAAABnAQAAhgAAAGoBAABpAQAAaAEAAGkBAABqAQAAawEAAGwBAABpAQAAawEAAGwBAABtAQAAaQEAAG4BAABtAQAAbAEAAG4BAABvAQAAbQEAAG8BAABuAQAAcAEAAHMBAAByAQAAcQEAAHIBAABzAQAAdAEAAHIBAAB0AQAAogAAAKIAAAB0AQAAdQEAAKIAAAB1AQAAdgEAAKIAAAB2AQAAowAAAHkBAAB4AQAAdwEAAHgBAAB5AQAAegEAAH0BAAB8AQAAewEAAHwBAAB9AQAAfgEAAJ8AAAChAAAAoAAAAKEAAACfAAAAfwEAAH8BAACfAAAAgAEAAH8BAACAAQAAgQEAAIEBAACAAQAAmAAAAIEBAACYAAAAmQAAAIEBAACZAAAAggEAAIUBAACEAQAAgwEAAIQBAACFAQAAhgEAAIQBAACGAQAAhwEAAIYBAACFAQAAiAEAAIgBAACFAQAAiQEAAIkBAACFAQAAigEAAIoBAACFAQAAiwEAAIwBAACHAQAAhgEAAI0BAABuAAAAawAAAG4AAACNAQAAbwAAAG8AAACNAQAAjgEAAI4BAACNAQAAjwEAAI4BAACPAQAAmgAAAJoAAACPAQAAnAAAAJwAAACPAQAAkAEAAJMBAACSAQAAkQEAAJQBAACSAQAAkwEAAJQBAACVAQAAkgEAAJYBAACVAQAAlAEAAJYBAACXAQAAlQEAAJcBAACWAQAAmAEAAJUBAACXAQAAmQEAAA==";
-const RIFT_DRONE_YAW_OFFSET = Math.PI; // craft_racer's modeled "forward" faces +Z in its own
-// local space, opposite Three.js's -Z-forward convention -- without this the orbiters show
-// their tail to the camera instead of their nose. Also used as the additive correction in
-// the per-frame movement-facing code in updateRift() below, so it applies whichever way
-// the drone is currently actually moving, not just at spawn.
-const RIFT_DRONE_SCALE = 1;
-const riftDroneParts = buildGLBParts(RIFT_DRONE_GLB_BASE64);
+// Rift-drone model (the five that orbit the void heart during a Rift) --
+// Russ's Tripo-generated replacement for the old low-poly "craft_racer"
+// kit-part model. Like the player ship (see buildShip() above), this one
+// is a fully textured mesh (a baseColorTexture, no baseColorFactor at all)
+// -- the old hand-rolled parser (long since removed, see #40) read
+// baseColorFactor unconditionally and would have thrown on a model like
+// this, which is why it loads through a real THREE.GLTFLoader instead.
+// Unlike the ship (a single instance), 5 orbiters share one pool: the
+// model loads once, and every pool slot below is populated from that same
+// loaded template afterward via .clone() -- Object3D.clone() copies the
+// hierarchy but shares geometry/material by reference, so nothing is
+// duplicated on the GPU no matter how many orbiters exist. The regular
+// roaming-turret pool just below follows this identical pattern (#40).
+const RIFT_DRONE_GLB_URL = 'assets/enemy_drone.glb';
+const riftDroneGLTFLoader = new GLTFLoader();
 
-// Regular roaming-drone model — a turret: fixed base + a head that
-// swivels on its own to aim at the player (see buildTurretRig() and the
-// tracking code in updateOneDrone()). Everyday drones use this; only the
-// five Rift orbiters above keep the craft_racer look.
-const TURRET_GLB_BASE64 = "Z2xURgIAAAA0xQAASA8AAEpTT057ImV4dGVuc2lvbnNVc2VkIjpbIktIUl9tYXRlcmlhbHNfdW5saXQiXSwiYXNzZXQiOnsiZ2VuZXJhdG9yIjoiVW5pR0xURi0xLjI3IiwidmVyc2lvbiI6IjIuMCJ9LCJidWZmZXJzIjpbeyJieXRlTGVuZ3RoIjo0NjU0NH1dLCJidWZmZXJWaWV3cyI6W3siYnVmZmVyIjowLCJieXRlT2Zmc2V0IjowLCJieXRlTGVuZ3RoIjoyNzM2LCJ0YXJnZXQiOjM0OTYyfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6MjczNiwiYnl0ZUxlbmd0aCI6MjczNiwidGFyZ2V0IjozNDk2Mn0seyJidWZmZXIiOjAsImJ5dGVPZmZzZXQiOjU0NzIsImJ5dGVMZW5ndGgiOjE4MjQsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0Ijo3Mjk2LCJieXRlTGVuZ3RoIjo2NDgsInRhcmdldCI6MzQ5NjN9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0Ijo3OTQ0LCJieXRlTGVuZ3RoIjoxMjAsInRhcmdldCI6MzQ5NjN9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0Ijo4MDY0LCJieXRlTGVuZ3RoIjoxMDU2LCJ0YXJnZXQiOjM0OTYzfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6OTEyMCwiYnl0ZUxlbmd0aCI6MTA3NzYsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0IjoxOTg5NiwiYnl0ZUxlbmd0aCI6MTA3NzYsInRhcmdldCI6MzQ5NjJ9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0IjozMDY3MiwiYnl0ZUxlbmd0aCI6NzE4NCwidGFyZ2V0IjozNDk2Mn0seyJidWZmZXIiOjAsImJ5dGVPZmZzZXQiOjM3ODU2LCJieXRlTGVuZ3RoIjoxMjcyLCJ0YXJnZXQiOjM0OTYzfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6MzkxMjgsImJ5dGVMZW5ndGgiOjQ4MDAsInRhcmdldCI6MzQ5NjN9LHsiYnVmZmVyIjowLCJieXRlT2Zmc2V0Ijo0MzkyOCwiYnl0ZUxlbmd0aCI6MjYxNiwidGFyZ2V0IjozNDk2M31dLCJhY2Nlc3NvcnMiOlt7ImJ1ZmZlclZpZXciOjAsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJWRUMzIiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjIyOCwibWF4IjpbMC4zLDAuMzUsMC4zXSwibWluIjpbLTAuMywwLC0wLjNdLCJub3JtYWxpemVkIjpmYWxzZX0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiVkVDMyIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50IjoyMjgsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJWRUMyIiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjIyOCwibm9ybWFsaXplZCI6ZmFsc2V9LHsiYnVmZmVyVmlldyI6MywiYnl0ZU9mZnNldCI6MCwidHlwZSI6IlNDQUxBUiIsImNvbXBvbmVudFR5cGUiOjUxMjUsImNvdW50IjoxNjIsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjQsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJTQ0FMQVIiLCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MzAsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjUsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJTQ0FMQVIiLCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MjY0LCJub3JtYWxpemVkIjpmYWxzZX0seyJidWZmZXJWaWV3Ijo2LCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiVkVDMyIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo4OTgsIm1heCI6WzAuNDUsMC40LDAuMjc1XSwibWluIjpbLTAuNDUsMCwtMC4yNzVdLCJub3JtYWxpemVkIjpmYWxzZX0seyJidWZmZXJWaWV3Ijo3LCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiVkVDMyIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo4OTgsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjgsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJWRUMyIiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjg5OCwibm9ybWFsaXplZCI6ZmFsc2V9LHsiYnVmZmVyVmlldyI6OSwiYnl0ZU9mZnNldCI6MCwidHlwZSI6IlNDQUxBUiIsImNvbXBvbmVudFR5cGUiOjUxMjUsImNvdW50IjozMTgsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjEwLCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiU0NBTEFSIiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjEyMDAsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjExLCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiU0NBTEFSIiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjY1NCwibm9ybWFsaXplZCI6ZmFsc2V9XSwibWF0ZXJpYWxzIjpbeyJuYW1lIjoiZGFyayIsInBick1ldGFsbGljUm91Z2huZXNzIjp7ImJhc2VDb2xvckZhY3RvciI6WzAuMjc0NTA5ODE3LDAuMjk4MDM5MjI4LDAuMzQxMTc2NDgsMV0sIm1ldGFsbGljRmFjdG9yIjoxLCJyb3VnaG5lc3NGYWN0b3IiOjF9LCJkb3VibGVTaWRlZCI6ZmFsc2UsImFscGhhTW9kZSI6Ik9QQVFVRSJ9LHsibmFtZSI6Im1ldGFsIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC44NDMxMzcyNjQsMC44NzA1ODgyNDMsMC45MDk4MDM5LDFdLCJtZXRhbGxpY0ZhY3RvciI6MSwicm91Z2huZXNzRmFjdG9yIjoxfSwiZG91YmxlU2lkZWQiOmZhbHNlLCJhbHBoYU1vZGUiOiJPUEFRVUUifSx7Im5hbWUiOiJtZXRhbERhcmsiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlswLjY3NTA2MjMsMC43MTAwMjE5LDAuNzczNTg0OSwxXSwibWV0YWxsaWNGYWN0b3IiOjEsInJvdWdobmVzc0ZhY3RvciI6MX0sImRvdWJsZVNpZGVkIjpmYWxzZSwiYWxwaGFNb2RlIjoiT1BBUVVFIn0seyJuYW1lIjoibWV0YWxSZWQiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlsxLDAuNjI4NTI0MjQ0LDAuMjAyODMwMiwxXSwibWV0YWxsaWNGYWN0b3IiOjEsInJvdWdobmVzc0ZhY3RvciI6MX0sImRvdWJsZVNpZGVkIjpmYWxzZSwiYWxwaGFNb2RlIjoiT1BBUVVFIn1dLCJtZXNoZXMiOlt7Im5hbWUiOiJNZXNoIHR1cnJldF9kb3VibGUiLCJwcmltaXRpdmVzIjpbeyJtb2RlIjo0LCJpbmRpY2VzIjozLCJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjowLCJOT1JNQUwiOjEsIlRFWENPT1JEXzAiOjJ9LCJtYXRlcmlhbCI6MH0seyJtb2RlIjo0LCJpbmRpY2VzIjo0LCJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjowLCJOT1JNQUwiOjEsIlRFWENPT1JEXzAiOjJ9LCJtYXRlcmlhbCI6MX0seyJtb2RlIjo0LCJpbmRpY2VzIjo1LCJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjowLCJOT1JNQUwiOjEsIlRFWENPT1JEXzAiOjJ9LCJtYXRlcmlhbCI6Mn1dfSx7Im5hbWUiOiJNZXNoIHR1cnJldCIsInByaW1pdGl2ZXMiOlt7Im1vZGUiOjQsImluZGljZXMiOjksImF0dHJpYnV0ZXMiOnsiUE9TSVRJT04iOjYsIk5PUk1BTCI6NywiVEVYQ09PUkRfMCI6OH0sIm1hdGVyaWFsIjozfSx7Im1vZGUiOjQsImluZGljZXMiOjEwLCJhdHRyaWJ1dGVzIjp7IlBPU0lUSU9OIjo2LCJOT1JNQUwiOjcsIlRFWENPT1JEXzAiOjh9LCJtYXRlcmlhbCI6MX0seyJtb2RlIjo0LCJpbmRpY2VzIjoxMSwiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6NiwiTk9STUFMIjo3LCJURVhDT09SRF8wIjo4fSwibWF0ZXJpYWwiOjB9XX1dLCJub2RlcyI6W3siY2hpbGRyZW4i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ZmZmvmZm5r7NzMw9ZmZmvs3MzL4pN/c9AAAAvs3MzL4pN/c9ZmZmvpyYqL7NzEw9AAAAvpyYqL7NzEw9ZmZmvs3MzL4pN/c9AAAAvs3MzL4D/44+AAAAvs3MzL4pN/c9ZmZmvs3MzL4D/44+ZmZmvs3MzL4D/44+ZmZmvs3MzL4D/44+AAAAvpyYqL4zM7M+ZmZmvpyYqL4zM7M+AAAAvpyYqL4zM7M+ZmZmvpyYqL4zM7M+AAAAvgAAgL4zM7M+ZmZmvgAAgL4zM7M+AAAAvs3MTL7NzMw+zcyMPs3MTL7NzEw9ZmZmPs3MTL4AAAAAzcyMPs3MTL4AAAAAZmZmvs3MTL7NzEw9MzMzvs3MTL6amRk+MzMzvs3MTL4AAIA+MzMzvs3MTL4zM7M+ZmZmPs3MTL7NzMw+ZmZmvs3MTL6amRk+ZmZmPs3MTL4zM7M+mpmZvZyYqL7NzEw9AAAAvpyYqL7NzEw9ZmZmvgAAgL7NzEw9AAAAvgAAgL7NzEw9ZmZmvmZm5r7NzMw9zcyMPjMzs74AAAAAzcyMPmZm5r7NzMw9ZmZmvjMzs74AAAAAZmZmvs3MTL7NzEw9MzMzvs3MTL7NzEw9ZmZmPs3MTD7NzEw9MzMzvs3MTD7NzEw9ZmZmPs3MTD7NzEw9ZmZmPs3MTL7NzEw9ZmZmPs3MTD6amRk+ZmZmPs3MTL6amRk+ZmZmPs3MzD2amRk+ZmZmPs3MzL2amRk+ZmZmPs3MTL7NzEw9MzMzvs3MTD7NzEw9MzMzvs3MTL6amRk+MzMzvs3MTD6amRk+MzMzvpyYqD4zM7M+ZmZmvpyYqD4zM7M+AAAAvs3MzD4D/44+ZmZmvs3MzD4D/44+AAAAvpyYqD7NzEw9AAAAvpyYqD7NzEw9ZmZmvs3MzD4pN/c9AAAAvs3MzD4pN/c9ZmZmvs3MzD4D/44+AAAAvs3MzD4pN/c9AAAAvs3MzD4D/44+ZmZmvs3MzD4pN/c9ZmZmvgAAgD4zM7M+ZmZmvgAAgD4zM7M+AAAAvpyYqD4zM7M+ZmZmvpyYqD4zM7M+AAAAvmZm5j7NzMw9zcyMPmZm5j6amZk+zcyMPmZm5j7NzMw9ZmZmvmZm5j6amZk+ZmZmvs3MTD4AAAAAzcyMPs3MTD4zM7M+ZmZmPs3MTD7NzMw+zcyMPs3MTD7NzMw+ZmZmvs3MTD4zM7M+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AAAAgPMENT/zBDU/AAAAgPMENT/zBDU/AAAAgPMENT/zBDU/AAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgPMENT/zBDW/AAAAgPMENT/zBDW/AAAAgPMENT/zBDW/AAAAgPMENT/zBDW/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgPMENb/zBDW/AAAAgPMENb/zBDW/AAAAgPMENb/zBDW/AAAAgPMENb/zBDW/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAv/MENb/zBDW/AAAAgPMENb/zBDW/AAAAgPMENb/zBDW/AAAAgPMENb/zBDW/AAAAgPMENb/zBDU/AAAAgPMENb/zBDU/AAAAgPMENb/zBDU/AAAAgPMENb/zBDU/AAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgPMENT/zBDW/AAAAgPMENT/zBDW/AAAAgPMENT/zBDW/AAAAgPMENT/zBDW/AAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgPMENT/zBDU/AAAAgPMENT/zBDU/AAAAgPMENT/zBDU/AAAAgPMENT/zBDU/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgNizXT8AAAA/AAAAgPMENT/zBDU/AAAAgNizXT8AAAA/AAAAgPMENT/zBDU/AAAAgOpGdz/ug4Q+AAAAgNizXT8AAAA/AAAAgOpGdz/ug4Q+AAAAgNizXT8AAAA/AAAAgAAAgD8AAAAAAAAAgOpGdz/ug4Q+AAAAgAAAgD8AAAAAAAAAgOpGdz/ug4Q+AAAAgNizXb8AAAA/AAAAgOpGd7/ug4Q+AAAAgNizXb8AAAA/AAAAgOpGd7/ug4Q+AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgO6DhD7qRnc/AAAAgO6DhD7qRnc/AAAAgO6DhD7qRne/AAAAgO6DhD7qRne/AAAAgAAAAD/Ys12/AAAAgAAAAD/Ys12/AAAAgOpGdz/ug4S+AAAAgAAAgD8AAAAAAAAAgOpGdz/ug4S+AAAAgAAAgD8AAAAAAAAAgOpGd7/ug4S+AAAAgNizXb8AAAC/AAAAgOpGd7/ug4S+AAAAgNizXb8AAAC/AAAAgOpGd7/ug4Q+AAAAgAAAgL8AAAAAAAAAgOpGd7/ug4Q+AAAAgAAAgL8AAAAAAAAAgPMENb/zBDU/AAAAgNizXb8AAAA/AAAAgPMENb/zBDU/AAAAgNizXb8AAAA/AAAAgNizXT8AAAC/AAAAgOpGdz/ug4S+AAAAgNizXT8AAAC/AAAAgOpGdz/ug4S+AAAAgPMENT/zBDW/AAAAgNizXT8AAAC/AAAAgPMENT/zBDW/AAAAgNizXT8AAAC/AAAAgAAAAD/Ys12/AAAAgAAAAD/Ys12/AAAAgPMENT/zBDW/AAAAgPMENT/zBDW/AAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAgL8AAAAAAAAAgOpGd7/ug4S+AAAAgAAAgL8AAAAAAAAAgOpGd7/ug4S+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AACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAADVAA4/QAFVvwAAAADVAA4/QAFVvwAAAADVAA4/QAFVvwAAAADVAA4/QAFVvwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAA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PQAAADcAAAA/AAAAPgAAAD0AAABAAAAAPgAAAEAAAAA8AAAAQwAAAEIAAABBAAAAQgAAAEMAAABEAAAARwAAAEYAAABFAAAARgAAAEcAAABIAAAASwAAAEoAAABJAAAASgAAAEsAAABMAAAATwAAAE4AAABNAAAATgAAAE8AAABQAAAAUAAAAE8AAABRAAAAUAAAAFEAAABSAAAAVQAAAFQAAABTAAAAVAAAAFUAAABWAAAAWQAAAFgAAABXAAAAWAAAAFkAAABaAAAAXQAAAFwAAABbAAAAXAAAAF0AAABeAAAAYQAAAGAAAABfAAAAYAAAAGEAAABiAAAAZQAAAGQAAABjAAAAZAAAAGUAAABmAAAAaQAAAGgAAABnAAAAaAAAAGkAAABqAAAAbQAAAGwAAABrAAAAbAAAAG0AAABuAAAAbAAAAG4AAABvAAAAbwAAAG4AAABwAAAAcAAAAG4AAABxAAAAcQAAAG4AAAByAAAAcwAAAGsAAABsAAAAawAAAHMAAAB0AAAAdAAAAHMAAAByAAAAdAAAAHIAAABuAAAAcwAAAGwAAAB1AAAAeAAAAHcAAAB2AAAAdwAAAHgAAAB5AAAAeQAAAHgAAAB6AAAAeQAAAHoAAAB7AAAAfgAAAH0AAAB8AAAAfQAAAH4AAAB/AAAAfQAAAH8AAACAAAAAgAAAAH8AAACBAAAAggAAAHwAAAB9AAAAfAAAAIIAAACDAAAAgwAAAIIAAACEAAAAgwAAAIQAAACFAAAAhQAAAIQAAACGAAAAhQAAAIYAAACBAAAAhQAAAIEAAACHAAAAhwAAAIEAAAB/AAAAigAAAIkAAACIAAAAiQAAAIoAAACLAAAAjgAAAI0AAACMAAAAjQAAAI4AAACPAAAAkgAAAJEAAACQAAAAkQAAAJIAAACTAAAAlgAAAJUAAACUAAAAlQAAAJYAAACXAAAAmgAAAJkAAACYAAAAmQAAAJoAAACbAAAAngAAAJ0AAACcAAAAnQAAAJ4AAACfAAAAogAAAKEAAACgAAAAoQAAAKIAAACjAAAApgAAAKUAAACkAAAApQAAAKYAAACnAAAAqgAAAKkAAACoAAAAqQAAAKoAAACrAAAArgAAAK0AAACsAAAArQAAAK4AAACvAAAAsgAAALEAAACwAAAAsQAAALIAAACzAAAAtgAAALUAAAC0AAAA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gQEAAIIBAACDAQAAhgEAAIUBAACEAQAAhQEAAIYBAACHAQAAigEAAIkBAACIAQAAiQEAAIoBAACLAQAAjgEAAI0BAACMAQAAjQEAAI4BAACPAQAAkgEAAJEBAACQAQAAkQEAAJIBAACTAQAAlgEAAJUBAACUAQAAlQEAAJYBAACXAQAAmgEAAJkBAACYAQAAmQEAAJoBAACbAQAAngEAAJ0BAACcAQAAnQEAAJ4BAACfAQAAogEAAKEBAACgAQAAoQEAAKIBAACjAQAApgEAAKUBAACkAQAApQEAAKYBAACnAQAAqgEAAKkBAACoAQAAqQEAAKoBAACrAQAArgEAAK0BAACsAQAArQEAAK4BAACvAQAAsgEAALEBAACwAQAAsQEAALIBAACzAQAAtgEAALUBAAC0AQAAtQEAALYBAAC3AQAAugEAALkBAAC4AQAAuQEAALoBAAC7AQAAvgEAAL0BAAC8AQAAvQEAAL4BAAC/AQAAwgEAAMEBAADAAQAAwQEAAMIBAADDAQAAxAEAAFEAAABPAAAAUQAAAMQBAADFAQAAyAEAAMcBAADGAQAAxwEAAMgBAADJAQAAygEAAFYAAABVAAAAVgAAAMoBAADLAQAAVgAAAMsBAADMAQAAzQEAAFYAAADMAQAAzgEAAFAAAABSAAAAUAAAAM4BAADPAQAA0gEAANEBAADQAQAA0QEAANIBAADTAQAA1gEAANUBAADUAQAA1QEAANYBAADXAQAA2gEAANkBAADYAQAA2QEAANoBAADbAQAA3gEAAN0BAADcAQAA3QEAAN4BAADfAQAA4gEAAOEBAADgAQAA4QEAAOIBAADjAQAA5gEAAOUBAADkAQAA5QEAAOYBAADnAQAA6gEAAOkBAADoAQAA6QEAAOoBAADrAQAA7gEAAO0BAADsAQAA7QEAAO4BAADvAQAA8gEAAPEBAADwAQAA8QEAAPIBAADzAQAA9gEAAPUBAAD0AQAA9QEAAPYBAAD3AQAA+gEAAPkBAAD4AQAA+QEAAPoBAAD7AQAA/gEAAP0BAAD8AQAA/QEAAP4BAAD/AQAAAgIAAAECAAAAAgAAAQIAAAICAAADAgAABgIAAAUCAAAEAgAABQIAAAYCAAAHAgAACgIAAAkCAAAIAgAACQIAAAoCAAALAgAADgIAAA0CAAAMAgAADQIAAA4CAAAPAgAAEgIAABECAAAQAgAAEQIAABICAAATAgAAFgIAABUCAAAUAgAAFQIAABYCAAAXAgAAGgIAABkCAAAYAgAAGQIAABoCAAAbAgAAHgIAAB0CAAAcAgAAHQIAAB4CAAAfAgAAIgIAACECAAAgAgAAIQIAACICAAAjAgAAJgIAACUCAAAkAgAAJQIAACYCAAAnAgAAKgIAACkCAAAoAgAAKQIAACoCAAArAgAALgIAAC0CAAAsAgAALQIAAC4CAAAvAgAAMgIAADECAAAwAgAAMQIAADICAAAzAgAANgIAADUCAAA0AgAANQIAADYCAAA3AgAAOgIAADkCAAA4AgAAOQIAADoCAAA7AgAAPgIAAD0CAAA8AgAAPQIAAD4CAAA/AgAAQgIAAEECAABAAgAAQQIAAEICAABDAgAARgIAAEUCAABEAgAARQIAAEYCAABHAgAARQIAAEcCAABIAgAASAIAAEcCAABJAgAASAIAAEkCAABKAgAASgIAAEkCAABLAgAASgIAAEsCAABMAgAATAIAAEsCAABNAgAATQIAAEsCAABOAgAATgIAAEsCAABPAgAATwIAAEsCAABQAgAATwIAAFACAABRAgAAUQIAAFACAABSAgAAUgIAAFACAABTAgAAUgIAAFMCAABUAgAAVAIAAFMCAABVAgAAVAIAAFUCAABWAgAAVgIAAFUCAABXAgAAVwIAAFUCAABYAgAAVwIAAFgCAABZAgAAWQIAAFgCAABaAgAAWgIAAFgCAABbAgAAWgIAAFsCAABcAgAAXAIAAFsCAABdAgAAXgIAAF0CAABbAgAAXgIAAF8CAABdAgAAXgIAAGACAABfAgAAYQIAAGACAABeAgAAYQIAAGICAABgAgAAYQIAAGMCAABiAgAAZAIAAGMCAABhAgAAZAIAAGUCAABjAgAAZgIAAGUCAABkAgAAZgIAAGcCAABlAgAAZgIAAGgCAABnAgAAaQIAAGgCAABmAgAAaQIAAGoCAABoAgAAaQIAAGsCAABqAgAAbAIAAGsCAABpAgAAbAIAAG0CAABrAgAAbAIAAG4CAABtAgAAbAIAAEwCAABuAgAATAIAAGwCAABKAgAAXgIAAFsCAABvAgAAXgIAAG8CAABwAgAAcAIAAG8CAABxAgAAcAIAAHECAAByAgAAcgIAAHECAABzAgAAdgIAAHUCAAB0AgAAdQIAAHYCAAB3AgAAegIAAHkCAAB4AgAAeQIAAHoCAAB7AgAAfgIAAH0CAAB8AgAAfQIAAH4CAAB/AgAAggIAAIECAACAAgAAgQIAAIICAACDAgAAhgIAAIUCAACEAgAAhQIAAIYCAACHAgAAigIAAIkCAACIAgAAiQIAAIoCAACLAgAAjgIAAI0CAACMAgAAjQIAAI4CAACPAgAAjQIAAI8CAACQAgAAkAIAAI8CAACRAgAAkAIAAJECAACSAgAAkgIAAJECAACTAgAAkgIAAJMCAACUAgAAlAIAAJMCAACVAgAAlQIAAJMCAACWAgAAlgIAAJMCAACXAgAAlwIAAJMCAACYAgAAlwIAAJgCAACZAgAAmQIAAJgCAACaAgAAmgIAAJgCAACbAgAAmgIAAJsCAACcAgAAnAIAAJsCAACdAgAAnAIAAJ0CAACeAgAAngIAAJ0CAACfAgAAnwIAAJ0CAACgAgAAnwIAAKACAAChAgAAoQIAAKACAACiAgAAogIAAKACAACjAgAAogIAAKMCAACkAgAApAIAAKMCAAClAgAApgIAAKUCAACjAgAApgIAAKcCAAClAgAApgIAAKgCAACnAgAAqQIAAKgCAACmAgAAqQIAAKoCAACoAgAAqQIAAKsCAACqAgAArAIAAKsCAACpAgAArAIAAK0CAACrAgAArgIAAK0CAACsAgAArgIAAK8CAACtAgAArgIAALACAACvAgAAsQIAALACAACuAgAAsQIAALICAACwAgAAsQIAALMCAACyAgAAtAIAALMCAACxAgAAtAIAALUCAACzAgAAtAIAALYCAAC1AgAAtAIAAJQCAAC2AgAAlAIAALQCAACSAgAApgIAAKMCAAC3AgAApgIAALcCAAC4AgAAuAIAALcCAAC5AgAAuAIAALkCAAC6AgAAugIAALkCAAC7AgAAvgIAAL0CAAC8AgAAvQIAAL4CAAC/AgAAwgIAAMECAADAAgAAwQIAAMICAADDAgAAxgIAAMUCAADEAgAAxQIAAMYCAADHAgAAygIAAMkCAADIAgAAyQIAAMoCAADLAgAAzgIAAM0CAADMAgAAzQIAAM4CAADPAgAA0gIAANECAADQAgAA0QIAANICAADTAgAA1gIAANUCAADUAgAA1QIAANYCAADXAgAA2gIAANkCAADYAgAA2QIAANoCAADbAgAA3gIAAN0CAADcAgAA3QIAAN4CAADfAgAA4gIAAOECAADgAgAA4QIAAOICAADjAgAA5gIAAOUCAADkAgAA5QIAAOYCAADnAgAA6gIAAOkCAADoAgAA6QIAAOoCAADrAgAA7gIAAO0CAADsAgAA7QIAAO4CAADvAgAA8gIAAPECAADwAgAA8QIAAPICAADzAgAA9gIAAPUCAAD0AgAA9QIAAPYCAAD3AgAA+gIAAPkCAAD4AgAA+QIAAPoCAAD7AgAA+wIAAPoCAAD8AgAA/AIAAPoCAAD9AgAA+AIAAPkCAAD+AgAA/AIAAP0CAAD/AgAA/wIAAP0CAAAAAwAAAAMAAP0CAAABAwAAAQMAAP0CAAACAwAAAQMAAAIDAAADAwAAAwMAAAIDAAAEAwAABAMAAAIDAAAFAwAABQMAAAIDAAAGAwAABgMAAAIDAAAHAwAABwMAAAIDAAAIAwAACAMAAAIDAAAJAwAACAMAAAkDAAAKAwAACAMAAAoDAAALAwAACAMAAAsDAAAMAwAACQMAAAIDAAANAwAADQMAAAIDAAAOAwAADgMAAAIDAAAPAwAADwMAAAIDAAAQAwAAEAMAAAIDAAARAwAAEQMAAAIDAAASAwAAEgMAAAIDAAATAwAAEgMAABMDAAAUAwAAFAMAABMDAAAVAwAAFQMAABMDAAAWAwAAFwMAAAgDAAAMAwAAGAMAABYDAAATAwAAGAMAABkDAAAWAwAAGAMAABoDAAAZAwAAGAMAABsDAAAaAwAAGAMAABwDAAAbAwAAGAMAAB0DAAAcAwAAGAMAAB4DAAAdAwAAGAMAAB8DAAAeAwAAGAMAACADAAAfAwAAGAMAACEDAAAgAwAAGAMAACIDAAAhAwAAGAMAACMDAAAiAwAAGAMAACQDAAAjAwAA+AIAACQDAAAYAwAAJAMAAPgCAAAlAwAAJQMAAPgCAAAmAwAAJgMAAPgCAAAnAwAAJwMAAPgCAAAoAwAAKAMAAPgCAAApAwAAKQMAAPgCAAD+AgAAHwMAACADAAAqAwAAHwMAACoDAAArAwAAKwMAACoDAAAIAwAAKwMAAAgDAAAsAwAALAMAAAgDAAAtAwAALQMAAAgDAAAXAwAA3QAAAP4AAADcAAAA/gAAAN0AAADeAAAA/gAAAN4AAAD9AAAA/QAAAN4AAAD7AAAA+wAAAN4AAADfAAAA+wAAAN8AAAD6AAAA+gAAAN8AAADhAAAA+gAAAOEAAADiAAAA+gAAAOIAAAD4AAAA+AAAAOIAAAD3AAAA9wAAAOIAAADkAAAA9wAAAOQAAADmAAAA9wAAAOYAAAD1AAAA9QAAAOYAAADnAAAA9QAAAOcAAADzAAAA8wAAAOcAAADpAAAA8wAAAOkAAADyAAAA8gAAAOkAAADwAAAA8AAAAOkAAADqAAAA8AAAAOoAAADsAAAA8AAAAOwAAADvAAAA7wAAAOwAAADtAAAAVQEAAHYBAABUAQAAdgEAAFUBAAB1AQAAdQEAAFUBAABWAQAAdQEAAFYBAABzAQAAcwEAAFYBAABXAQAAcwEAAFcBAABZAQAAcwEAAFkBAAByAQAAcgEAAFkBAABaAQAAcgEAAFoBAABwAQAAcAEAAFoBAABvAQAAbwEAAFoBAABcAQAAbwEAAFwBAABeAQAAbwEAAF4BAABtAQAAbQEAAF4BAABfAQAAbQEAAF8BAABrAQAAawEAAF8BAABhAQAAawEAAGEBAABqAQAAagEAAGEBAABoAQAAaAEAAGEBAABiAQAAaAEAAGIBAABkAQAAaAEAAGQBAABnAQAAZwEAAGQBAABlAQAAMAMAAC8DAAAuAwAALwMAADADAAAxAwAALwMAADEDAAAyAwAAMgMAADEDAAAzAwAAMgMAADMDAAA0AwAANwMAADYDAAA1AwAANgMAADcDAAA4AwAANgMAADgDAAA5AwAAOQMAADgDAAA6AwAAOwMAADUDAAA2AwAAPgMAAD0DAAA8AwAAPQMAAD4DAAA/AwAAQgMAAEEDAABAAwAAQQMAAEIDAABDAwAARgMAAEUDAABEAwAARQMAAEYDAABHAwAASgMAAEkDAABIAwAASQMAAEoDAABLAwAAlQIAALYCAACUAgAAtgIAAJUCAACWAgAAtgIAAJYCAAC1AgAAtQIAAJYCAACXAgAAtQIAAJcCAACzAgAAswIAAJcCAACZAgAAswIAAJkCAACyAgAAsgIAAJkCAACwAgAAsAIAAJkCAACaAgAAsAIAAJoCAACcAgAAsAIAAJwCAACvAgAArwIAAJwCAACeAgAArwIAAJ4CAACtAgAArQIAAJ4CAACrAgAAqwIAAJ4CAACfAgAAqwIAAJ8CAAChAgAAqwIAAKECAACqAgAAqgIAAKECAACiAgAAqgIAAKICAACoAgAAqAIAAKICAACkAgAAqAIAAKQCAACnAgAApwIAAKQCAAClAgAATQIAAG4CAABMAgAAbgIAAE0CAABtAgAAbQIAAE0CAABOAgAAbQIAAE4CAABPAgAAbQIAAE8CAABrAgAAawIAAE8CAABRAgAAawIAAFECAABqAgAAagIAAFECAABoAgAAaAIAAFECAABSAgAAaAIAAFICAABUAgAAaAIAAFQCAABnAgAAZwIAAFQCAABWAgAAZwIAAFYCAABlAgAAZQIAAFYCAABjAgAAYwIAAFYCAABXAgAAYwIAAFcCAABZAgAAYwIAAFkCAABiAgAAYgIAAFkCAABaAgAAYgIAAFoCAABgAgAAYAIAAFoCAABcAgAAYAIAAFwCAABfAgAAXwIAAFwCAABdAgAATgMAAE0DAABMAwAATQMAAE4DAABPAwAATwMAAE4DAABQAwAAUAMAAE4DAABRAwAAUQMAAE4DAABSAwAATAMAAE0DAABTAwAATAMAAFMDAABUAwAATAMAAFQDAABVAwAAUQMAAFIDAABWAwAAVgMAAFIDAABXAwAAVwMAAFIDAABYAwAAWAMAAFIDAABZAwAAWQMAAFIDAABaAwAAWQMAAFoDAABbAwAAWwMAAFoDAABcAwAAWwMAAFwDAABdAwAAXQMAAFwDAABeAwAAXQMAAF4DAABfAwAAXQMAAF8DAABgAwAAXQMAAGADAABhAwAAWgMAAFIDAABiAwAAYgMAAFIDAABjAwAAYwMAAFIDAABkAwAAZAMAAFIDAABlAwAAZQMAAFIDAABmAwAAZgMAAFIDAABnAwAAZwMAAFIDAABoAwAAaQMAAF0DAABhAwAAagMAAF0DAABpAwAAawMAAF0DAABqAwAAbAMAAF0DAABrAwAAbAMAAGsDAABtAwAAbAMAAG0DAABuAwAAbAMAAG4DAABvAwAAbAMAAG8DAABwAwAAbAMAAHADAABxAwAAbAMAAHEDAAByAwAAbAMAAHIDAABzAwAAcwMAAHIDAAB0AwAAcwMAAHQDAAB1AwAAcwMAAHUDAABoAwAAcwMAAGgDAABSAwAAdwMAAHYDAABsAwAAdwMAAHgDAAB2AwAAdwMAAHkDAAB4AwAAdwMAAHoDAAB5AwAATAMAAHoDAAB3AwAAegMAAEwDAAB7AwAAewMAAEwDAAB8AwAAfAMAAEwDAABVAwAAbAMAAHYDAAB9AwAAbAMAAH0DAAB+AwAAbAMAAH4DAAB/AwAAbAMAAH8DAACAAwAAbAMAAIADAACBAwAAbAMAAIEDAABdAwAA";
-// The head mesh's barrel-forward axis, measured by which end of it tapers
-// (thin barrel tips vs. bulkier mount) — local +Z came out forward. If the
-// turret aims backwards in play, this is the one to flip (add Math.PI).
-const TURRET_HEAD_FORWARD = 0;
+// Nose direction: confirmed, not just assumed -- bucketing this model's raw
+// vertex data by Z showed a sharp taper (narrow, ~0.17 wide) at the +Z end
+// and the wide wing/fuselage span in the middle, same "narrow end = nose"
+// read used to pick SHIP_YAW_OFFSET. +Z-forward is also what the old
+// craft_racer model used, so the existing correction below carries over
+// unchanged. Confirmed visually too: a live-tested close-up (custom debug
+// camera, Playwright) shows a nose-forward fighter-jet silhouette, and it
+// reads correctly nose-first during a live "dive at the player" pass under
+// the game's own chase camera.
+const RIFT_DRONE_YAW_OFFSET = Math.PI;
+// Overall size multiplier. Tripo's export came out small and not scaled to
+// any particular convention ("scaled way down, not HD" per Russ) -- its
+// bounding box is roughly 1.0 x 0.34 x 0.74 (w/h/d) at scale 1, versus the
+// old craft_racer kit model's 1.2 x 0.75 x 2.03. 2.2 is a first-pass pick
+// (roughly splitting the difference across axes rather than matching any
+// one exactly, since the two models have different proportions) -- checked
+// live (Playwright, both a pulled-back formation shot and a close-up dive
+// pass) and it reads at a reasonable, proportionate size next to the ship
+// and the void heart placeholder, but it's still a by-eye pick, not a
+// precision-tuned one -- adjust further if it looks off in real play. The
+// gameplay hit radius (riftDrone data.r, set at spawn in triggerRiftEvent())
+// is independent of this and does NOT need to change alongside it.
+const RIFT_DRONE_SCALE = 2.2;
+
+// Regular roaming-drone model ("turret" internally, though visually a
+// spherical droid covered in gun nubs, not a base+swiveling-head kit part
+// -- see #40). Everyday drones use this; only the five Rift orbiters
+// above use the jet model instead.
+const TURRET_GLB_URL = 'assets/turret.glb';
+const turretGLTFLoader = new GLTFLoader();
+
+// Nose direction: checked the same way as the ship/Rift-drone offsets
+// (bucketing raw vertex data by axis, looking for a taper) but this model
+// reads as genuinely close to spherical -- no single end tapers sharply
+// the way a hull or wing does, consistent with Russ's own "spherical
+// droid with guns all over it" description. 0 is a reasonable default
+// given there's no strong asymmetry to correct for; if a visible gun
+// cluster or seam turns out to read as a "front" once seen in motion,
+// this is the one to adjust (add/subtract to taste, same as the other
+// two models' offsets).
+const TURRET_YAW_OFFSET = 0;
+// Overall size multiplier. The new model's raw bounding box (~1.0 wide x
+// 0.86 tall x 0.83 deep at scale 1) already lands close to the old
+// base+head rig's combined footprint (~0.9 x 0.7 x 0.6, at the old
+// TURRET_SCALE of 1) -- unlike the ship/Rift-drone swaps, which both came
+// in noticeably smaller than what they replaced, this one needed no real
+// correction. Left at 1 and checked live (Playwright, a close-up debug
+// camera on a force-spawned instance): renders as a clean, detailed,
+// proportionate spherical droid, not obviously oversized or tiny -- still
+// a by-eye check, not a precision-tuned value, so adjust if it looks off
+// once Russ has flown past a few in real play.
 const TURRET_SCALE = 1;
-const turretRig = buildTurretRig(TURRET_GLB_BASE64);
 
 const pickupGeo = new THREE.OctahedronGeometry(0.42,0);
 const pickupMat = new THREE.MeshStandardMaterial({color:0xffd24f, emissive:0xffae00, emissiveIntensity:1.2, metalness:0.4, roughness:0.2});
@@ -1219,23 +1214,77 @@ function makePool(builder, size){
 function getFree(pool){ return pool.find(o=>!o.active); }
 
 const asteroidPool = makePool(()=>{
-  const m = new THREE.Mesh(asteroidGeoCache[Math.floor(Math.random()*asteroidGeoCache.length)], asteroidMat);
+  // Each slot gets its OWN cloned material (geometry is still shared/cached
+  // above -- only the material needs to be unique) so one rock's hit-flash
+  // emissiveIntensity can be driven independently without lighting up every
+  // other asteroid on screen sharing the same material instance.
+  const m = new THREE.Mesh(asteroidGeoCache[Math.floor(Math.random()*asteroidGeoCache.length)], asteroidMat.clone());
   return m;
 }, 40);
 
+// Regular roaming-turret pool -- same GLTFLoader-once/clone-per-slot shape
+// riftDronePool below already established for the Rift orbiters (#39):
+// each slot's group is built synchronously and empty (updateOneDrone()/
+// clearDebrisField()/etc. all grab o.mesh immediately, long before the
+// async load resolves), and the one shared load populates all 16 slots
+// via .clone() once it's done. No separate "head" child group this time
+// -- turret.glb is a single mesh (see #40), so the whole slot group itself
+// is what updateOneDrone() rotates to aim, instead of a child within it.
 const dronePool = makePool(()=>{
-  const g = instanceTurretGroup(turretRig);
-  g.scale.setScalar(TURRET_SCALE);
+  const g = new THREE.Group();
+  const modelScaleGroup = new THREE.Group();
+  modelScaleGroup.scale.setScalar(TURRET_SCALE);
+  g.add(modelScaleGroup);
+  g.userData.modelScaleGroup = modelScaleGroup;
   return g;
 }, 16);
+turretGLTFLoader.load(TURRET_GLB_URL, (gltf)=>{
+  const template = gltf.scene;
+  const box = new THREE.Box3().setFromObject(template);
+  const center = box.getCenter(new THREE.Vector3());
+  template.position.sub(center);
+  for(const slot of dronePool){
+    slot.mesh.userData.modelScaleGroup.add(template.clone());
+  }
+}, undefined, (err)=>{
+  console.error('turret model failed to load:', err);
+});
 
 // Rift-only pool — sized to the fixed 5 orbiters triggerRiftEvent() spawns.
+// Each slot's group (g) is created synchronously and empty -- resetEntity()/
+// updateOneDrone()/clearRiftOrbiters() etc. all grab o.mesh immediately, long
+// before the GLTFLoader request below resolves. modelScaleGroup is the only
+// child that gets RIFT_DRONE_SCALE (mirrors buildShip()'s nested-group split
+// above -- there's no procedural piece riding along at authored scale here
+// the way the ship's thruster does, but keeping the same shape means any
+// future added effect, e.g. an engine-glow sprite, has an unscaled parent
+// ready to attach to without repeating this refactor).
 const riftDronePool = makePool(()=>{
-  const g = instanceGLBGroup(riftDroneParts);
+  const g = new THREE.Group();
   g.rotation.y = RIFT_DRONE_YAW_OFFSET;
-  g.scale.setScalar(RIFT_DRONE_SCALE);
+  const modelScaleGroup = new THREE.Group();
+  modelScaleGroup.scale.setScalar(RIFT_DRONE_SCALE);
+  g.add(modelScaleGroup);
+  g.userData.modelScaleGroup = modelScaleGroup;
   return g;
 }, 5);
+// Loads the shared orbiter model once; every pool slot above starts empty
+// and gets populated from this same loaded template. .clone() shares
+// geometry/material by reference (see the comment above RIFT_DRONE_GLB_URL).
+riftDroneGLTFLoader.load(RIFT_DRONE_GLB_URL, (gltf)=>{
+  const template = gltf.scene;
+  // recenter on the model's own bounding-box middle (same convention as
+  // buildShip() and the old buildGLBParts()), computed once before cloning
+  // so every instance inherits the correction.
+  const box = new THREE.Box3().setFromObject(template);
+  const center = box.getCenter(new THREE.Vector3());
+  template.position.sub(center);
+  for(const slot of riftDronePool){
+    slot.mesh.userData.modelScaleGroup.add(template.clone());
+  }
+}, undefined, (err)=>{
+  console.error('rift drone model failed to load:', err);
+});
 
 const pickupPool = makePool(()=>{
   return new THREE.Mesh(pickupGeo, pickupMat.clone());
@@ -1274,7 +1323,8 @@ const G = {
   nextRingZ:-170, ringChainRemaining:0, ringChainAnchor:{x:0,y:0},
   countdownT:0, countdownShown:null,
   rift:{active:false,t:0,heartHp:0,heartMesh:null,orbiters:[],
-    wanderPos:{x:0,y:0}, wanderTarget:{x:0,y:0}, wanderT:0, distPhaseT:0, hitFlash:0},
+    wanderPos:{x:0,y:0}, wanderTarget:{x:0,y:0}, wanderT:0, distPhaseT:0, hitFlash:0,
+    heartBaseScale:1, heartMaterials:[], heartIdleEmissive:1.6, heartHitBoost:2.8},
   planetMeshes:[], shake:0, elapsed:0,
   lowShieldPulseT:0, // countdown to the next repeating low-shield warning flash; see updateLowHealthWarning()
   tutorialIdx:0,     // index of the next tutorial tip due; see updateTutorialTips()
@@ -1331,9 +1381,25 @@ function spawnAsteroid(z){
   slot.mesh.position.set(p.x,p.y,z);
   slot.mesh.scale.setScalar(scale);
   slot.mesh.rotation.set(Math.random()*6,Math.random()*6,Math.random()*6);
+  // Explicitly reset the material's actual emissiveIntensity here, not just
+  // the data.hitFlash tracking field below. Bug this fixes: updateAsteroids()
+  // only decays emissiveIntensity back toward 0 while a slot is active and
+  // hitFlash>0 -- if a rock is killed by a bullet or culled off-screen
+  // mid-flash, that decay loop stops (inactive slots are skipped), leaving
+  // the material glowing. This pool slot gets reused for a later asteroid,
+  // which then spawns looking washed-out/lighter from a hit that belonged
+  // to a completely different rock. Reported by Russ as "some asteroids
+  // spawn a lighter color."
+  slot.mesh.material.emissiveIntensity = 0;
   resetEntity(slot, {
-    type:'asteroid', r:0.9*scale, scale, spinX:(Math.random()-0.5)*1.5, spinY:(Math.random()-0.5)*1.5,
-    small:scale<1.3,
+    // r used to be 0.9*scale -- deliberately SMALLER than the mesh's own
+    // visual radius (IcosahedronGeometry(1,0) at this scale reads as
+    // roughly `scale` units across). Russ reported asteroids feeling hard
+    // to hit and asked directly whether the hitbox was big enough; that
+    // 10% shrink was working against him, so this now matches the visible
+    // rock instead of undercutting it.
+    type:'asteroid', r:scale, scale, spinX:(Math.random()-0.5)*1.5, spinY:(Math.random()-0.5)*1.5,
+    small:scale<1.3, hitFlash:0, knockbackVel:0,
     // Every asteroid is shootable now, not just small ones -- HP scales
     // with size the same way spawnDrone() already scales drone HP, so a
     // small rock still dies in exactly one hit (matches how boosting
@@ -1462,6 +1528,93 @@ function updatePlanets(){
 }
 
 /* ---------------- VOID RIFT (mini-boss) EVENT ---------------- */
+// The void heart's real model (Russ's third and last Tripo swap, following
+// the same GLTFLoader pattern #37/#39/#40 established). Unlike the ship
+// (one persistent instance) or the drone/turret pools (fixed-size, built
+// once at startup), the heart is created fresh and destroyed every single
+// Rift encounter (see triggerRiftEvent()/endRiftEvent()) -- so rather than
+// reload the GLB over the network each time, it's loaded ONCE here into a
+// template, and triggerRiftEvent() below just clones that already-loaded
+// template synchronously, same sharing principle as the pooled models.
+const VOID_HEART_GLB_URL = 'assets/void_heart.glb';
+const voidHeartGLTFLoader = new GLTFLoader();
+// Overall size multiplier. The old placeholder was an IcosahedronGeometry
+// (2.6,1) sphere -- radius 2.6, i.e. a uniform 5.2-unit diameter. The new
+// model measures roughly 0.97 x 1.0 x 0.98 (w/h/d) at scale 1 -- matching
+// its overall diameter to the old sphere's keeps the existing bullet-vs-
+// heart collision radius (`2.6+0.5`, hardcoded separately below, see
+// Architecture notes) feeling consistent without retuning it, same
+// reasoning the turret swap used. First-pass, checked live, not
+// precision-tuned -- fly it and adjust by eye like the other two.
+const VOID_HEART_SCALE = 5.3;
+// Idle emissive intensity for the REAL model only -- NOT the same 1.6 the
+// old flat-shaded placeholder uses (see voidHeartMat below), and this is
+// deliberate, not an oversight. 1.6 was tuned against a flat, texture-less
+// IcosahedronGeometry, where a strong magenta emissive still reads as a
+// faceted glowing gem. Applied to this fully-textured model at the same
+// intensity, the emissive term overwhelms the baseColorTexture entirely --
+// verified by rendering with emissiveIntensity forced to 0 (revealed a
+// detailed panelled/textured sphere) versus at 1.6 (a near-featureless
+// solid magenta disc, indistinguishable from the old placeholder blob --
+// this is exactly what Russ reported after the first pass of this swap).
+// #42 dropped this from 1.6 to 0.45, which read fine in a controlled
+// close-up render but Russ still saw it as "a big pink blob" in the real
+// game (likely worse at normal chase-camera distance, where fine texture
+// detail reads out entirely and any saturated tint dominates the whole
+// silhouette). Per his explicit follow-up ("I don't want to see that big
+// pink blob ever again"), #43 drops this all the way to 0 -- the model
+// gets NO idle emissive tint at all now, just its own baseColorTexture
+// under normal scene lighting (see the diag_no_emissive comparison shot
+// from #41/#42's testing -- a detailed dark panelled sphere, no pink,
+// still reads as a distinct "void" object on its own). All hit-feedback
+// glow moved to VOID_HEART_HIT_EMISSIVE_BOOST below, fire-colored instead
+// of magenta, and used ONLY as a fast-decaying spike, never as a resting
+// state -- see updateRift()'s pulse block and G.rift.heartHitBoost.
+const VOID_HEART_IDLE_EMISSIVE = 0;
+// Hit-flash peak boost for the REAL model only (added on top of the idle
+// value above, decaying back down with hitFlash -- see updateRift()).
+// Kept modest (peaks at 1.0, versus the fallback placeholder's 2.8) since
+// Russ was explicit that no amount of this should ever read as a solid
+// blob again -- a brief, moderate flare plus the real fireball-sprite burst
+// (see spawnHeartFireHit(), used at the hit-collision site instead of a
+// plain magenta spawnBurst) carries the "the heart is on fire" read instead
+// of oversaturating the material itself.
+const VOID_HEART_HIT_EMISSIVE_BOOST = 1.0;
+let voidHeartTemplate = null; // set once the GLTFLoader below resolves
+// Every mesh's material in the loaded template, so the emissive hit-pulse
+// in updateRift() can drive all of them at once (just the one here, but
+// this stays correct if a future model swap has more than one material).
+const voidHeartMaterials = [];
+voidHeartGLTFLoader.load(VOID_HEART_GLB_URL, (gltf)=>{
+  const template = gltf.scene;
+  const box = new THREE.Box3().setFromObject(template);
+  const center = box.getCenter(new THREE.Vector3());
+  template.position.sub(center);
+  // Russ's Tripo model, like the drone and turret before it, has only a
+  // baseColorTexture -- no emissive glow authored at all. emissive/
+  // emissiveIntensity are ordinary runtime material properties regardless
+  // of what the source glTF set, though, so setting them here still lets
+  // us drive a hit-flash glow on the real model's own material. As of #43
+  // the emissive color is fire-orange, not magenta (VOID_HEART_IDLE_EMISSIVE
+  // is 0 anyway, so this only shows during the brief hit-flash spike) --
+  // "the model emits fire when hit," not "the model is permanently pink."
+  template.traverse(child=>{
+    if(child.isMesh){
+      child.material.emissive = new THREE.Color(0xff5522);
+      child.material.emissiveIntensity = VOID_HEART_IDLE_EMISSIVE;
+      voidHeartMaterials.push(child.material);
+    }
+  });
+  voidHeartTemplate = template;
+}, undefined, (err)=>{
+  console.error('void heart model failed to load:', err);
+});
+// Old procedural placeholder -- kept, not deleted, purely as a fallback
+// for the (in practice essentially unreachable, since CFG.riftFirstAt is
+// far out enough that the async load above always finishes first) case
+// where a Rift somehow triggers before voidHeartTemplate has resolved.
+// Unlike the parser removed in #40 (zero real callers left, truly dead),
+// this path can genuinely run, just very rarely -- see triggerRiftEvent().
 const voidHeartGeo = new THREE.IcosahedronGeometry(2.6, 1);
 const voidHeartMat = new THREE.MeshStandardMaterial({color:0x2a0a3a, emissive:0xff2bd6, emissiveIntensity:1.6, roughness:0.3});
 function clearRiftOrbiters(){
@@ -1487,9 +1640,24 @@ function triggerRiftEvent(){
   G.rift.wanderTarget.x=0; G.rift.wanderTarget.y=0;
   G.rift.wanderT=0; G.rift.distPhaseT=0; // phase 0 == far end of the approach/dart cycle, same starting range as before
   clearDebrisField();
-  voidHeartMat.emissiveIntensity = 1.6; // reset in case a prior fight ended mid-flash
-  const heart = new THREE.Mesh(voidHeartGeo, voidHeartMat);
-  heart.scale.setScalar(1);
+  // Use the real loaded model if it's ready; fall back to the old
+  // primitive placeholder on the (essentially unreachable in practice)
+  // chance the async GLTFLoader hasn't resolved yet -- see the comment
+  // above voidHeartGeo/voidHeartMat.
+  const useHeartModel = !!voidHeartTemplate;
+  const heart = useHeartModel ? voidHeartTemplate.clone() : new THREE.Mesh(voidHeartGeo, voidHeartMat);
+  G.rift.heartBaseScale = useHeartModel ? VOID_HEART_SCALE : 1;
+  G.rift.heartMaterials = useHeartModel ? voidHeartMaterials : [voidHeartMat];
+  // Idle baseline and hit-flash boost both differ by path -- the real
+  // model gets NO idle glow at all (0, see VOID_HEART_IDLE_EMISSIVE) and
+  // only a modest fire-colored flash on a hit (VOID_HEART_HIT_EMISSIVE_
+  // BOOST); the old flat placeholder keeps its original, unrelated 1.6/2.8
+  // shape since that was already tuned for it and it's essentially never
+  // reached in practice. updateRift()'s pulse math reads both fields.
+  G.rift.heartIdleEmissive = useHeartModel ? VOID_HEART_IDLE_EMISSIVE : 1.6;
+  G.rift.heartHitBoost = useHeartModel ? VOID_HEART_HIT_EMISSIVE_BOOST : 2.8;
+  for(const mat of G.rift.heartMaterials) mat.emissiveIntensity = G.rift.heartIdleEmissive; // reset in case a prior fight ended mid-flash
+  heart.scale.setScalar(G.rift.heartBaseScale);
   heart.position.set(0,0, ship.position.z - CFG.riftHeartDistMax);
   scene.add(heart); G.rift.heartMesh=heart;
   clearRiftOrbiters();
@@ -1562,13 +1730,16 @@ function updateRift(dt){
     // Hit feedback: a bullet connecting sets hitFlash to 1 (see the bullet
     // vs. heart collision check below); it decays back to 0 over ~0.25s
     // every frame here, driving a bright emissive pulse + a brief swelling
-    // "flinch" on the mesh scale. Sound already covered the audio side --
-    // this is the only visual confirmation a hit landed, so it needs to
-    // read clearly even in the middle of a busy fight.
+    // "flinch" on the mesh scale (now layered on top of G.rift.heartBaseScale
+    // rather than an absolute 1, since the real model needs VOID_HEART_SCALE
+    // as its resting size) -- plus a fire-colored particle spew, see the
+    // bullet-vs-heart collision check below. Sound already covered the
+    // audio side -- this needs to read clearly even mid-fight.
     G.rift.hitFlash = Math.max(0, G.rift.hitFlash - dt*4);
-    voidHeartMat.emissiveIntensity = 1.6 + G.rift.hitFlash*2.8;
+    const heartEmissive = G.rift.heartIdleEmissive + G.rift.hitFlash*G.rift.heartHitBoost;
+    for(const mat of G.rift.heartMaterials) mat.emissiveIntensity = heartEmissive;
     const flashScale = 1 + G.rift.hitFlash*0.3;
-    heart.scale.setScalar(flashScale);
+    heart.scale.setScalar(G.rift.heartBaseScale * flashScale);
 
     // --- heart movement: creeps closer, then darts back out, while also
     // wandering laterally -- so it's never just a static target sitting
@@ -1687,12 +1858,20 @@ function updateRift(dt){
 }
 
 /* ---------------- SCORE / STARDUST HELPERS ---------------- */
+// Shared by addScore() and addStardust() so both payout types scale with
+// combo the same way (see comboBonusPerLevel's comment in CFG above).
+function comboMult(){ return 1+G.combo*CFG.comboBonusPerLevel; }
 // Returns the actual (combo-multiplied) amount just added, so callers can
 // hand that real number to spawnScorePopup() -- the popup must show what
 // the multiplier produced, not the raw base value, or it lies about the
 // thing it exists to prove.
-function addScore(v){ const mult=1+G.combo*0.05; const applied=Math.round(v*mult); G.score += applied; return applied; }
-function addStardust(v){ G.stardust += v; }
+function addScore(v){ const applied=Math.round(v*comboMult()); G.score += applied; return applied; }
+// Same combo-multiplied treatment as addScore() -- previously this just
+// did `G.stardust += v` with no multiplier at all, so every stardust
+// award (pickups, turret kills, the Rift heart's 500-stardust bonus) paid
+// out flat regardless of combo level. Also returns the applied amount,
+// matching addScore(), for any future caller that wants to show it.
+function addStardust(v){ const applied=Math.round(v*comboMult()); G.stardust += applied; return applied; }
 function setCombo(v){ G.combo=Math.max(0,v); G.bestCombo=Math.max(G.bestCombo,G.combo); }
 
 /* ---------------- DAMAGE / EFFECTS ---------------- */
@@ -1858,9 +2037,23 @@ function updatePlayerShip(dt){
   camera.rotation.z += -(Input.vel.x*0.05 - camera.rotation.z)*Math.min(1,dt*4);
   G.shake = Math.max(0, G.shake-dt*CFG.hitShakeDecay);
 
-  const thr = ship.userData.thruster;
-  const targetScale = G.boosting? 1.8:1.0;
-  thr.scale.z += (targetScale-thr.scale.z)*Math.min(1,dt*10);
+  // Four engine flames stretch together on boost -- same lerp mechanic
+  // the old single thruster used, just a bigger target (CFG.engineBoostStretch)
+  // so it reads as a real streak trailing behind each engine, not just a
+  // slightly longer flame. Scaled on .y, not .z: Three.js applies an
+  // object's own scale to the RAW (pre-rotation) geometry, and each flame's
+  // ConeGeometry has its height authored along its own local Y axis --
+  // scaling .z instead (tried first, wrong) stretches the cone's radius
+  // cross-section, which the flame's rotation.x=PI/2 then reorients onto
+  // world Y, i.e. it visibly grows *taller* rather than trailing further
+  // back behind the ship. Confirmed empirically (screenshot comparison of
+  // all three scale axes against the real loaded model), not just reasoned
+  // through -- worth re-checking against this comment if a flame's
+  // geometry/rotation ever changes.
+  const targetScale = G.boosting? CFG.engineBoostStretch : 1.0;
+  for(const flame of ship.userData.engines){
+    flame.scale.y += (targetScale-flame.scale.y)*Math.min(1,dt*10);
+  }
 }
 
 function updateEconomyAndDifficulty(dt){
@@ -1932,6 +2125,28 @@ function updateAsteroids(dt){
   for(const o of asteroidPool){
     if(!o.active) continue;
     o.mesh.rotation.x+=o.data.spinX*dt; o.mesh.rotation.y+=o.data.spinY*dt;
+    // Hit-flash decay -- a bullet connecting (see updateBullets()) sets
+    // this to 1; it decays back to 0 here every frame, driving a brief
+    // emissive glow so a non-killing hit on a multi-HP rock actually shows
+    // damage landed instead of looking identical to a miss. Runs even on a
+    // frame the rock ISN'T hit, same idle-decay shape the void heart's own
+    // hitFlash pulse uses.
+    if(o.data.hitFlash>0){
+      o.data.hitFlash = Math.max(0, o.data.hitFlash - dt*CFG.asteroidHitGlowDecay);
+      o.mesh.material.emissiveIntensity = o.data.hitFlash*CFG.asteroidHitGlowPeak;
+    }
+    // Knockback integration -- a non-killing hit (see updateBullets()) sets
+    // knockbackVel to a large negative z speed; apply it to position every
+    // frame here, then bleed the speed off at asteroidKnockbackDecay per
+    // second until it hits exactly 0, same decaying-impulse shape as
+    // G.shake. Clamp-to-zero on the last partial-frame step so it stops
+    // dead instead of overshooting into a small positive (forward) creep.
+    if(o.data.knockbackVel!==0){
+      o.mesh.position.z += o.data.knockbackVel*dt;
+      const decayStep = CFG.asteroidKnockbackDecay*dt;
+      if(Math.abs(o.data.knockbackVel) <= decayStep) o.data.knockbackVel = 0;
+      else o.data.knockbackVel += (o.data.knockbackVel>0? -1:1)*decayStep;
+    }
     if(o.mesh.position.z > ship.position.z+CFG.cullZ){ o.active=false; o.mesh.visible=false; continue; }
     const dx=o.mesh.position.x-ship.position.x, dy=o.mesh.position.y-ship.position.y, dz=o.mesh.position.z-ship.position.z;
     if(Math.abs(dz)<1.6 && Math.hypot(dx,dy) < o.data.r+0.9){
@@ -1950,30 +2165,31 @@ function updateAsteroids(dt){
 }
 
 // Regular (non-orbit) drones are stationary turrets now, not flying
-// ships — instead of spinning the whole model, the head (a separate node
-// on the rig, see buildTurretRig()) swivels on its own to track the
-// player, same as the rest of the drone's behavior is untouched. Rift
-// orbiters (data.orbit) skip all of this and keep their existing
-// circular-orbit motion from updateRift().
+// ships — the whole body rotates to visually track the player (see #40:
+// turret.glb is one solid mesh, no separate swiveling-head node the way
+// the old base+head kit-part rig had, so there's no child left to swivel
+// independently — the entire slot group takes over that job instead).
+// This tracking is purely cosmetic either way: fireEnemyBullet() below
+// always computes its own aim from the firing position to the player's
+// current position regardless of the mesh's rotation, so a wrong/no
+// rotation would never have made the turret's shots miss, just look odd.
+// Rift orbiters (data.orbit) skip all of this and keep their existing
+// circular-orbit motion + movement-facing rotation from updateRift().
 function updateOneDrone(o, dt){
   if(!o.active) return;
-  const head = !o.data.orbit ? o.mesh.userData.turretHead : null;
   if(!o.data.orbit){
     if(o.mesh.position.z > ship.position.z+CFG.cullZ){ o.active=false; o.mesh.visible=false; return; }
     o.mesh.position.x += Math.sin(G.elapsed*1.3+o.data.phase)*0.6*dt;
-    if(head){
-      const dxAim = ship.position.x-o.mesh.position.x, dzAim = ship.position.z-o.mesh.position.z;
-      const targetYaw = Math.atan2(dxAim, dzAim) + TURRET_HEAD_FORWARD;
-      let diff = targetYaw - head.rotation.y;
-      diff = ((diff+Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
-      head.rotation.y += diff*Math.min(1, dt*4);
-    }
+    const dxAim = ship.position.x-o.mesh.position.x, dzAim = ship.position.z-o.mesh.position.z;
+    const targetYaw = Math.atan2(dxAim, dzAim) + TURRET_YAW_OFFSET;
+    let diff = targetYaw - o.mesh.rotation.y;
+    diff = ((diff+Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
+    o.mesh.rotation.y += diff*Math.min(1, dt*4);
   }
   o.data.shootCd -= dt;
   if(o.data.shootCd<=0){
     o.data.shootCd = 1.4+Math.random()*1.2;
-    if(head) fireTurretBurst(o.mesh, head);
-    else fireEnemyBullet(o.mesh.position);
+    fireEnemyBullet(o.mesh.position);
   }
   const dx=o.mesh.position.x-ship.position.x, dy=o.mesh.position.y-ship.position.y, dz=o.mesh.position.z-ship.position.z;
   if(!o.data.orbit && Math.abs(dz)<1.6 && Math.hypot(dx,dy) < o.data.r+0.9){
@@ -2041,26 +2257,6 @@ function fireEnemyBullet(fromPos){
   slot.mesh.lookAt(ship.position);
   slot.mesh.rotation.x += Math.PI/2;
 }
-// Fires one bolt from each of the turret head's muzzle points (both
-// barrels on this "double" turret) — each independently aimed at the
-// player's current position, same as a single fireEnemyBullet() would be.
-// Muzzle offsets are in head-local space; rotating them by the head's
-// live rotation.y and adding the base+head world offsets gives the
-// muzzle's actual current world position, so the bolts visibly originate
-// from the barrel tips as the head tracks, not from the turret's base.
-function fireTurretBurst(mesh, head){
-  const muzzles = mesh.userData.muzzles;
-  if(!muzzles || !muzzles.length){ fireEnemyBullet(mesh.position); return; }
-  const cosT=Math.cos(head.rotation.y), sinT=Math.sin(head.rotation.y);
-  for(const m of muzzles){
-    const rx = m.x*cosT + m.z*sinT, rz = -m.x*sinT + m.z*cosT;
-    fireEnemyBullet({
-      x: mesh.position.x + head.position.x + rx,
-      y: mesh.position.y + head.position.y + m.y,
-      z: mesh.position.z + head.position.z + rz,
-    });
-  }
-}
 function fireBullet(){
   if(G.fireCooldown>0) return;
   G.fireCooldown = 1/G.stats.fireRate;
@@ -2109,10 +2305,30 @@ function updateBullets(dt){
     // the bullet and sparks so a multi-hit rock gives clear feedback that
     // damage is actually landing; the kill blow gets the full
     // spawnAsteroidBlast() treatment and pays out score scaled to size.
+    //
+    // This checks the SEGMENT the bullet crossed this frame, not just its
+    // post-move point -- a plain point check tunnels constantly here.
+    // CFG.bulletSpeed is 230/sec, so at a real 60fps frame (dt~0.0167) a
+    // bullet moves ~3.8 units every frame; the smallest asteroid's full hit
+    // window (2*(r+0.5)) is only ~2.8 units wide, narrower than one frame's
+    // travel, so a point-in-sphere test on a well-aimed shot at a small
+    // rock missed far more often than it should have -- almost certainly
+    // the real cause behind Russ's "very hard to hit" report, not just a
+    // too-small hitbox. A bullet never moves in x/y after firing (no vx/vy,
+    // see fireBullet()), so dx/dy to any given asteroid stay fixed for its
+    // whole life -- that reduces the swept check to a cheap 1D interval
+    // overlap on z rather than a full segment-vs-sphere solve.
+    const prevBulletZ = o.mesh.position.z + CFG.bulletSpeed*dt;
     for(const a of asteroidPool){
       if(!a.active) continue;
-      const dx=a.mesh.position.x-o.mesh.position.x, dy=a.mesh.position.y-o.mesh.position.y, dz=a.mesh.position.z-o.mesh.position.z;
-      if(Math.hypot(dx,dy,dz) < a.data.r+0.5){
+      const dx=a.mesh.position.x-o.mesh.position.x, dy=a.mesh.position.y-o.mesh.position.y;
+      const effR = a.data.r+0.5;
+      const perp = Math.hypot(dx,dy);
+      if(perp >= effR) continue; // no z, however close, could ever intersect
+      const halfWidth = Math.sqrt(effR*effR - perp*perp);
+      const zMin = a.mesh.position.z - halfWidth, zMax = a.mesh.position.z + halfWidth;
+      const segMin = Math.min(o.mesh.position.z, prevBulletZ), segMax = Math.max(o.mesh.position.z, prevBulletZ);
+      if(segMax >= zMin && segMin <= zMax){
         a.data.hp -= G.stats.dmg;
         o.active=false; o.mesh.visible=false; hit=true;
         if(a.data.hp<=0){
@@ -2120,6 +2336,14 @@ function updateBullets(dt){
           spawnScorePopup(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, addScore(Math.round(10*a.data.scale)));
           a.active=false; a.mesh.visible=false;
         } else {
+          // Still alive: flash (updateAsteroids() decays it) so the hit
+          // visibly registers, and launch it away from the ship with a
+          // real decaying impulse (also integrated/decayed in
+          // updateAsteroids()) so it visibly rockets back and buys real
+          // extra time before the next shot has to land, instead of just
+          // sitting there looking unchanged.
+          a.data.hitFlash = 1;
+          a.data.knockbackVel = -CFG.asteroidKnockbackVel;
           spawnBurst(a.mesh.position.x,a.mesh.position.y,a.mesh.position.z, {r:0.75,g:0.65,b:0.55}, 8, 7);
           Audio_.hit();
         }
@@ -2133,8 +2357,14 @@ function updateBullets(dt){
       const dx=h.position.x-o.mesh.position.x, dy=h.position.y-o.mesh.position.y, dz=h.position.z-o.mesh.position.z;
       if(Math.hypot(dx,dy,dz) < 2.6+0.5){
         G.rift.heartHp -= G.stats.dmg;
-        G.rift.hitFlash = 1; // drives the emissive/scale pulse in updateRift()
-        spawnBurst(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z, {r:1,g:0.3,b:0.9},8,7);
+        G.rift.hitFlash = 1; // drives the fire-emissive/scale pulse in updateRift()
+        // #43: no more magenta spawnBurst() here -- Russ wants the heart to
+        // "emit and spew fiery flames when hit," not flash pink. This is a
+        // real fireball-sprite flare plus a fire-colored particle spray
+        // (spawnHeartFireHit(), see its definition next to
+        // spawnAsteroidBlast()), on top of the mesh's own brief fire-orange
+        // emissive flash driven by hitFlash in updateRift().
+        spawnHeartFireHit(o.mesh.position.x,o.mesh.position.y,o.mesh.position.z);
         Audio_.hit();
         o.active=false; o.mesh.visible=false;
       }
@@ -2371,9 +2601,15 @@ function startRun(){
 function pauseGame(){
   if(G.state!=='playing') return;
   G.state='paused'; showScreen('menuPause');
+  // Same rule endRun() already follows for the SIGNAL LOST screen: music
+  // only plays while game action is actually happening. Pausing mid-run
+  // (menuPause, and the shop if opened from it) previously left whatever
+  // MAIN/voidHeart track was current running behind the pause menu.
+  Music_.pauseAll();
 }
 function resumeGame(){
   G.state='playing'; showScreen(null);
+  Music_.resumeCurrent();
 }
 function quitToMenu(){
   G.state='menu';
