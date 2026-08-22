@@ -235,7 +235,7 @@ const DEBUG = new URLSearchParams(location.search).has('debug');
 
 /* ---------------- SAVE / PROGRESSION ---------------- */
 const Save = {
-  data: { highScore: 0, stardust: 0, autofire: false, invertY: false, bgmVolume: 0.6, tutorialSeen: false, upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 } },
+  data: { highScore: 0, stardust: 0, autofire: false, invertY: false, bgmVolume: 0.6, brightness: 1, tutorialSeen: false, upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 } },
   load(){
     try{
       const raw = localStorage.getItem('ruskoVoidSave');
@@ -679,6 +679,21 @@ const canvas = document.getElementById('gameCanvas');
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+// Player-adjustable overall brightness (SETTINGS "BRIGHTNESS" slider) --
+// Russ flagged the game reads very dark on mobile. Rather than touching the
+// Three.js lighting/tone-mapping pipeline (AmbientLight/keyLight/rimLight
+// intensities below, all tuned together for the desktop look), this scales
+// the *displayed* canvas with a plain CSS filter -- simplest option that
+// can't throw off the lighting balance the scene was designed around, and
+// doesn't wash out the HUD/menus since it only targets #gameCanvas, not
+// the whole page. Save.data.brightness is a multiplier (1 = unchanged,
+// matching how the game has always looked); applyBrightness() is also
+// called from the settings slider's 'input' handler below so dragging it
+// updates the canvas live.
+function applyBrightness(mult){
+  canvas.style.filter = 'brightness(' + mult + ')';
+}
+applyBrightness(Save.data.brightness);
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x05030f, 0.0032);
@@ -2541,6 +2556,17 @@ el('bgmSlider').addEventListener('input', (e)=>{
   Save.data.bgmVolume = v;
   Save.save();
 });
+// BRIGHTNESS slider -- see applyBrightness()/Save.data.brightness up near
+// the renderer setup for why this is a CSS filter on the canvas rather
+// than a lighting change. 100 on the slider == 1.0 == today's unchanged
+// look; players who find it too dark (reported on mobile) can push past
+// that.
+el('brightnessSlider').addEventListener('input', (e)=>{
+  const v = Number(e.target.value)/100;
+  applyBrightness(v);
+  Save.data.brightness = v;
+  Save.save();
+});
 el('btnAutofire').addEventListener('click', (e)=>{
   Input.autofire=!Input.autofire;
   Save.data.autofire = Input.autofire;
@@ -2586,6 +2612,7 @@ el('btnAutofire').textContent='AUTO-FIRE: '+(Input.autofire?'ON':'OFF');
 el('btnInvertY').textContent='INVERT Y: '+(Input.invertY?'ON':'OFF');
 el('btnSound').textContent = Audio_.sfxOn?'🔊 SOUND EFFECTS: ON':'🔇 SOUND EFFECTS: OFF';
 el('bgmSlider').value = Math.round(Save.data.bgmVolume*100);
+el('brightnessSlider').value = Math.round(Save.data.brightness*100);
 
 function startRun(){
   resetRun();
