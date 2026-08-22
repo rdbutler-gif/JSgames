@@ -81,10 +81,9 @@
     </div>
     <div class="btnRow" style="margin-top:6px;">
       <button class="small" id="btnShop">SHIPYARD</button>
-      <button class="small" id="btnHallOfFame">HALL OF FAME</button>
       <button class="small" id="btnSettings">SETTINGS</button>
     </div>
-    <div id="footer">keyboard · mouse · gamepad · touch</div>
+    <div id="footer">three.js · single-file · keyboard · mouse · gamepad · touch</div>
   </div>
 </div>
 
@@ -142,8 +141,7 @@
 <div class="overlay hidden" id="menuShop">
   <div class="panel">
     <h1 class="title" style="font-size:22px;">SHIPYARD</h1>
-    <div class="subtitle" style="margin-bottom:2px;">STARDUST BANKED</div>
-    <div class="shopStardustTotal" id="shopStardust" style="text-align:center;margin-bottom:12px;">✦ 0</div>
+    <div class="subtitle">STARDUST: <span id="shopStardust">✦ 0</span></div>
     <div id="shopList"></div>
     <div class="btnRow"><button class="big" id="btnShopBack">BACK</button></div>
   </div>
@@ -155,7 +153,7 @@
     <h1 class="title" style="font-size:22px;">PAUSED</h1>
     <div class="btnRow">
       <button class="big" id="btnResume">RESUME</button>
-      <button class="small" id="btnPauseSettings">SETTINGS</button>
+      <button class="small" id="btnPauseShop">SHIPYARD</button>
       <button class="small" id="btnPauseQuit">QUIT TO MENU</button>
     </div>
   </div>
@@ -165,36 +163,11 @@
 <div class="overlay hidden" id="menuOver">
   <div class="panel">
     <h1 class="title" style="font-size:26px;">SIGNAL LOST</h1>
-    <!-- THIS RUN / LAST RUN / HALL OF FAME comparison -- replaces the old
-         single-column stat list (including the standalone HIGH SCORE row,
-         now folded into the HALL OF FAME/SCORE cell since the #1 All Time
-         entry IS the high score). Populated by renderCompareTable() in
-         game.js, called from endRun(). -->
-    <table class="compareTable">
-      <thead><tr><th></th><th>THIS RUN</th><th>LAST RUN</th><th>HALL OF FAME</th></tr></thead>
-      <tbody>
-        <tr><td>DISTANCE</td><td class="thisRun" id="cmpDistNow">0 ly</td><td id="cmpDistLast">—</td><td id="cmpDistHof">—</td></tr>
-        <tr><td>SCORE</td><td class="thisRun" id="cmpScoreNow">0</td><td id="cmpScoreLast">—</td><td id="cmpScoreHof">—</td></tr>
-        <tr><td>BEST COMBO</td><td class="thisRun" id="cmpComboNow">x1</td><td id="cmpComboLast">—</td><td id="cmpComboHof">—</td></tr>
-        <tr><td>STARDUST</td><td class="thisRun" id="cmpStardustNow">✦ 0</td><td id="cmpStardustLast">—</td><td id="cmpStardustHof">—</td></tr>
-      </tbody>
-    </table>
-    <!-- HALL OF FAME name-entry prompt -- shown only when this run just
-         qualified for a spot on the All Time and/or Daily board (see
-         hofIsEligible()/showHofPrompt() in game.js). Framework only: no
-         RUN.world account system yet, so the name is just a local device
-         preference (Save.data.playerName) reused as the default next
-         time -- swapping in real account identity later doesn't need
-         this markup to change. Anonymous (today: every) players get this
-         prompt the moment they earn a spot, per the brief. -->
-    <div class="hofPrompt hidden" id="hofPrompt">
-      <div class="hofPromptLabel">★ HALL OF FAME ELIGIBLE ★</div>
-      <input type="text" id="hofNameInput" placeholder="ENTER YOUR NAME" maxlength="20">
-      <div class="btnRow">
-        <button class="big" id="btnHofSubmit">ADD TO HALL OF FAME</button>
-      </div>
-    </div>
-    <div class="hofPromptDone hidden" id="hofPromptDone">✦ ADDED TO THE HALL OF FAME ✦</div>
+    <div class="statRow"><span>DISTANCE</span><span id="overDist">0 ly</span></div>
+    <div class="statRow"><span>SCORE</span><span id="overScore">0</span></div>
+    <div class="statRow"><span>BEST COMBO</span><span id="overCombo">x1</span></div>
+    <div class="statRow"><span>STARDUST EARNED</span><span id="overStardust">✦ 0</span></div>
+    <div class="statRow"><span>HIGH SCORE</span><span id="overHigh">0</span></div>
     <!-- PLACEHOLDER MONETIZATION HOOK -- flagged for a future RUN Studio
          implementation agent. This button currently fakes a completed
          rewarded-video ad: clicking it immediately grants the reward
@@ -218,25 +191,6 @@
       <button class="small" id="btnOverShop">SHIPYARD</button>
       <button class="small" id="btnOverMenu">MAIN MENU</button>
     </div>
-  </div>
-</div>
-
-<!-- HALL OF FAME -- framework only for now: a local (per-device) top-1000
-     leaderboard per tab standing in for the RUN.world server list that
-     will eventually back this. See renderHallOfFame()/hofSwitchTab() in
-     game.js. -->
-<div class="overlay hidden" id="menuHallOfFame">
-  <div class="panel">
-    <h1 class="title" style="font-size:22px;">HALL OF FAME</h1>
-    <div class="hofTabs">
-      <button class="hofTabBtn active" id="btnHofTabAll" data-tab="allTime">ALL TIME</button>
-      <button class="hofTabBtn" id="btnHofTabDaily" data-tab="daily">DAILY</button>
-    </div>
-    <!-- Fixed-height + overflow-y:auto (see .hofList in style.css) is the
-         whole "never-ending list, scrollbar + touch scroll" requirement --
-         no custom scroll JS needed for a plain vertical list. -->
-    <div class="hofList" id="hofList"></div>
-    <div class="btnRow"><button class="big" id="btnHofBack">BACK</button></div>
   </div>
 </div>
 

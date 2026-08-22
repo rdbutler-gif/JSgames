@@ -235,18 +235,79 @@ const DEBUG = new URLSearchParams(location.search).has('debug');
 
 /* ---------------- SAVE / PROGRESSION ---------------- */
 const Save = {
-  data: { highScore: 0, stardust: 0, autofire: false, invertY: false, bgmVolume: 0.6, brightness: 1, tutorialSeen: false, upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 } },
+  data: { highScore: 0, stardust: 0, autofire: false, invertY: false, bgmVolume: 0.6, brightness: 1, tutorialSeen: false,
+    upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 },
+    // lastRun: the previous completed run's stats, shown as the "LAST RUN"
+    // column on SIGNAL LOST (see renderCompareTable()). null until the
+    // player's first run ever ends.
+    lastRun: null,
+    // playerName: local stand-in for account identity until RUN.world
+    // accounts exist -- prefilled into the Hall of Fame name prompt so a
+    // returning player doesn't have to retype it every eligible run.
+    playerName: '',
+    // hallOfFame: local stand-in for the future RUN.world leaderboard
+    // service. Two independently-capped (see HOF_CAP) lists, each sorted
+    // descending by score. Entry shape: {name, score, dist, combo,
+    // stardust, ts}. dailyKey is the local-date (YYYY-MM-DD) the "daily"
+    // list was last valid for -- see ensureDailyFresh().
+    hallOfFame: { allTime: [], daily: [] },
+    dailyKey: '',
+  },
   load(){
     try{
       const raw = localStorage.getItem('ruskoVoidSave');
       if(raw){ const p = JSON.parse(raw); Object.assign(this.data, p); }
     }catch(e){ /* storage unavailable — in-memory only, that's fine */ }
+    // Object.assign above is shallow, so an older save written before
+    // hallOfFame existed would otherwise leave it undefined rather than
+    // falling back to the default object -- guard each half separately.
+    if(!this.data.hallOfFame) this.data.hallOfFame = { allTime: [], daily: [] };
+    if(!Array.isArray(this.data.hallOfFame.allTime)) this.data.hallOfFame.allTime = [];
+    if(!Array.isArray(this.data.hallOfFame.daily)) this.data.hallOfFame.daily = [];
   },
   save(){
     try{ localStorage.setItem('ruskoVoidSave', JSON.stringify(this.data)); }catch(e){ /* ignore */ }
   }
 };
 Save.load();
+
+/* ---------------- HALL OF FAME (local framework) ----------------
+   No RUN.world server yet, so this is a per-device stand-in: same shape
+   and rules a server-backed board would need (capped depth, ranked,
+   eligibility gate), just persisted to localStorage instead of a network
+   call. Swapping in the real service later means replacing the bodies of
+   these functions, not the call sites. */
+const HOF_CAP = 1000; // per Russ: "Top 1000" for each tab
+function todayKey(){
+  // Local-calendar-day key (not UTC) -- "daily" should reset when the
+  // player's own day rolls over, not some server's.
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function ensureDailyFresh(){
+  const k = todayKey();
+  if(Save.data.dailyKey !== k){
+    Save.data.dailyKey = k;
+    Save.data.hallOfFame.daily = [];
+    Save.save();
+  }
+}
+// Eligibility per Russ's answer: "beating anyone else on the list's
+// overall score" -- i.e. eligible if the list isn't full yet, or this
+// score beats the current lowest (last-place) entry already on it.
+function hofIsEligible(list, score){
+  if(list.length < HOF_CAP) return true;
+  return score > list[list.length-1].score;
+}
+function hofInsert(list, entry){
+  list.push(entry);
+  list.sort((a,b)=>b.score-a.score);
+  if(list.length>HOF_CAP) list.length = HOF_CAP;
+}
+function hofBest(list){
+  return list.length ? list[0] : null;
+}
+ensureDailyFresh();
 
 const UPGRADES = {
   hull:    { name:'Hull Plating',   desc:'+1 max shield',        max:3, baseCost:80,  step:1.7, icon:'🛡️' },
@@ -1334,6 +1395,11 @@ const G = {
   // continued run reaches endRun() more than once and must only bank the
   // delta each time, not the whole run total again.
   continueUsed:false, stardustBanked:0,
+  // hofPending: set by showHofPrompt() when a just-ended run qualifies for
+  // the Hall of Fame; holds the run's stats plus which board(s) it
+  // qualified for, read back by the name-entry submit handler. null when
+  // there's nothing pending (not eligible, or already submitted).
+  hofPending:null,
   nextObstacleZ:-20, nextEventDist:{},
   nextRingZ:-170, ringChainRemaining:0, ringChainAnchor:{x:0,y:0},
   countdownT:0, countdownShown:null,
@@ -1359,7 +1425,7 @@ function resetRun(){
   ship.position.set(0,0,0);
   G.dist=0; G.speed=CFG.speedStart; G.score=0; G.stardust=0; G.combo=0; G.bestCombo=0;
   G.shield=G.maxShield; G.boostFuel=G.boostMax; G.invuln=1.0; G.boosting=false; G.fireCooldown=0;
-  G.continueUsed=false; G.stardustBanked=0;
+  G.continueUsed=false; G.stardustBanked=0; G.hofPending=null;
   G.nextObstacleZ=-20; resetDistEvents();
   G.nextRingZ=-170; G.ringChainRemaining=0; G.ringChainAnchor.x=0; G.ringChainAnchor.y=0;
   G.rift.active=false; G.elapsed=0;
@@ -2426,7 +2492,7 @@ function refreshHud(){
 // in any perceptible way.
 const SCREEN_INPUT_GUARD_MS = 350;
 function showScreen(id){
-  for(const s of ['menuStart','menuHelp','menuShop','menuSettings','menuPause','menuOver','menuResetConfirm']) el(s).classList.add('hidden');
+  for(const s of ['menuStart','menuHelp','menuShop','menuSettings','menuPause','menuOver','menuHallOfFame','menuResetConfirm']) el(s).classList.add('hidden');
   if(id){
     const scr = el(id);
     scr.classList.remove('hidden');
@@ -2476,24 +2542,25 @@ function playIntro(){
   if(p && p.catch) p.catch(()=> finish(true));
 }
 function renderShop(container, onBuy){
-  // Card layout (see Feature History): one header line (icon + name + level
-  // pips), one desc line, one full-width button whose own label carries the
-  // cost -- "UPGRADE — ✦80" / "UPGRADE — FREE (DEBUG)" / "MAXED OUT" -- so
-  // there's no separate price readout sitting next to a same-purpose button.
+  // Card layout (see Feature History): buy button now sits inline on the
+  // header row next to the upgrade's title -- bigger than before, and its
+  // label is just the cost + stardust symbol ("✦80"), no "UPGRADE" text,
+  // per Russ (item 2.1). Pips (level indicator) moved below the desc line
+  // so the header row stays readable on narrow phone widths.
   container.innerHTML='';
   for(const key in UPGRADES){
     const u=UPGRADES[key]; const lvl=Save.data.upgrades[key];
     const row=document.createElement('div'); row.className='shopCard'+(lvl>=u.max?' maxed':'');
     const cost=upgradeCost(key); const maxed=lvl>=u.max;
     let pips=''; for(let i=0;i<u.max;i++) pips+=`<span class="pip${i<lvl?' filled':''}"></span>`;
-    const btnLabel = maxed ? 'MAXED OUT' : (DEBUG ? 'UPGRADE — FREE (DEBUG)' : 'UPGRADE — ✦'+cost);
+    const btnLabel = maxed ? 'MAXED' : (DEBUG ? 'FREE' : '✦'+cost);
     row.innerHTML = `<div class="shopCardHead">
         <span class="shopIcon">${u.icon}</span>
         <span class="shopName">${u.name}</span>
-        <span class="shopPips">${pips}</span>
+        <button class="shopBuyBtn" ${maxed?'disabled':''} data-key="${key}">${btnLabel}</button>
       </div>
       <div class="shopDesc">${u.desc}</div>
-      <button class="shopBuyBtn" ${maxed?'disabled':''} data-key="${key}">${btnLabel}</button>`;
+      <div class="shopPips">${pips}</div>`;
     container.appendChild(row);
   }
   container.querySelectorAll('button[data-key]').forEach(btn=>{
@@ -2533,16 +2600,68 @@ function openShop(fromScreen){
   el('menuShop').dataset.back = fromScreen;
 }
 
+/* ---------------- HALL OF FAME scene (framework) ----------------
+   Two tabs sharing one render function; each row shows every tracked
+   stat (item 5.2) plus a placeholder profile-icon slot (item 5.3) ready
+   for a real avatar once RUN.world accounts exist. Scrolling is just
+   native overflow (see .hofList in style.css) so it already handles an
+   arbitrarily long ("never-ending") list with no extra JS. */
+let hofActiveTab = 'allTime';
+function renderHallOfFame(){
+  const list = Save.data.hallOfFame[hofActiveTab] || [];
+  const container = el('hofList');
+  if(!list.length){
+    container.innerHTML = `<div class="hofEmpty">No runs recorded yet${hofActiveTab==='daily'?' today':''} — be the first on the board.</div>`;
+    return;
+  }
+  let html='';
+  for(let i=0;i<list.length;i++){
+    const r = list[i];
+    html += `<div class="hofRow">
+        <div class="hofRank">#${i+1}</div>
+        <div class="hofIcon">${r.icon||'👤'}</div>
+        <div class="hofNameCol">${escapeHtml(r.name||'ANONYMOUS')}</div>
+        <div class="hofStats">
+          <span><b>${r.score}</b> pts</span>
+          <span>${fmtDist(r.dist)}</span>
+          <span>x${r.combo}</span>
+          <span>✦${r.stardust}</span>
+        </div>
+      </div>`;
+  }
+  container.innerHTML = html;
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function hofSwitchTab(tab){
+  hofActiveTab = tab;
+  el('btnHofTabAll').classList.toggle('active', tab==='allTime');
+  el('btnHofTabDaily').classList.toggle('active', tab==='daily');
+  renderHallOfFame();
+}
+function openHallOfFame(fromScreen){
+  ensureDailyFresh();
+  hofSwitchTab('allTime');
+  showScreen('menuHallOfFame');
+  el('menuHallOfFame').dataset.back = fromScreen;
+}
+
 /* menu wiring */
 el('btnPlay').addEventListener('click', ()=>{ Audio_.init(); Audio_.resume(); Music_.init(); playIntro(); });
 el('btnShop').addEventListener('click', ()=>openShop('menuStart'));
+el('btnHallOfFame').addEventListener('click', ()=>openHallOfFame('menuStart'));
 // CONTROLS now lives inside SETTINGS (see below) rather than on the main
 // menu directly, so its back button returns there instead of menuStart.
 el('btnHelp').addEventListener('click', ()=>showScreen('menuHelp'));
 el('btnHelpBack').addEventListener('click', ()=>showScreen('menuSettings'));
 el('btnShopBack').addEventListener('click', ()=>showScreen(el('menuShop').dataset.back||'menuStart'));
-el('btnSettings').addEventListener('click', ()=>showScreen('menuSettings'));
-el('btnSettingsBack').addEventListener('click', ()=>showScreen('menuStart'));
+// SETTINGS is now reachable from two places -- the title screen (item 1)
+// and, per item 4.2, the Pause menu -- so it needs the same dataset.back
+// tracking menuShop already uses (see openShop()) so its BACK button
+// returns wherever it was opened from instead of always menuStart.
+el('btnSettings').addEventListener('click', ()=>{ showScreen('menuSettings'); el('menuSettings').dataset.back='menuStart'; });
+el('btnSettingsBack').addEventListener('click', ()=>showScreen(el('menuSettings').dataset.back||'menuStart'));
 // SOUND EFFECTS toggle -- gates Audio_.sfxOn only. Background music has its
 // own independent volume slider (bgmSlider, below) since the two are now
 // separate systems (see the Music_ block up top).
@@ -2594,16 +2713,47 @@ el('btnResetConfirm').addEventListener('click', ()=>{
   // tips (a new-player thing) come back too -- unlike the sound/autofire/
   // invertY/bgmVolume preferences, which stay put on purpose (see #28).
   Save.data.tutorialSeen = false;
+  // Hall of Fame entries, lastRun, and playerName deliberately survive a
+  // reset too: they're a leaderboard record (eventually cross-device via
+  // RUN.world) and a display-name preference, not run progress like
+  // stardust/upgrades -- wiping your own upgrades to replay from scratch
+  // shouldn't erase a historical board result.
+
   Save.save();
   refreshMenuStats();
   showScreen('menuStart');
 });
 el('btnResume').addEventListener('click', ()=>resumeGame());
-el('btnPauseShop').addEventListener('click', ()=>openShop('menuPause'));
+// SHIPYARD swapped out for SETTINGS on the Pause menu (item 4) -- mid-run
+// shopping still works, just via SIGNAL LOST/the title screen now, not
+// from here. Music/pause state is untouched by opening Settings (unlike
+// resumeGame()), same as it already was for the old Shipyard button.
+el('btnPauseSettings').addEventListener('click', ()=>{ showScreen('menuSettings'); el('menuSettings').dataset.back='menuPause'; });
 el('btnPauseQuit').addEventListener('click', ()=>quitToMenu());
 el('btnRetry').addEventListener('click', ()=>{ startRun(); });
 el('btnOverShop').addEventListener('click', ()=>openShop('menuOver'));
 el('btnOverMenu').addEventListener('click', ()=>quitToMenu());
+el('btnHofTabAll').addEventListener('click', ()=>hofSwitchTab('allTime'));
+el('btnHofTabDaily').addEventListener('click', ()=>hofSwitchTab('daily'));
+el('btnHofBack').addEventListener('click', ()=>showScreen(el('menuHallOfFame').dataset.back||'menuStart'));
+// HALL OF FAME name-entry submit -- see showHofPrompt()/endRun(). Inserts
+// into whichever board(s) this run actually qualified for (G.hofPending
+// holds that, set by endRun()), saves the name as the local player-name
+// default, then swaps the prompt for a short confirmation.
+el('btnHofSubmit').addEventListener('click', ()=>{
+  if(!G.hofPending) return;
+  const raw = (el('hofNameInput').value||'').trim().slice(0,20);
+  const name = raw || 'ANONYMOUS';
+  Save.data.playerName = name;
+  const entry = { name, score:G.hofPending.score, dist:G.hofPending.dist, combo:G.hofPending.combo, stardust:G.hofPending.stardust, ts:Date.now() };
+  if(G.hofPending.eligibleAllTime) hofInsert(Save.data.hallOfFame.allTime, entry);
+  if(G.hofPending.eligibleDaily) hofInsert(Save.data.hallOfFame.daily, {...entry});
+  Save.save();
+  G.hofPending = null;
+  el('hofPrompt').classList.add('hidden');
+  el('hofPromptDone').classList.remove('hidden');
+  Audio_.ui();
+});
 // Placeholder ad-reward continue -- see the TODO in endRun()/continueRun().
 el('btnContinueAd').addEventListener('click', ()=>{ continueRun(); });
 el('pauseBtn').addEventListener('click', ()=>{ if(G.state==='playing') pauseGame(); });
@@ -2650,6 +2800,66 @@ function quitToMenu(){
   refreshMenuStats();
   showScreen('menuStart');
 }
+// A "Now" cell reads as an improvement (gold, see .better in style.css) if
+// it beats either the previous run or the current All Time Hall of Fame
+// entry it's being compared against -- either counts as worth noticing,
+// not just a new all-time record.
+function statBetter(now, last, hof){
+  if(hof!=null && now>hof) return true;
+  if(last!=null && now>last) return true;
+  return false;
+}
+// THIS RUN / LAST RUN / HALL OF FAME comparison table on SIGNAL LOST
+// (item 3.1). HALL OF FAME column compares against the #1 All Time entry
+// (the Daily tab is a separate view, not a second comparison baseline).
+// Also rolls this run into Save.data.lastRun for the *next* comparison --
+// done last, after every column has already read the old value.
+function renderCompareTable(){
+  const now = { dist:G.dist, score:G.score, combo:1+G.bestCombo, stardust:G.stardust };
+  const last = Save.data.lastRun;
+  const hof = hofBest(Save.data.hallOfFame.allTime);
+  const rows = [
+    { now:now.dist,     last: last?last.dist:null,     hof: hof?hof.dist:null,     fmt:fmtDist,          ids:['cmpDistNow','cmpDistLast','cmpDistHof'] },
+    { now:now.score,    last: last?last.score:null,    hof: hof?hof.score:null,    fmt:v=>String(v),     ids:['cmpScoreNow','cmpScoreLast','cmpScoreHof'] },
+    { now:now.combo,    last: last?last.combo:null,    hof: hof?hof.combo:null,    fmt:v=>'x'+v,         ids:['cmpComboNow','cmpComboLast','cmpComboHof'] },
+    { now:now.stardust, last: last?last.stardust:null, hof: hof?hof.stardust:null, fmt:v=>'✦ '+v,        ids:['cmpStardustNow','cmpStardustLast','cmpStardustHof'] },
+  ];
+  for(const row of rows){
+    const [nowId,lastId,hofId] = row.ids;
+    const nowEl = el(nowId);
+    nowEl.textContent = row.fmt(row.now);
+    nowEl.classList.toggle('better', statBetter(row.now, row.last, row.hof));
+    const lastEl = el(lastId);
+    lastEl.classList.toggle('empty', row.last==null);
+    lastEl.textContent = row.last==null ? '—' : row.fmt(row.last);
+    const hofEl = el(hofId);
+    hofEl.classList.toggle('empty', row.hof==null);
+    hofEl.textContent = row.hof==null ? '—' : row.fmt(row.hof);
+  }
+  Save.data.lastRun = { dist: now.dist, score: now.score, combo: now.combo, stardust: now.stardust };
+  Save.save();
+}
+// Hall of Fame eligibility + name-entry prompt (items 5.4 / 6.1 / 6.2).
+// Eligibility is checked against BOTH boards independently -- a run can
+// qualify for Daily without touching All Time (or vice versa, early in a
+// fresh day when Daily is nearly empty) -- and the prompt fires if either
+// says yes. Submitting (btnHofSubmit, below) inserts into every board the
+// run actually qualified for.
+function showHofPrompt(){
+  ensureDailyFresh();
+  const score = G.score;
+  const eligibleAllTime = hofIsEligible(Save.data.hallOfFame.allTime, score);
+  const eligibleDaily = hofIsEligible(Save.data.hallOfFame.daily, score);
+  el('hofPromptDone').classList.add('hidden');
+  if(eligibleAllTime || eligibleDaily){
+    G.hofPending = { score, dist:G.dist, combo:1+G.bestCombo, stardust:G.stardust, eligibleAllTime, eligibleDaily };
+    el('hofNameInput').value = Save.data.playerName || '';
+    el('hofPrompt').classList.remove('hidden');
+  } else {
+    G.hofPending = null;
+    el('hofPrompt').classList.add('hidden');
+  }
+}
 function endRun(){
   G.state='over';
   Audio_.stopThrust();
@@ -2663,11 +2873,8 @@ function endRun(){
   G.stardustBanked = G.stardust;
   if(G.score>Save.data.highScore) Save.data.highScore=G.score;
   Save.save();
-  el('overDist').textContent=fmtDist(G.dist);
-  el('overScore').textContent=G.score;
-  el('overCombo').textContent='x'+(1+G.bestCombo);
-  el('overStardust').textContent='✦ '+G.stardust;
-  el('overHigh').textContent=Save.data.highScore;
+  renderCompareTable();
+  showHofPrompt();
   // TODO(RUN Studio / monetization): the "CONTINUE — WATCH AD" button below
   // is currently a placeholder -- clicking it applies the full-shield reward
   // immediately with no actual ad shown (see continueRun()). Swap this

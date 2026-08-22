@@ -207,18 +207,34 @@
     border-radius:10px;padding:10px 14px;margin-bottom:8px;transition:border-color .15s,box-shadow .15s;}
   .shopCard:hover{border-color:#4ff2ff88;box-shadow:0 0 14px #4ff2ff22;}
   .shopCard.maxed{border-color:#ffd24f55;}
-  .shopCardHead{display:flex;align-items:center;gap:8px;}
+  /* Buy button now lives inline on the header row, right next to the
+     upgrade's own title, instead of a separate full-width line below the
+     desc -- title and "how much / buy" are one visual unit, and the
+     button is bigger than the old full-width strip was tall so it still
+     reads as the primary action on the card, not a footnote. Pips move
+     to their own line under the desc so the header row doesn't get too
+     crowded on narrow phone widths. */
+  .shopCardHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .shopIcon{font-size:16px;filter:drop-shadow(0 0 4px #4ff2ff88);}
-  .shopName{flex:1;font-size:14px;font-weight:600;color:#eafcff;letter-spacing:.5px;}
-  .shopPips{display:flex;gap:3px;}
+  .shopName{flex:1;font-size:14px;font-weight:600;color:#eafcff;letter-spacing:.5px;min-width:0;}
+  .shopPips{display:flex;gap:3px;margin-top:6px;}
   .pip{width:7px;height:7px;border-radius:50%;background:#ffffff1a;border:1px solid #4ff2ff44;}
   .pip.filled{background:var(--cyan);box-shadow:0 0 5px var(--cyan);border-color:var(--cyan);}
   .shopCard.maxed .pip.filled{background:var(--gold);box-shadow:0 0 5px var(--gold);border-color:var(--gold);}
-  .shopDesc{font-size:11px;color:#8fc9ff;margin:4px 0 8px;letter-spacing:.3px;}
-  .shopBuyBtn{width:100%;background:linear-gradient(180deg,#1c1440,#0d0a1e);color:var(--gold);border:1px solid var(--gold);
-    border-radius:6px;padding:7px 10px;font-size:12px;letter-spacing:1px;cursor:pointer;font-weight:700;transition:.15s;}
+  .shopDesc{font-size:11px;color:#8fc9ff;margin:4px 0 0;letter-spacing:.3px;}
+  /* Bigger + label-only-carries-the-cost now ("✦80", no "UPGRADE" text) --
+     flex-shrink:0 so a long upgrade name never squeezes the button, which
+     is the one thing on the card a player actually needs to tap fast. */
+  .shopBuyBtn{flex-shrink:0;background:linear-gradient(180deg,#1c1440,#0d0a1e);color:var(--gold);border:1px solid var(--gold);
+    border-radius:8px;padding:10px 18px;font-size:15px;letter-spacing:1px;cursor:pointer;font-weight:800;transition:.15s;}
   .shopBuyBtn:hover:not(:disabled){background:var(--gold);color:#1c1440;box-shadow:0 0 12px var(--gold);}
   .shopBuyBtn:disabled{border-color:#ffffff22;color:#ffffff55;cursor:default;background:transparent;}
+  /* Stardust total up top of the Shipyard -- was the same small subtitle
+     text as everything else; now the one number a player scans for first
+     (do I have enough for the thing I want), so it gets the gold treatment
+     and a much bigger size instead of blending into the header line. */
+  .shopStardustTotal{color:var(--gold);font-size:28px;font-weight:800;text-shadow:0 0 14px #ffd24f77;
+    letter-spacing:1px;}
   #joyZone,#actionZone{position:fixed;bottom:0;z-index:10;touch-action:none;}
   #joyZone{left:0;width:46%;height:46%;}
   #actionZone{right:0;width:46%;height:46%;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;padding:18px;gap:12px;}
@@ -232,3 +248,78 @@
     color:#cfe9ff;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;}
   #footer{margin-top:10px;text-align:center;font-size:10px;color:#6c86b0;letter-spacing:1px;}
   ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-thumb{background:#4ff2ff55;border-radius:3px;}
+
+  /* ---- SIGNAL LOST: THIS RUN / LAST RUN / HALL OF FAME comparison ----
+     Replaces the old single-column statRow list with a 3-column table so
+     a run's result reads against both "did I beat myself last time" and
+     "where does this sit against the board" at a glance. Row label sits
+     in its own narrow column on the left; the three value columns share
+     the rest of the width equally. THIS RUN gets the cyan emphasis (it's
+     the row the player's eye should land on first); LAST RUN and HALL OF
+     FAME are dimmer/neutral so THIS RUN doesn't have to compete with them.
+     A cell gets .better when THIS RUN's number beats that column's number
+     (gold + a subtle glow) so an improvement is visible without having to
+     actually read and compare the digits. */
+  .compareTable{width:100%;border-collapse:collapse;margin:6px 0 4px;font-size:12px;}
+  .compareTable th{font-size:10px;letter-spacing:1px;color:#8fc9ff;font-weight:600;
+    text-align:right;padding:4px 6px;border-bottom:1px solid #4ff2ff33;}
+  .compareTable th:first-child{text-align:left;}
+  .compareTable td{text-align:right;padding:5px 6px;border-bottom:1px dashed #ffffff14;
+    font-variant-numeric:tabular-nums;color:#cfe9ff;}
+  .compareTable td:first-child{text-align:left;color:#9fd8ff;letter-spacing:.5px;}
+  .compareTable td.thisRun{color:var(--cyan);font-weight:700;}
+  .compareTable td.better{color:var(--gold);text-shadow:0 0 8px #ffd24f77;font-weight:700;}
+  .compareTable td.empty{color:#ffffff33;}
+
+  /* ---- Hall of Fame name-entry prompt (SIGNAL LOST) ----
+     Only shown when the run that just ended is eligible for a spot on
+     either board (see hofIsEligible() in game.js). Framework only, per
+     the brief: name is stored locally and reused next time, no account
+     system behind it yet -- that's what RUN.world hookup replaces later. */
+  .hofPrompt{margin-top:14px;padding:12px 14px;background:#00000055;border:1px solid var(--gold);
+    border-radius:8px;text-align:center;}
+  .hofPrompt .hofPromptLabel{font-size:12px;letter-spacing:2px;color:var(--gold);
+    text-shadow:0 0 8px #ffd24f77;margin-bottom:8px;}
+  .hofPrompt input[type="text"]{width:70%;max-width:240px;background:#0d0a1e;color:#eafcff;
+    border:1px solid var(--cyan);border-radius:6px;padding:8px 10px;font-size:13px;
+    letter-spacing:1px;text-align:center;outline:none;}
+  .hofPrompt input[type="text"]:focus{border-color:var(--gold);box-shadow:0 0 8px #ffd24f66;}
+  .hofPrompt .btnRow{margin-top:10px;}
+  .hofPromptDone{margin-top:14px;font-size:12px;letter-spacing:1px;color:var(--gold);
+    text-align:center;text-shadow:0 0 6px #ffd24f77;}
+
+  /* ---- HALL OF FAME scene ----
+     Framework only -- backed by a local (per-device) list today, sized
+     and shaped to drop a RUN.world server response in later without
+     restructuring the screen. Two tabs (ALL TIME / DAILY) share one
+     scrollable list body; each row carries every tracked stat rather
+     than just name+score, per the brief. */
+  .hofTabs{display:flex;gap:8px;justify-content:center;margin:4px 0 12px;}
+  .hofTabBtn{background:#140f2c;color:#8fc9ff;border:1px solid #4ff2ff55;border-radius:6px;
+    padding:8px 20px;font-size:12px;letter-spacing:1.5px;cursor:pointer;transition:.15s;}
+  .hofTabBtn:hover{border-color:var(--cyan);color:var(--cyan);}
+  .hofTabBtn.active{background:var(--cyan);color:#02030a;border-color:var(--cyan);}
+  /* Scroll body: fixed viewport height (not "grow to fit 1000 rows") plus
+     native overflow-y auto, which is what gives us both the vertical
+     scrollbar and touch/trackpad scrolling for free -- no custom JS
+     scroll handling needed for a "never-ending" list. */
+  .hofList{max-height:46vh;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+    border:1px solid #4ff2ff33;border-radius:8px;background:#00000033;}
+  .hofEmpty{padding:22px 14px;text-align:center;font-size:12px;color:#6c86b0;letter-spacing:.5px;}
+  .hofRow{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #ffffff0f;}
+  .hofRow:last-child{border-bottom:none;}
+  .hofRow.you{background:#ffd24f14;}
+  .hofRank{flex:0 0 30px;font-size:12px;font-weight:800;color:#8fc9ff;text-align:right;}
+  .hofRow:nth-child(1) .hofRank{color:var(--gold);text-shadow:0 0 8px #ffd24f77;}
+  .hofRow:nth-child(2) .hofRank{color:#dfe8ff;}
+  .hofRow:nth-child(3) .hofRank{color:#e0a868;}
+  /* Profile icon slot -- a generic silhouette today; RUN.world account
+     integration drops a real avatar image in here later without any
+     layout change (same fixed circular frame). */
+  .hofIcon{flex:0 0 26px;width:26px;height:26px;border-radius:50%;background:#1c1440;
+    border:1px solid #4ff2ff55;display:flex;align-items:center;justify-content:center;font-size:13px;}
+  .hofNameCol{flex:1;min-width:0;font-size:12px;color:#eafcff;letter-spacing:.3px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hofStats{flex:0 0 auto;display:flex;gap:10px;font-size:10px;color:#8fc9ff;
+    font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .hofStats b{color:var(--gold);font-weight:700;}
