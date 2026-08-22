@@ -18,6 +18,7 @@
              UI · SAVE · LOOP
    ============================================================ */
 import * as THREE from './three.module.js';
+import { GLTFLoader } from './GLTFLoader.js';
 
 (function(){
 'use strict';
@@ -108,6 +109,25 @@ const CFG = {
   ringSizeStart: 5.0,       // ring radius near the start of the run
   ringSizeMin: 2.6,         // ring radius floor once far into the run
   ringSizeRampDist: 9000,   // distance over which ring size shrinks from Start to Min
+
+  // Player-damage feedback (screen shake + red flash) — see damagePlayer()/
+  // flashScreen()/updateLowHealthWarning(). Both a single-hit response and
+  // a repeating low-shield warning share the same flashScreen() fade.
+  hitShakeMag: 1.5,         // shake amplitude injected into the camera on a hit (world units)
+  hitShakeDecay: 1.0,       // per-second decay rate of G.shake -- ~1.5s of shake at hitShakeMag above
+  flashFadeSec: 1.1,        // how long the red hit-flash takes to fade back to transparent
+  lowShieldFrac: 0.4,       // below this fraction of maxShield, the red flash repeats as a warning
+  lowShieldPulseInterval: 0.9, // seconds between repeat warning flashes while under lowShieldFrac
+
+  // First-run tutorial tips (see TUTORIAL_TIPS/updateTutorialTips() below) --
+  // timed off G.elapsed (real seconds of actual play, not distance) since
+  // what matters is giving a new player a beat to read and go try the last
+  // tip, not how far the ship happened to travel while they did.
+  tutorialFirstAt: 4,       // seconds into a run before the first tip appears
+  tutorialInterval: 9,      // seconds between the start of one tip and the next
+  tutorialTipMs: 4200,      // how long each tip stays on screen
+
+  riftResultMs: 4200,       // how long the Void Rift victory/evaded banner stays up (own slot, see showRiftResultBanner())
 };
 
 // Distance-gated world events (planet flybys, the Void Rift, and whatever
@@ -134,6 +154,27 @@ function resetDistEvents(){
   for(const ev of DIST_EVENTS) G.nextEventDist[ev.key] = ev.firstAt;
 }
 
+// First-run tutorial tips -- shown once per player (see Save.data.tutorialSeen
+// below), one at a time, paced by CFG.tutorialFirstAt/tutorialInterval via
+// updateTutorialTips(). Each tip's color matches the actual in-game thing
+// it's describing rather than being an arbitrary pick, so the color itself
+// reinforces the lesson (e.g. seeing green text right as a green pickup
+// drifts by): shieldPickupMat is 0x4fff9e (green) and boostPickupMat is
+// 0x4f9eff (blue) -- NOT the other way around, so "shield" and "boost"
+// below are intentionally swapped from a first-draft guess that had it
+// backwards. Stardust/points/combo colors match their existing HUD
+// readouts (#stardustText/#scoreText gold, #comboText magenta) and the
+// boost-bar's own gold->orange gradient.
+const TUTORIAL_TIPS = [
+  { text:'DESTROY ASTEROIDS FOR BONUS POINTS', color:'#4ff2ff' },
+  { text:'GREEN CRYSTALS RESTORE SHIELD',      color:'#4fff9e' },
+  { text:'BLUE CRYSTALS REFILL BOOST',         color:'#4f9eff' },
+  { text:'BOOST TO BASH SMALL ASTEROIDS',      color:'#ffae2f' },
+  { text:'COLLECT STARDUST ✦',                 color:'#ffd24f' },
+  { text:'RING COMBO MULTIPLIES EVERYTHING',   color:'#ff4fd6' },
+  { text:'SPEND STARDUST IN THE SHIPYARD',     color:'#ffd24f' },
+];
+
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 // Dev/testing hooks (see "DEV / TESTING" section near the bottom) are only
 // wired up when the page is opened with ?debug in the URL -- e.g.
@@ -144,7 +185,7 @@ const DEBUG = new URLSearchParams(location.search).has('debug');
 
 /* ---------------- SAVE / PROGRESSION ---------------- */
 const Save = {
-  data: { highScore: 0, stardust: 0, autofire: false, invertY: false, upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 } },
+  data: { highScore: 0, stardust: 0, autofire: false, invertY: false, bgmVolume: 0.6, tutorialSeen: false, upgrades: { hull:0, weapon:0, thrust:0, magnet:0, plating:0 } },
   load(){
     try{
       const raw = localStorage.getItem('ruskoVoidSave');
@@ -180,9 +221,25 @@ function shipStats(){
   };
 }
 
-/* ---------------- AUDIO (procedural, no assets) ---------------- */
+/* ---------------- AUDIO (mostly procedural; a few real sample assets) ----------------
+   Everything here was pure oscillator/noise synthesis until real .wav SFX were
+   added (player gun fire, asteroid-explosion variants). Sample assets live in
+   the audio/ folder alongside game.js and are loaded once, async, into decoded
+   AudioBuffers (see loadSamples()/playBuffer()) -- fetch+decodeAudioData rather
+   than base64-embedding, since the GLB-embedding convention used elsewhere in
+   this file is for one-time-parsed 3D models, not audio, and keeping these as
+   plain external files avoids bloating game.js with ~2MB of base64 text. */
+const SFX_URLS = {
+  photonTorpedo: 'audio/photon_torpedo.wav',
+  astExplode1:   'audio/asteroid_explode01.wav',
+  astExplode2:   'audio/asteroid_explode02.wav',
+  astExplode3:   'audio/asteroid_explode03.wav',
+  playerDamage:  'audio/player_damage.wav',
+};
 const Audio_ = {
-  ctx:null, master:null, musicOn:true, sfxOn:true, thrust:null,
+  ctx:null, master:null, sfxOn:true, thrust:null,
+  buffers:{},          // key -> decoded AudioBuffer, filled in as loadSamples() resolves
+  _lastAstExplode:-1,  // index into the 3 asteroid-explosion samples, so the same one never repeats back-to-back
   init(){
     if(this.ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -190,6 +247,33 @@ const Audio_ = {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.55;
     this.master.connect(this.ctx.destination);
+    this.loadSamples();
+  },
+  // Fetches + decodes every real sample asset in parallel. Fire-and-forget by
+  // design: init() runs synchronously off the player's first input gesture,
+  // and none of these samples are needed until well after (first shot fired,
+  // first asteroid killed), so there's no reason to block on the network here.
+  // playBuffer() below no-ops safely if a buffer hasn't resolved yet.
+  loadSamples(){
+    for(const key in SFX_URLS){
+      fetch(SFX_URLS[key])
+        .then(r=>r.arrayBuffer())
+        .then(buf=>this.ctx.decodeAudioData(buf))
+        .then(decoded=>{ this.buffers[key]=decoded; })
+        .catch(err=>console.warn('Audio_: failed to load sample', key, err));
+    }
+  },
+  // Plays a decoded sample once, at an independent gain, through the master bus.
+  playBuffer(key, gain){
+    if(!this.ctx || !this.sfxOn) return;
+    const buf = this.buffers[key];
+    if(!buf) return; // not loaded yet (or failed to load) -- silently skip, never throw
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    g.gain.value = gain!=null ? gain : 1;
+    src.connect(g).connect(this.master);
+    src.start(this.ctx.currentTime);
   },
   resume(){ if(this.ctx && this.ctx.state==='suspended') this.ctx.resume(); },
   tone(freq, dur, type, gain, sweep){
@@ -218,11 +302,28 @@ const Audio_ = {
     src.connect(filt).connect(g).connect(this.master);
     src.start(t0);
   },
-  fire(){ this.tone(680,0.09,'square',0.12,-260); },
+  fire(){ this.playBuffer('photonTorpedo', 0.55); },
   hit(){ this.noise(0.25,0.35,1200); },
   explode(){ this.noise(0.5,0.5,900); this.tone(90,0.4,'sawtooth',0.25,-60); },
+  // Asteroid-kill explosion only (see spawnAsteroidBlast()) -- picks one of the
+  // 3 real sample variants at random but never repeats whichever one played
+  // last, so back-to-back rock kills don't obviously loop the same sound.
+  // Drone kills and player death still use the original procedural explode()
+  // above; only asteroids got real samples per Russ's request.
+  asteroidExplode(){
+    if(!this.ctx || !this.sfxOn) return;
+    const keys=['astExplode1','astExplode2','astExplode3'];
+    let idx = Math.floor(Math.random()*keys.length);
+    if(keys.length>1 && idx===this._lastAstExplode) idx = (idx+1)%keys.length;
+    this._lastAstExplode = idx;
+    this.playBuffer(keys[idx], 0.5);
+  },
   pickup(){ this.tone(880,0.12,'sine',0.2,520); },
-  shieldHit(){ this.noise(0.3,0.4,2200); this.tone(220,0.25,'triangle',0.2,-120); },
+  // Real sample, replacing the old procedural shieldHit() tone/noise pair --
+  // this is the only place player damage is signaled from (see damagePlayer()),
+  // so (like fire()) it's a straight swap rather than a new method alongside
+  // the old one.
+  playerDamage(){ this.playBuffer('playerDamage', 0.6); },
   ring(){ this.tone(660,0.15,'sine',0.22,660); },
   rift(){ this.tone(60,1.2,'sawtooth',0.3,40); },
   ui(){ this.tone(440,0.06,'square',0.12,180); },
@@ -255,8 +356,111 @@ const Audio_ = {
     g.gain.linearRampToValueAtTime(0, t0+0.06);
     try{ src.stop(t0+0.07); }catch(e){}
     this.thrust=null;
+  }
+};
+
+/* ---------------- MUSIC (background .mp3 tracks) ----------------
+   Separate from Audio_ above on purpose: Audio_ is short one-shot/looped
+   SFX built on a single shared Web Audio AudioContext+master gain, gated
+   by Audio_.sfxOn (the SETTINGS "SOUND EFFECTS" toggle). Music is a much
+   simpler need -- a handful of long files that just need play/pause/
+   volume -- so it's plain <audio> elements with their own independent
+   volume (Music_.bgmVolume, the SETTINGS "BACKGROUND MUSIC" slider) that
+   has nothing to do with whether SFX are muted.
+   Three MAIN tracks play back-to-back for the whole run (looping back to
+   the first once all three have played) via each element's 'ended' event.
+   The Void Rift event has its own single track (voidHeart) that takes
+   over for the fight's duration -- only one music element is ever
+   actually playing at a time, so a Rift start pauses whichever MAIN
+   track is current (remembering its exact position) and plays voidHeart;
+   a Rift end pauses voidHeart and resumes that same MAIN track from
+   exactly where it paused, rather than restarting the sequence. */
+const MUSIC_URLS = {
+  main1:     'audio/background_MAIN01.mp3',
+  main2:     'audio/background_MAIN02.mp3',
+  main3:     'audio/background_MAIN03.mp3',
+  voidHeart: 'audio/background_VOID_HEART.mp3',
+};
+const Music_ = {
+  mainOrder: ['main1','main2','main3'],
+  els:{},                // key -> HTMLAudioElement, built once in init()
+  bgmVolume: Save.data.bgmVolume, // Save.load() has already run by this point in the file
+  mainIdx:0,              // index into mainOrder -- which MAIN track is "current"
+  mainResumeTime:0,       // MAIN track's paused position while a Void Rift is playing
+  riftActive:false,
+  init(){
+    if(this._inited) return;
+    this._inited = true;
+    for(const key in MUSIC_URLS){
+      const a = new Audio(MUSIC_URLS[key]);
+      a.preload = 'auto';
+      a.volume = this.bgmVolume;
+      this.els[key] = a;
+    }
+    // Advance to the next MAIN track (wrapping back to the first) whenever
+    // the current one finishes on its own -- but only while a Rift isn't
+    // holding MAIN paused, or this would yank voidHeart's turn away from it.
+    for(const key of this.mainOrder){
+      this.els[key].addEventListener('ended', ()=>{
+        if(this.riftActive) return;
+        this.mainIdx = (this.mainIdx+1) % this.mainOrder.length;
+        this._play(this.mainOrder[this.mainIdx], 0);
+      });
+    }
   },
-  setMusicGain(v){ if(this.master) this.master.gain.setTargetAtTime(v,this.ctx.currentTime,0.3); }
+  _play(key, atTime){
+    const a = this.els[key]; if(!a) return;
+    if(atTime!=null) a.currentTime = atTime;
+    // Autoplay guard: every call path into this runs off a real user
+    // gesture (LAUNCH/RETRY, or a Rift trigger during already-playing
+    // gameplay), so this basically never rejects -- but never throw either way.
+    a.play().catch(()=>{});
+  },
+  setVolume(v){
+    this.bgmVolume = v;
+    for(const key in this.els) this.els[key].volume = v;
+  },
+  // Starts the MAIN sequence from track 1 -- called once per run, from startRun().
+  startMain(){
+    this.init();
+    this.mainIdx = 0;
+    this.riftActive = false;
+    this._play(this.mainOrder[0], 0);
+  },
+  // Pauses whatever's currently playing without resetting its position --
+  // called when a run ends (endRun()) so nothing keeps playing behind the
+  // SIGNAL LOST screen, but continueRun() can pick back up seamlessly.
+  pauseAll(){
+    for(const key in this.els) this.els[key].pause();
+  },
+  // Resumes whichever track was paused by pauseAll() -- MAIN or voidHeart,
+  // whichever the run was actually using -- called from continueRun().
+  resumeCurrent(){
+    this._play(this.riftActive ? 'voidHeart' : this.mainOrder[this.mainIdx]);
+  },
+  // Full stop, called from quitToMenu(): pauses everything and resets the
+  // MAIN sequence back to the top so the next LAUNCH's startMain() begins
+  // clean rather than mid-track.
+  stopAllReset(){
+    for(const key in this.els){ const a=this.els[key]; a.pause(); a.currentTime=0; }
+    this.mainIdx = 0;
+    this.riftActive = false;
+  },
+  // Void Rift start (triggerRiftEvent()): remember exactly where the
+  // current MAIN track is, pause it, and start voidHeart from the top.
+  startVoidRift(){
+    const cur = this.els[this.mainOrder[this.mainIdx]];
+    if(cur){ this.mainResumeTime = cur.currentTime; cur.pause(); }
+    this.riftActive = true;
+    this._play('voidHeart', 0);
+  },
+  // Void Rift end (endRiftEvent()): stop voidHeart and resume the MAIN
+  // sequence from exactly where startVoidRift() paused it.
+  endVoidRift(){
+    this.riftActive = false;
+    const vh = this.els.voidHeart; if(vh) vh.pause();
+    this._play(this.mainOrder[this.mainIdx], this.mainResumeTime);
+  },
 };
 
 /* ---------------- INPUT ---------------- */
@@ -495,21 +699,31 @@ for(let i=0;i<5;i++){
 }
 scene.add(nebulaGroup);
 
-/* ----- player ship (low-poly glTF model, embedded as base64 GLB) -----
-   Swap SHIP_GLB_BASE64 for a different model to change ships. This tiny
-   loader only supports the simple case this asset (and most low-poly kit
-   pieces) ship as: a single mesh, multiple material slots, no textures,
-   no skinning/animation. Kept dependency-free so the game stays one file
-   instead of pulling in three.js's GLTFLoader + its own dependency chain. */
-const SHIP_GLB_BASE64 = "Z2xURgIAAAAwUAAApAoAAEpTT057ImV4dGVuc2lvbnNVc2VkIjpbIktIUl9tYXRlcmlhbHNfdW5saXQiXSwiYXNzZXQiOnsiZ2VuZXJhdG9yIjoiVW5pR0xURi0xLjI3IiwidmVyc2lvbiI6IjIuMCJ9LCJidWZmZXJzIjpbeyJieXRlTGVuZ3RoIjoxNzc3Nn1dLCJidWZmZXJWaWV3cyI6W3siYnVmZmVyIjowLCJieXRlT2Zmc2V0IjowLCJieXRlTGVuZ3RoIjo1MzUyLCJ0YXJnZXQiOjM0OTYyfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6NTM1MiwiYnl0ZUxlbmd0aCI6NTM1MiwidGFyZ2V0IjozNDk2Mn0seyJidWZmZXIiOjAsImJ5dGVPZmZzZXQiOjEwNzA0LCJieXRlTGVuZ3RoIjozNTY4LCJ0YXJnZXQiOjM0OTYyfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6MTQyNzIsImJ5dGVMZW5ndGgiOjM2MCwidGFyZ2V0IjozNDk2M30seyJidWZmZXIiOjAsImJ5dGVPZmZzZXQiOjE0NjMyLCJieXRlTGVuZ3RoIjoxNzI4LCJ0YXJnZXQiOjM0OTYzfSx7ImJ1ZmZlciI6MCwiYnl0ZU9mZnNldCI6MTYzNjAsImJ5dGVMZW5ndGgiOjk2MCwidGFyZ2V0IjozNDk2M30seyJidWZmZXIiOjAsImJ5dGVPZmZzZXQiOjE3MzIwLCJieXRlTGVuZ3RoIjo0NTYsInRhcmdldCI6MzQ5NjN9XSwiYWNjZXNzb3JzIjpbeyJidWZmZXJWaWV3IjowLCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiVkVDMyIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo0NDYsIm1heCI6WzEuNCwwLjYsMC45NjI4MzUzXSwibWluIjpbLTEuNCwwLC0wLjk2MjgzNTNdLCJub3JtYWxpemVkIjpmYWxzZX0seyJidWZmZXJWaWV3IjoxLCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiVkVDMyIsImNvbXBvbmVudFR5cGUiOjUxMjYsImNvdW50Ijo0NDYsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjIsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJWRUMyIiwiY29tcG9uZW50VHlwZSI6NTEyNiwiY291bnQiOjQ0Niwibm9ybWFsaXplZCI6ZmFsc2V9LHsiYnVmZmVyVmlldyI6MywiYnl0ZU9mZnNldCI6MCwidHlwZSI6IlNDQUxBUiIsImNvbXBvbmVudFR5cGUiOjUxMjUsImNvdW50Ijo5MCwibm9ybWFsaXplZCI6ZmFsc2V9LHsiYnVmZmVyVmlldyI6NCwiYnl0ZU9mZnNldCI6MCwidHlwZSI6IlNDQUxBUiIsImNvbXBvbmVudFR5cGUiOjUxMjUsImNvdW50Ijo0MzIsIm5vcm1hbGl6ZWQiOmZhbHNlfSx7ImJ1ZmZlclZpZXciOjUsImJ5dGVPZmZzZXQiOjAsInR5cGUiOiJTQ0FMQVIiLCJjb21wb25lbnRUeXBlIjo1MTI1LCJjb3VudCI6MjQwLCJub3JtYWxpemVkIjpmYWxzZX0seyJidWZmZXJWaWV3Ijo2LCJieXRlT2Zmc2V0IjowLCJ0eXBlIjoiU0NBTEFSIiwiY29tcG9uZW50VHlwZSI6NTEyNSwiY291bnQiOjExNCwibm9ybWFsaXplZCI6ZmFsc2V9XSwibWF0ZXJpYWxzIjpbeyJuYW1lIjoibWV0YWxSZWQiLCJwYnJNZXRhbGxpY1JvdWdobmVzcyI6eyJiYXNlQ29sb3JGYWN0b3IiOlsxLDAuNjI4NTI0MjQ0LDAuMjAyODMwMiwxXSwibWV0YWxsaWNGYWN0b3IiOjEsInJvdWdobmVzc0ZhY3RvciI6MX0sImRvdWJsZVNpZGVkIjpmYWxzZSwiYWxwaGFNb2RlIjoiT1BBUVVFIn0seyJuYW1lIjoibWV0YWxEYXJrIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC42NzUwNjIzLDAuNzEwMDIxOSwwLjc3MzU4NDksMV0sIm1ldGFsbGljRmFjdG9yIjoxLCJyb3VnaG5lc3NGYWN0b3IiOjF9LCJkb3VibGVTaWRlZCI6ZmFsc2UsImFscGhhTW9kZSI6Ik9QQVFVRSJ9LHsibmFtZSI6Im1ldGFsIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC44NDMxMzcyNjQsMC44NzA1ODgyNDMsMC45MDk4MDM5LDFdLCJtZXRhbGxpY0ZhY3RvciI6MSwicm91Z2huZXNzRmFjdG9yIjoxfSwiZG91YmxlU2lkZWQiOmZhbHNlLCJhbHBoYU1vZGUiOiJPUEFRVUUifSx7Im5hbWUiOiJkYXJrIiwicGJyTWV0YWxsaWNSb3VnaG5lc3MiOnsiYmFzZUNvbG9yRmFjdG9yIjpbMC4yNzQ1MDk4MTcsMC4yOTgwMzkyMjgsMC4zNDExNzY0OCwxXSwibWV0YWxsaWNGYWN0b3IiOjEsInJvdWdobmVzc0ZhY3RvciI6MX0sImRvdWJsZVNpZGVkIjpmYWxzZSwiYWxwaGFNb2RlIjoiT1BBUVVFIn1dLCJtZXNoZXMiOlt7Im5hbWUiOiJNZXNoIGNyYWZ0X3NwZWVkZXJDIiwicHJpbWl0aXZlcyI6W3sibW9kZSI6NCwiaW5kaWNlcyI6MywiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjB9LHsibW9kZSI6NCwiaW5kaWNlcyI6NCwiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjF9LHsibW9kZSI6NCwiaW5kaWNlcyI6NSwiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjJ9LHsibW9kZSI6NCwiaW5kaWNlcyI6NiwiYXR0cmlidXRlcyI6eyJQT1NJVElPTiI6MCwiTk9STUFMIjoxLCJURVhDT09SRF8wIjoyfSwibWF0ZXJpYWwiOjN9XX1dLCJub2RlcyI6W3siY2hpbGRyZW4iOlsxXSwibmFtZSI6InRtcFBhcmVudCIsInRyYW5zbGF0aW9uIjpbMCwwLDBdLCJyb3RhdGlvbiI6WzAsMCwwLDFdLCJzY2FsZSI6WzEsMSwxXX0seyJuYW1lIjoiY3JhZnRfc3BlZWRlckMiLCJ0cmFuc2xhdGlvbiI6WzIsMCwxLjVdLCJyb3RhdGlvbiI6WzAsMCwwLDFdLCJzY2FsZSI6WzEsMSwxXSwibWVzaCI6MH1dLCJzY2VuZXMiOlt7Im5vZGVzIjpbMV19XSwic2NlbmUiOjB9ICBwRQAAQklOAM3MTD/NzEw+jMW5Ps3MTD/NzEw+WZKGPjMzsz/NzEw+jMW5PpqZGT/NzEw+yq+APZqZGT/NzEw+WZKGPpqZGb8AAAAAyq+APZqZGb/NzEw+yq+APTMzs7/NzMw9jMW5PjMzs7/NzEw+jMW5PpqZGb8AAAAAyq+APTMzs7/NzMw9jMW5PpqZGb8AAAAA8iugPpqZGb/NzEw+yq+APc3MTL/NzEw+WZKGPjMzs7/NzEw+jMW5Ps3MTL/NzEw+jMW5PpqZGb/NzEw+WZKGPs3MTL7p5qo9YHx2v83MTL4AAAAADdTfvs3MTD7p5qo9YHx2v83MTD4AAAAADdTfvs3MTL7p5qo9YHx2v83MTD7p5qo9YHx2v83MTL7p5io+YHx2v83MTD7p5io+YHx2v83MTL6amRk/BToYvc3MTL5+DRc/NVlyvs3MTD6amRk/BToYvc3MTD5+DRc/NVlyvs3MTD4AAAAADdTfvs3MTD7NzMw+DdTfvs3MTD7p5qo9YHx2v83MTD7p5io+YHx2v83MTD5+DRc/NVlyvs3MTD6amRk/BToYvc3MTD7NzMw+BToYvc3MTL4AAAAADdTfvs3MTL4AAAAABToYvc3MTD4AAAAADdTfvs3MTD4AAAAABToYvc3MTL6amRk/BToYvc3MTL7NzMw+BToYvc3MTL5+DRc/NVlyvs3MTL7NzMw+DdTfvs3MTL7p5io+YHx2v83MTL4AAAAADdTfvs3MTL7p5qo9YHx2v5qZGT8AAAAAyq+APTMzsz/NzMw9jMW5PpqZGT/NzEw+yq+APTMzsz/NzEw+jMW5PpqZGT8AAAAAyq+APZqZGT8AAAAA8iugPjMzsz/NzMw9jMW5PpqZGT/NzEw+WZKGPpqZGT+amZk+WZKGPpqZGT/NzEw+yq+APZqZGT/NzMw+S74mPpqZGT/NzMw+BToYvZqZGT8AAAAAyq+APZqZGT8AAAAABToYvZqZGT+amZk+jMW5PpqZGT/NzMw++hUQP5qZGT/NzEw+jMW5PpqZGT/NzEw++hUQP5qZGT8AAAA/+hUQP5qZGT/NzMw9+hUQP5qZGT+amRk/xuJcP5qZGT+amRk/YHx2P5qZGT/NzMw9YHx2P83MTL7NzMw+LElDP83MTL4AAAA/+hUQP83MTD7NzMw+LElDP83MTL6amRk/jMW5Ps3MTD6amRk/jMW5Ps3MTD4AAAA/+hUQP83MTL8AAIA+jMW5Ps3MTL/NzEw+jMW5Ps3MTL8AAIA+WZKGPs3MTL/NzEw+WZKGPpqZGb/NzEw+jMW5Ps3MTL/NzEw+jMW5PpqZGb+amZk+jMW5Ps3MTL8AAIA+jMW5PjMzM7+amZk+jMW5Ps3MTL8AAIA+jMW5Ps3MTL8AAIA+WZKGPjMzM7+amZk+jMW5PjMzM7+amZk+WZKGPpqZGT/NzEw+WZKGPs3MTD/NzEw+WZKGPpqZGT+amZk+WZKGPs3MTD8AAIA+WZKGPjMzMz+amZk+WZKGPjMzMz+amZk+jMW5PjMzMz+amZk+WZKGPs3MTD8AAIA+jMW5Ps3MTD8AAIA+WZKGPpqZGb+amRk/xuJcP5qZGb8AAAA/+hUQP83MTL6amRk/xuJcP83MTL4AAAA/+hUQP5qZGb+amRk/YHx2P5qZGb+amRk/xuJcP83MTL6amRk/YHx2P83MTL6amRk/xuJcP5qZGb/NzMw9+hUQP5qZGb/NzMw9YHx2P83MTL7NzMw9+hUQP83MTL7NzMw9YHx2P83MTL7NzMw9LElDP5qZGT+amZk+jMW5PpqZGT+amZk+WZKGPjMzMz+amZk+jMW5PjMzMz+amZk+WZKGPjMzM7+amZk+jMW5PjMzM7+amZk+WZKGPpqZGb+amZk+jMW5PpqZGb+amZk+WZKGPs3MTL/NzEw+WZKGPpqZGb/NzEw+WZKGPs3MTL8AAIA+WZKGPpqZGb+amZk+WZKGPjMzM7+amZk+WZKGPpqZGb8AAAAABToYvYF/B7+amZk+xO3cvZqZGb/NzMw+BToYvc3MTL7NzMw+DdTfvpeair6amZk+3Z+7vpeair7NzMw93Z+7voF/B7/NzMw9xO3cvc3MTL4AAAAADdTfvs3MTL7NzMw9YHx2P83MTL6amRk/YHx2P83MTL7NzMw9LElDP83MTL6amRk/xuJcP83MTL7NzMw+LElDP83MTL4AAAA/+hUQP83MTD/NzEw+jMW5Ps3MTD8AAIA+jMW5Ps3MTD/NzEw+WZKGPs3MTD8AAIA+WZKGPpqZGT8AAAAABToYvZqZGT8AAAAA+hUQP83MTD4AAAAA+hUQP83MTL4AAAAALElDP83MTL4AAAAA+hUQP5qZGb8AAAAA+hUQP5qZGb8AAAAA8iugPpqZGb8AAAAAyq+APZqZGb8AAAAABToYvZqZGT8AAAAAyq+APZqZGT8AAAAA8iugPs3MTD4AAAAALElDP83MTL6amRk/jMW5Ps3MTL6amRk/BToYvc3MTD6amRk/jMW5Ps3MTD6amRk/BToYvc3MTD4AAAAALElDP83MTL4AAAAALElDP83MTD7NzMw9LElDP83MTL7NzMw9LElDP83MTD7NzMw+LElDP83MTL7NzMw+LElDP5qZGb+amRk/YHx2P5qZGb/NzMw9YHx2P5qZGb+amRk/xuJcP5qZGb/NzMw9+hUQP5qZGb8AAAA/+hUQP5qZGb/NzMw++hUQP5qZGb/NzEw++hUQP5qZGb/NzMw+S74mPpqZGb+amZk+jMW5PpqZGb+amZk+WZKGPpqZGb/NzEw+WZKGPpqZGb/NzEw+yq+APZqZGb/NzMw+BToYvZqZGb8AAAAAyq+APZqZGb8AAAAABToYvZqZGb/NzEw+jMW5Ps3MTL4AAAAA+hUQP5qZGb8AAAAA+hUQP83MTL7NzMw9+hUQP5qZGb/NzMw9+hUQP83MTL7NzMw9LElDP83MTL4AAAAALElDP83MTL7NzMw9+hUQP83MTL4AAAAA+hUQP83MTD7NzMw9+hUQP83MTD7NzMw9LElDP5qZGT/NzMw9+hUQP83MTD7NzMw9YHx2P5qZGT/NzMw9YHx2PzMzs77NzMw+S74mPjMzs77NzMw+BToYvc3MTL7NzMw+S74mPs3MTL7NzMw+DdTfvmZm5r7NzMw+BToYvZqZGb/NzMw+BToYvWZm5r7NzMw+S74mPpqZGb/NzMw+S74mPs3MTL7NzMw+BToYvc3MTD/NzEw+jMW5PpqZGT/NzEw+jMW5Ps3MTD8AAIA+jMW5PpqZGT+amZk+jMW5PjMzMz+amZk+jMW5Ps3MTD6amRk/xuJcP83MTD7NzMw+LElDP83MTD4AAAA/+hUQP83MTD7NzMw9LElDP83MTD7NzMw9YHx2P83MTD6amRk/YHx2P83MTD6amRk/YHx2P83MTD6amRk/xuJcP5qZGT+amRk/YHx2P5qZGT+amRk/xuJcP83MTL4AAAA/+hUQP83MTL4AAAA/S74mPs3MTL6amRk/jMW5Ps3MTL7NzMw+S74mPs3MTD6amRk/xuJcP83MTD4AAAA/+hUQP5qZGT+amRk/xuJcP5qZGT8AAAA/+hUQP83MTD4AAAAALElDP83MTD7NzMw9LElDP83MTD4AAAAA+hUQP83MTD7NzMw9+hUQP5qZGT/NzMw+BToYvYF/Bz/NzMw9xO3cvZqZGT8AAAAABToYvc3MTD4AAAAADdTfvpeaij7NzMw93Z+7vpeaij6amZk+3Z+7voF/Bz+amZk+xO3cvc3MTD7NzMw+DdTfvpqZGT8AAAAA+hUQP83MTD4AAAAA+hUQP5qZGT/NzMw9+hUQP83MTD7NzMw9+hUQP83MTD7NzMw+S74mPs3MTD4AAAA/S74mPs3MTD6amRk/jMW5Ps3MTD4AAAA/+hUQP2Zm5j7NzMw+S74mPmZm5j7NzMw+BToYvZqZGT/NzMw+S74mPpqZGT/NzMw+BToYvTMzsz7NzMw+BToYvc3MTD7NzMw+DdTfvjMzsz7NzMw+S74mPs3MTD7NzMw+BToYvc3MTD7NzMw+S74mPmZm5j7NzMw+S74mPpqZGT/NzMw+S74mPmZm5j4AAAA/S74mPpqZGT8AAAA/S74mPpqZGb8AAAA/+hUQP5qZGb8AAAA/S74mPs3MTL4AAAA/+hUQP2Zm5r4AAAA/S74mPjMzs74AAAA/S74mPjMzs74AAAA/yq+APc3MTL4AAAA/S74mPmZm5r4AAAA/yq+APZqZGb8AAAA/S74mPjMzs7/NzMw9+hUQP5qZGb8AAAAA+hUQPzMzs7/NzEw++hUQP5qZGb/NzEw++hUQP5qZGb/NzEw+jMW5PjMzs7/NzMw9+hUQP5qZGb/NzEw++hUQPzMzs7/NzEw++hUQP5qZGb/NzMw9YHx2P5qZmb7NzEw+YHx2P83MTL7NzMw9YHx2P83MTL6amRk/YHx2P5qZmb4AAAA/YHx2PwAAAL8AAAA/YHx2PwAAAL/NzEw+YHx2P5qZGb+amRk/YHx2PzMzs7/NzEw++hUQPzMzs7/NzMw9+hUQPzMzs7/NzEw+jMW5PjMzs7/NzMw9jMW5PjMzs77NzMw+S74mPjMzs74AAAA/S74mPjMzs77NzMw+BToYvTMzs74AAAA/yq+APTMzs75mZuY+BToYvWZm5r7NzMw+BToYvTMzs77NzMw+BToYvWZm5r5mZuY+BToYvTMzs75mZuY+BToYvWZm5r4AAAA/S74mPmZm5r7NzMw+S74mPmZm5r4AAAA/yq+APWZm5r7NzMw+BToYvWZm5r5mZuY+BToYvWZm5r4AAAA/yq+APWZm5r5mZuY+BToYvTMzs74AAAA/yq+APTMzs75mZuY+BToYvZqZGb/NzMw+S74mPmZm5r7NzMw+S74mPpqZGb8AAAA/S74mPmZm5r4AAAA/S74mPjMzs77NzMw+S74mPs3MTL7NzMw+S74mPjMzs74AAAA/S74mPs3MTL4AAAA/S74mPs3MTD7NzMw9YHx2PwAAAD/NzEw+YHx2P5qZGT/NzMw9YHx2P5qZGT+amRk/YHx2PwAAAD8AAAA/YHx2P5qZmT4AAAA/YHx2P5qZmT7NzEw+YHx2P83MTD6amRk/YHx2P5qZGT8AAAA/S74mPmZm5j7NzMw+S74mPmZm5j4AAAA/S74mPmZm5j7NzMw+BToYvWZm5j4AAAA/yq+APWZm5j5mZuY+BToYvTMzsz4AAAA/yq+APTMzsz5mZuY+BToYvWZm5j4AAAA/yq+APWZm5j5mZuY+BToYvc3MTD4AAAA/+hUQP83MTD4AAAA/S74mPpqZGT8AAAA/+hUQPzMzsz4AAAA/S74mPjMzsz4AAAA/yq+APWZm5j4AAAA/S74mPpqZGT8AAAA/S74mPmZm5j4AAAA/yq+APTMzsz7NzMw+BToYvWZm5j7NzMw+BToYvTMzsz5mZuY+BToYvWZm5j5mZuY+BToYvTMzsz7NzMw+S74mPjMzsz7NzMw+BToYvTMzsz4AAAA/S74mPjMzsz4AAAA/yq+APTMzsz5mZuY+BToYvc3MTD7NzMw+S74mPjMzsz7NzMw+S74mPs3MTD4AAAA/S74mPjMzsz4AAAA/S74mPjMzsz/NzMw9+hUQPzMzsz/NzEw++hUQPzMzsz/NzMw9jMW5PjMzsz/NzEw+jMW5PjMzsz/NzMw9+hUQPzMzsz/NzEw++hUQP5qZGT/NzEw++hUQP5qZGT/NzEw++hUQP5qZGT/NzEw+jMW5PjMzsz/NzEw++hUQP5qZGT8AAAAA+hUQPzMzsz/NzMw9+hUQPwAAAL/NzEw+YHx2PwAAAL/NzEw+LElDP5qZmb7NzEw+YHx2P5qZmb7NzEw+LElDP5qZmb7NzEw+LElDPwAAAL/NzEw+LElDP5qZmb4AAAA/LElDPwAAAL8AAAA/LElDP5qZmb4AAAA/YHx2P5qZmb7NzEw+YHx2P5qZmb4AAAA/LElDP5qZmb7NzEw+LElDPwAAAL8AAAA/LElDPwAAAL8AAAA/YHx2P5qZmb4AAAA/LElDP5qZmb4AAAA/YHx2PwAAAL/NzEw+YHx2PwAAAL8AAAA/YHx2PwAAAL/NzEw+LElDPwAAAL8AAAA/LElDP5eair7NzMw9xO3cvYF/B7/NzMw9xO3cvZeair7NzMw93Z+7vs3MTL5+DRc/NVlyvs3MzL1mZuY+07Y8v83MTD5+DRc/NVlyvs3MzD1mZuY+07Y8v5eair6amZk+3Z+7voF/B7+amZk+xO3cvZeair6amZk+xO3cvc3MTD5+DRc/NVlyvs3MzD1mZuY+07Y8v83MTD7p5io+YHx2v83MzL1mZuY+07Y8v83MTL5+DRc/NVlyvs3MTL7p5io+YHx2v5eair6amZk+xO3cvZeair7NzMw9xO3cvZeair6amZk+3Z+7vpeair7NzMw93Z+7voF/B7/NzMw9xO3cvZeair7NzMw9xO3cvYF/B7+amZk+xO3cvZeair6amZk+xO3cvc3MTL7p5io+YHx2v83MTD7p5io+YHx2v83MzL1mZuY+07Y8v83MzD1mZuY+07Y8vwAAAD/NzEw+LElDP5qZmT7NzEw+LElDPwAAAD8AAAA/LElDP5qZmT4AAAA/LElDPwAAAD8AAAA/YHx2PwAAAD/NzEw+YHx2PwAAAD8AAAA/LElDPwAAAD/NzEw+LElDP5qZmT4AAAA/LElDP5qZmT4AAAA/YHx2PwAAAD8AAAA/LElDPwAAAD8AAAA/YHx2P5eaij6amZk+3Z+7vpeaij6amZk+xO3cvYF/Bz+amZk+xO3cvZeaij7NzMw9xO3cvZeaij6amZk+xO3cvZeaij7NzMw93Z+7vpeaij6amZk+3Z+7vpqZmT7NzEw+YHx2P5qZmT4AAAA/YHx2P5qZmT7NzEw+LElDP5qZmT4AAAA/LElDP5qZmT7NzEw+YHx2P5qZmT7NzEw+LElDPwAAAD/NzEw+YHx2PwAAAD/NzEw+LElDP5eaij7NzMw9xO3cvYF/Bz/NzMw9xO3cvZeaij6amZk+xO3cvYF/Bz+amZk+xO3cvZeaij7NzMw9xO3cvZeaij7NzMw93Z+7voF/Bz/NzMw9xO3cvQAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgHTGs74AAAAARbNvv3TGs74AAAAARbNvv3TGs74AAAAARbNvv3TGs74AAAAARbNvv+wF/r3sBX6/AAAAgOwF/r3sBX6/AAAAgOwF/r3sBX6/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAACG1Xy/vYsgvgAAAACG1Xy/vYsgvgAAAACG1Xy/vYsgvgAAAACG1Xy/vYsgvgAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAACkrn8/dAlMvQAAAACkrn8/dAlMvQAAAACkrn8/dAlMvQAAAACkrn8/dAlMvQAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgHTGsz4AAAAARbNvv3TGsz4AAAAARbNvv3TGsz4AAAAARbNvv3TGsz4AAAAARbNvv+wF/j3sBX6/AAAAgOwF/j3sBX6/AAAAgOwF/j3sBX6/AAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAu+WQ/LvnkPgAAAAAu+WQ/LvnkPgAAAAAu+WQ/LvnkPgAAAAAu+WQ/LvnkPgAAAAAu+WQ/LvnkPgAAAAAu+WQ/LvnkPgAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPy755L4u+WQ/AAAAgC755L4u+WQ/AAAAgC755L4u+WQ/AAAAgC755L4u+WQ/AAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvy755D4u+WQ/AAAAgC755D4u+WQ/AAAAgC755D4u+WQ/AAAAgC755D4u+WQ/AAAAgAAAAADp3HI/m+ihvgAAAADp3HI/m+ihvgAAAADp3HI/m+ihvgAAAADp3HI/m+ihvgAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAv/MENb8AAAAA8wQ1v/MENb8AAAAA8wQ1v/MENb8AAAAA8wQ1v/MENb8AAAAA8wQ1v/MENb8AAAAA8wQ1v/MENb8AAAAA8wQ1v/MENb8AAAAA8wQ1v/MENb8AAAAA8wQ1vwAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIC/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAADp3HI/m+ihvgAAAADp3HI/m+ihvgAAAADp3HI/m+ihvgAAAADp3HI/m+ihvgAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgPMENT8AAAAA8wQ1v/MENT8AAAAA8wQ1v/MENT8AAAAA8wQ1v/MENT8AAAAA8wQ1v/MENT8AAAAA8wQ1v/MENT8AAAAA8wQ1v/MENT8AAAAA8wQ1v/MENT8AAAAA8wQ1vwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAgL8AAAAAAAAAgOwF/r3sBX6/AAAAgOwF/r3sBX6/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAu+WQ/LvnkvgAAAAAu+WQ/LvnkvgAAAAAu+WQ/LvnkvgAAAAAu+WQ/LvnkvgAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAu+WQ/LvnkvgAAAAAu+WQ/LvnkvgAAAAAu+WQ/LvnkvgAAAAAu+WQ/LvnkvgAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAgD8AAAAAAAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgOwF/j3sBX6/AAAAgOwF/j3sBX6/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAIA/AAAAgAAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAgL8AAAAAAAAAgAAAgL8AAAAAAAAAgAAAgL8AAAAA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8Pc7wPGyesEAAIA/zUbTQAAAgD+qlSpA8Pc7wKqVKkD0+SzB9bQ7wfT5LMHNRtNA8PdrwfT5vEEAAIA/8Pf7QAAAgD/0+bxB8Pc7wPD3+0Dw9zvAliXNwPD3a8GWJc3A9nqVwcOOZMH0+bTBXkWxwfZ6lcF3u41BliXtQHe7jUGYJe2+9Pm8QZYl7UD0+bxBmCXtvvJ4XEGYJe2+8Pf7QI6wgcHyeFxBliXtQPD3+0CYJe2+8Pf7QJYl7UB3u43B8PdrwfT5vMHw92vBd7uNwfZ6lcH0+bzB9nqVwfT5vMFeRblB9Pm8wZYl7UDw9/vAXkW5QXe7jcGWJe1A8nhcwZYl7UDyeFzBPVNeQPD3+8CWJe1Ad7uNwT1TXkCWJc1A9nqVwV5FsUEmuVjCXkWxQV+Es8HyeFzCXkW5QfT5vMFeRblB9Pm8wcOOdEHyeFzC8Pc7wPT5vMHw99vA8nhcwvD328D0+bzB8Pc7wPT5PMHw99vA8Pf7wPD3O8Dw9/vA9Pm0wfT5PMH2epXB9nqdwfZ6lcH2ep3B8PfbwPT5vMH0+bTBXkWxQfD328BeRbFB8Pc7wMOOZEHw99vAw45kQfD3O8CWJc3A8PdrwZYlzcD2epXBZkm7P/D3a8E9Ux7A9nqVwWZJuz93u4XBd7uNQfD3a8HyeFxB8PdrwXe7jUF3u4XB8nhcQXe7hcGWJc1A9nqVwZYlzUDw92vBPVMeQPZ6lcFmSbu/8PdrwWZJu793u4XBd7uNQdtBIMF3u41B66izwPJ4XEHbQSDB8nhcQeuos8D0+bxB8PdrwXe7jUHw92vB9Pm8QfZ6lcF3u41B9nqVwfJ4XEHw92vB8Pf7QPD3a8HyeFxB9nqVwfD3+0D2epXB8Pf7QPD3O8D2ep1B8PfbwPT5vEHw9zvA9Pm8QfT5tMH2ep1B9nqVwfT5PEH2epXB9Pk8QfD328Dw9/tA9Pm0wZYlzcD2epXBliXNwPD3a8GWJc3A9nqVwWZJuz/w92vBPVMewPZ6lcFmSbs/d7uFwfJ4XMHbQSDB8nhcweuos8B3u43B20EgwXe7jcHrqLPA8Pf7QF5FuUHw9/tAliXtQPT5vEFeRblB8nhcQZYl7UDyeFxBPVNeQHe7jUGWJe1A9Pm8QZYl7UB3u41BPVNeQPJ4XMHw92vBd7uNwfD3a8HyeFzBd7uFwXe7jcF3u4XB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TAEAAEsBAABMAQAATQEAAE4BAABOAQAATQEAAE8BAABPAQAATQEAAFABAABQAQAATQEAAFEBAABSAQAATwEAAFABAABVAQAAVAEAAFMBAABUAQAAVQEAAFYBAABZAQAAWAEAAFcBAABYAQAAWQEAAFoBAABYAQAAWgEAAFsBAABeAQAAXQEAAFwBAABdAQAAXgEAAF8BAABiAQAAYQEAAGABAABhAQAAYgEAAGMBAABkAQAA7wAAAO0AAADvAAAAZAEAAGUBAADvAAAAZQEAAGYBAABpAQAAaAEAAGcBAABoAQAAaQEAAAAAAAAAAAAAaQEAAAIAAAA1AAAAagEAADQAAABqAQAANQAAAGsBAABuAQAAbQEAAGwBAABtAQAAbgEAAG8BAAByAQAAcQEAAHABAABxAQAAcgEAAHMBAAB2AQAAdQEAAHQBAAB1AQAAdgEAAHcBAAB6AQAAeQEAAHgBAAB5AQAAegEAAHsBAAB+AQAAfQEAAHwBAAB9AQAAfgEAAH8BAACCAQAAgQEAAIABAACFAQAAhAEAAIMBAACEAQAAhQEAAIYBAACJAQAAiAEAAIcBAACMAQAAiwEAAIoBAACPAQAAjgEAAI0BAACSAQAAkQEAAJABAACRAQAAkgEAAJMBAACWAQAAlQEAAJQBAACVAQAAlgEAAJcBAACaAQAAmQEAAJgBAACZAQAAmgEAAJsBAACeAQAAnQEAAJwBAACdAQAAngEAAJ8BAACiAQAAoQEAAKABAAChAQAAogEAAKMBAACmAQAApQEAAKQBAAClAQAApgEAAKcBAACqAQAAqQEAAKgBAACtAQAArAEAAKsBAACsAQAArQEAAK4BAACxAQAAsAEAAK8BAACwAQAAsQEAALIBAAC1AQAAtAEAALMBAAC0AQAAtQEAALYBAAC5AQAAuAEAALcBAAC4AQAAuQEAALoBAAC9AQAAvAEAALsBAAA=";
+/* ----- player ship (loaded via GLTFLoader from assets/player_ship.glb) -----
+   Was: a single flat-color low-poly mesh parsed by the hand-rolled
+   parseGLB()/buildGLBParts() pipeline below (still used, unchanged, by
+   the Rift drones and turrets -- both still simple flat-color kit
+   models). Russ's Tripo-generated replacement is a fully textured mesh
+   (baseColor/normal/metallicRoughness maps), which that tiny parser
+   can't handle, so the player ship alone now goes through a real
+   THREE.GLTFLoader (vendored from three@0.160.0, matching this
+   project's three.module.js build exactly -- see handoff.md) and loads
+   its .glb as an external asset file instead of an embedded base64
+   string. See buildShip() below for the load. */
+const SHIP_GLB_URL = 'assets/player_ship.glb';
+const shipGLTFLoader = new GLTFLoader();
 
 // Nose-vs-tail was determined by measuring which end of the mesh tapers
 // (fewer, tighter verts = pointy nose). If the ship flies tail-first after
 // a model swap, flip this to Math.PI.
 const SHIP_YAW_OFFSET = 0;
-// Overall size multiplier — this model's bounding box is already close to
-// the original procedural ship's footprint, so 1 is a reasonable start.
-const SHIP_SCALE = 1;
+// Overall size multiplier. The Tripo model's bounding box is NOT a uniform
+// rescale of the old procedural ship's -- width/height/depth ratios were
+// 3.13 / 2.83 / 1.96 respectively when compared directly. 3.13 (width --
+// the most gameplay-relevant axis for a tube-flight game, and what the
+// hardcoded player hit-radius fudge below was originally tuned against)
+// is a first-pass pick, not a verified one -- fly it and adjust by eye.
+const SHIP_SCALE = 3.13;
 
 function parseGLB(base64){
   const raw = atob(base64);
@@ -689,57 +903,58 @@ function instanceTurretGroup(rig){
 
 /* ----- player ship (loaded from SHIP_GLB_BASE64) ----- */
 function buildShip(){
-  const {json, bin} = parseGLB(SHIP_GLB_BASE64);
-  const mesh = json.meshes[0];
-  const posAll = readGLBAccessor(json, bin, mesh.primitives[0].attributes.POSITION);
-  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
-  for(let i=0;i<posAll.length;i+=3){
-    const x=posAll[i],y=posAll[i+1],z=posAll[i+2];
-    if(x<minX)minX=x; if(x>maxX)maxX=x;
-    if(y<minY)minY=y; if(y>maxY)maxY=y;
-    if(z<minZ)minZ=z; if(z>maxZ)maxZ=z;
-  }
-  const cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
-
-  const modelGroup = new THREE.Group();
-  for(const prim of mesh.primitives){
-    const pos = readGLBAccessor(json, bin, prim.attributes.POSITION);
-    const nrm = prim.attributes.NORMAL!=null ? readGLBAccessor(json, bin, prim.attributes.NORMAL) : null;
-    const idx = readGLBAccessor(json, bin, prim.indices);
-    // recenter around the model's own bounding-box middle so it banks/pitches
-    // around its center instead of around whatever origin it was authored at
-    for(let i=0;i<pos.length;i+=3){ pos[i]-=cx; pos[i+1]-=cy; pos[i+2]-=cz; }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    if(nrm) geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-    geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    if(!nrm) geo.computeVertexNormals();
-
-    const matDef = json.materials[prim.material];
-    const [mr,mg,mb] = matDef.pbrMetallicRoughness.baseColorFactor;
-    const color = new THREE.Color(mr,mg,mb);
-    const mat = new THREE.MeshStandardMaterial({
-      color, metalness:0.55, roughness:0.4,
-      emissive:color.clone().multiplyScalar(0.12),
-    });
-    modelGroup.add(new THREE.Mesh(geo, mat));
-  }
-
+  // g is the outer group -- kept UNSCALED so the procedural thruster
+  // (below) stays its own authored size no matter what SHIP_SCALE the
+  // loaded model needs. Only modelScaleGroup, which holds just the
+  // loaded mesh, gets SHIP_SCALE -- scaling the whole outer group (the
+  // first-pass approach) would have blown the thruster cone up 3.13x
+  // right along with the ship, which is wrong: the thruster's size was
+  // tuned for the old model's units, not the new one's.
   const g = new THREE.Group();
-  g.add(modelGroup);
+  const modelScaleGroup = new THREE.Group();
+  modelScaleGroup.scale.setScalar(SHIP_SCALE);
+  g.add(modelScaleGroup);
+  const modelGroup = new THREE.Group();
+  modelScaleGroup.add(modelGroup);
 
-  // thruster glow (mounted at the tail, opposite the nose)
-  const halfDepth = (maxZ-minZ)/2;
+  // thruster glow (mounted at the tail, opposite the nose), in outer
+  // (unscaled) space. Placeholder position until the real model loads
+  // and its bounding box is known (see the load callback below, which
+  // repositions this using the model's own bbox * SHIP_SCALE so it still
+  // lands at the visual tail of the now-larger-looking ship).
   const thrGeo = new THREE.ConeGeometry(0.28,1.1,8);
   const thrMat = new THREE.MeshBasicMaterial({color:0xff8a2b, transparent:true, opacity:0.85});
   const thruster = new THREE.Mesh(thrGeo, thrMat);
-  thruster.rotation.x = Math.PI/2; thruster.position.set(0,0,halfDepth+0.35);
+  thruster.rotation.x = Math.PI/2; thruster.position.set(0,0,0.85);
   g.add(thruster);
   g.userData.thruster = thruster;
 
   g.rotation.y = SHIP_YAW_OFFSET;
-  g.scale.setScalar(SHIP_SCALE);
+
+  // ship/g itself is synchronous (updatePlayerShip(), resetRun(), and
+  // collision/positioning code all reference ship.position every frame
+  // starting at frame 1) -- only the textured mesh content streams in
+  // asynchronously once the GLTFLoader request resolves.
+  shipGLTFLoader.load(SHIP_GLB_URL, (gltf) => {
+    const loaded = gltf.scene;
+    // recenter on the model's own bounding-box middle, same convention
+    // the old parser used, computed here (before `loaded` is parented)
+    // so it isn't polluted by the ship's own in-run world position.
+    const box = new THREE.Box3().setFromObject(loaded);
+    const center = box.getCenter(new THREE.Vector3());
+    loaded.position.sub(center);
+    modelGroup.add(loaded);
+
+    // reposition the thruster at the (now-known, recentered) tail --
+    // halfDepth is in the loaded model's own (pre-SHIP_SCALE) units, so
+    // scale it up to land at the tail in outer/world-space units, same
+    // space the (unscaled) thruster itself lives in.
+    const halfDepth = (box.max.z - box.min.z)/2;
+    thruster.position.set(0,0, halfDepth*SHIP_SCALE + 0.35);
+  }, undefined, (err) => {
+    console.error('player ship model failed to load:', err);
+  });
+
   return g;
 }
 const ship = buildShip();
@@ -849,7 +1064,7 @@ function spawnAsteroidBlast(x,y,z, scale){
   explosions.push({sprite:spr, mat, light:null, life:0, maxLife:0.45, startScale, endScale:startScale+3.2*scale, lightIntensity:0});
   spawnBurst(x,y,z, {r:0.7,g:0.6,b:0.5}, Math.round(16*scale), Math.round(9*scale));   // rock shrapnel
   spawnBurst(x,y,z, {r:1,g:0.55,b:0.15}, Math.round(18*scale), Math.round(10*scale));  // fireball shower
-  Audio_.explode();
+  Audio_.asteroidExplode();
 }
 function updateExplosions(dt){
   for(let i=explosions.length-1;i>=0;i--){
@@ -1047,12 +1262,22 @@ const G = {
   dist:0, speed:CFG.speedStart, score:0, stardust:0, combo:0, bestCombo:0,
   shield:3, maxShield:3, boostFuel:100, boostMax:100, invuln:0, boosting:false,
   fireCooldown:0, stats:null,
+  // continueUsed: caps the SIGNAL LOST "watch ad, continue" offer to once per
+  // run (see endRun()/continueRun()) -- standard mobile-game convention, and
+  // keeps the placeholder reward from being an infinite free-shield loop
+  // ahead of the real ad SDK landing. stardustBanked tracks how much of
+  // G.stardust has already been paid into Save.data.stardust, since a
+  // continued run reaches endRun() more than once and must only bank the
+  // delta each time, not the whole run total again.
+  continueUsed:false, stardustBanked:0,
   nextObstacleZ:-20, nextEventDist:{},
   nextRingZ:-170, ringChainRemaining:0, ringChainAnchor:{x:0,y:0},
   countdownT:0, countdownShown:null,
   rift:{active:false,t:0,heartHp:0,heartMesh:null,orbiters:[],
     wanderPos:{x:0,y:0}, wanderTarget:{x:0,y:0}, wanderT:0, distPhaseT:0, hitFlash:0},
   planetMeshes:[], shake:0, elapsed:0,
+  lowShieldPulseT:0, // countdown to the next repeating low-shield warning flash; see updateLowHealthWarning()
+  tutorialIdx:0,     // index of the next tutorial tip due; see updateTutorialTips()
 };
 
 function applyShipStats(){
@@ -1069,11 +1294,14 @@ function resetRun(){
   ship.position.set(0,0,0);
   G.dist=0; G.speed=CFG.speedStart; G.score=0; G.stardust=0; G.combo=0; G.bestCombo=0;
   G.shield=G.maxShield; G.boostFuel=G.boostMax; G.invuln=1.0; G.boosting=false; G.fireCooldown=0;
+  G.continueUsed=false; G.stardustBanked=0;
   G.nextObstacleZ=-20; resetDistEvents();
   G.nextRingZ=-170; G.ringChainRemaining=0; G.ringChainAnchor.x=0; G.ringChainAnchor.y=0;
   G.rift.active=false; G.elapsed=0;
   G.rift.wanderPos.x=0; G.rift.wanderPos.y=0; G.rift.wanderTarget.x=0; G.rift.wanderTarget.y=0;
   G.rift.wanderT=0; G.rift.distPhaseT=0; G.rift.hitFlash=0;
+  G.lowShieldPulseT=0;
+  G.tutorialIdx=0;
   Input.offset.x=0; Input.offset.y=0; Input.vel.x=0; Input.vel.y=0;
   for(const pool of [asteroidPool,dronePool,riftDronePool,pickupPool,bulletPool,enemyBulletPool,ringPool]){
     for(const o of pool){ o.active=false; o.mesh.visible=false; }
@@ -1284,6 +1512,7 @@ function triggerRiftEvent(){
     }
   }
   Audio_.rift();
+  Music_.startVoidRift();
   showBanner('⚠ VOID RIFT DETECTED ⚠', 3200);
   showCenterMsg('Destroy the core or survive the pull!', 3200);
   document.getElementById('vignette').style.opacity='0.8';
@@ -1302,13 +1531,14 @@ function endRiftEvent(success){
     addStardust(500); const applied=addScore(2500);
     spawnScorePopup(heartX, heartY, heartZ, applied);
     G.shield = Math.min(G.maxShield, G.shield+1);
-    showBanner('The Void Rift Takes A Serious Blow!', 2600);
+    showRiftResultBanner('The Void Rift Takes A Serious Blow!', '#ffd24f');
     showCenterMsg('+500 stardust, hull repaired', 2400);
     Audio_.explode();
   } else {
-    showBanner('The Void Rift Evaded You!', 2400);
+    showRiftResultBanner('The Void Rift Evaded You!', '#ff4fd6');
   }
   G.invuln = Math.max(G.invuln, 1.5);
+  Music_.endVoidRift();
 }
 // Moves mesh at most maxDist (== speed*dt for the caller) straight toward
 // (tx,ty,tz); snaps exactly onto the target and returns true once within
@@ -1471,19 +1701,46 @@ function damagePlayer(){
   G.shield -= 1;
   G.invuln = G.stats.invuln;
   setCombo(0);
-  Audio_.shieldHit();
-  G.shake = 0.5;
+  Audio_.playerDamage();
+  G.shake = CFG.hitShakeMag;
   flashScreen();
+  // A fresh hit re-arms the repeating low-shield warning at a full interval
+  // (rather than possibly flashing twice in quick succession if this hit
+  // was itself what dropped shield under the threshold) -- see
+  // updateLowHealthWarning(), which is what actually fires the repeats.
+  G.lowShieldPulseT = CFG.lowShieldPulseInterval;
   if(G.shield<=0){ endRun(); }
 }
+// Red hit-flash. Shared by a fresh hit (damagePlayer(), above) and the
+// repeating low-shield warning (updateLowHealthWarning(), below) -- same
+// visual either way, just triggered from two different places.
 function flashScreen(){
   const f=document.getElementById('flash');
-  f.style.transition='none'; f.style.opacity='0.55';
-  requestAnimationFrame(()=>{ f.style.transition='opacity .35s'; f.style.opacity='0'; });
+  f.style.transition='none'; f.style.opacity='0.6';
+  requestAnimationFrame(()=>{ f.style.transition=`opacity ${CFG.flashFadeSec}s ease-out`; f.style.opacity='0'; });
+}
+// While the player's shield is below CFG.lowShieldFrac of max, keep
+// re-triggering the same red flash every CFG.lowShieldPulseInterval
+// seconds as an ongoing "you are in danger" warning, independent of
+// whether a new hit actually lands -- stops the moment shield is repaired
+// back above the threshold (by a pickup or a shield-restore reward).
+function updateLowHealthWarning(dt){
+  if(G.shield < G.maxShield*CFG.lowShieldFrac){
+    G.lowShieldPulseT -= dt;
+    if(G.lowShieldPulseT<=0){
+      flashScreen();
+      G.lowShieldPulseT = CFG.lowShieldPulseInterval;
+    }
+  } else {
+    // Reset to "due immediately" so the very next time shield drops back
+    // under the threshold, the warning fires right away instead of
+    // waiting out whatever was left on a stale countdown.
+    G.lowShieldPulseT = 0;
+  }
 }
 
 /* ---------------- BANNERS / MESSAGES ---------------- */
-let bannerTimer=null, msgTimer=null;
+let bannerTimer=null, msgTimer=null, tutorialTimer=null, riftResultTimer=null;
 function showBanner(text, ms){
   const el=document.getElementById('eventBanner');
   el.textContent=text; el.classList.add('show');
@@ -1495,6 +1752,60 @@ function showCenterMsg(text, ms){
   el.textContent=text; el.classList.add('show');
   clearTimeout(msgTimer);
   msgTimer=setTimeout(()=>el.classList.remove('show'), ms||2000);
+}
+// Void Rift win/lose outcome -- own element/timer, not a showBanner() call,
+// specifically so it can never be clobbered by a planet/rift *approach*
+// banner (#eventBanner) firing again shortly after the fight ends, which is
+// exactly what was happening before (Russ's report: the Corna-9 approach
+// banner was stomping the victory/evaded message). Also deliberately bigger
+// and longer-lived than every other message popup -- see CFG.riftResultMs
+// and #riftResultBanner in style.css -- since a boss fight resolving is the
+// biggest single moment in a run and needs to read as such. `color` tints
+// the whole popup (text/glow/border), same technique showTutorialTip() uses,
+// so victory (gold) and evaded (magenta) are visually distinct at a glance.
+function showRiftResultBanner(text, color){
+  const el=document.getElementById('riftResultBanner');
+  el.textContent=text;
+  el.style.color=color;
+  el.style.textShadow=`0 0 18px ${color}`;
+  el.style.borderColor=color+'99';
+  el.style.boxShadow=`0 0 48px ${color}55`;
+  el.classList.add('show');
+  clearTimeout(riftResultTimer);
+  riftResultTimer=setTimeout(()=>el.classList.remove('show'), CFG.riftResultMs);
+}
+// One-time-per-player tutorial tip -- own element/timer so it never
+// stomps on (or gets stomped on by) #eventBanner/#centerMsg, which are
+// driven by real gameplay events (planet/rift approach, pickups, combo)
+// that can legitimately land in the same window as a tutorial tip early
+// in a run. Colors the whole popup (text/glow/border), not just the
+// text, to match whatever the tip is describing -- see TUTORIAL_TIPS.
+function showTutorialTip(tip){
+  const el=document.getElementById('tutorialBanner');
+  el.textContent=tip.text;
+  el.style.color=tip.color;
+  el.style.textShadow=`0 0 14px ${tip.color}`;
+  el.style.borderColor=tip.color+'88';
+  el.style.boxShadow=`0 0 30px ${tip.color}66`;
+  el.classList.add('show');
+  clearTimeout(tutorialTimer);
+  tutorialTimer=setTimeout(()=>el.classList.remove('show'), CFG.tutorialTipMs);
+}
+// Advances the tutorial-tip schedule once per frame while playing. Gated
+// on Save.data.tutorialSeen so this only ever plays out once per player,
+// across however many runs it takes to get through the whole list (a run
+// that ends early just picks up wherever G.tutorialIdx was reset to by
+// resetRun() -- i.e. back at the top -- rather than trying to resume
+// mid-list, which isn't worth the extra state for a one-time tutorial).
+function updateTutorialTips(){
+  if(Save.data.tutorialSeen) return;
+  if(G.tutorialIdx >= TUTORIAL_TIPS.length) return;
+  const dueAt = CFG.tutorialFirstAt + G.tutorialIdx*CFG.tutorialInterval;
+  if(G.elapsed >= dueAt){
+    showTutorialTip(TUTORIAL_TIPS[G.tutorialIdx]);
+    G.tutorialIdx++;
+    if(G.tutorialIdx >= TUTORIAL_TIPS.length){ Save.data.tutorialSeen=true; Save.save(); }
+  }
 }
 // Pre-run countdown graphics ("3","2","1","GO!"), baked in as WebP data
 // URIs (Russ's source PNGs, resized to a common 420px-tall canvas and
@@ -1534,9 +1845,18 @@ function updatePlayerShip(dt){
   camera.position.x += (ship.position.x - camera.position.x)*camFollow;
   camera.position.y += (ship.position.y + 1.6 - camera.position.y)*camFollow;
   camera.position.z = ship.position.z + 9.5 + (G.shake*(Math.random()-0.5)*2);
+  // Lateral/vertical shake, on top of the pre-existing depth-only (z)
+  // jitter above -- a hit landing only nudges the camera's *distance*
+  // from the ship, which reads as barely-there next to real side-to-side
+  // shake. Injected as one-frame noise on top of the smooth follow above
+  // (not folded into the follow's own persistent state), so the follow
+  // lerp naturally pulls each frame's jitter back out over the next few
+  // frames instead of it accumulating into permanent drift.
+  camera.position.x += G.shake*(Math.random()-0.5)*2;
+  camera.position.y += G.shake*(Math.random()-0.5)*2;
   camera.lookAt(ship.position.x, ship.position.y+0.9, ship.position.z-45);
   camera.rotation.z += -(Input.vel.x*0.05 - camera.rotation.z)*Math.min(1,dt*4);
-  G.shake = Math.max(0, G.shake-dt*1.2);
+  G.shake = Math.max(0, G.shake-dt*CFG.hitShakeDecay);
 
   const thr = ship.userData.thruster;
   const targetScale = G.boosting? 1.8:1.0;
@@ -1852,9 +2172,23 @@ function refreshHud(){
     el('riftHud').classList.add('hidden');
   }
 }
+// How long a freshly-shown overlay ignores clicks before its buttons go
+// live -- long enough to swallow a click that was already "in flight" from
+// rapid-fire mousedown/mouseup during gameplay (the reported symptom: dying
+// mid-mash and clicking straight past SIGNAL LOST into FLY AGAIN or the
+// one-time CONTINUE offer without ever reading it), short enough that a
+// deliberate click made after actually seeing the screen is never delayed
+// in any perceptible way.
+const SCREEN_INPUT_GUARD_MS = 350;
 function showScreen(id){
-  for(const s of ['menuStart','menuHelp','menuShop','menuPause','menuOver','menuResetConfirm']) el(s).classList.add('hidden');
-  if(id) el(id).classList.remove('hidden');
+  for(const s of ['menuStart','menuHelp','menuShop','menuSettings','menuPause','menuOver','menuResetConfirm']) el(s).classList.add('hidden');
+  if(id){
+    const scr = el(id);
+    scr.classList.remove('hidden');
+    scr.classList.add('inputGuard');
+    clearTimeout(scr._inputGuardTimer);
+    scr._inputGuardTimer = setTimeout(()=>scr.classList.remove('inputGuard'), SCREEN_INPUT_GUARD_MS);
+  }
 }
 function refreshMenuStats(){
   el('menuHighScore').textContent=Save.data.highScore;
@@ -1955,15 +2289,27 @@ function openShop(fromScreen){
 }
 
 /* menu wiring */
-el('btnPlay').addEventListener('click', ()=>{ Audio_.init(); Audio_.resume(); playIntro(); });
+el('btnPlay').addEventListener('click', ()=>{ Audio_.init(); Audio_.resume(); Music_.init(); playIntro(); });
 el('btnShop').addEventListener('click', ()=>openShop('menuStart'));
+// CONTROLS now lives inside SETTINGS (see below) rather than on the main
+// menu directly, so its back button returns there instead of menuStart.
 el('btnHelp').addEventListener('click', ()=>showScreen('menuHelp'));
-el('btnHelpBack').addEventListener('click', ()=>showScreen('menuStart'));
+el('btnHelpBack').addEventListener('click', ()=>showScreen('menuSettings'));
 el('btnShopBack').addEventListener('click', ()=>showScreen(el('menuShop').dataset.back||'menuStart'));
+el('btnSettings').addEventListener('click', ()=>showScreen('menuSettings'));
+el('btnSettingsBack').addEventListener('click', ()=>showScreen('menuStart'));
+// SOUND EFFECTS toggle -- gates Audio_.sfxOn only. Background music has its
+// own independent volume slider (bgmSlider, below) since the two are now
+// separate systems (see the Music_ block up top).
 el('btnSound').addEventListener('click', (e)=>{
-  Audio_.sfxOn=!Audio_.sfxOn; Audio_.musicOn=Audio_.sfxOn;
-  e.target.textContent = Audio_.sfxOn?'🔊 SOUND: ON':'🔇 SOUND: OFF';
-  Audio_.setMusicGain(Audio_.sfxOn?0.55:0);
+  Audio_.sfxOn=!Audio_.sfxOn;
+  e.target.textContent = Audio_.sfxOn?'🔊 SOUND EFFECTS: ON':'🔇 SOUND EFFECTS: OFF';
+});
+el('bgmSlider').addEventListener('input', (e)=>{
+  const v = Number(e.target.value)/100;
+  Music_.setVolume(v);
+  Save.data.bgmVolume = v;
+  Save.save();
 });
 el('btnAutofire').addEventListener('click', (e)=>{
   Input.autofire=!Input.autofire;
@@ -1988,6 +2334,10 @@ el('btnResetConfirm').addEventListener('click', ()=>{
   Save.data.highScore = 0;
   Save.data.stardust = 0;
   for(const key in Save.data.upgrades) Save.data.upgrades[key] = 0;
+  // "Reset progress" means start over like a new player, so the tutorial
+  // tips (a new-player thing) come back too -- unlike the sound/autofire/
+  // invertY/bgmVolume preferences, which stay put on purpose (see #28).
+  Save.data.tutorialSeen = false;
   Save.save();
   refreshMenuStats();
   showScreen('menuStart');
@@ -1998,13 +2348,18 @@ el('btnPauseQuit').addEventListener('click', ()=>quitToMenu());
 el('btnRetry').addEventListener('click', ()=>{ startRun(); });
 el('btnOverShop').addEventListener('click', ()=>openShop('menuOver'));
 el('btnOverMenu').addEventListener('click', ()=>quitToMenu());
+// Placeholder ad-reward continue -- see the TODO in endRun()/continueRun().
+el('btnContinueAd').addEventListener('click', ()=>{ continueRun(); });
 el('pauseBtn').addEventListener('click', ()=>{ if(G.state==='playing') pauseGame(); });
 
 el('btnAutofire').textContent='AUTO-FIRE: '+(Input.autofire?'ON':'OFF');
 el('btnInvertY').textContent='INVERT Y: '+(Input.invertY?'ON':'OFF');
+el('btnSound').textContent = Audio_.sfxOn?'🔊 SOUND EFFECTS: ON':'🔇 SOUND EFFECTS: OFF';
+el('bgmSlider').value = Math.round(Save.data.bgmVolume*100);
 
 function startRun(){
   resetRun();
+  Music_.startMain();
   G.state='countdown';
   G.countdownT = CFG.countdownSeconds;
   G.countdownShown = null; // forces the frame loop to show "3" on its very first tick
@@ -2028,14 +2383,21 @@ function quitToMenu(){
   el('actionZone') && el('actionZone').classList[isTouch?'remove':'add']('hidden');
   document.getElementById('vignette').style.opacity='0';
   Audio_.stopThrust();
+  Music_.stopAllReset();
   refreshMenuStats();
   showScreen('menuStart');
 }
 function endRun(){
   G.state='over';
   Audio_.stopThrust();
+  Music_.pauseAll();
   document.getElementById('vignette').style.opacity='0';
-  Save.data.stardust += G.stardust;
+  // Bank only the stardust earned since the last time endRun() banked any --
+  // a continued run (see continueRun()) can pass back through here a second
+  // (or, once the real ad SDK is wired up, Nth) time on the real death, and
+  // G.stardust is the whole run's running total, not a per-segment amount.
+  Save.data.stardust += (G.stardust - G.stardustBanked);
+  G.stardustBanked = G.stardust;
   if(G.score>Save.data.highScore) Save.data.highScore=G.score;
   Save.save();
   el('overDist').textContent=fmtDist(G.dist);
@@ -2043,9 +2405,35 @@ function endRun(){
   el('overCombo').textContent='x'+(1+G.bestCombo);
   el('overStardust').textContent='✦ '+G.stardust;
   el('overHigh').textContent=Save.data.highScore;
+  // TODO(RUN Studio / monetization): the "CONTINUE — WATCH AD" button below
+  // is currently a placeholder -- clicking it applies the full-shield reward
+  // immediately with no actual ad shown (see continueRun()). Swap this
+  // el('btnContinueAd').classList.toggle(...) gate and continueRun()'s body
+  // for a real rewarded-video SDK call (show ad -> on verified completion
+  // callback -> continueRun(); on ad failed/skipped/unavailable -> leave the
+  // player on this SIGNAL LOST screen). Capped at one offer per run for now
+  // (G.continueUsed) -- revisit whether monetization wants more than one.
+  el('btnContinueAd').closest('.btnRow').classList.toggle('hidden', G.continueUsed);
   showScreen('menuOver');
   spawnBurst(ship.position.x,ship.position.y,ship.position.z, {r:1,g:0.5,b:0.2}, 60, 14);
   Audio_.explode();
+}
+// Placeholder reward-ad "continue" flow -- see the TODO in endRun() above.
+// Resumes the run exactly where it ended (ship position, score, stardust,
+// obstacle/pickup pools, distance, elapsed time are all left untouched,
+// same as pauseGame()/resumeGame()) rather than calling resetRun(), which
+// is what makes this a "continue" and not a disguised restart. Grants a
+// short invulnerability window on top of the full shield refill so the
+// player isn't immediately re-killed by whatever was already touching them
+// when the last shield point ran out.
+function continueRun(){
+  if(G.continueUsed) return;
+  G.continueUsed = true;
+  G.shield = G.maxShield;
+  G.invuln = Math.max(G.invuln, 2.0);
+  G.state = 'playing';
+  Music_.resumeCurrent();
+  showScreen(null);
 }
 
 refreshMenuStats();
@@ -2123,6 +2511,8 @@ function frame(now){
     updatePlanets();
     updateRift(dt);
     updateParticles(dt);
+    updateLowHealthWarning(dt);
+    updateTutorialTips();
     refreshHud();
 
     // Re-base each backdrop layer onto the ship's current position in

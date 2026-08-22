@@ -41,6 +41,8 @@
   </div>
   <div id="eventBanner" class="msgPopup"></div>
   <div id="centerMsg" class="msgPopup"></div>
+  <div id="tutorialBanner" class="msgPopup"></div>
+  <div id="riftResultBanner" class="msgPopup"></div>
 </div>
 
 <button id="pauseBtn" class="hidden">⏸ PAUSE</button>
@@ -76,16 +78,37 @@
     <div class="statRow"><span>STARDUST BANKED</span><span id="menuStardust">✦ 0</span></div>
     <div class="btnRow">
       <button class="big" id="btnPlay">LAUNCH ▶</button>
-      <button class="small" id="btnShop">SHIPYARD</button>
-      <button class="small" id="btnHelp">CONTROLS</button>
     </div>
     <div class="btnRow" style="margin-top:6px;">
-      <button class="small" id="btnSound">🔊 SOUND: ON</button>
-      <button class="small" id="btnAutofire">AUTO-FIRE: OFF</button>
-      <button class="small" id="btnInvertY">INVERT Y: OFF</button>
-      <button class="small danger" id="btnNew">NEW GAME</button>
+      <button class="small" id="btnShop">SHIPYARD</button>
+      <button class="small" id="btnSettings">SETTINGS</button>
     </div>
     <div id="footer">three.js · single-file · keyboard · mouse · gamepad · touch</div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div class="overlay hidden" id="menuSettings">
+  <div class="panel">
+    <h1 class="title" style="font-size:22px;">SETTINGS</h1>
+    <div class="sliderRow">
+      <label for="bgmSlider">BACKGROUND MUSIC</label>
+      <input type="range" id="bgmSlider" min="0" max="100" step="1">
+    </div>
+    <div class="btnRow" style="margin-top:14px;">
+      <button class="small" id="btnSound">🔊 SOUND EFFECTS: ON</button>
+      <button class="small" id="btnAutofire">AUTO-FIRE: OFF</button>
+      <button class="small" id="btnInvertY">INVERT Y: OFF</button>
+    </div>
+    <div class="btnRow" style="margin-top:6px;">
+      <button class="small" id="btnHelp">CONTROLS</button>
+    </div>
+    <div class="btnRow" style="margin-top:22px;">
+      <button class="big danger" id="btnNew">⚠ NEW GAME ⚠</button>
+    </div>
+    <div class="btnRow" style="margin-top:10px;">
+      <button class="big" id="btnSettingsBack">BACK</button>
+    </div>
   </div>
 </div>
 
@@ -141,6 +164,24 @@
     <div class="statRow"><span>BEST COMBO</span><span id="overCombo">x1</span></div>
     <div class="statRow"><span>STARDUST EARNED</span><span id="overStardust">✦ 0</span></div>
     <div class="statRow"><span>HIGH SCORE</span><span id="overHigh">0</span></div>
+    <!-- PLACEHOLDER MONETIZATION HOOK -- flagged for a future RUN Studio
+         implementation agent. This button currently fakes a completed
+         rewarded-video ad: clicking it immediately grants the reward
+         (full shields + resume the run) with no ad actually shown, wired
+         through continueRun() in game.js. A real integration needs to:
+           1. Call the rewarded-ad SDK's "show ad" API on click instead of
+              calling continueRun() directly.
+           2. Call continueRun() only from that SDK's verified-completion
+              callback (never on ad-skipped/ad-failed/ad-unavailable).
+           3. Handle the ad-unavailable case (hide/disable this button, or
+              show a "no ad available" state) instead of assuming one is
+              always ready.
+         See the matching TODO comment on endRun()/continueRun() in
+         game.js for the run-state side of this (why it's capped at one
+         use per run, how it avoids double-banking stardust, etc). -->
+    <div class="btnRow">
+      <button class="big adBtn" id="btnContinueAd">📺 CONTINUE — WATCH AD ▶</button>
+    </div>
     <div class="btnRow">
       <button class="big" id="btnRetry">FLY AGAIN ▶</button>
       <button class="small" id="btnOverShop">SHIPYARD</button>

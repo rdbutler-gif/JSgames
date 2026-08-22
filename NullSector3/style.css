@@ -19,14 +19,18 @@
   #scoreText{font-size:14px;color:var(--gold);}
   #stardustText{font-size:14px;color:var(--gold);}
   /* Shared stylized popup box for every player-facing message -- flavor
-     banners (planet/rift approach), the Rift win/lose outcome banner, and
-     short toasts (pickups, combo) all render through the same panel
-     language as the menu overlays (.panel above), just smaller and
-     centered over the play area instead of full-screen. Two elements
-     share this base (#eventBanner for the bigger/rarer announcements,
-     #centerMsg for quick toasts) at two different vertical slots so they
-     can be visible at once without overlapping -- e.g. the Rift victory
-     banner and its "+500 stardust" reward toast fire back to back. */
+     banners (planet/rift approach) and short toasts (pickups, combo) all
+     render through the same panel language as the menu overlays (.panel
+     above), just smaller and centered over the play area instead of
+     full-screen. Two elements share this base (#eventBanner for the
+     bigger/rarer announcements, #centerMsg for quick toasts) at two
+     different vertical slots so they can be visible at once without
+     overlapping -- e.g. a planet-approach banner and a pickup toast fire
+     back to back. The Rift win/lose outcome has its own dedicated
+     #riftResultBanner slot instead (see below) -- it used to share
+     #eventBanner with the planet/rift *approach* banners and would get
+     silently clobbered if one of those fired again shortly after the
+     fight ended (reported by Russ; fixed by giving it its own slot). */
   .msgPopup{position:absolute;left:50%;max-width:min(90vw,480px);
     background:var(--panel);border:1px solid #4ff2ff66;border-radius:12px;
     padding:10px 22px;text-align:center;pointer-events:none;
@@ -38,6 +42,31 @@
     color:var(--magenta);text-shadow:0 0 14px var(--magenta);
     border-color:#ff4fd688;box-shadow:0 0 34px #ff4fd644;}
   #centerMsg{top:58%;font-size:14px;color:#eafcff;padding:8px 18px;}
+  /* Early-run tutorial tips (see TUTORIAL_TIPS/showTutorialTip() in game.js) --
+     its own slot, positioned clear of #eventBanner/#centerMsg/#riftHud so a
+     tip never stacks on top of a real gameplay banner. Each tip sets its own
+     color/text-shadow/border/box-shadow inline (matching the actual in-game
+     color of whatever it's describing -- e.g. the green shield pickup, the
+     blue boost pickup) rather than a single fixed color like #eventBanner
+     has, so this base rule is just a sane fallback if that's ever skipped. */
+  #tutorialBanner{top:23%;font-size:17px;font-weight:700;letter-spacing:1px;
+    line-height:1.4;color:#eafcff;}
+  /* Void Rift win/lose outcome -- deliberately its OWN element/timer, not
+     a #eventBanner call, and deliberately bigger than every other message
+     popup on screen: this is the single biggest moment in a run (a boss
+     fight actually resolving), so it needs to read as unmistakably more
+     important than a flavor banner or a pickup toast, and it needs to
+     still be readable in full even if a planet/rift-approach banner fires
+     into #eventBanner a moment later. Sits at top:30% -- clear of
+     #tutorialBanner(23%)/#eventBanner(40%)/#centerMsg(58%) -- and, same
+     as #tutorialBanner, sets its own glow color inline per outcome
+     (showRiftResultBanner() in game.js): a bright victory gold for a kill,
+     a cooler magenta for an evade, so the two resolutions are
+     distinguishable from across the room, not just by reading the text. */
+  #riftResultBanner{top:30%;font-size:30px;font-weight:800;letter-spacing:1.5px;
+    max-width:min(92vw,560px);padding:16px 28px;color:var(--gold);
+    text-shadow:0 0 18px var(--gold);border-color:#ffd24f99;
+    box-shadow:0 0 48px #ffd24f55;}
   #riftHud{position:absolute;top:112px;left:50%;transform:translateX(-50%);
     text-align:center;pointer-events:none;}
   #riftHud.hidden{display:none;}
@@ -60,6 +89,14 @@
 
   .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
     background:radial-gradient(ellipse at center,#140a2ad0 0%,#020103f2 75%);}
+  /* Brief post-appear click-through guard -- see showScreen() in game.js.
+     Without this, a menu that pops up while the player is still rapid-fire
+     clicking (their fire input) can eat that same click as an immediate
+     button press before they've actually seen the screen -- e.g. dying and
+     accidentally burning the one-time CONTINUE offer, or restarting the
+     run, without ever reading SIGNAL LOST. Makes the whole overlay briefly
+     inert; the click just passes through to whatever's behind it instead. */
+  .overlay.inputGuard{pointer-events:none;}
   .hidden{display:none !important;}
   .panel{max-width:520px;width:92%;max-height:92vh;overflow:auto;background:var(--panel);
     border:1px solid #4ff2ff55;border-radius:14px;padding:22px 26px;box-shadow:0 0 40px #4ff2ff22;}
@@ -119,9 +156,44 @@
   button.danger{border-color:#ff4f4f;color:#ff8080;}
   button.danger:hover{background:#ff4f4f;color:#1a0505;box-shadow:0 0 16px #ff4f4f;}
   button.big.danger:hover{color:#1a0505;}
+  /* NEW GAME now lives inside SETTINGS as a destructive, no-undo action
+     (wipes the current run's progress) -- an idle pulse on top of the
+     existing hover styling above makes it read as "handle with care" the
+     moment the screen opens, not just when the player's cursor finds it. */
+  @keyframes dangerPulse{0%,100%{box-shadow:0 0 10px #ff4f4f55;}50%{box-shadow:0 0 26px #ff4f4fbb;}}
+  button.big.danger{animation:dangerPulse 1.8s ease-in-out infinite;}
+  button.big.danger:hover{animation:none;}
+  /* Reward/monetization styling (SIGNAL LOST "watch ad, continue") -- gold
+     instead of the cyan nav-button palette, so the incentivized action
+     reads as a distinct "bonus" offer rather than blending in with normal
+     screen navigation like FLY AGAIN/MAIN MENU. */
+  button.adBtn{border-color:var(--gold);color:var(--gold);}
+  button.adBtn:hover:not(.notArmed){background:var(--gold);color:#1a1205;box-shadow:0 0 16px var(--gold);}
+  /* Dimmed (but still a normal, event-receiving button -- NOT :disabled)
+     while the player's still actively mashing fire right after SIGNAL LOST
+     appears -- see CONTINUE_AD_ARM_DELAY_MS / continueAdIsArmed() in
+     game.js for why this deliberately isn't the native disabled attribute:
+     a real `disabled` button stops receiving click/mousedown entirely,
+     which would blind the very mash-detection this depends on. Dimmed
+     rather than visually identical-but-inert, so it doesn't look broken
+     while it's waiting the player out. */
+  button.adBtn.notArmed{border-color:#ffffff33;color:#ffffff55;cursor:default;background:transparent;box-shadow:none;}
   .controlsGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;color:#b8d9ff;margin-top:10px;}
   .controlsGrid b{color:var(--gold);}
   .statRow{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-bottom:1px dashed #ffffff1a;}
+  /* BACKGROUND MUSIC volume slider (SETTINGS screen) -- styled to match the
+     cyan/magenta neon panel language rather than the browser's default
+     range-input chrome, which would look completely out of place here. */
+  .sliderRow{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:8px;}
+  .sliderRow label{font-size:12px;letter-spacing:2px;color:var(--cyan);text-shadow:0 0 8px #4ff2ff77;}
+  .sliderRow input[type="range"]{-webkit-appearance:none;appearance:none;width:80%;max-width:320px;height:6px;
+    border-radius:3px;background:linear-gradient(90deg,var(--cyan),var(--magenta));outline:none;cursor:pointer;}
+  .sliderRow input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:18px;height:18px;border-radius:50%;background:#eafcff;border:2px solid var(--cyan);
+    box-shadow:0 0 8px var(--cyan);cursor:pointer;}
+  .sliderRow input[type="range"]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;
+    background:#eafcff;border:2px solid var(--cyan);box-shadow:0 0 8px var(--cyan);cursor:pointer;}
+  .sliderRow input[type="range"]::-moz-range-track{background:transparent;}
   /* ---- Shipyard cards ----
      Replaces the old plain text-row layout (name+level line, desc line,
      separate cost readout, separate "UPGRADE" button — 4 lines of text
