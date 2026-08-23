@@ -13,7 +13,11 @@
   .barWrap{width:140px;height:10px;background:#1a1430;border-radius:5px;overflow:hidden;border:1px solid #ffffff22;margin-top:3px;}
   .barFill{height:100%;width:100%;background:linear-gradient(90deg,var(--cyan),#2a8fff);}
   #shieldBar .barFill{background:linear-gradient(90deg,#4fff9e,#1fb56b);}
-  #boostBar .barFill{background:linear-gradient(90deg,var(--gold),#ff8a2b);}
+  /* Boost bar recolored blue to match the boost pickup's established
+     theme color (0x4f9eff in game.js) instead of the gold used elsewhere
+     in the HUD -- gold is already the score/stardust color, so boost gets
+     its own identity. Per Russ's request. */
+  #boostBar .barFill{background:linear-gradient(90deg,#4f9eff,#1f6fdb);}
   #comboText{color:var(--magenta);font-weight:700;}
   #distText{font-size:22px;color:var(--cyan);text-shadow:0 0 8px #4ff2ff88;}
   #scoreText{font-size:14px;color:var(--gold);}
@@ -235,6 +239,15 @@
      and a much bigger size instead of blending into the header line. */
   .shopStardustTotal{color:var(--gold);font-size:28px;font-weight:800;text-shadow:0 0 14px #ffd24f77;
     letter-spacing:1px;}
+  /* Shipyard-only label for the "STARDUST BANKED" text above the total --
+     was riding the generic .subtitle class (light blue, small, low
+     opacity), which buried it under the bold gold total right beneath it.
+     Gives the label the same gold/prominent treatment as the number so
+     the whole readout reads as one unit. Scoped to the Shipyard screen
+     only -- the main menu's separate STARDUST BANKED stat row keeps its
+     existing .statRow styling. */
+  .shopStardustLabel{text-align:center;color:var(--gold);font-size:14px;font-weight:700;
+    letter-spacing:3px;margin-bottom:2px;text-shadow:0 0 8px #ffd24f77;opacity:1;}
   #joyZone,#actionZone{position:fixed;bottom:0;z-index:10;touch-action:none;}
   #joyZone{left:0;width:46%;height:46%;}
   #actionZone{right:0;width:46%;height:46%;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;padding:18px;gap:12px;}

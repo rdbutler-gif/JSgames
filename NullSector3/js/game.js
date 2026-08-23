@@ -49,8 +49,14 @@ const CFG = {
   // retreat), while independently wandering laterally around a slowly
   // re-picked target within riftHeartWanderRadius of tube center. All
   // relative to the ship, same as the old fixed riftHeartDist was.
-  riftHeartDistMin: 90,
-  riftHeartDistMax: 260,
+  // Both ends of the range pulled in per Russ's request -- the heart's
+  // closest approach (riftHeartDistMin) was too distant to feel like a
+  // real close-quarters confrontation, and its retreat (riftHeartDistMax)
+  // put it uncomfortably far away at the other end of the cycle. Was
+  // 90/260; halved-ish to bring the whole fight noticeably nearer the
+  // ship without changing the approach/dart timing or wander behavior.
+  riftHeartDistMin: 45,
+  riftHeartDistMax: 150,
   riftHeartApproachTime: 5.5,
   riftHeartDartTime: 0.45,
   riftHeartWanderRadius: 9,
@@ -309,12 +315,18 @@ function hofBest(list){
 }
 ensureDailyFresh();
 
+// Prices raised significantly (roughly 7-7.5x the original baseCost,
+// step left unchanged) per Russ's request -- the uncapped combo
+// multiplier (comboBonusPerLevel:1, applied in addStardust()) means even
+// a modest combo streak was making the old 50-80 baseCost prices trivial
+// to afford within a run or two, so the Shipyard no longer felt like a
+// meaningful sink for stardust.
 const UPGRADES = {
-  hull:    { name:'Hull Plating',   desc:'+1 max shield',        max:3, baseCost:80,  step:1.7, icon:'🛡️' },
-  weapon:  { name:'Pulse Cannons',  desc:'+18% fire rate & dmg',  max:4, baseCost:60,  step:1.6, icon:'⚡' },
-  thrust:  { name:'Thrusters',      desc:'+18% boost capacity',   max:4, baseCost:60,  step:1.6, icon:'🚀' },
-  magnet:  { name:'Tractor Coil',   desc:'+35% pickup radius',    max:3, baseCost:50,  step:1.6, icon:'🧲' },
-  plating: { name:'Reactive Armor', desc:'+0.3s invuln after hit',max:3, baseCost:70,  step:1.7, icon:'🔰' },
+  hull:    { name:'Hull Plating',   desc:'+1 max shield',        max:3, baseCost:600, step:1.7, icon:'🛡️' },
+  weapon:  { name:'Pulse Cannons',  desc:'+18% fire rate & dmg',  max:4, baseCost:450, step:1.6, icon:'⚡' },
+  thrust:  { name:'Thrusters',      desc:'+18% boost capacity',   max:4, baseCost:450, step:1.6, icon:'🚀' },
+  magnet:  { name:'Tractor Coil',   desc:'+35% pickup radius',    max:3, baseCost:400, step:1.6, icon:'🧲' },
+  plating: { name:'Reactive Armor', desc:'+0.3s invuln after hit',max:3, baseCost:550, step:1.7, icon:'🔰' },
 };
 function upgradeCost(key){
   const u = UPGRADES[key], lvl = Save.data.upgrades[key];
@@ -741,16 +753,20 @@ const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreferenc
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Player-adjustable overall brightness (SETTINGS "BRIGHTNESS" slider) --
-// Russ flagged the game reads very dark on mobile. Rather than touching the
-// Three.js lighting/tone-mapping pipeline (AmbientLight/keyLight/rimLight
-// intensities below, all tuned together for the desktop look), this scales
-// the *displayed* canvas with a plain CSS filter -- simplest option that
-// can't throw off the lighting balance the scene was designed around, and
-// doesn't wash out the HUD/menus since it only targets #gameCanvas, not
-// the whole page. Save.data.brightness is a multiplier (1 = unchanged,
-// matching how the game has always looked); applyBrightness() is also
-// called from the settings slider's 'input' handler below so dragging it
-// updates the canvas live.
+// Russ flagged the game reads very dark on mobile. This scales the
+// *displayed* canvas with a plain CSS filter -- simplest option for a
+// player-facing exposure preference, and doesn't wash out the HUD/menus
+// since it only targets #gameCanvas, not the whole page. Save.data.brightness
+// is a multiplier (1 = unchanged, matching how the game has always looked);
+// applyBrightness() is also called from the settings slider's 'input'
+// handler below so dragging it updates the canvas live.
+//
+// NOTE: a CSS filter can only stretch pixels the renderer already produced
+// -- it can't be the fix for the GLTF models (turret/drone/void heart/ship)
+// reading almost black even at max brightness, because "near-zero times a
+// multiplier" is still near-zero. That's a genuinely under-lit scene, not
+// a display-contrast problem, so it needed real light sources at the
+// render source -- see the lighting block below.
 function applyBrightness(mult){
   canvas.style.filter = 'brightness(' + mult + ')';
 }
@@ -769,8 +785,32 @@ window.addEventListener('resize', ()=>{
 });
 
 // lighting
-scene.add(new THREE.AmbientLight(0x8899ff, 0.55));
-const keyLight = new THREE.DirectionalLight(0xbfe0ff, 1.1);
+//
+// This build's three.js (r160) defaults renderer.useLegacyLights to false
+// ("physically correct" light units) -- fine for the fixed ambient/key
+// pair below, but it means every GLTF model (player ship, turret, rift
+// drone, void heart -- all MeshStandardMaterial, see the GLTFLoader
+// blocks further down) is lit ONLY by whatever fraction of these two
+// global lights happens to face the camera at any given moment, with no
+// environment map to fill the shadow side. A model flying past at an
+// angle the fixed-direction keyLight doesn't hit reads as almost black.
+// Fixed with two cheap, position/facing-independent lights rather than
+// per-object PointLights (which would add real per-frame cost that scales
+// with how many turrets/drones are on screen at once -- these two don't,
+// since they're each a single extra term in the existing fragment shader
+// regardless of how many models are in the scene):
+//   - AmbientLight bumped up as a flat brightness floor.
+//   - A new HemisphereLight (sky/ground) added -- unlike AmbientLight it's
+//     graded by surface normal, so it reads as actual directional fill
+//     instead of a flat grey wash, which is the standard three.js fix for
+//     "my GLTF model looks dark/flat with no environment map."
+// keyLight itself is also bumped a bit for stronger highlight definition
+// on whichever side does face it. rimLight (the magenta accent below) is
+// untouched -- it's a stylistic point-light accent, not load-bearing for
+// general model visibility.
+scene.add(new THREE.AmbientLight(0x8899ff, 0.9));
+scene.add(new THREE.HemisphereLight(0x9fd8ff, 0x2a0a3a, 1.3));
+const keyLight = new THREE.DirectionalLight(0xbfe0ff, 1.6);
 keyLight.position.set(4,6,3); scene.add(keyLight);
 const rimLight = new THREE.PointLight(0xff4fd6, 1.4, 200);
 rimLight.position.set(0,4,-20); scene.add(rimLight);
@@ -2552,12 +2592,19 @@ function renderShop(container, onBuy){
     const u=UPGRADES[key]; const lvl=Save.data.upgrades[key];
     const row=document.createElement('div'); row.className='shopCard'+(lvl>=u.max?' maxed':'');
     const cost=upgradeCost(key); const maxed=lvl>=u.max;
+    // Subdue (disable) the buy button when the player can't afford the
+    // item too, not just when it's maxed -- reuses the existing
+    // .shopBuyBtn:disabled styling (dim border/text, no hover) so an
+    // unaffordable upgrade reads the same way a maxed one already does.
+    // DEBUG bypasses cost entirely, same as the click handler below, so
+    // testing isn't gated on affordability either.
+    const unaffordable = !DEBUG && !maxed && Save.data.stardust<cost;
     let pips=''; for(let i=0;i<u.max;i++) pips+=`<span class="pip${i<lvl?' filled':''}"></span>`;
     const btnLabel = maxed ? 'MAXED' : (DEBUG ? 'FREE' : '✦'+cost);
     row.innerHTML = `<div class="shopCardHead">
         <span class="shopIcon">${u.icon}</span>
         <span class="shopName">${u.name}</span>
-        <button class="shopBuyBtn" ${maxed?'disabled':''} data-key="${key}">${btnLabel}</button>
+        <button class="shopBuyBtn" ${(maxed||unaffordable)?'disabled':''} data-key="${key}">${btnLabel}</button>
       </div>
       <div class="shopDesc">${u.desc}</div>
       <div class="shopPips">${pips}</div>`;
