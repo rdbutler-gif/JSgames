@@ -27,7 +27,7 @@ import { GLTFLoader } from './GLTFLoader.js';
 const CFG = {
   tubeRadius: 18,
   speedStart: 24,       // was 40 — run opens noticeably slower
-  speedRamp: 0.6,
+  speedRamp: 0.3, // halved from 0.6 so speedCap (150) isn't hit until ~7min elapsed (was ~3.5min)
   speedCap: 150,
   boostMult: 1.85,
   boostDrain: 42,
