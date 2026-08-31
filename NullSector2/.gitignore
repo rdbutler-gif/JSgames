@@ -1,0 +1,6 @@
+node_modules/
+dist/
+rundot/docs/
+.rundot/docs/
+.env.local
+game.config.playground.json

@@ -160,14 +160,20 @@ main#app {
 
 #screen-intro { overflow: hidden; }
 
-/* Fixed ~72/28 split with the photo as priority -- flex-basis:0 means
+/* Fixed ~56/44 split with the photo as priority -- flex-basis:0 means
    this NEVER changes size (no jump), unlike flex-basis:auto which resizes
-   every time the panel below has different content. #intro-frame is
-   sized in JS (sizePhotoFrame in game.js) to exactly match the image's
-   real 1280x720 shape at the largest size that fits -- so it is always
-   shown whole, never cropped, never stretched. */
+   every time the panel below has different content.
+   .photo-frame is locked to the images' native 16:9 ratio (aspect-ratio)
+   and sized with container-query units so it's ALWAYS exactly 16:9 --
+   never stretched to whatever odd shape the surrounding flex box happens
+   to be -- while still growing to fill as much of that box as possible.
+   min(100cqw, 100cqh*16/9) picks whichever axis is the limiting one, so
+   the frame pillarboxes on a short/wide screen and letterboxes on a
+   tall/narrow one, but is never anything other than 16:9. Pure CSS, no
+   JS, so it recalculates on every resize automatically. */
 .intro-photo-wrap {
   position: relative;
+  container-type: size;
   flex: 56 1 0;
   min-height: 90px;
   width: 100vw;
@@ -182,11 +188,10 @@ main#app {
 
 .photo-frame {
   position: relative;
-  max-width: 100%;
-  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  height: min(100cqh, calc(100cqw * 9 / 16));
   border: 3px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.7);
 }
 
@@ -194,6 +199,7 @@ main#app {
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
   filter: saturate(0.85) contrast(1.1);
 }
 
@@ -378,11 +384,13 @@ main#app {
 /* Fixed ~70/30 split, flex-basis:0 -- this NEVER resizes based on the
    deck's content (that was the cause of the "everything jumps when I
    click a button" bug: flex-basis:auto recomputes on every re-render).
-   #location-frame is sized in JS (sizePhotoFrame in game.js) to exactly
-   match the image's real 1280x720 shape at the largest size that fits in
-   the space below -- always shown whole, never cropped, never stretched. */
+   .photo-frame (shared rule above, in the INTRO block) locks itself to
+   16:9 and grows to fill this box on whichever axis is the constraint --
+   pure CSS, no JS, so it re-fits on every resize automatically, on both
+   axes, and never crops or stretches the picture. */
 .location-hero {
   position: relative;
+  container-type: size;
   flex: 70 1 0;
   min-height: 120px;
   width: 100vw;
@@ -400,6 +408,7 @@ main#app {
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
 }
 
 .scene-deck {
@@ -622,12 +631,19 @@ main#app {
   height: 100%;
 }
 
+/* z-index puts the yarn above the photo layers. Without it, #board-svg
+   paints in plain DOM order -- it comes before #board-victim/#board-suspects
+   /#board-evidence in the HTML, so the lines were rendering UNDER every
+   photo instead of strung across the front of them. 10 also beats
+   .board-photo:hover's z-index:5, so the yarn stays visible even when
+   hovering a card it passes behind. */
 #board-svg {
   position: absolute;
   top: 0; left: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+  z-index: 10;
 }
 
 #board-svg line {
@@ -636,22 +652,34 @@ main#app {
   filter: drop-shadow(0 0 4px var(--accent-glow));
 }
 
+/* .board-layer is a full-size transparent wrapper (so board-suspects and
+   board-evidence can each hold percentage-positioned children over the
+   same frame). Without pointer-events:none here, whichever layer div
+   comes LAST in the DOM (board-evidence) sits on top of the whole board
+   and its empty, invisible box swallows every click meant for the layer
+   underneath -- including clicks on suspect portraits in board-suspects.
+   That was the actual bug: clicking evidence worked (it's on top),
+   clicking a suspect afterward silently did nothing. pointer-events:auto
+   on .board-photo re-enables clicks on the actual visible squares only,
+   letting clicks fall through the transparent parts of the layer. */
 .board-layer {
   position: absolute;
   top: 0; left: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
 }
 
 .board-photo {
   position: absolute;
-  width: 13%;
+  width: 10%;
   border: 4px solid #ece7d8;
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.7);
   cursor: pointer;
   background: #ece7d8 center/cover no-repeat;
   aspect-ratio: 1 / 1;
   transition: transform 0.15s ease, box-shadow 0.2s ease;
+  pointer-events: auto;
 }
 
 .board-photo:hover { transform: scale(1.05) rotate(-1deg); z-index: 5; }
@@ -685,6 +713,7 @@ main#app {
 }
 
 .board-photo.victim-photo {
+  width: 11%;
   cursor: default;
   border-color: #c9c2ac;
 }
@@ -704,6 +733,15 @@ main#app {
   color: var(--ink);
   background: rgba(0, 0, 0, 0.7);
   padding: 2px 0;
+}
+
+/* Evidence cards are deliberately smaller than the suspect/victim
+   portraits above them -- see the comment on SLOT_POSITIONS in game.js
+   for why (the frame is 16:9, so a square card's rendered height depends
+   on width, and undersized cards were overlapping between rows once all
+   13 clues were pinned to the board at once). */
+#board-evidence .board-photo {
+  width: 7%;
 }
 
 .evidence-card-photo {

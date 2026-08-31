@@ -1,0 +1,20 @@
+{
+  "name": "ruskos-planet",
+  "version": "1.0.0",
+  "description": "RUSKO'S PLANET -- RUN.world deployable build",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "deploy": "npm run build && rundot deploy"
+  },
+  "author": "Russ Butler",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@series-inc/rundot-game-sdk": "^5.27.0"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2"
+  }
+}

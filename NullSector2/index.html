@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>RUSKO'S PLANET</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
+  :root{
+    --bg:#04050a;
+    --text:#eef1fb; --text-dim:#8b92ab;
+    --glass:rgba(16,19,32,0.55); --glass-hi:rgba(255,255,255,0.06); --glass-border:rgba(255,255,255,0.10);
+    --cyan:#5eead4; --blue:#60a5fa; --violet:#a78bfa; --pink:#f472b6; --amber:#fbbf24; --danger:#fb7185;
+    /* legacy aliases -- src/main.js sets these two inline via JS, keep them live */
+    --neon:#5eead4;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{height:100%;background:var(--bg);overflow:hidden;overscroll-behavior:none;}
+  body{display:flex;align-items:center;justify-content:center;position:relative;
+    font-family:'Inter',sans-serif;color:var(--text);
+    background:radial-gradient(ellipse at 50% 40%, #0b0e1c 0%, #04050a 70%);
+    /* Baseline safe-area padding (device notches + home indicator) so the
+       canvas never sizes itself under OS chrome. Works instantly, in every
+       browser, with zero JS. main.js additionally reads RundotGameAPI's
+       getSafeArea() once the SDK is ready and -- on RUN.world, where that
+       value also folds in the host's own toolbar/chrome -- replaces this
+       with the more complete figure. See the RESPONSIVE VIEWPORT section
+       and applyHostSafeArea() in src/main.js. */
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
+  /* Ambient nebula glow -- two soft drifting color blobs behind everything.
+     Pure CSS, no assets, cheap to render, gives the whole game a living
+     backdrop instead of flat black. */
+  body::before,body::after{content:'';position:fixed;border-radius:50%;filter:blur(90px);
+    z-index:-1;pointer-events:none;}
+  body::before{width:60vmax;height:60vmax;top:-22vmax;left:-16vmax;opacity:.30;
+    background:radial-gradient(circle,var(--cyan),transparent 70%);animation:drift1 24s ease-in-out infinite alternate;}
+  body::after{width:55vmax;height:55vmax;bottom:-20vmax;right:-16vmax;opacity:.26;
+    background:radial-gradient(circle,var(--violet),transparent 70%);animation:drift2 28s ease-in-out infinite alternate;}
+  @keyframes drift1{to{transform:translate(6vmax,4vmax) scale(1.12);}}
+  @keyframes drift2{to{transform:translate(-5vmax,-6vmax) scale(1.08);}}
+  button{touch-action:manipulation;} /* skip the ~300ms tap delay on older mobile browsers */
+  #wrap{position:relative;max-width:100%;max-height:100%;}
+  canvas{display:block;background:#000;border:1px solid rgba(255,255,255,0.12);border-radius:16px;
+    box-shadow:0 24px 70px rgba(0,0,0,0.6), 0 0 90px rgba(94,234,212,0.10), inset 0 0 0 1px rgba(255,255,255,0.02);
+    image-rendering:pixelated;touch-action:none;max-width:100vw;max-height:100vh;}
+  #vig{position:absolute;inset:0;pointer-events:none;border-radius:16px;
+    box-shadow:inset 0 0 140px 20px rgba(0,0,0,0.55);}
+  .panel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    text-align:center;z-index:10;padding:24px 18px;overflow-y:auto;
+    background:linear-gradient(160deg, rgba(4,5,10,0.74), rgba(9,7,20,0.86));
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);}
+  .panel.hidden{display:none;}
+  .panel-inner{width:min(92vw,440px);display:flex;flex-direction:column;align-items:center;
+    background:var(--glass);border:1px solid var(--glass-border);border-radius:22px;
+    padding:34px 28px;margin:auto 0;
+    -webkit-backdrop-filter:blur(22px) saturate(140%);backdrop-filter:blur(22px) saturate(140%);
+    box-shadow:0 10px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);}
+  h1{font-family:'Space Grotesk',sans-serif;font-weight:800;font-size:clamp(28px,7vw,42px);
+    letter-spacing:0.5px;margin-bottom:8px;background-size:200% auto;
+    background-image:linear-gradient(90deg,var(--cyan),var(--blue) 40%,var(--violet) 75%,var(--pink));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 0 20px rgba(94,234,212,0.28));
+    animation:hueShift 9s ease-in-out infinite alternate;}
+  @keyframes hueShift{to{background-position:100% center;}}
+  .sub{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;
+    letter-spacing:2px;color:var(--text-dim);background:rgba(255,255,255,0.04);
+    border:1px solid var(--glass-border);border-radius:999px;padding:7px 18px;margin-bottom:18px;}
+  .controls{font-family:'Inter',sans-serif;font-size:14px;line-height:2.1;color:var(--text-dim);margin-bottom:14px;}
+  .controls b{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:12px;letter-spacing:0.5px;
+    color:var(--text);background:rgba(255,255,255,0.08);border:1px solid var(--glass-border);
+    border-radius:6px;padding:3px 9px;margin:0 2px;}
+  .controls .pad{font-weight:600;font-size:12px;color:var(--violet);background:rgba(167,139,250,0.14);
+    border:1px solid rgba(167,139,250,0.32);border-radius:6px;padding:3px 9px;margin:0 2px;}
+  .blink{animation:pulse 1.6s ease-in-out infinite;font-family:'Space Grotesk',sans-serif;font-weight:700;
+    font-size:15px;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .btn{font-family:'Inter',sans-serif;font-weight:600;font-size:15px;letter-spacing:0.3px;
+    color:#04050a;background:linear-gradient(135deg,var(--cyan),var(--blue));border:none;border-radius:12px;
+    padding:12px 26px;min-height:46px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    cursor:pointer;margin-top:8px;box-shadow:0 6px 22px rgba(94,234,212,0.25);
+    transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(94,234,212,0.4);filter:brightness(1.06);}
+  .btn:active{transform:translateY(0);}
+  .btn-ghost{background:rgba(255,255,255,0.06);color:var(--text);box-shadow:none;
+    border:1px solid var(--glass-border);}
+  .btn-ghost:hover{background:rgba(255,255,255,0.11);border-color:rgba(255,255,255,0.28);
+    box-shadow:0 0 22px rgba(167,139,250,0.18);filter:none;}
+  .gameover h1{background-image:linear-gradient(90deg,var(--danger),var(--pink) 60%,var(--amber));
+    -webkit-background-clip:text;background-clip:text;filter:drop-shadow(0 0 20px rgba(251,113,133,0.3));}
+  .win h1{background-image:linear-gradient(90deg,var(--amber),var(--pink) 50%,var(--violet));
+    -webkit-background-clip:text;background-clip:text;filter:drop-shadow(0 0 20px rgba(251,191,36,0.3));}
+  .small{font-family:'Inter',sans-serif;font-size:12px;color:var(--text-dim);margin-top:16px;letter-spacing:0.3px;}
+  .hs{font-family:'JetBrains Mono',monospace;font-size:14px;line-height:1.85;color:var(--text);margin:10px 0;
+    border:1px solid var(--glass-border);border-radius:14px;padding:14px 22px;background:rgba(255,255,255,0.03);
+    min-width:240px;}
+  .hs .row{display:flex;justify-content:space-between;gap:26px;}
+  .hs .rank{color:var(--text-dim);} .hs .ini{color:var(--amber);letter-spacing:2px;font-weight:600;}
+  .hs .sc{color:var(--text);} .hs .me{color:var(--pink)!important;text-shadow:0 0 10px rgba(244,114,182,0.4);}
+  .hs-title{font-family:'Inter',sans-serif;color:var(--text-dim);font-size:11px;letter-spacing:3px;
+    text-transform:uppercase;font-weight:600;margin-bottom:8px;}
+  .topline{font-family:'Inter',sans-serif;font-size:12px;color:var(--text-dim);letter-spacing:1.5px;
+    text-transform:uppercase;margin:2px 0 18px;}
+  .topline .v{font-family:'JetBrains Mono',monospace;color:var(--cyan);font-weight:600;letter-spacing:0.5px;}
+  .entry{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:48px;letter-spacing:16px;
+    color:var(--text);margin:12px 0;}
+  .entry .cur{color:var(--cyan);text-shadow:0 0 18px rgba(94,234,212,0.5);animation:pulse .8s ease-in-out infinite;}
+  .ehint{font-family:'Inter',sans-serif;font-size:12px;color:var(--text-dim);}
+  .filebar{margin-top:18px;font-family:'Inter',sans-serif;font-size:11px;color:var(--text-dim);letter-spacing:0.3px;}
+  .filebar button{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;background:transparent;
+    color:var(--text-dim);border:1px solid var(--glass-border);border-radius:8px;padding:8px 14px;
+    min-height:34px;cursor:pointer;margin:4px;letter-spacing:0.5px;text-transform:uppercase;
+    transition:color .15s ease, border-color .15s ease;}
+  .filebar button:hover{color:var(--cyan);border-color:var(--cyan);}
+  .legend{font-family:'Inter',sans-serif;font-size:13px;color:var(--text-dim);margin-top:8px;line-height:1.75;}
+  .legend b{color:var(--cyan);font-weight:600;}
+  /* entry screen buttons */
+  .entryBtn{font-family:'Inter',sans-serif;font-size:20px;background:rgba(255,255,255,0.06);color:var(--text);
+    border:1px solid var(--glass-border);border-radius:10px;padding:6px 12px;cursor:pointer;margin:0 6px;
+    min-width:48px;min-height:48px;transition:background .15s ease, border-color .15s ease, color .15s ease;}
+  .entryBtn:hover{background:rgba(255,255,255,0.12);border-color:var(--cyan);color:var(--cyan);}
+  .entryBtn:active{background:rgba(94,234,212,0.18);}
+
+  /* ===== RUN.world profile badge (signed-in player) ===== */
+  .profile-badge{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:16px;
+    font-family:'Inter',sans-serif;font-size:13px;color:var(--text-dim);letter-spacing:0.3px;
+    background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);border-radius:999px;
+    padding:6px 16px 6px 6px;}
+  .profile-badge.hidden{display:none;}
+  .profile-badge .pb-avatar{width:28px;height:28px;border-radius:50%;flex:none;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+    color:#04050a;font-weight:700;font-size:13px;
+    font-family:'Space Grotesk',sans-serif;border:1px solid rgba(255,255,255,0.22);position:relative;}
+  .profile-badge .pb-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .profile-badge .pb-name{color:var(--text);font-weight:600;}
+  .profile-badge .pb-guest{color:var(--text-dim);font-weight:400;}
+
+  /* ===== Global (RUN.world) leaderboard ===== */
+  .lb-btn-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+  .global-rank{font-family:'Inter',sans-serif;font-size:13px;color:var(--text-dim);margin:8px 0 2px;min-height:18px;}
+  .global-rank.pending{color:var(--text-dim);}
+  .global-rank.error{color:var(--danger);}
+  #leaderboard h1{font-size:28px;}
+  .lb-wrap{width:min(92vw,420px);}
+  .lb-list{max-height:min(48vh,340px);overflow-y:auto;overflow-x:hidden;
+    border:1px solid var(--glass-border);border-radius:14px;background:rgba(255,255,255,0.02);
+    margin:12px 0;text-align:left;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.18) transparent;}
+  .lb-list::-webkit-scrollbar{width:8px;}
+  .lb-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.18);border-radius:8px;}
+  .lb-status{font-family:'Inter',sans-serif;font-size:13px;color:var(--text-dim);padding:16px;text-align:center;}
+  .lb-status.error{color:var(--danger);}
+  .lb-row{display:flex;align-items:center;gap:10px;padding:8px 12px;
+    border-bottom:1px solid rgba(255,255,255,0.05);font-family:'Inter',sans-serif;font-size:13px;}
+  .lb-row:last-child{border-bottom:none;}
+  .lb-row.me{background:rgba(244,114,182,0.10);}
+  .lb-row .lb-rank{width:32px;flex:none;color:var(--text-dim);text-align:right;font-family:'JetBrains Mono',monospace;}
+  .lb-row.me .lb-rank{color:var(--pink);}
+  .lb-row .lb-avatar{width:26px;height:26px;border-radius:50%;flex:none;position:relative;
+    overflow:hidden;color:#04050a;font-weight:700;font-size:11px;
+    font-family:'Space Grotesk',sans-serif;display:flex;align-items:center;justify-content:center;}
+  .lb-row .lb-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .lb-row .lb-name{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;}
+  .lb-row.me .lb-name{color:var(--pink);font-weight:600;}
+  .lb-row .lb-score{flex:none;color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-weight:600;}
+  .lb-row.me .lb-score{color:var(--pink);}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="640" height="640"></canvas>
+  <div id="vig"></div>
+
+  <!-- TITLE -->
+  <div id="title" class="panel">
+    <div class="panel-inner">
+      <div class="profile-badge hidden"></div>
+      <h1>RUSKO'S PLANET</h1>
+      <div class="sub">// SURFACE BREACH — SECTOR XR-7</div>
+      <div class="topline" id="titleTop">TOP &nbsp;<span class="ini">AAA</span>&nbsp; <span class="v">000000</span></div>
+      <div class="controls">
+        MOVE &nbsp;<b>W A S D</b> &nbsp;/&nbsp; <span class="pad">L-STICK</span><br>
+        AIM + FIRE &nbsp;<b>&#8593;&#8592;&#8595;&#8594; ARROWS</b> &nbsp;/&nbsp; <span class="pad">R-STICK</span><br>
+        PAUSE &nbsp;<b>P</b> &nbsp;/&nbsp; <span class="pad">X BUTTON</span>
+      </div>
+      <div class="legend">
+        Destroy <b>4 HIVE NODES</b> to awaken the <b>APEX BOSS</b>.<br>
+        Smash rocks &amp; kill aliens for <b>WEAPON</b> + <b>SUIT</b> upgrades.<br>
+        Collect <b>ALIEN GEMS</b> to maximize your score.
+      </div>
+      <div class="lb-btn-row">
+        <button class="btn" id="startBtn">INSERT COIN &#9656; DEPLOY</button>
+        <button class="btn btn-ghost" id="leaderboardBtn">GLOBAL LEADERBOARD</button>
+      </div>
+      <div class="small" id="padHint" style="display:none;color:var(--amber);">&#9656; PRESS <b style="color:var(--cyan)">X</b> ON CONTROLLER TO DEPLOY</div>
+      <div class="small" id="padStatus">controller: not detected</div>
+      <div class="filebar">
+        local high scores: <button id="exportBtn">EXPORT .dat</button>
+        <button id="importBtn">IMPORT .dat</button>
+        <input type="file" id="importFile" accept=".dat,.txt,.json" style="display:none">
+      </div>
+    </div>
+  </div>
+
+  <!-- REVIVE OFFER (rewarded-ad continue) -->
+  <div id="reviveOffer" class="panel gameover hidden">
+    <div class="panel-inner">
+      <h1 style="font-size:26px;">SUIT INTEGRITY FAILING</h1>
+      <div class="sub" id="reviveScore">SCORE 000000</div>
+      <div class="legend" style="margin-top:2px;">
+        Watch a short video to repair your suit and continue with <b>50% health</b>.
+      </div>
+      <div class="lb-btn-row" style="margin-top:16px;">
+        <button class="btn" id="reviveWatchBtn">&#9654; WATCH AD &mdash; CONTINUE</button>
+        <button class="btn btn-ghost" id="reviveDeclineBtn">NO THANKS</button>
+      </div>
+      <div class="small" id="reviveStatus" style="color:var(--amber);"></div>
+      <div class="small" id="reviveCountdown"></div>
+    </div>
+  </div>
+
+  <!-- INITIALS ENTRY -->
+  <div id="entry" class="panel hidden">
+    <div class="panel-inner">
+      <h1 style="font-size:28px;">NEW HIGH SCORE</h1>
+      <div class="sub" id="entryScore">SCORE 000000</div>
+      <div style="margin:16px 0;">
+        <button id="entryUpBtn" class="entryBtn" style="display:block;margin:0 auto 8px;">▲</button>
+        <div class="entry" id="entryInitials"><span>A</span><span>A</span><span>A</span></div>
+        <button id="entryDownBtn" class="entryBtn" style="display:block;margin:8px auto 0;">▼</button>
+      </div>
+      <div style="display:flex;gap:16px;justify-content:center;margin:16px 0;">
+        <button id="entryLeftBtn" class="entryBtn">◄</button>
+        <button id="entryAcceptBtn" class="btn">SAVE</button>
+        <button id="entryRightBtn" class="entryBtn">►</button>
+      </div>
+      <div class="ehint">Use buttons to change letters and move initial / SPACE/ENTER = save</div>
+    </div>
+  </div>
+
+  <!-- GAME OVER -->
+  <div id="over" class="panel gameover hidden">
+    <div class="panel-inner">
+      <h1>SUIT BREACH</h1>
+      <div class="sub" id="finalScore">SCORE 000000</div>
+      <div class="global-rank" id="globalRankOver"></div>
+      <div class="hs-title">&#9656; LOCAL HIGH SCORES &#9656;</div>
+      <div class="hs" id="hsTable"></div>
+      <button class="btn btn-ghost" id="viewLbBtnOver">VIEW GLOBAL LEADERBOARD</button>
+      <div class="blink" id="overPrompt" style="cursor:pointer;margin-top:14px;">PRESS START</div>
+    </div>
+  </div>
+
+  <!-- WIN -->
+  <div id="win" class="panel win hidden">
+    <div class="panel-inner">
+      <h1>HIVE DESTROYED</h1>
+      <div class="sub" id="winScore">SCORE 000000</div>
+      <div class="global-rank" id="globalRankWin"></div>
+      <div class="hs-title">&#9656; LOCAL HIGH SCORES &#9656;</div>
+      <div class="hs" id="hsTableWin"></div>
+      <button class="btn btn-ghost" id="viewLbBtnWin">VIEW GLOBAL LEADERBOARD</button>
+      <div class="blink" id="winPrompt" style="cursor:pointer;margin-top:14px;">PRESS START</div>
+    </div>
+  </div>
+
+  <!-- GLOBAL LEADERBOARD -->
+  <div id="leaderboard" class="panel hidden">
+    <div class="panel-inner">
+      <div class="profile-badge hidden"></div>
+      <h1>GLOBAL LEADERBOARD</h1>
+      <div class="sub" id="lbSubtitle">TOP 100 &mdash; RUSKO'S PLANET</div>
+      <div class="lb-wrap">
+        <div class="lb-list" id="lbList"><div class="lb-status" id="lbStatus">LOADING...</div></div>
+      </div>
+      <button class="btn btn-ghost" id="lbBackBtn">BACK</button>
+    </div>
+  </div>
+
+  <!-- PAUSED -->
+  <div id="paused" class="panel hidden">
+    <div class="panel-inner">
+      <h1 style="font-size:36px;">PAUSED</h1>
+      <div class="blink">PRESS P / START</div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

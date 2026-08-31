@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>The Rusko Files</title>
-<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -22,7 +21,7 @@
   <section id="screen-intro" class="screen">
     <div class="intro-photo-wrap">
       <div id="intro-frame" class="photo-frame">
-        <img id="intro-photo-img" src="images/opening_phone_call.png" alt="A phone rings in a dark office" class="intro-photo">
+        <img id="intro-photo-img" src="opening_phone_call.png" alt="A phone rings in a dark office" class="intro-photo">
       </div>
     </div>
     <div class="intro-box">
@@ -87,9 +86,9 @@
     <p class="board-hint">Click a piece of evidence, then click a suspect to pin a connection. Click again to remove it.</p>
     <div id="board-wrap">
       <div id="board-frame">
-        <img src="images/Corkboard.png" alt="" id="board-bg">
+        <img src="" alt="" id="board-bg">
         <svg id="board-svg"></svg>
-        <div id="board-victim" class="board-photo victim-photo"></div>
+        <div id="board-suspects-tag" class="board-tag">Suspects</div>
         <div id="board-suspects" class="board-layer"></div>
         <div id="board-evidence" class="board-layer"></div>
       </div>
@@ -117,6 +116,6 @@
 
 </main>
 
-<script src="game.js"></script>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>

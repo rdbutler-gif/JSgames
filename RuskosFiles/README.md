@@ -1,18 +1,28 @@
-# The Rusko Files — v0.1 Playable
+# The Rusko Files — v0.2, packaged for RUN.world
 
-## Setup
+## Setup (npm + Vite)
 
-Drop these three files directly into your project root, next to your existing `images` folder:
+The game is now an npm/Vite project so it can ship on RUN.world through the
+`@series-inc/rundot-game-sdk`. It is no longer a double-click-`index.html`
+static page — `game.js` and the old root `style.css` are retired in favor of
+`src/main.js` and `src/style.css`. **You can delete `game.js` from the project
+root** (it's dead weight now — left in place rather than deleted from here
+since this tool can't delete files on your drive); everything it did now
+lives in `src/main.js`, with the RUN SDK wiring added on top.
+
+From the project folder (`C:\Users\Russ B\JSgames\RuskosFiles`), with
+[Node.js 20+](https://nodejs.org/en/download) installed:
 
 ```
-C:\Users\Russ B\JSgames\RuskosFiles\
-  index.html
-  style.css
-  game.js
-  images\            <- already there, no changes needed
+npm install
+npm run dev
 ```
 
-Then just double-click `index.html` to open it in a browser. No server, no build step, no dependencies.
+`npm run dev` starts a local Vite dev server (it prints a `http://localhost`
+URL — open that in a browser). SDK calls run against deterministic mocks
+locally, so you can play through the whole case normally.
+
+When you're ready to publish, see **Deploying to RUN.world** below.
 
 It's currently wired to the exact filenames from your folder listing:
 
@@ -51,11 +61,72 @@ If you'd rather it be Cole or Delia, that's a straightforward swap:
 
 **Suspect and location art:** only Study and the 4 portraits have images right now, since that's what you've generated. Every other location (The Anchor, Cole's Office, Eleanor's Flat, Delia's Apartment) currently runs on text description only — that's intentional per the "nice-to-have" list, not a bug. Drop a background image in later and set `image: 'filename.jpg'` on that location object in `game.js` to add it.
 
-## Known rough edges (v0.1, not bugs so much as "not done yet")
+## Known rough edges (not bugs so much as "not done yet")
 
-- No save/load — closing the tab resets progress. Easy to add via `localStorage` if you want it.
 - Corkboard evidence slots are laid out in a fixed grid in the order clues are found, not hand-placed per item — works fine but isn't hand-tuned for visual composition.
 - Bluff dialogue is static flavor text, not conditional on what you've already found. Noted above as a deliberate scope cut, not an oversight.
 - Mobile layout is functional but not polished — corkboard especially could use tuning on narrow screens.
 
 Take it for a spin and tell me what feels off — happy to adjust pacing, add the missing location art hooks, or rebalance how much evidence it takes to close the case clean vs. messy.
+
+## Deploying to RUN.world
+
+This uses your own RUN.world account and the `rundot` CLI, both of which
+you already have set up on this machine.
+
+1. **Log in (once):**
+   ```
+   rundot login
+   ```
+2. **Initialize the game (once, first deploy only):**
+   ```
+   rundot init
+   ```
+   This walks you through naming the game and writes a `game.config.prod.json`
+   with your game ID and build folder (`./dist`). Skip this on later deploys —
+   it's already configured after the first run.
+3. **Build:**
+   ```
+   npm run build
+   ```
+   This produces the `dist/` folder rundot deploys from. Run this before every
+   deploy — `rundot deploy` ships whatever's currently in `dist/`, not your
+   source files.
+4. **Deploy:**
+   ```
+   rundot deploy
+   ```
+   Ships an unlisted, shareable link by default. Add `--public` to make it
+   discoverable in RUN's Explore/search, `--changelog "notes"` to attach
+   player-facing patch notes, and `--bump major|minor|patch` to control
+   versioning (defaults to minor). `rundot game set-keywords "noir,mystery,detective"`
+   (or similar tags) helps with discoverability once you publish.
+
+Useful checks: `rundot list-games` lists everything you've deployed;
+`rundot game info` prints details for whichever game is configured in the
+current folder.
+
+## What was added for RUN.world (v0.2)
+
+- **`@series-inc/rundot-game-sdk` integration** in `src/main.js`: the SDK
+  auto-initializes on import, with a global `unhandledrejection`/`error`
+  safety net that logs to analytics instead of letting a stray SDK rejection
+  crash the game back to the RUN catalog.
+- **Analytics**: every meaningful action (examining a clue, talking to a
+  suspect, asking Sal something, pinning/unpinning a board connection,
+  attempting a confrontation, reaching an ending) fires a custom event. Two
+  funnels are registered on top of that — a boot funnel
+  (`load_started` → `load_finished` → `first_tap`) and a 5-step investigation
+  funnel (`case_started` → `first_clue_found` → `all_suspects_visited` →
+  `board_connection_made` → `case_closed`) — so the RUN dashboard can show
+  where players drop off, not just raw event counts.
+- **Save/restore via `appStorage`**: the game iframe on RUN.world can't use
+  `localStorage`, so progress now saves through the SDK's cloud-synced
+  `appStorage` on `onSleep`/`onPause` (backgrounding or closing the game) and
+  restores automatically on the next launch, dropping you back at the map
+  instead of the intro if you'd already started a case. "Start Over" clears
+  the save.
+- **Vite project structure**: `index.html` now loads `src/main.js` as a
+  module; `vite.config.js` sets `base: './'` (required since RUN serves games
+  from a subdirectory) and points `publicDir` at the existing `images/`
+  folder so none of the art had to move.
