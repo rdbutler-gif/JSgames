@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RUN CLI Starter Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --ink: #16202a;
+  --muted: #566573;
+  --line: #dbe1e7;
+  --accent: #0b7a6b;
+  --accent-ink: #ffffff;
+  --accent-soft: #dff2ee;
+  --warn-soft: #fdf1d8;
+  --warn-line: #e3c576;
+  --term-bg: #10171e;
+  --term-ink: #dbe6ee;
+  --term-dim: #7f93a3;
+  --term-line: #263441;
+  --font-body: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0d1318;
+    --surface: #151d24;
+    --ink: #e6edf3;
+    --muted: #9aabb9;
+    --line: #27333d;
+    --accent: #3cc4ae;
+    --accent-ink: #06211c;
+    --accent-soft: #123a33;
+    --warn-soft: #3a3016;
+    --warn-line: #7a6424;
+    --term-bg: #0a0f14;
+    --term-line: #202c37;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1318;
+  --surface: #151d24;
+  --ink: #e6edf3;
+  --muted: #9aabb9;
+  --line: #27333d;
+  --accent: #3cc4ae;
+  --accent-ink: #06211c;
+  --accent-soft: #123a33;
+  --warn-soft: #3a3016;
+  --warn-line: #7a6424;
+  --term-bg: #0a0f14;
+  --term-line: #202c37;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  padding-inline: 16px;
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 760px; margin-inline: auto; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.2; margin: 0; }
+p { margin: 0; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code.i {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--accent-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  word-break: break-word;
+}
+
+/* header */
+.head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+h1 { font-size: clamp(30px, 6vw, 44px); font-weight: 700; letter-spacing: -0.02em; }
+.lede { color: var(--muted); font-size: 18px; max-width: 60ch; }
+
+/* os switch */
+.osbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  background: var(--bg);
+  padding-block: 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.osbar .lbl { font-size: 14px; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button {
+  font: inherit; font-size: 14px; font-weight: 500;
+  padding: 7px 18px; border: 0; background: transparent; color: var(--ink); cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+:root[data-os="win"] [data-os="mac"],
+:root[data-os="mac"] [data-os="win"] { display: none !important; }
+
+/* overview */
+.overview { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 40px; }
+.overview h2 { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.overview ul { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 20px; }
+.overview li { font-size: 15px; display: flex; gap: 8px; }
+.overview li span:first-child { font-family: var(--font-mono); color: var(--accent); }
+
+/* steps */
+.steps { display: flex; flex-direction: column; gap: 40px; }
+.step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 0 16px; }
+.num {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink);
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-weight: 500; font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.step h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; padding-top: 3px; }
+.body { grid-column: 2; display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+.body ul, .body ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.tag { font-size: 12px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+.expect { font-size: 14px; color: var(--muted); border-left: 3px solid var(--line); padding-left: 12px; }
+.note { background: var(--warn-soft); border: 1px solid var(--warn-line); border-radius: 8px; padding: 10px 14px; font-size: 14.5px; }
+
+/* code */
+.code { position: relative; background: var(--term-bg); border: 1px solid var(--term-line); border-radius: 8px; }
+.code pre { margin: 0; padding: 14px 84px 14px 16px; overflow-x: auto; }
+.code code { font-family: var(--font-mono); font-size: 13.5px; line-height: 1.55; color: var(--term-ink); white-space: pre; }
+.code .cm { color: var(--term-dim); }
+.copy {
+  position: absolute; top: 8px; right: 8px;
+  font: inherit; font-size: 12px; font-weight: 500;
+  padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--term-ink); border: 1px solid var(--term-line);
+}
+.copy:hover { border-color: var(--term-dim); }
+
+/* tables */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { min-width: 200px; }
+td code { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+
+.after { margin-top: 56px; display: flex; flex-direction: column; gap: 16px; }
+.after h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+.foot { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+
+@media (max-width: 520px) {
+  .step { grid-template-columns: 36px minmax(0, 1fr); gap: 0 12px; }
+  .step h2 { font-size: 19px; }
+  .lede { font-size: 16.5px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .copy, .seg button { transition: background 0.15s, border-color 0.15s; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="head">
+    <div class="eyebrow">Windows &amp; Mac · fresh machine</div>
+    <h1>RUN CLI Starter Guide</h1>
+    <p class="lede">Go from a computer with nothing installed to a deployed RUN.world game. You will install Node.js, Git, the RUN CLI and Claude Code, add the RUN AI skills, then build and ship a game from the terminal.</p>
+  </header>
+
+  <div class="osbar" role="group" aria-label="Choose your operating system">
+    <span class="lbl">Show commands for</span>
+    <div class="seg">
+      <button type="button" id="b-win" aria-pressed="true">Windows</button>
+      <button type="button" id="b-mac" aria-pressed="false">Mac</button>
+    </div>
+  </div>
+
+  <section class="overview" aria-labelledby="ov">
+    <h2 id="ov">What you'll install</h2>
+    <ul>
+      <li><span>Node.js</span><span>runs your game's dev server (v20+)</span></li>
+      <li><span>Git</span><span>required by Claude Code on Windows</span></li>
+      <li><span>rundot</span><span>the RUN.world CLI: login, init, deploy</span></li>
+      <li><span>claude</span><span>Claude Code, the AI that writes the game</span></li>
+      <li><span>skills</span><span>RUN's AI skills, via <code class="i">rundot ai setup</code></span></li>
+    </ul>
+  </section>
+
+  <main class="steps">
+
+    <section class="step" id="terminal">
+      <div class="num">1</div>
+      <h2>Open a terminal</h2>
+      <div class="body">
+        <div data-os="win">
+          <ol>
+            <li>Press the Windows key and type <code class="i">PowerShell</code>.</li>
+            <li>Click <strong>Windows PowerShell</strong> (Windows Terminal also works).</li>
+            <li>You'll see a prompt like <code class="i">PS C:\Users\You&gt;</code>. Type every command below here, then press Enter.</li>
+          </ol>
+        </div>
+        <div data-os="mac">
+          <ol>
+            <li>Press <strong>Cmd + Space</strong> and type <code class="i">Terminal</code>.</li>
+            <li>Press Enter.</li>
+            <li>You'll see a prompt ending in <code class="i">%</code>. Type every command below here, then press Enter.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" id="node">
+      <div class="num">2</div>
+      <h2>Install Node.js</h2>
+      <div class="body">
+        <p>Node runs your game's dev server and installs its packages. It includes <code class="i">npm</code>. You need version 20 or higher.</p>
+        <ol>
+          <li>Go to <a href="https://nodejs.org/en/download" target="_blank" rel="noopener">nodejs.org/en/download</a> and download the <strong>LTS</strong> installer for your system.</li>
+          <li>Run the installer and accept the defaults.</li>
+          <li><strong>Close and reopen your terminal.</strong> A terminal that was already open can't see new installs.</li>
+        </ol>
+        <p>Verify:</p>
+        <div class="code"><pre><code>node --version
+npm --version</code></pre><button class="copy" type="button">Copy</button></div>
+        <p class="expect"><code class="i">node</code> should print <code class="i">v20</code> or higher. Version 22 or higher is safer, because some RUN features need it.</p>
+      </div>
+    </section>
+
+    <section class="step" id="git">
+      <div class="num">3</div>
+      <h2>Install Git</h2>
+      <div class="body">
+        <p>Claude Code needs Git on Windows, some RUN features use it, and you'll want it to save your work.</p>
+        <div data-os="win">
+          <p>Download it from <a href="https://git-scm.com/download/win" target="_blank" rel="noopener">git-scm.com/download/win</a> and accept the defaults, or run:</p>
+          <div class="code" style="margin-top:12px"><pre><code>winget install Git.Git</code></pre><button class="copy" type="button">Copy</button></div>
+        </div>
+        <div data-os="mac">
+          <p>Check whether it's already there:</p>
+          <div class="code" style="margin-top:12px"><pre><code>git --version</code></pre><button class="copy" type="button">Copy</button></div>
+          <p style="margin-top:12px">If Git is missing, macOS offers to install the developer tools. Click <strong>Install</strong>.</p>
+        </div>
+        <p>Reopen your terminal, then run <code class="i">git --version</code> to confirm.</p>
+      </div>
+    </section>
+
+    <section class="step" id="rundot">
+      <div class="num">4</div>
+      <h2>Install the RUN.world CLI</h2>
+      <div class="body">
+        <div data-os="win">
+          <div class="tag">PowerShell</div>
+          <div class="code"><pre><code>irm https://github.com/series-ai/rundot-cli-releases/releases/latest/download/install.ps1 | iex</code></pre><button class="copy" type="button">Copy</button></div>
+        </div>
+        <div data-os="mac">
+          <div class="tag">Terminal</div>
+          <div class="code"><pre><code>curl -fsSL https://github.com/series-ai/rundot-cli-releases/releases/latest/download/install.sh | bash</code></pre><button class="copy" type="button">Copy</button></div>
+        </div>
+        <p><strong>Close and reopen your terminal</strong>, then verify:</p>
+        <div class="code"><pre><code>rundot --help</code></pre><button class="copy" type="button">Copy</button></div>
+        <p class="expect">You should see a list of commands. If you get "command not found" or "not recognized", restart the terminal again.</p>
+      </div>
+    </section>
+
+    <section class="step" id="claude">
+      <div class="num">5</div>
+      <h2>Install Claude Code</h2>
+      <div class="body">
+        <p>Claude Code is the AI coding assistant that writes and edits your game. It needs a Claude subscription (Pro or Max) or an Anthropic API account.</p>
+        <div data-os="win">
+          <div class="tag">PowerShell</div>
+          <div class="code"><pre><code>irm https://claude.ai/install.ps1 | iex</code></pre><button class="copy" type="button">Copy</button></div>
+        </div>
+        <div data-os="mac">
+          <div class="tag">Terminal</div>
+          <div class="code"><pre><code>curl -fsSL https://claude.ai/install.sh | bash</code></pre><button class="copy" type="button">Copy</button></div>
+        </div>
+        <p>Or, on either system with Node installed:</p>
+        <div class="code"><pre><code>npm install -g @anthropic-ai/claude-code</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>Reopen your terminal and verify with <code class="i">claude --version</code>. The first time you run <code class="i">claude</code>, it opens a browser window so you can log in.</p>
+        <p class="note">Install commands change over time. If one fails, check the <a href="https://docs.claude.com/en/docs/claude-code/overview" target="_blank" rel="noopener">Claude Code docs</a> for the current one.</p>
+      </div>
+    </section>
+
+    <section class="step" id="login">
+      <div class="num">6</div>
+      <h2>Log in to RUN.world</h2>
+      <div class="body">
+        <div class="code"><pre><code>rundot login</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>A browser window opens. Sign in with your RUN.world account, then come back to the terminal.</p>
+      </div>
+    </section>
+
+    <section class="step" id="folder">
+      <div class="num">7</div>
+      <h2>Make a project folder</h2>
+      <div class="body">
+        <div class="code"><pre><code>mkdir my-first-game
+cd my-first-game</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>This creates a folder and moves you into it. Stay in it for every step that follows: <code class="i">rundot</code> and <code class="i">claude</code> both act on the folder you're currently in.</p>
+      </div>
+    </section>
+
+    <section class="step" id="skills">
+      <div class="num">8</div>
+      <h2>Install the AI skills</h2>
+      <div class="body">
+        <p>Run this from inside your project folder:</p>
+        <div class="code"><pre><code>rundot ai setup</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>It detects which coding agent you use (Claude Code, here) and installs all the RUN skills for it. The skills teach Claude how the RUN SDK works and how to add analytics, ads, saves, shops, notifications, multiplayer and deploys.</p>
+        <p class="expect">Add <code class="i">--yes</code> to skip the confirmation prompts. Re-run the command after updating the CLI to pick up new skills.</p>
+      </div>
+    </section>
+
+    <section class="step" id="start">
+      <div class="num">9</div>
+      <h2>Start Claude Code in your project</h2>
+      <div class="body">
+        <div class="code"><pre><code>claude</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>Approve the "trust this folder" prompt. Now you can talk to it in plain English. Some starter prompts:</p>
+        <div class="code"><pre><code>Scaffold a new RUN game: a simple tap-to-score game, portrait, mobile-first.</code></pre><button class="copy" type="button">Copy</button></div>
+        <div class="code"><pre><code>What should I work on next?</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>The <code class="i">rundot-new-game</code> skill sets up a complete project (Vite, Pixi.js, React, and the correct SDK boot order), so you don't assemble anything by hand. The second prompt triggers the <code class="i">rundot-game-coach</code> skill, which suggests your next best move.</p>
+        <p class="expect">Prefer a template? The RUN docs link three: 2D Pixi, 3D React, and a UI-heavy 2D React game.</p>
+      </div>
+    </section>
+
+    <section class="step" id="init">
+      <div class="num">10</div>
+      <h2>Install dependencies and register the game</h2>
+      <div class="body">
+        <p>Ask Claude to run these for you, or exit it (<code class="i">/exit</code>) and run them yourself:</p>
+        <div class="code"><pre><code>npm install
+rundot init</code></pre><button class="copy" type="button">Copy</button></div>
+        <p><code class="i">rundot init</code> asks you to name your game and creates a <code class="i">game.config.prod.json</code> file that holds your game ID and build settings.</p>
+      </div>
+    </section>
+
+    <section class="step" id="dev">
+      <div class="num">11</div>
+      <h2>Test it locally</h2>
+      <div class="body">
+        <div class="code"><pre><code>npm run dev</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>The terminal prints a local address such as <code class="i">http://localhost:5173</code>. Open it in your browser to play. Press <strong>Ctrl + C</strong> in the terminal to stop the server.</p>
+      </div>
+    </section>
+
+    <section class="step" id="deploy">
+      <div class="num">12</div>
+      <h2>Deploy</h2>
+      <div class="body">
+        <div class="code"><pre><code>npm run build
+rundot deploy</code></pre><button class="copy" type="button">Copy</button></div>
+        <p>You get a shareable link that works on the web or in the RUN.world app. It's unlisted by default, so nobody finds the game unless you share the link.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <section class="after" id="updating">
+    <h2>Keeping things updated</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>What</th><th>Command</th></tr></thead>
+        <tbody>
+          <tr><td>Update the RUN CLI</td><td><code>rundot update</code></td></tr>
+          <tr><td>Update the RUN SDK (inside a project)</td><td><code>npm install @series-inc/rundot-game-sdk@latest</code></td></tr>
+          <tr><td>Update Claude Code</td><td><code>claude update</code></td></tr>
+          <tr><td>Reinstall skills after a CLI update</td><td><code>rundot ai setup</code></td></tr>
+          <tr><td>Help for any command</td><td><code>rundot &lt;command&gt; --help</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="after" id="trouble">
+    <h2>Common problems</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>"command not found" or "not recognized"</td><td>Close and reopen the terminal. This fixes most cases.</td></tr>
+          <tr data-os="win"><td>PowerShell blocks the install script</td><td>Run <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code>, then retry.</td></tr>
+          <tr><td>Deploy fails</td><td>Run <code>rundot login</code> again, and make sure you ran <code>rundot init</code> in this folder.</td></tr>
+          <tr><td>Commands act on the wrong project</td><td>Run <code>pwd</code> to see which folder you're in, and <code>cd</code> into your game's folder.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="foot">RUN.world CLI commands and the <code class="i">rundot ai setup</code> command were checked against the RUN.world developer docs and the CLI's own help output.</p>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var bw = document.getElementById('b-win');
+  var bm = document.getElementById('b-mac');
+  function set(os) {
+    root.setAttribute('data-os', os);
+    bw.setAttribute('aria-pressed', os === 'win' ? 'true' : 'false');
+    bm.setAttribute('aria-pressed', os === 'mac' ? 'true' : 'false');
+    try { localStorage.setItem('rundot-guide-os', os); } catch (e) {}
+  }
+  var os = null;
+  try { os = localStorage.getItem('rundot-guide-os'); } catch (e) {}
+  if (os !== 'win' && os !== 'mac') {
+    os = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent) ? 'mac' : 'win';
+  }
+  set(os);
+  bw.addEventListener('click', function () { set('win'); });
+  bm.addEventListener('click', function () { set('mac'); });
+
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var code = btn.parentNode.querySelector('code');
+      var text = code.textContent;
+      function done() {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+      }
+      function fallback() {
+        var r = document.createRange();
+        r.selectNodeContents(code);
+        var s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+        btn.textContent = 'Press Ctrl+C';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

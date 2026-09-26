@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RUN.world Dev Resources</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --ink: #16202a;
+  --muted: #566573;
+  --line: #dbe1e7;
+  --accent: #0b7a6b;
+  --accent-soft: #dff2ee;
+  --font-body: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0d1318;
+    --surface: #151d24;
+    --ink: #e6edf3;
+    --muted: #9aabb9;
+    --line: #27333d;
+    --accent: #3cc4ae;
+    --accent-soft: #123a33;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  padding: 40px 16px 64px;
+}
+.wrap { max-width: 760px; margin-inline: auto; }
+a { color: inherit; text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header { margin-bottom: 36px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+h1 { margin: 8px 0 10px; font-size: clamp(30px, 6vw, 42px); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); font-size: 18px; max-width: 58ch; }
+
+h2 { margin: 0 0 14px; font-size: 13px; font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+section { margin-bottom: 36px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.card {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px 18px;
+}
+.card h3 { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.card .tag { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+a.card:hover { border-color: var(--accent); }
+a.card .go { margin-top: auto; padding-top: 8px; font-size: 14px; font-weight: 600; color: var(--accent); }
+.card.soon { border-style: dashed; background: transparent; }
+.card.soon h3, .card.soon .tag { color: var(--muted); }
+
+footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (prefers-reduced-motion: no-preference) {
+  .card { transition: border-color 0.15s; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Games by Rusko</div>
+    <h1>RUN.world Dev Resources</h1>
+    <p class="lede">Guides and notes for building and shipping games on RUN.world.</p>
+  </header>
+
+  <section>
+    <h2>Getting started</h2>
+    <div class="grid">
+      <a class="card" href="RUN-CLI-Starter-Guide.html">
+        <span class="tag">Guide</span>
+        <h3>RUN CLI Starter Guide</h3>
+        <p>Set up a fresh Windows or Mac machine with Node.js, Git, the RUN CLI and Claude Code, then build and deploy a game.</p>
+        <span class="go">Open the guide &rarr;</span>
+      </a>
+    </div>
+  </section>
+
+  <section>
+    <h2>More resources</h2>
+    <div class="grid">
+      <!--
+        To add a resource, copy one of these cards and change the link, tag, title and text:
+
+        <a class="card" href="your-page.html">
+          <span class="tag">Guide</span>
+          <h3>Title</h3>
+          <p>One sentence about it.</p>
+          <span class="go">Open &rarr;</span>
+        </a>
+      -->
+      <div class="card soon">
+        <span class="tag">Coming soon</span>
+        <h3>Deploying &amp; updating a game</h3>
+        <p>Build, deploy and push updates with <code>rundot deploy</code>.</p>
+      </div>
+      <div class="card soon">
+        <span class="tag">Coming soon</span>
+        <h3>Using the RUN AI skills</h3>
+        <p>What each skill installed by <code>rundot ai setup</code> does and when to ask for it.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>Made by Rusko.</footer>
+</div>
+</body>
+</html>
