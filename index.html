@@ -287,11 +287,6 @@
     }
     .stat-strip span { display: flex; align-items: center; gap: 8px; }
     .stat-strip .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
-
-    .scroll-cue { margin-top: 44px; color: var(--text-dimmer); animation: bob 2.2s ease-in-out infinite; }
-    .scroll-cue svg { width: 18px; height: 18px; }
-    @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
-
     /* ============ SECTION CHROME ============ */
     section { padding-top: 78px; }
     section#new { padding-top: 20px; }
@@ -403,6 +398,50 @@
     .card-title { font-family: 'Orbitron', 'Space Grotesk', sans-serif; font-size: 0.98rem; font-weight: 700; margin: 0; letter-spacing: 0.02em; }
     .card-desc { font-size: 0.82rem; color: var(--text-dim); margin: 0; flex: 1; }
     .card-tag { font-family: 'Orbitron', 'Space Grotesk', sans-serif; font-size: 0.62rem; color: var(--cyan); letter-spacing: 0.12em; margin-top: 8px; }
+
+    /* ============ TRAILERS ============ */
+    .trailer-link {
+        align-self: flex-start;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        padding: 4px 0;
+        font-family: 'Orbitron', 'Space Grotesk', sans-serif;
+        font-size: 0.66rem;
+        font-weight: 600;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--magenta);
+        cursor: pointer;
+        transition: color 0.2s ease;
+    }
+    .feat-body .trailer-link { font-size: 0.74rem; }
+    .trailer-link svg { width: 12px; height: 12px; }
+    .trailer-link:hover, .trailer-link:focus-visible { color: var(--text); outline: none; text-decoration: underline; text-underline-offset: 4px; }
+    .trailer-modal {
+        width: min(960px, calc(100vw - 32px));
+        padding: 0;
+        border: 1px solid var(--line-hi);
+        border-radius: 10px;
+        background: #000;
+        overflow: visible;
+    }
+    .trailer-modal::backdrop { background: rgba(3,5,8,0.85); backdrop-filter: blur(4px); }
+    .trailer-modal video { display: block; width: 100%; aspect-ratio: 16/9; border-radius: 10px; background: #000; }
+    .trailer-close {
+        position: absolute;
+        top: -44px; right: 0;
+        width: 36px; height: 36px;
+        border: 1px solid var(--line-hi);
+        border-radius: 50%;
+        background: var(--panel);
+        color: var(--text);
+        font-size: 1.2rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .trailer-close:hover, .trailer-close:focus-visible { border-color: var(--magenta); color: var(--magenta); outline: none; }
 
     /* ============ ARCHIVE (Null Sector) ============ */
     .archive-banner { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); margin-bottom: 24px; }
@@ -523,13 +562,8 @@
 
         <div class="stat-strip">
             <span>23 games live on RUN.world<span class="dot"></span></span>
-            <span>browser-native, no installs<span class="dot"></span></span>
-            <span>Tulsa, OK</span>
+            <span>browser-native, no installs</span>
         </div>
-
-        <a class="scroll-cue" href="#new" aria-label="Scroll to games">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-        </a>
     </header>
 
     <section id="new">
@@ -547,6 +581,7 @@
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/monster-mansion-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="feat-card" href="https://w.run/rusko/mr-buttons-the-haunting-4f9vk2dx" target="_blank" rel="noopener">
@@ -560,6 +595,7 @@
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/mr-buttons-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="feat-card" href="https://w.run/rusko/monster-match" target="_blank" rel="noopener">
@@ -573,6 +609,7 @@
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/monster-match-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
         </div>
@@ -588,6 +625,7 @@
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/order-up-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="feat-card" href="https://w.run/rusko/flipper" target="_blank" rel="noopener">
@@ -601,6 +639,7 @@
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/flipper-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="feat-card" href="https://w.run/rusko/wild-safari-match" target="_blank" rel="noopener">
@@ -614,6 +653,7 @@
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/wild-safari-match-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
         </div>
@@ -629,6 +669,7 @@
                     <p class="card-title chrome-text">Dynasty Quest</p>
                     <p class="card-desc">A real-time strategy epic. Build a castle, raise an army, and conquer a seven-chapter campaign or battle friends online.</p>
                     <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/dynasty-quest-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/blown-away" target="_blank" rel="noopener">
@@ -637,6 +678,7 @@
                     <p class="card-title chrome-text">Blown Away</p>
                     <p class="card-desc">A wild storm and nothing but an umbrella. Ride the gusts across rain-soaked rooftops and dive for gold. A new storm blows in every day.</p>
                     <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/blown-away-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/oodles-of-doodles" target="_blank" rel="noopener">
@@ -717,6 +759,7 @@
                     <p class="card-title chrome-text">Bloom Tower</p>
                     <p class="card-desc">Climb, build, and survive. Play it now on RUN.world.</p>
                     <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/bloom-tower-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/ruskos-void" target="_blank" rel="noopener">
@@ -906,5 +949,41 @@
     </footer>
 
 </div>
+
+<dialog class="trailer-modal" id="trailer-modal" aria-label="Game trailer">
+    <button class="trailer-close" type="button" aria-label="Close trailer">&times;</button>
+    <video controls playsinline preload="none"></video>
+</dialog>
+
+<script>
+    (function () {
+        var modal = document.getElementById('trailer-modal');
+        var video = modal.querySelector('video');
+
+        function openTrailer(e) {
+            // Trailer links sit inside the card's <a>, so keep the click from opening the game.
+            e.preventDefault();
+            e.stopPropagation();
+            video.src = e.currentTarget.dataset.trailer;
+            modal.showModal();
+            video.play().catch(function () {});
+        }
+
+        document.querySelectorAll('.trailer-link').forEach(function (link) {
+            link.addEventListener('click', openTrailer);
+            link.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') openTrailer(e);
+            });
+        });
+
+        modal.querySelector('.trailer-close').addEventListener('click', function () { modal.close(); });
+        modal.addEventListener('click', function (e) { if (e.target === modal) modal.close(); });
+        modal.addEventListener('close', function () {
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+        });
+    })();
+</script>
 </body>
 </html>
