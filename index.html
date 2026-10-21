@@ -10,6 +10,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Games by Rusko</title>
 <meta name="description" content="Browser games and experiments by Russ Butler — play instantly, no installs.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Games by Rusko">
+<meta property="og:title" content="Games by Rusko">
+<meta property="og:description" content="23 browser games by Russ Butler, live on RUN.world — horror, pinball, puzzles, strategy and more. Play instantly, no installs.">
+<meta property="og:url" content="https://gamesbyrusko.com/">
+<meta property="og:image" content="https://gamesbyrusko.com/images/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Games by Rusko logo above six game thumbnails">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@GamesByRusko">
+<meta name="twitter:title" content="Games by Rusko">
+<meta name="twitter:description" content="23 browser games by Russ Butler, live on RUN.world — play instantly, no installs.">
+<meta name="twitter:image" content="https://gamesbyrusko.com/images/og-image.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -392,7 +406,7 @@
         box-shadow: 0 10px 28px -14px rgba(42,107,255,0.4), 0 0 0 1px rgba(107,183,255,0.12);
         outline: none;
     }
-    .card-media { aspect-ratio: 1/1; overflow: hidden; background: #05070a; }
+    .card-media { position: relative; aspect-ratio: 1/1; overflow: hidden; background: #05070a; }
     .card-media img { width: 100%; height: 100%; object-fit: cover; }
     .card-body { padding: 16px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
     .card-title { font-family: 'Orbitron', 'Space Grotesk', sans-serif; font-size: 0.98rem; font-weight: 700; margin: 0; letter-spacing: 0.02em; }
@@ -417,6 +431,32 @@
         transition: color 0.2s ease;
     }
     .feat-body .trailer-link { font-size: 0.74rem; }
+    .section-trailer { margin: 0 0 18px; }
+    .reel-btn {
+        align-self: center;
+        margin-top: 30px;
+        padding: 10px 20px;
+        border: 1px solid var(--magenta);
+        border-radius: 999px;
+        font-size: 0.72rem;
+        box-shadow: 0 0 18px -6px rgba(255,120,200,0.6);
+    }
+    .reel-btn:hover, .reel-btn:focus-visible { text-decoration: none; background: rgba(255,120,200,0.1); }
+    .daily-badge {
+        position: absolute;
+        top: 14px; right: 14px;
+        z-index: 2;
+        font-family: 'Orbitron', 'Space Grotesk', sans-serif;
+        font-size: 0.62rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        color: #06121a;
+        background: var(--cyan);
+        padding: 5px 10px;
+        border-radius: 999px;
+        box-shadow: 0 0 16px rgba(120,200,255,0.5);
+    }
+    .card-media .daily-badge { top: 10px; right: 10px; font-size: 0.56rem; padding: 4px 8px; }
     .trailer-link svg { width: 12px; height: 12px; }
     .trailer-link:hover, .trailer-link:focus-visible { color: var(--text); outline: none; text-decoration: underline; text-underline-offset: 4px; }
     .trailer-modal {
@@ -510,7 +550,7 @@
         letter-spacing: 0.14em;
         margin: 0;
     }
-    .footer-links { display: flex; gap: 24px; }
+    .footer-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 24px; }
     .footer-links a {
         display: flex;
         align-items: center;
@@ -564,11 +604,14 @@
             <span>23 games live on RUN.world<span class="dot"></span></span>
             <span>browser-native, no installs</span>
         </div>
+
+        <span class="reel-btn trailer-link" role="button" tabindex="0" data-trailer="./videos/gamesbyrusko-reel.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch the Reel</span>
     </header>
 
     <section id="new">
         <div class="section-label chrome-text">Just Dropped</div>
         <p class="section-sub">Three Monster-Mash game jam entries, a rebuilt Order Up!, 3D pinball and a safari match-3, fresh on RUN.world.</p>
+        <span class="trailer-link section-trailer" role="button" tabindex="0" data-trailer="./videos/monster-mash-trio-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch the Monster Mash trio trailer</span>
         <div class="featured-grid">
             <a class="feat-card" href="https://w.run/rusko/monster-mansion" target="_blank" rel="noopener">
                 <div class="feat-media">
@@ -617,6 +660,7 @@
             <a class="feat-card" href="https://w.run/rusko/order-up" target="_blank" rel="noopener">
                 <div class="feat-media">
                     <span class="new-badge">NEW &amp; REVISED</span>
+                    <span class="daily-badge">DAILY</span>
                     <img src="./images/order-up-thumbnail.jpg" alt="Order Up!">
                 </div>
                 <div class="feat-body">
@@ -631,6 +675,7 @@
             <a class="feat-card" href="https://w.run/rusko/flipper" target="_blank" rel="noopener">
                 <div class="feat-media">
                     <span class="new-badge">NEW</span>
+                    <span class="daily-badge">DAILY</span>
                     <img src="./images/flipper-thumbnail.jpg" alt="Flipper">
                 </div>
                 <div class="feat-body">
@@ -664,7 +709,7 @@
         <p class="section-sub">The full lineup, live and playable right now — no download required.</p>
         <div class="card-grid">
             <a class="card" href="https://w.run/rusko/dynasty-quest" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/dynasty-quest-thumbnail.jpg" alt="Dynasty Quest"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/dynasty-quest-thumbnail.jpg" alt="Dynasty Quest"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Dynasty Quest</p>
                     <p class="card-desc">A real-time strategy epic. Build a castle, raise an army, and conquer a seven-chapter campaign or battle friends online.</p>
@@ -673,7 +718,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/blown-away" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/blown-away-thumbnail.jpg" alt="Blown Away"></div>
+                <div class="card-media"><span class="daily-badge">DAILY</span><img loading="lazy" decoding="async" src="./images/blown-away-thumbnail.jpg" alt="Blown Away"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Blown Away</p>
                     <p class="card-desc">A wild storm and nothing but an umbrella. Ride the gusts across rain-soaked rooftops and dive for gold. A new storm blows in every day.</p>
@@ -682,7 +727,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/oodles-of-doodles" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/oodles-of-doodles-thumbnail.jpg" alt="Oodles of Doodles"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/oodles-of-doodles-thumbnail.jpg" alt="Oodles of Doodles"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Oodles of Doodles</p>
                     <p class="card-desc">Grab your crayons! Spot the odd doodle out before the timer runs dry, rack up combos, and climb the Top Doodlers board.</p>
@@ -690,7 +735,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/timeline-trivia" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/timeline-trivia-thumbnail.jpg" alt="Timeline Trivia"></div>
+                <div class="card-media"><span class="daily-badge">DAILY</span><img loading="lazy" decoding="async" src="./images/timeline-trivia-thumbnail.jpg" alt="Timeline Trivia"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Timeline Trivia</p>
                     <p class="card-desc">How well do you know WHEN things happened? Slot historic moments into your timeline and take on the Daily Challenge.</p>
@@ -698,7 +743,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/goo-gunner-goofballs" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/goo-gunner-goofballs-thumbnail.jpg" alt="Goo Gunner: Goofballs"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/goo-gunner-goofballs-thumbnail.jpg" alt="Goo Gunner: Goofballs"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Goo Gunner: Goofballs</p>
                     <p class="card-desc">Squirt first, ask questions never. Blast waves of googly-eyed goo with your trusty water gun.</p>
@@ -706,7 +751,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/rock-paper-royale" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/rock-paper-royale-thumbnail.jpg" alt="Rock Paper Royale"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/rock-paper-royale-thumbnail.jpg" alt="Rock Paper Royale"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Rock Paper Royale</p>
                     <p class="card-desc">Real-time rock-paper-scissors duels. Nail the THROW! signal or forfeit on a false start.</p>
@@ -714,7 +759,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/broadside" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/broadside-thumbnail.jpg" alt="Broadside"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/broadside-thumbnail.jpg" alt="Broadside"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Broadside</p>
                     <p class="card-desc">A turn-based pirate ship artillery duel. Pick your hull, trade broadsides, climb the leaderboards.</p>
@@ -722,7 +767,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/slot-works-the-brickyard" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/slot-works-the-brickyard-thumbnail.jpg" alt="Slot Works: The Brickyard"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/slot-works-the-brickyard-thumbnail.jpg" alt="Slot Works: The Brickyard"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Slot Works: The Brickyard</p>
                     <p class="card-desc">A multiplayer slot car racer. Tune your car, nail every curve, and beat real opponents to the line.</p>
@@ -730,7 +775,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/wildbound" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/wildbound-thumbnail.jpg" alt="WildBound"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/wildbound-thumbnail.jpg" alt="WildBound"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">WildBound</p>
                     <p class="card-desc">A forest action-platformer. Run, double jump, and dodge through six worlds with your bow.</p>
@@ -738,7 +783,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/neon-breach" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/neon-breach-thumbnail.jpg" alt="Neon Breach"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/neon-breach-thumbnail.jpg" alt="Neon Breach"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Neon Breach</p>
                     <p class="card-desc">Choose a gate, build a bullet storm. Pilot an auto-firing gunship through a neon warzone.</p>
@@ -746,7 +791,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/the-riff-master" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/riffmaster.jpg" alt="The Riff Master"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/riffmaster.jpg" alt="The Riff Master"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">The Riff Master</p>
                     <p class="card-desc">Shred through tracks and chase the perfect combo.</p>
@@ -754,7 +799,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/bloom-tower" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/BloomTower%20thumbnail.jpg" alt="Bloom Tower"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/BloomTower%20thumbnail.jpg" alt="Bloom Tower"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Bloom Tower</p>
                     <p class="card-desc">Climb, build, and survive. Play it now on RUN.world.</p>
@@ -763,7 +808,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/ruskos-void" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/ruskos-void-thumbnail.jpg" alt="Rusko's Void"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/ruskos-void-thumbnail.jpg" alt="Rusko's Void"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Rusko's Void</p>
                     <p class="card-desc">A 3D space combat simulator. The final confrontation.</p>
@@ -771,7 +816,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/ruskos-riot" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/ruskos-riot-thumbnail.jpg" alt="Ruskos Riot - Food Fight"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/ruskos-riot-thumbnail.jpg" alt="Ruskos Riot - Food Fight"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Ruskos Riot — Food Fight</p>
                     <p class="card-desc">A cafeteria food fight. Raise your tray, aim, and let it fly through four rowdy levels.</p>
@@ -779,7 +824,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/ruskos-raiders-cant-stop-now" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/Ruskos%20Raiders%20thumbnail.jpg" alt="Ruskos Raiders - Can't Stop Now"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/Ruskos%20Raiders%20thumbnail.jpg" alt="Ruskos Raiders - Can't Stop Now"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Ruskos Raiders — Can't Stop Now</p>
                     <p class="card-desc">Grab what you can and keep moving. Play it now on RUN.world.</p>
@@ -787,7 +832,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/astro-bob" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/astrobob-screenshot.png" alt="Astro Bob"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/astrobob-screenshot.png" alt="Astro Bob"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Astro Bob</p>
                     <p class="card-desc">A jumping platformer with animated sprites. Collect coins, stomp enemies, chase the high score.</p>
@@ -795,7 +840,7 @@
                 </div>
             </a>
             <a class="card" href="https://w.run/rusko/dungeon-maze-fire-mage" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/dungeon-screenshot.png" alt="Dungeon Maze - Fire Mage"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/dungeon-screenshot.png" alt="Dungeon Maze - Fire Mage"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Dungeon Maze — Fire Mage</p>
                     <p class="card-desc">A 3D dungeon crawler. Fight through procedurally generated levels and take down the boss.</p>
@@ -810,7 +855,7 @@
         <p class="section-sub">Standalone builds, playable straight from this site.</p>
         <div class="card-grid">
             <a class="card" href="./AstroBob/astrobob.html" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/astrobob-screenshot.png" alt="Astro Bob"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/astrobob-screenshot.png" alt="Astro Bob"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Astro Bob</p>
                     <p class="card-desc">A jumping platformer with animated sprites. Collect coins, stomp enemies, chase the high score across hand-built levels.</p>
@@ -818,7 +863,7 @@
                 </div>
             </a>
             <a class="card" href="./Ghost Patrol/ghost-patrol.html" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/ghost-patrol-screenshot.png" alt="Ghost Patrol"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/ghost-patrol-screenshot.png" alt="Ghost Patrol"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Ghost Patrol</p>
                     <p class="card-desc">A 3D haunted gallery with original artwork. View the art, fight ghosts, face the Ghost King.</p>
@@ -826,7 +871,7 @@
                 </div>
             </a>
             <a class="card" href="./Outpost/outpost.html" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/outpost-screenshot.png" alt="Outpost"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/outpost-screenshot.png" alt="Outpost"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Outpost</p>
                     <p class="card-desc">A resource management game for mouse only.</p>
@@ -834,7 +879,7 @@
                 </div>
             </a>
             <a class="card" href="./Dungeon/index.html" target="_blank" rel="noopener">
-                <div class="card-media"><img src="./images/dungeon-screenshot.png" alt="Dungeon Maze"></div>
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/dungeon-screenshot.png" alt="Dungeon Maze"></div>
                 <div class="card-body">
                     <p class="card-title chrome-text">Dungeon Maze</p>
                     <p class="card-desc">A 3D dungeon crawler. Fight through procedurally generated levels, find spells and a lantern, and take down the boss.</p>
@@ -847,11 +892,11 @@
     <section id="archive">
         <div class="section-label chrome-text">Null Sector Trilogy</div>
         <p class="section-sub">One of the first bigger projects on this site — three linked arcade experiments built while learning the ropes of browser game dev. Rough edges and all, archived here for posterity rather than polished up after the fact.</p>
-        <div class="archive-banner"><img src="./images/nullsector-banner.png" alt="Null Sector Trilogy"></div>
+        <div class="archive-banner"><img loading="lazy" decoding="async" src="./images/nullsector-banner.png" width="1438" height="396" alt="Null Sector Trilogy"></div>
         <ul class="archive-list">
             <li>
                 <a class="archive-row" href="./NullSector/ruskos-run.html" target="_blank" rel="noopener">
-                    <img class="archive-thumb" src="./images/nullsector-screenshot.png" alt="Rusko's Run">
+                    <img loading="lazy" decoding="async" class="archive-thumb" src="./images/nullsector-screenshot.png" alt="Rusko's Run">
                     <div class="archive-meta">
                         <div class="archive-name">Rusko's Run</div>
                         <div class="archive-desc">A vertical space shooter. Outrun the quarantine.</div>
@@ -861,7 +906,7 @@
             </li>
             <li>
                 <a class="archive-row" href="./NullSector2/ruskos_descent.html" target="_blank" rel="noopener">
-                    <img class="archive-thumb" src="./images/ruskos-descent-screenshot.png" alt="Rusko's Planet">
+                    <img loading="lazy" decoding="async" class="archive-thumb" src="./images/ruskos-descent-screenshot.png" alt="Rusko's Planet">
                     <div class="archive-meta">
                         <div class="archive-name">Rusko's Planet</div>
                         <div class="archive-desc">A sci-fi adventure. Descend into the machine's world.</div>
@@ -871,7 +916,7 @@
             </li>
             <li>
                 <a class="archive-row" href="./NullSector3/rusko_3d_space.html" target="_blank" rel="noopener">
-                    <img class="archive-thumb" src="./images/ruskos-void-screenshot.png" alt="Rusko's Void">
+                    <img loading="lazy" decoding="async" class="archive-thumb" src="./images/ruskos-void-screenshot.png" alt="Rusko's Void">
                     <div class="archive-meta">
                         <div class="archive-name">Rusko's Void</div>
                         <div class="archive-desc">A 3D space combat simulator. The final confrontation.</div>
@@ -944,6 +989,14 @@
             <a href="https://www.facebook.com/russ.butler.142" target="_blank" rel="noopener">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 21v-7.6h2.6l.4-3h-3v-1.9c0-.87.24-1.46 1.5-1.46h1.6V4.4c-.28-.04-1.23-.12-2.34-.12-2.32 0-3.9 1.42-3.9 4.02v2.24H8v3h2.4V21h3.1Z"/></svg>
                 Find me on Facebook
+            </a>
+            <a href="https://x.com/GamesByRusko" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.77L17.75 3Zm-1.08 16.18h1.7L7.4 4.73H5.58l11.09 14.45Z"/></svg>
+                Follow on X
+            </a>
+            <a href="https://www.tiktok.com/@russbutler575" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 2h-3.3v13.4a2.9 2.9 0 1 1-2.9-2.9c.3 0 .6 0 .9.1V9.2a6.3 6.3 0 1 0 5.3 6.2V8.6a8 8 0 0 0 4.7 1.5V6.8a4.7 4.7 0 0 1-4.7-4.8Z"/></svg>
+                Watch on TikTok
             </a>
         </div>
     </footer>
