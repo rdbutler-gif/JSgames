@@ -13,7 +13,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Games by Rusko">
 <meta property="og:title" content="Games by Rusko">
-<meta property="og:description" content="23 browser games by Russ Butler, live on RUN.world — horror, pinball, puzzles, strategy and more. Play instantly, no installs.">
+<meta property="og:description" content="27 browser games by Russ Butler, live on RUN.world — horror, pinball, puzzles, strategy and more. Play instantly, no installs.">
 <meta property="og:url" content="https://gamesbyrusko.com/">
 <meta property="og:image" content="https://gamesbyrusko.com/images/og-image.jpg">
 <meta property="og:image:width" content="1200">
@@ -22,7 +22,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@GamesByRusko">
 <meta name="twitter:title" content="Games by Rusko">
-<meta name="twitter:description" content="23 browser games by Russ Butler, live on RUN.world — play instantly, no installs.">
+<meta name="twitter:description" content="27 browser games by Russ Butler, live on RUN.world — play instantly, no installs.">
 <meta name="twitter:image" content="https://gamesbyrusko.com/images/og-image.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -389,6 +389,41 @@
     .feat-cta svg { width: 14px; height: 14px; transition: transform 0.2s ease; }
     .feat-card:hover .feat-cta svg { transform: translateX(4px); }
 
+    /* spotlight: one wide hero card for the newest release */
+    .feat-card.spotlight {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        margin-bottom: 20px;
+        border-color: var(--line-hi);
+        box-shadow: 0 0 0 1px rgba(107,183,255,0.08), 0 24px 60px -30px rgba(42,107,255,0.55);
+    }
+    .spotlight .feat-body { justify-content: center; padding: clamp(24px, 4vw, 48px); gap: 12px; }
+    .spotlight .feat-title { font-size: clamp(1.6rem, 3.4vw, 2.4rem); }
+    .spotlight .feat-desc { font-size: 1rem; }
+    .spotlight-kicker {
+        font-family: 'Orbitron', 'Space Grotesk', sans-serif;
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--magenta);
+        margin: 0;
+    }
+    .feat-points { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+    .feat-points li {
+        font-family: 'Orbitron', 'Space Grotesk', sans-serif;
+        font-size: 0.6rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--chrome-mid);
+        border: 1px solid var(--line-hi);
+        border-radius: 999px;
+        padding: 4px 10px;
+    }
+    @media (max-width: 760px) {
+        .feat-card.spotlight { grid-template-columns: 1fr; }
+    }
+
     /* ============ CARD GRID (RUN.world + Projects) ============ */
     .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
     .card {
@@ -457,6 +492,7 @@
         box-shadow: 0 0 16px rgba(120,200,255,0.5);
     }
     .card-media .daily-badge { top: 10px; right: 10px; font-size: 0.56rem; padding: 4px 8px; }
+    .card-media .new-badge { top: 10px; left: 10px; font-size: 0.56rem; padding: 4px 8px; }
     .trailer-link svg { width: 12px; height: 12px; }
     .trailer-link:hover, .trailer-link:focus-visible { color: var(--text); outline: none; text-decoration: underline; text-underline-offset: 4px; }
     .trailer-modal {
@@ -601,7 +637,7 @@
         <p class="tagline">// browser games and experiments, built one file at a time by Russ Butler, Tulsa OK</p>
 
         <div class="stat-strip">
-            <span>23 games live on RUN.world<span class="dot"></span></span>
+            <span>27 games live on RUN.world<span class="dot"></span></span>
             <span>browser-native, no installs</span>
         </div>
 
@@ -610,95 +646,67 @@
 
     <section id="new">
         <div class="section-label chrome-text">Just Dropped</div>
-        <p class="section-sub">Three Monster-Mash game jam entries, a rebuilt Order Up!, 3D pinball and a safari match-3, fresh on RUN.world.</p>
-        <span class="trailer-link section-trailer" role="button" tabindex="0" data-trailer="./videos/monster-mash-trio-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch the Monster Mash trio trailer</span>
+        <p class="section-sub">The jam is over and the workshop's been busy: a neon tower defense, a laser-optics puzzler, and two new kinds of horror. All four are live on RUN.world now.</p>
+        <a class="feat-card spotlight" href="https://w.run/rusko/hex-surge" target="_blank" rel="noopener">
+            <div class="feat-media">
+                <span class="new-badge">NEW</span>
+                <span class="daily-badge">DAILY</span>
+                <img src="./images/hex-surge-thumbnail.jpg" alt="Hex Surge: Deep Defense">
+            </div>
+            <div class="feat-body">
+                <p class="spotlight-kicker">// Newest release</p>
+                <p class="feat-title chrome-text">Hex Surge</p>
+                <p class="feat-desc">A neon tower defense where your towers become the maze. Claim the honeycomb, bend the enemy path into long detours, and shred glowing drone swarms with lasers, chain lightning and plasma.</p>
+                <ul class="feat-points">
+                    <li>7 towers</li>
+                    <li>5 campaign maps</li>
+                    <li>Endless mode</li>
+                    <li>Daily challenge</li>
+                </ul>
+                <span class="feat-cta">Play on RUN.world
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </span>
+            </div>
+        </a>
         <div class="featured-grid">
-            <a class="feat-card" href="https://w.run/rusko/monster-mansion" target="_blank" rel="noopener">
+            <a class="feat-card" href="https://w.run/rusko/refract" target="_blank" rel="noopener">
                 <div class="feat-media">
-                    <span class="new-badge">GAME JAM</span>
-                    <img src="./images/monster-mansion-thumbnail.jpg" alt="Monster Mansion">
-                </div>
-                <div class="feat-body">
-                    <p class="feat-title chrome-text">Monster Mansion</p>
-                    <p class="feat-desc">A first-person horror escape through a monster-infested mansion. Find the way out before they find you.</p>
-                    <span class="feat-cta">Play on RUN.world
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                    </span>
-                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/monster-mansion-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
-                </div>
-            </a>
-            <a class="feat-card" href="https://w.run/rusko/mr-buttons-the-haunting-4f9vk2dx" target="_blank" rel="noopener">
-                <div class="feat-media">
-                    <span class="new-badge">GAME JAM</span>
-                    <img src="./images/mr-buttons-the-haunting-thumbnail.jpg" alt="Mr. Buttons — The Haunting">
-                </div>
-                <div class="feat-body">
-                    <p class="feat-title chrome-text">Mr. Buttons — The Haunting</p>
-                    <p class="feat-desc">Possess a cursed rag doll and fling him through a haunted house until the family flees. Physics-driven Halloween slapstick.</p>
-                    <span class="feat-cta">Play on RUN.world
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                    </span>
-                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/mr-buttons-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
-                </div>
-            </a>
-            <a class="feat-card" href="https://w.run/rusko/monster-match" target="_blank" rel="noopener">
-                <div class="feat-media">
-                    <span class="new-badge">GAME JAM</span>
-                    <img src="./images/monster-match-thumbnail.jpg" alt="Monster Match">
-                </div>
-                <div class="feat-body">
-                    <p class="feat-title chrome-text">Monster Match</p>
-                    <p class="feat-desc">Match the monsters and collect stars. Another Monster-Mash game jam entry. Get on the Spooky list!</p>
-                    <span class="feat-cta">Play on RUN.world
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                    </span>
-                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/monster-match-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
-                </div>
-            </a>
-        </div>
-        <div class="featured-grid featured-grid-2">
-            <a class="feat-card" href="https://w.run/rusko/order-up" target="_blank" rel="noopener">
-                <div class="feat-media">
-                    <span class="new-badge">NEW &amp; REVISED</span>
+                    <span class="new-badge">GLOW WEEK</span>
                     <span class="daily-badge">DAILY</span>
-                    <img src="./images/order-up-thumbnail.jpg" alt="Order Up!">
+                    <img src="./images/refract-thumbnail.jpg" alt="Refract">
                 </div>
                 <div class="feat-body">
-                    <p class="feat-title chrome-text">Order Up!</p>
-                    <p class="feat-desc">Rebuilt and bigger than ever. Run the busiest counter in town, then open your own Pizzeria, Sushi Bar or Bakery and climb the Top Chefs board.</p>
+                    <p class="feat-title chrome-text">Refract</p>
+                    <p class="feat-desc">Bend the light. A 3D optics puzzle inside a neon arcade cabinet. Twist mirrors, split beams and fan light through prisms across 20 levels, plus a fresh Daily Refract every day.</p>
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
-                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/order-up-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
-            <a class="feat-card" href="https://w.run/rusko/flipper" target="_blank" rel="noopener">
+            <a class="feat-card" href="https://w.run/rusko/half-awake" target="_blank" rel="noopener">
                 <div class="feat-media">
                     <span class="new-badge">NEW</span>
-                    <span class="daily-badge">DAILY</span>
-                    <img src="./images/flipper-thumbnail.jpg" alt="Flipper">
+                    <img src="./images/half-awake-thumbnail.jpg" alt="Half-Awake">
                 </div>
                 <div class="feat-body">
-                    <p class="feat-title chrome-text">Flipper</p>
-                    <p class="feat-desc">Three real 3D pinball tables, one from each decade: a '70s seaside carnival, an '80s arcade invasion and a '90s robo-rampage. Chase the wizard mode and top today's scores.</p>
+                    <p class="feat-title chrome-text">Half-Awake</p>
+                    <p class="feat-desc">It's 3:00 AM and you can't move. Close your eyes to see what's really in the room, open them to act, and survive five nights of sleep paralysis. Headphones recommended.</p>
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
-                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/flipper-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
-            <a class="feat-card" href="https://w.run/rusko/wild-safari-match" target="_blank" rel="noopener">
+            <a class="feat-card" href="https://w.run/rusko/abyssal-hunger" target="_blank" rel="noopener">
                 <div class="feat-media">
                     <span class="new-badge">NEW</span>
-                    <img src="./images/wild-safari-match-thumbnail.jpg" alt="Wild Safari Match">
+                    <img src="./images/abyssal-hunger-thumbnail.jpg" alt="Abyssal Hunger">
                 </div>
                 <div class="feat-body">
-                    <p class="feat-title chrome-text">Wild Safari Match</p>
-                    <p class="feat-desc">An African wildlife match-3 expedition. Rescue savanna animals across 12 puzzle levels with explosive combos, real animal calls and an original safari soundtrack.</p>
+                    <p class="feat-title chrome-text">Abyssal Hunger</p>
+                    <p class="feat-desc">You are the thing beneath the waves. Rise as an eldritch kraken, sink warships along the Drowning Coast, then lay siege to Saltmarch harbor before dawn.</p>
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
-                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/wild-safari-match-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
         </div>
@@ -706,8 +714,63 @@
 
     <section id="runworld">
         <div class="section-label chrome-text">Play on RUN.world</div>
-        <p class="section-sub">The full lineup, live and playable right now — no download required.</p>
+        <p class="section-sub">The full lineup, live and playable right now, no download required.</p>
+        <span class="trailer-link section-trailer" role="button" tabindex="0" data-trailer="./videos/monster-mash-trio-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch the Monster Mash jam trio trailer</span>
         <div class="card-grid">
+            <a class="card" href="https://w.run/rusko/flipper" target="_blank" rel="noopener">
+                <div class="card-media"><span class="daily-badge">DAILY</span><img loading="lazy" decoding="async" src="./images/flipper-thumbnail.jpg" alt="Flipper"></div>
+                <div class="card-body">
+                    <p class="card-title chrome-text">Flipper</p>
+                    <p class="card-desc">Three real 3D pinball tables, one from each decade: '70s carnival, '80s arcade invasion and '90s robo-rampage.</p>
+                    <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/flipper-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
+                </div>
+            </a>
+            <a class="card" href="https://w.run/rusko/monster-match" target="_blank" rel="noopener">
+                <div class="card-media"><span class="new-badge">JAM</span><img loading="lazy" decoding="async" src="./images/monster-match-thumbnail.jpg" alt="Monster Match"></div>
+                <div class="card-body">
+                    <p class="card-title chrome-text">Monster Match</p>
+                    <p class="card-desc">Match the monsters and collect stars. A Monster-Mash game jam entry. Get on the Spooky list!</p>
+                    <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/monster-match-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
+                </div>
+            </a>
+            <a class="card" href="https://w.run/rusko/wild-safari-match" target="_blank" rel="noopener">
+                <div class="card-media"><img loading="lazy" decoding="async" src="./images/wild-safari-match-thumbnail.jpg" alt="Wild Safari Match"></div>
+                <div class="card-body">
+                    <p class="card-title chrome-text">Wild Safari Match</p>
+                    <p class="card-desc">An African wildlife match-3 expedition. Rescue savanna animals across 12 puzzle levels with explosive combos.</p>
+                    <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/wild-safari-match-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
+                </div>
+            </a>
+            <a class="card" href="https://w.run/rusko/mr-buttons-the-haunting-4f9vk2dx" target="_blank" rel="noopener">
+                <div class="card-media"><span class="new-badge">JAM</span><img loading="lazy" decoding="async" src="./images/mr-buttons-the-haunting-thumbnail.jpg" alt="Mr. Buttons — The Haunting"></div>
+                <div class="card-body">
+                    <p class="card-title chrome-text">Mr. Buttons — The Haunting</p>
+                    <p class="card-desc">Possess a cursed rag doll and fling him through a haunted house until the family flees.</p>
+                    <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/mr-buttons-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
+                </div>
+            </a>
+            <a class="card" href="https://w.run/rusko/monster-mansion" target="_blank" rel="noopener">
+                <div class="card-media"><span class="new-badge">JAM</span><img loading="lazy" decoding="async" src="./images/monster-mansion-thumbnail.jpg" alt="Monster Mansion"></div>
+                <div class="card-body">
+                    <p class="card-title chrome-text">Monster Mansion</p>
+                    <p class="card-desc">A first-person horror escape through a monster-infested mansion. Find the way out before they find you.</p>
+                    <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/monster-mansion-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
+                </div>
+            </a>
+            <a class="card" href="https://w.run/rusko/order-up" target="_blank" rel="noopener">
+                <div class="card-media"><span class="daily-badge">DAILY</span><img loading="lazy" decoding="async" src="./images/order-up-thumbnail.jpg" alt="Order Up!"></div>
+                <div class="card-body">
+                    <p class="card-title chrome-text">Order Up!</p>
+                    <p class="card-desc">Run the busiest counter in town, then open your own Pizzeria, Sushi Bar or Bakery and climb the Top Chefs board.</p>
+                    <span class="card-tag">[ PLAY ON RUN.WORLD ]</span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/order-up-trailer.mp4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
+                </div>
+            </a>
             <a class="card" href="https://w.run/rusko/dynasty-quest" target="_blank" rel="noopener">
                 <div class="card-media"><img loading="lazy" decoding="async" src="./images/dynasty-quest-thumbnail.jpg" alt="Dynasty Quest"></div>
                 <div class="card-body">
