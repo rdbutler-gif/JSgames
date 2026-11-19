@@ -410,6 +410,15 @@ export function createSurface(hooks) {
     T.glyph.visible = !taken;
     applyPlating();
     hooks.say('Rover is down. Kessa is basalt and lava. Stay off the bright ground.');
+    S.practiceN = 0;
+    if (!taken && !upgrades.turretTrained && T.fauna.meadow) {
+      S.objAfter = S.obj; S.obj = 'practice';
+      setTimeout(() => {
+        if (!S || S.obj !== 'practice') return;
+        hooks.say('Before we roll: the turret. Those cinder skitters by the pad are harmless, and they make good targets. Tag five.');
+        S.hint = 14; S.hintMode = 'practice';
+      }, 4500);
+    }
     setTimeout(() => S && S.time < 12 && (S.obj === 'vault' || S.obj === 'cross') && hooks.say(upgrades.forgeplate
       ? 'Forgeplate is fitted. The vault is the light column, north-east. The vents cannot touch us now.'
       : 'The vault signal is that light column, north-east. The Wayfarer is on the pad when you want to lift off.'), 6000);
@@ -460,6 +469,19 @@ export function createSurface(hooks) {
     segA.copy(camera.position); segB.copy(camera.position).addScaledVector(aim.dir, 320);
     const h = T.titan.hitTest(segA, segB);
     if (h) { aim.p.copy(h.p); return; }
+    // a light pull onto the nearest creature under the crosshair (stronger on a stick)
+    {
+      const lim = device === 'gamepad' ? 0.06 : 0.025;
+      let best = lim, bc = null;
+      for (const c of T.fauna.list) {
+        if (!c.alive) continue;
+        v1.set(c.x, c.y + (c.kind === 'hound' ? 1.1 : 0.45), c.z).sub(camera.position);
+        const d = v1.length(); if (d > 140 || d < 4) continue;
+        const ang = v1.divideScalar(d).angleTo(aim.dir);
+        if (ang < best) { best = ang; bc = c; }
+      }
+      if (bc) { aim.p.set(bc.x, bc.y + (bc.kind === 'hound' ? 1.1 : 0.45), bc.z); aim.lock = true; return; }
+    }
     const fh = T.fauna.hitTest(segA, segB), rh = rockHit(segA, segB);
     if (fh && (!rh || fh.u <= rh.u)) { aim.p.copy(fh.p); return; }
     if (rh) { aim.p.copy(rh.p); return; }
@@ -544,7 +566,11 @@ export function createSurface(hooks) {
       if (fh && (!rh || fh.u <= rh.u)) {
         const died = T.fauna.damage(fh.c, 1);
         S.hitMark = died ? 0.35 : 0.15;
-        if (died) { sfx.explode(false); if (fh.c.kind === 'hound') faunaSay('hound-kill', 'Hound down. They are only following the heat. So are we.'); }
+        if (died) {
+          sfx.explode(false);
+          if (fh.c.kind === 'hound') faunaSay('hound-kill', 'Hound down. They are only following the heat. So are we.');
+          else if (S.obj === 'practice') practiceKill();
+        }
         else sfx.hit();
         b.on = false; b.m.visible = false; continue;
       }
@@ -762,6 +788,21 @@ export function createSurface(hooks) {
 
   // ---------- missions: geysers, the Forge Gate, the vent field, the vault door ----------
   function setObj(o) { if (S.obj !== o) { S.obj = o; S.objFlash = 4; sfx.wave(); } }
+  function practiceKill() {
+    S.practiceN++;
+    if (S.practiceN === 1) hooks.say('One. Lead them a little when they run.');
+    if (S.practiceN === 3) hooks.say('Three. You are getting the feel of it.');
+    if (S.practiceN >= 5) endPractice(true);
+  }
+  function endPractice(done) {
+    upgrades.turretTrained = true;
+    setObj(S.objAfter || 'vault');
+    S.hint = 0;
+    hooks.say(done
+      ? 'Five. Good shooting. Save it for things that bite. ' + (upgrades.forgeplate ? 'The vault is the light column, north-east.' : 'The vault signal is that light column, north-east.')
+      : 'Practice can wait. ' + (upgrades.forgeplate ? 'The vault is the light column, north-east.' : 'The vault signal is that light column, north-east.'));
+    if (done) sfx.victory();
+  }
   function say1(key, line) { if (!S.said.has(key)) { S.said.add(key); hooks.say(line); } }
   function faunaSay(key, line) { say1(key, line); }
 
@@ -784,6 +825,7 @@ export function createSurface(hooks) {
     const P = rover.pos;
     const plated = !!upgrades.forgeplate;
     const toVault = Math.hypot(P.x - d.vault.x, P.z - d.vault.z);
+    if (S.obj === 'practice' && Math.hypot(P.x - d.pad.x, P.z - d.pad.z) > 220) endPractice(false);
 
     // geysers: glow as a warning, then erupt. Canyon vents hurt unplated rovers; all of them toss you.
     let nearest = null, nd = Infinity;
@@ -1009,10 +1051,12 @@ export function createSurface(hooks) {
       const df = Math.hypot(T.forge.x - rover.pos.x, T.forge.z - rover.pos.z);
       mark(bear(T.forge.x, T.forge.z), '◆ FORGE GATE ' + Math.round(df) + ' M', AMBER, true);
       mark(bear(d.vault.x, d.vault.z), 'VAULT', '200,150,90', false);
-    } else if (S.obj === 'guardian') mark(bear(d.vault.x, d.vault.z), '◆ TITAN', RED, true);
+    } else if (S.obj === 'practice' && T.fauna.meadow) mark(bear(T.fauna.meadow.x, T.fauna.meadow.z), '◆ SKITTERS', AMBER, true);
+    else if (S.obj === 'guardian') mark(bear(d.vault.x, d.vault.z), '◆ TITAN', RED, true);
     else if (S.obj === 'core') mark(bear(d.vault.x, d.vault.z), '◆ EMBER CORE ' + Math.round(dv) + ' M', GOLD, true);
     else if (S.obj !== 'return') mark(bear(d.vault.x, d.vault.z), '◆ VAULT ' + Math.round(dv) + ' M', AMBER, true);
     const OBJ = {
+      practice: 'Target practice · shoot cinder skitters by the pad ' + Math.min(5, S.practiceN || 0) + '/5',
       vault: 'Reach the vault signal',
       plate: 'Find heat plating · the Forge Gate, end of the Magma Canyon',
       cross: 'Cross the vent field to the vault',
@@ -1088,7 +1132,9 @@ export function createSurface(hooks) {
     }
     if (S.hint > 0) {
       const pad = device === 'gamepad';
-      const txt = S.hintMode === 'gun'
+      const txt = S.hintMode === 'practice'
+        ? (pad ? 'RB fire turret · RIGHT STICK aim · the crosshair locks on when close' : 'LEFT CLICK or E fire turret · MOUSE aim · the crosshair locks on when close')
+        : S.hintMode === 'gun'
         ? (pad ? 'RB fire turret · RIGHT STICK aim · keep driving' : 'LEFT CLICK or E fire turret · MOUSE aim · keep driving')
         : (pad ? 'RT drive · LT brake/reverse · LEFT STICK steer · X handbrake · RIGHT STICK camera · RB turret' : 'W/S drive and brake · A/D steer · SPACE handbrake · MOUSE camera · CLICK turret');
       text(ctx, txt, W / 2, H * 0.6, 15 * sc + 5, CYAN, Math.min(1, S.hint) * 0.9);

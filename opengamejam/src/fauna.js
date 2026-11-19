@@ -1,8 +1,11 @@
 // Kessa wildlife: cinder skitters (harmless, skittish, in little herds) and magma hounds
 // (hunt the rover, lunge and bite). Both are built from primitives and can be shot or rammed.
-// A fixed pool keeps a band of life around the rover: creatures that fall far behind respawn ahead.
+// - A skitter herd lives by the landing pad (turret practice) and respawns there.
+// - Other skitters roam in a band around the rover, respawning ahead as they fall behind.
+// - Hounds live in packs of two or three along the causeways, guard a home stretch,
+//   and stay dead until the next landing, so a causeway can be cleared.
 import * as THREE from 'three';
-import { pathInfo } from './terrain.js';
+import { pathInfo, pathPoint } from './terrain.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
@@ -11,64 +14,123 @@ const KIND = {
   skitter: { hp: 1, r: 0.75, speed: 5.5, flee: 11, fleeR: 20, scale: 1 },
   hound: { hp: 5, r: 1.35, speed: 7, chase: 14.5, sight: 48, bite: 6, scale: 1 },
 };
-const N_SKITTER = 20, N_HOUND = 7;
+const N_SKITTER = 20, N_PAD_HERD = 9;
+const PACKS = [{ t: 150, n: 2 }, { t: 260, n: 3 }, { t: 370, n: 2 }, { t: 470, n: 3 }]; // metres along each causeway
+const N_HOUND = PACKS.reduce((a, p) => a + p.n, 0);
 const SPAWN_MIN = 75, SPAWN_MAX = 150, DESPAWN = 230;
 
+// Cinder skitter: a basalt-shelled beetle about a metre long, glowing only along its shell seams.
 function makeSkitter(mats) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6).scale(1, 0.55, 1.35), mats.shell); body.position.y = 0.42; g.add(body);
-  const back = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 4).scale(1, 0.4, 1.3), mats.glow); back.position.set(0, 0.62, 0.05); g.add(back);
+  const body = new THREE.Group(); body.position.y = 0.3; g.add(body);
+  // carapace: two domed wing-cases split down the middle, with the hot seam showing between them
+  for (const s of [-1, 1]) {
+    const cas = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 6, 0, Math.PI, 0, Math.PI / 2).rotateY(s > 0 ? -Math.PI / 2 : Math.PI / 2).scale(1, 0.75, 1.25), mats.shell);
+    cas.position.set(s * 0.035, 0.02, 0.08); body.add(cas);
+  }
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 5).scale(1.05, 0.35, 1.3), mats.dark); belly.position.set(0, -0.02, 0.08); body.add(belly);
+  const seams = new THREE.Group(); body.add(seams);
+  const spine = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.6), mats.glowSoft); spine.position.set(0, 0.26, 0.08); seams.add(spine); // seen through the split
+  for (const s of [-1, 1]) { const rim = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.6), mats.glowSoft); rim.position.set(s * 0.43, 0.03, 0.08); seams.add(rim); }
+  // head, eyes, mandibles, antennae
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6).scale(1.2, 0.8, 1), mats.dark); head.position.set(0, 0.02, -0.5); body.add(head);
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), mats.eye); eye.position.set(s * 0.11, 0.07, -0.62); body.add(eye);
+    const mand = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.2, 4).rotateX(-Math.PI / 2), mats.bone); mand.position.set(s * 0.07, -0.05, -0.68); mand.rotation.y = -s * 0.5; body.add(mand);
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.45, 4).translate(0, 0.22, 0), mats.dark); ant.position.set(s * 0.08, 0.1, -0.6); ant.rotation.set(-0.9, 0, -s * 0.45); body.add(ant);
+  }
+  // six two-part legs: out and up to the knee, then down to the ground
   const legs = [];
   for (let i = 0; i < 6; i++) {
     const side = i % 2 ? 1 : -1, row = Math.floor(i / 2) - 1;
-    const pivot = new THREE.Group(); pivot.position.set(side * 0.32, 0.4, row * 0.32); g.add(pivot);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.06), mats.dark); leg.position.x = side * 0.2; leg.rotation.z = side * -0.7; pivot.add(leg);
+    const pivot = new THREE.Group(); pivot.position.set(side * 0.36, 0.28, row * 0.3 + 0.05); g.add(pivot);
+    const up = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.05).translate(side * 0.17, 0, 0), mats.dark); up.rotation.z = side * 0.55; pivot.add(up);
+    const knee = new THREE.Group(); knee.position.set(side * 0.29, 0.16, 0); pivot.add(knee);
+    const low = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.46, 0.04).translate(0, -0.23, 0), mats.dark); low.rotation.z = side * -0.3; knee.add(low);
     legs.push({ pivot, phase: (i % 2 ? 0 : Math.PI) + row * 0.6 });
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { g, body, legs, glow: back };
+  return { g, body, legs, glow: seams };
 }
 
+// Magma hound: a lean basalt-plated predator about 2.6 m long, molten under its plates.
 function makeHound(mats) {
   const g = new THREE.Group();
   const torso = new THREE.Group(); torso.position.y = 1.15; g.add(torso);
-  const chest = new THREE.Mesh(new THREE.IcosahedronGeometry(0.75, 0).scale(1, 0.85, 1.25), mats.hide); chest.position.z = -0.35; torso.add(chest);
-  const hips = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0).scale(1, 0.85, 1.2), mats.hide); hips.position.z = 0.7; torso.add(hips);
-  const crack = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 1.6), mats.glow); crack.position.set(0, 0.6, 0.1); torso.add(crack);
-  for (const sd of [-1, 1]) for (let i = 0; i < 3; i++) { // molten seams down the flanks
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5 - i * 0.08, 0.1), mats.glow);
-    seam.position.set(sd * 0.72, 0.05, -0.75 + i * 0.42); seam.rotation.x = 0.35; crack.parent.add(seam);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 9).scale(0.95, 0.95, 1.25), mats.hide); chest.position.set(0, 0.05, -0.38); torso.add(chest);
+  const waist = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8).scale(0.9, 0.85, 1.2), mats.hide); waist.position.set(0, 0, 0.25); torso.add(waist);
+  const hips = new THREE.Mesh(new THREE.SphereGeometry(0.48, 10, 8).scale(1, 0.95, 1.1), mats.hide); hips.position.set(0, 0.05, 0.75); torso.add(hips);
+  // basalt armour plates over the back and shoulders; the glow shows in the gaps between them
+  const plates = [[0, 0.58, -0.62, 0.95, 0.5], [0, 0.55, -0.12, 0.8, 0.45], [0, 0.5, 0.38, 0.75, 0.45], [0, 0.52, 0.82, 0.85, 0.5]];
+  for (const [x, y, z, w, d] of plates) {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), mats.plate); p.position.set(x, y, z); p.rotation.x = -0.12; torso.add(p);
   }
-  for (let i = 0; i < 4; i++) { // dorsal spines
-    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.55, 4), mats.dark); sp.position.set(0, 0.7, -0.55 + i * 0.38); sp.rotation.x = 0.5; torso.add(sp);
+  for (const s of [-1, 1]) {
+    const sh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.6), mats.plate); sh.position.set(s * 0.55, 0.15, -0.42); sh.rotation.z = s * 0.3; torso.add(sh);
+    const hp = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.42, 0.48), mats.plate); hp.position.set(s * 0.44, 0.18, 0.78); hp.rotation.z = s * 0.3; torso.add(hp);
   }
-  const head = new THREE.Group(); head.position.set(0, 0.25, -1.2); torso.add(head);
-  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.7), mats.hide); head.add(skull);
-  const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.6), mats.dark); jaw.position.set(0, -0.26, -0.12); head.add(jaw);
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.06, 0.5), mats.glow); mouth.position.set(0, -0.18, -0.14); head.add(mouth);
-  for (const s of [-1, 1]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), mats.eye); eye.position.set(s * 0.2, 0.08, -0.36); head.add(eye); }
+  const glow = new THREE.Group(); torso.add(glow);
+  for (const z of [-0.37, 0.13, 0.6]) { const seam = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.05), mats.glow); seam.position.set(0, 0.6, z); glow.add(seam); }
+  for (const s of [-1, 1]) { const flank = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 1.3), mats.glow); flank.position.set(s * 0.5, -0.25, 0.1); glow.add(flank); }
+  for (let i = 0; i < 5; i++) { // dorsal spines, swept back
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42 - Math.abs(i - 1.5) * 0.06, 5), mats.plate); sp.position.set(0, 0.68, -0.72 + i * 0.36); sp.rotation.x = 0.7; torso.add(sp);
+  }
+  // neck and head: wedge snout, brow ridge, ember eyes, a hinged jaw lined with teeth
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.34, 0.6, 8).rotateX(Math.PI / 2 - 0.5), mats.hide); neck.position.set(0, 0.18, -1.0); torso.add(neck);
+  const head = new THREE.Group(); head.position.set(0, 0.38, -1.32); torso.add(head);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8).scale(1, 0.8, 1.05), mats.hide); head.add(skull);
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.5).translate(0, 0, -0.25), mats.hide); snout.position.set(0, -0.02, -0.15); snout.rotation.x = 0.08; head.add(snout);
+  const brow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.22), mats.plate); brow.position.set(0, 0.16, -0.12); brow.rotation.x = -0.25; head.add(brow);
+  for (const s of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4).scale(1.4, 0.7, 1), mats.eye); eye.position.set(s * 0.16, 0.08, -0.24); head.add(eye);
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.38, 5), mats.bone); horn.position.set(s * 0.18, 0.2, 0.12); horn.rotation.set(1.1, 0, -s * 0.35); head.add(horn);
+  }
+  const jaw = new THREE.Group(); jaw.position.set(0, -0.12, 0.05); head.add(jaw);
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.62).translate(0, 0, -0.31), mats.plate); jaw.add(lower);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.48).translate(0, 0.06, -0.3), mats.glow); jaw.add(mouth);
+  for (let i = 0; i < 4; i++) for (const s of [-1, 1]) {
+    const t = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1, 4), mats.bone); t.position.set(s * 0.12, 0.09, -0.52 + i * 0.12); jaw.add(t);
+    const u = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.1, 4).rotateX(Math.PI), mats.bone); u.position.set(s * 0.13, -0.15, -0.5 + i * 0.12); head.add(u);
+  }
+  // tail: three tapering segments, ember tip
+  let parent = torso;
+  for (let i = 0; i < 3; i++) {
+    const seg = new THREE.Group(); seg.position.set(0, i ? 0 : 0.1, i ? 0.42 : 1.15); seg.rotation.x = i ? -0.18 : 0.45; parent.add(seg);
+    seg.add(new THREE.Mesh(new THREE.CylinderGeometry(0.11 - i * 0.03, 0.15 - i * 0.03, 0.45, 6).rotateX(Math.PI / 2).translate(0, 0, 0.22), mats.hide));
+    parent = seg;
+  }
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.25, 5).rotateX(Math.PI / 2).translate(0, 0, 0.5), mats.glow); parent.add(tip);
+  // legs: thigh, then a shin bent the other way, then a broad paw (back legs digitigrade)
   const legs = [];
   for (let i = 0; i < 4; i++) {
     const side = i % 2 ? 1 : -1, front = i < 2;
-    const pivot = new THREE.Group(); pivot.position.set(side * 0.5, -0.15, front ? -0.6 : 0.75); torso.add(pivot);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.1, 0.24), mats.dark); leg.position.y = -0.5; pivot.add(leg);
+    const pivot = new THREE.Group(); pivot.position.set(side * 0.42, -0.1, front ? -0.5 : 0.8); torso.add(pivot);
+    const thighA = front ? 0.25 : -0.45, shinA = front ? -0.35 : 0.75;
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.58, 0.3).translate(0, -0.27, 0), mats.hide); thigh.rotation.x = thighA; pivot.add(thigh);
+    const knee = new THREE.Group(); knee.position.set(0, -0.54 * Math.cos(thighA), -0.54 * Math.sin(thighA)); pivot.add(knee);
+    const shin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.5, 0.18).translate(0, -0.25, 0), mats.plate); shin.rotation.x = shinA; knee.add(shin);
+    const paw = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.1, 0.34), mats.plate); paw.position.set(0, -0.5 * Math.cos(shinA) - 0.02, -0.5 * Math.sin(shinA) - 0.08); knee.add(paw);
+    for (const c of [-1, 0, 1]) { const claw = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4).rotateX(-Math.PI / 2), mats.bone); claw.position.set(c * 0.08, -0.03, -0.2); paw.add(claw); }
     legs.push({ pivot, phase: (front ? 0 : Math.PI) + (side > 0 ? Math.PI * 0.5 : 0) });
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { g, torso, head, jaw, legs, glow: crack };
+  return { g, torso, head, jaw, legs, glow };
 }
 
 export function createFauna({ root, def, terrain, fx }) {
   const mats = {
-    shell: new THREE.MeshStandardMaterial({ color: '#7a5e4c', roughness: 0.5, metalness: 0.25, flatShading: true, emissive: '#2a0c02' }),
-    hide: new THREE.MeshStandardMaterial({ color: '#6a5244', roughness: 0.75, flatShading: true, emissive: '#3a0e02' }),
-    dark: new THREE.MeshStandardMaterial({ color: '#33281f', roughness: 0.85, emissive: '#140400' }),
-    glow: new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 1.1, 0.2) }),
-    eye: new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 2.6, 0.6) }),
+    shell: new THREE.MeshStandardMaterial({ color: '#5c4638', roughness: 0.35, metalness: 0.35, flatShading: true, emissive: '#1c0802' }),
+    hide: new THREE.MeshStandardMaterial({ color: '#5a4033', roughness: 0.7, flatShading: true, emissive: '#2c0a02' }),
+    plate: new THREE.MeshStandardMaterial({ color: '#2f2723', roughness: 0.6, metalness: 0.15, flatShading: true }),
+    dark: new THREE.MeshStandardMaterial({ color: '#2a211b', roughness: 0.8, emissive: '#100300' }),
+    bone: new THREE.MeshStandardMaterial({ color: '#d9c9ad', roughness: 0.5 }),
+    glow: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.8, 0.15) }),
+    glowSoft: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 0.5, 0.1) }),
+    eye: new THREE.MeshBasicMaterial({ color: new THREE.Color(3.4, 2.2, 0.5) }),
   };
   const list = [];
   for (let i = 0; i < N_SKITTER; i++) list.push({ kind: 'skitter', k: KIND.skitter, ...makeSkitter(mats) });
-  for (let i = 0; i < N_HOUND; i++) list.push({ kind: 'hound', k: KIND.hound, ...makeHound(mats) });
+  for (let i = 0; i < N_HOUND * Math.max(1, (def.causeways || []).length); i++) list.push({ kind: 'hound', k: KIND.hound, ...makeHound(mats) });
   for (const c of list) {
     c.g.visible = false; root.add(c.g);
     Object.assign(c, { alive: false, x: 0, z: 0, y: 0, yaw: 0, vx: 0, vz: 0, hp: 0, gait: 0, flash: 0, state: 'roam', t: 0, cd: 0, wander: 0, dead: 0, mood: 0 });
@@ -96,7 +158,48 @@ export function createFauna({ root, def, terrain, fx }) {
     return true;
   };
 
+  // the pad herd's meadow: dry, open ground 40-60 m from the pad, in the rover's opening view
+  // (it starts facing the vault), off the two roads out and clear of the parked Wayfarer
+  let meadow = null;
+  const toVault = Math.atan2(def.vault.z - def.pad.z, def.vault.x - def.pad.x);
+  const clearOfRoads = (x, z) => (def.causeways || []).every((c) => pathInfo(c.pts, x, z).d > c.half + 22) && (!def.canyon || pathInfo(def.canyon.pts, x, z).d > def.canyon.wall);
+  for (let tries = 0; tries < 300 && !meadow; tries++) {
+    const side = tries < 200 ? -1 : 1, spread = 0.45 + Math.random() * (0.5 + tries / 300); // -1 = the side away from the parked ship
+    const a = toVault + side * spread, d = 40 + Math.random() * 20;
+    const x = def.pad.x + Math.cos(a) * d, z = def.pad.z + Math.sin(a) * d;
+    let ok = clearOfRoads(x, z) && Math.hypot(x - def.pad.x - 6, z - def.pad.z - 4) > 30;
+    for (let k = 0; k < 8 && ok; k++) { const b = (k / 8) * 6.28; ok = canWalk(x + Math.cos(b) * 14, z + Math.sin(b) * 14, 'skitter') && terrain.heightAt(x + Math.cos(b) * 14, z + Math.sin(b) * 14) > def.lava + 2.5; }
+    if (ok) meadow = { x, z, r: 16 };
+  }
+  const herd = list.filter((c) => c.kind === 'skitter').slice(0, meadow ? N_PAD_HERD : 0);
+  herd.forEach((c) => { c.home = meadow; c.herd = true; });
+  // hound packs along the causeways, on the road itself
+  const hounds = list.filter((c) => c.kind === 'hound');
+  let hi = 0;
+  for (const cw of def.causeways || []) for (const p of PACKS) {
+    const q = pathPoint(cw.pts, p.t);
+    if (!q) continue;
+    for (let i = 0; i < p.n && hi < hounds.length; i++) hounds[hi++].home = { x: q.x, z: q.z, r: 16, dx: q.dx, dz: q.dz };
+  }
+  for (; hi < hounds.length; hi++) hounds[hi].home = null; // unused
+
+  // place a creature at its home (herd/pack) or, for roamers, in the band ahead of the rover
+  function spawnHome(c) {
+    const h = c.home;
+    for (let tries = 0; tries < 20; tries++) {
+      const along = (Math.random() - 0.5) * 2 * h.r * 0.7, side = (Math.random() - 0.5) * (c.kind === 'hound' ? 6 : h.r);
+      const x = h.dx !== undefined ? h.x + h.dx * along - h.dz * side : h.x + along, z = h.dz !== undefined ? h.z + h.dz * along + h.dx * side : h.z + side;
+      if (!canWalk(x, z, c.kind)) continue;
+      Object.assign(c, { alive: true, x, z, y: terrain.heightAt(x, z), yaw: Math.random() * 6.28, vx: 0, vz: 0, hp: c.k.hp, flash: 0, state: 'roam', t: 0, cd: 0, wander: Math.random() * 6.28, dead: 0, mood: Math.random() * 4 });
+      c.g.visible = true; c.g.scale.setScalar(1); c.g.position.set(c.x, c.y, c.z);
+      return true;
+    }
+    return false;
+  }
+
   function spawn(c, around, heading) {
+    if (c.home) return spawnHome(c);
+    if (c.kind === 'hound') return false;
     for (let tries = 0; tries < 30; tries++) {
       // prefer ahead of the rover so the world in front feels alive
       const a = heading + (Math.random() - 0.5) * Math.PI * 1.4;
@@ -106,7 +209,7 @@ export function createFauna({ root, def, terrain, fx }) {
       // skitters come in herds: if a living skitter is near this point, join it
       Object.assign(c, { alive: true, x, z, y: terrain.heightAt(x, z), yaw: Math.random() * 6.28, vx: 0, vz: 0, hp: c.k.hp, flash: 0, state: 'roam', t: 0, cd: 0, wander: Math.random() * 6.28, dead: 0, mood: Math.random() * 4 });
       if (c.kind === 'skitter') {
-        const mate = list.find((o) => o !== c && o.alive && o.kind === 'skitter' && Math.hypot(o.x - around.x, o.z - around.z) > SPAWN_MIN && Math.random() < 0.6);
+        const mate = list.find((o) => o !== c && o.alive && o.kind === 'skitter' && !o.herd && Math.hypot(o.x - around.x, o.z - around.z) > SPAWN_MIN && Math.random() < 0.6);
         if (mate) { c.x = mate.x + (Math.random() - 0.5) * 8; c.z = mate.z + (Math.random() - 0.5) * 8; if (!okSpot(c.x, c.z, 'skitter')) { c.x = x; c.z = z; } c.wander = mate.wander; }
         c.y = terrain.heightAt(c.x, c.z);
       }
@@ -119,12 +222,13 @@ export function createFauna({ root, def, terrain, fx }) {
 
   function reset(roverPos, heading) {
     for (const c of list) { c.alive = false; c.g.visible = false; c.respawn = Math.random() * 3; }
-    if (roverPos) for (const c of list) spawn(c, roverPos, heading + (Math.random() - 0.5) * 6);
+    if (roverPos) for (const c of list) { c.gone = false; spawn(c, roverPos, heading + (Math.random() - 0.5) * 6); }
   }
   function hideAll() { for (const c of list) { c.alive = false; c.g.visible = false; } }
 
   function kill(c, by) {
-    c.alive = false; c.dead = 1.1; c.respawn = 6 + Math.random() * 8;
+    c.alive = false; c.dead = 1.1; c.respawn = c.herd ? 5 + Math.random() * 6 : 6 + Math.random() * 8;
+    if (c.kind === 'hound') c.gone = true; // packs stay cleared until the next landing
     v1.set(c.x, c.y + (c.kind === 'hound' ? 1.2 : 0.5), c.z);
     if (c.kind === 'hound') {
       fx.emit(v1, 40, { speed: 9, life: 0.9, size: 2.2, colors: [[5, 1.8, 0.3], [4, 2.8, 0.8], [0.4, 0.3, 0.28]], drag: 2 });
@@ -169,14 +273,18 @@ export function createFauna({ root, def, terrain, fx }) {
     for (const c of list) {
       if (c.dead > 0) { c.dead -= dt; c.g.scale.setScalar(Math.max(0.01, c.dead)); c.g.position.y -= dt * 0.8; if (c.dead <= 0) c.g.visible = false; }
       if (!c.alive) {
-        if (ctx.quiet) continue;
+        if (ctx.quiet || c.gone || (c.kind === 'hound' && !c.home)) continue;
         c.respawn = (c.respawn || 0) - dt;
         if (c.respawn <= 0) { if (!spawn(c, R, ctx.heading)) c.respawn = 2; }
         continue;
       }
       if (ctx.quiet) { c.alive = false; c.g.visible = false; c.respawn = 1; continue; }
       const dx = R.x - c.x, dz = R.z - c.z, dist = Math.hypot(dx, dz);
-      if (dist > DESPAWN) { c.alive = false; c.g.visible = false; c.respawn = 0.5 + Math.random() * 2; continue; }
+      if (!c.home && dist > DESPAWN) { c.alive = false; c.g.visible = false; c.respawn = 0.5 + Math.random() * 2; continue; }
+      if (c.home && dist > 320) { c.g.visible = false; continue; } // homed creatures just sleep when far away
+      c.g.visible = true;
+      // homed creatures drift back when they stray (and hounds give up a chase that drags them off)
+      const hx = c.home ? c.home.x - c.x : 0, hz = c.home ? c.home.z - c.z : 0, fromHome = Math.hypot(hx, hz);
       c.t += dt; c.cd -= dt; c.flash = Math.max(0, c.flash - dt);
       let want = 0, wantYaw = c.yaw;
       const toward = Math.atan2(dx, dz); // yaw facing the rover (+z forward in creature space is -z... see below)
@@ -189,13 +297,16 @@ export function createFauna({ root, def, terrain, fx }) {
           c.mood -= dt;
           if (c.mood < 0) { c.mood = 1.5 + Math.random() * 3; c.wander += (Math.random() - 0.5) * 2; c.idle = Math.random() < 0.35; }
           want = c.idle ? 0 : c.k.speed; wantYaw = c.wander;
+          if (c.home && fromHome > c.home.r) { wantYaw = Math.atan2(hx, hz); want = c.k.speed; c.wander = wantYaw; }
         }
+        if (c.state === 'flee' && c.home && fromHome > c.home.r * 2.2) c.state = 'roam';
       } else {
         if (c.state === 'roam' && dist < c.k.sight) { c.state = 'stalk'; c.t = 0; ctx.say && ctx.say('hound', 'Contacts. Magma hounds, and they have our scent. Outrun them or use the turret.'); }
         if (c.state === 'roam') {
           c.mood -= dt;
           if (c.mood < 0) { c.mood = 2 + Math.random() * 3; c.wander += (Math.random() - 0.5) * 2.5; }
           want = c.k.speed * 0.6; wantYaw = c.wander;
+          if (c.home && fromHome > c.home.r) { wantYaw = Math.atan2(hx, hz); c.wander = wantYaw; }
         } else if (c.state === 'stalk') {
           // a short circling stalk telegraphs the hunt before the run
           want = c.k.speed; wantYaw = toward + 0.9;
@@ -209,7 +320,7 @@ export function createFauna({ root, def, terrain, fx }) {
             if (rs < 18) { ctx.damage(c.k.bite); ctx.shake(0.45); }
             c.vx -= Math.sin(c.yaw) * 6; c.vz -= Math.cos(c.yaw) * 6; // recoil off the hull
           }
-          if (dist > c.k.sight * 2.2) { c.state = 'roam'; }
+          if (dist > c.k.sight * 2.2 || (c.home && fromHome > 110)) { c.state = 'roam'; }
         }
       }
       // turn, then move along the facing (creature forward is -Z like the rover, so yaw atan2(-dx,-dz))
@@ -245,17 +356,17 @@ export function createFauna({ root, def, terrain, fx }) {
       if (c.kind === 'hound') {
         c.torso.position.y = 1.15 + Math.abs(Math.sin(c.gait)) * 0.12 * sw;
         const lunge = c.state === 'chase' && dist < 7;
-        c.jaw.rotation.x = lunge ? 0.35 + Math.sin(time * 18) * 0.25 : 0.05;
+        c.jaw.rotation.x = lunge ? -(0.35 + Math.sin(time * 18) * 0.25) : -0.05; // negative opens
         c.head.rotation.x = c.state === 'stalk' ? 0.25 : 0;
       } else {
-        c.body.position.y = 0.42 + Math.abs(Math.sin(c.gait * 0.5)) * 0.05;
+        c.body.position.y = 0.3 + Math.abs(Math.sin(c.gait * 0.5)) * 0.05;
       }
       c.g.position.set(c.x, c.y, c.z);
       c.g.rotation.y = c.yaw + Math.PI; // models are built facing -Z
-      c.glow.scale.setScalar(c.flash > 0 ? 1.6 : 1);
+      c.glow.scale.setScalar(c.flash > 0 ? 1.12 : 1);
     }
     return houndsHunting;
   }
 
-  return { list, reset, hideAll, update, hitTest, damage, kill };
+  return { list, reset, hideAll, update, hitTest, damage, kill, meadow };
 }
