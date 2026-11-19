@@ -18,6 +18,9 @@ const KIND = {
 const N_SKITTER = 20, N_PAD_HERD = 9;
 const PACKS = [{ t: 150, n: 2 }, { t: 260, n: 3 }, { t: 370, n: 2 }, { t: 470, n: 3 }]; // metres along each causeway
 const N_HOUND = PACKS.reduce((a, p) => a + p.n, 0);
+// extra packs (owner, 2026-11-19): two guarding the Forge Gate apron, and a few out in open country
+const FORGE_PACKS = [{ back: 15, side: -6, n: 3 }, { back: 22, side: 6, n: 2 }];
+const N_WILD_PACKS = 5, N_EXTRA = FORGE_PACKS.reduce((a, p) => a + p.n, 0) + N_WILD_PACKS * 3;
 const SPAWN_MIN = 75, SPAWN_MAX = 150, DESPAWN = 230;
 
 // Cinder skitter: a basalt-shelled beetle about a metre long, glowing only along its shell seams.
@@ -131,12 +134,13 @@ export function createFauna({ root, def, terrain, fx }) {
   };
   const list = [];
   for (let i = 0; i < N_SKITTER; i++) list.push({ kind: 'skitter', k: KIND.skitter, ...makeSkitter(mats) });
-  for (let i = 0; i < N_HOUND * Math.max(1, (def.causeways || []).length); i++) list.push({ kind: 'hound', k: KIND.hound, ...makeHound(mats) });
+  for (let i = 0; i < N_HOUND * Math.max(1, (def.causeways || []).length) + N_EXTRA; i++) list.push({ kind: 'hound', k: KIND.hound, ...makeHound(mats) });
   for (const c of list) {
     c.g.visible = false; root.add(c.g);
     Object.assign(c, { alive: false, x: 0, z: 0, y: 0, yaw: 0, vx: 0, vz: 0, hp: 0, gait: 0, flash: 0, state: 'roam', t: 0, cd: 0, wander: 0, dead: 0, mood: 0 });
   }
 
+  const nearForge = (x, z) => def.canyon && def.canyon.forge && Math.hypot(x - def.canyon.forge.x, z - def.canyon.forge.z) < def.canyon.forge.r + 8;
   const okSpot = (x, z, kind, rover) => {
     const lim = def.size * 0.42;
     if (Math.abs(x) > lim || Math.abs(z) > lim) return false;
@@ -144,7 +148,7 @@ export function createFauna({ root, def, terrain, fx }) {
     if (h < def.lava + 1.2) return false;
     if (Math.hypot(x - def.pad.x, z - def.pad.z) < def.pad.r * 2) return false;
     if (Math.hypot(x - def.vault.x, z - def.vault.z) < 95) return false; // keep the arena and vent field to the Titan
-    if (kind === 'hound' && def.canyon && pathInfo(def.canyon.pts, x, z).d < def.canyon.wall + 10) return false; // the canyon is the geysers' fight
+    if (kind === 'hound' && def.canyon && !nearForge(x, z) && pathInfo(def.canyon.pts, x, z).d < def.canyon.wall + 10) return false; // the canyon is the geysers' fight
     if (rover && Math.hypot(x - rover.x, z - rover.z) < SPAWN_MIN * 0.8) return false;
     return true;
   };
@@ -155,7 +159,7 @@ export function createFauna({ root, def, terrain, fx }) {
     if (Math.abs(x) > lim || Math.abs(z) > lim) return false;
     if (terrain.heightAt(x, z) < def.lava + 0.8) return false;
     if (Math.hypot(x - def.vault.x, z - def.vault.z) < 90) return false;
-    if (kind === 'hound' && def.canyon && pathInfo(def.canyon.pts, x, z).d < def.canyon.wall + 6) return false;
+    if (kind === 'hound' && def.canyon && !nearForge(x, z) && pathInfo(def.canyon.pts, x, z).d < def.canyon.wall + 6) return false;
     return true;
   };
 
@@ -182,6 +186,27 @@ export function createFauna({ root, def, terrain, fx }) {
     if (!q) continue;
     for (let i = 0; i < p.n && hi < hounds.length; i++) hounds[hi++].home = { x: q.x, z: q.z, r: 16, dx: q.dx, dz: q.dz };
   }
+  const packHomes = [];
+  if (def.canyon && def.canyon.forge) {
+    // on the apron in front of the gate, facing the way the rover comes up the canyon
+    const F = def.canyon.forge, pts = def.canyon.pts, a = pts[pts.length - 1], b = pts[pts.length - 2];
+    const L = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, ux = (a[0] - b[0]) / L, uz = (a[1] - b[1]) / L;
+    for (const p of FORGE_PACKS) packHomes.push({ x: F.x - ux * p.back - uz * p.side, z: F.z - uz * p.back + ux * p.side, r: 9, n: p.n });
+  }
+  // wild packs: open, dry ground away from the pad, the vault, the canyon, and each other
+  const taken = (x, z) => packHomes.some((h) => Math.hypot(h.x - x, h.z - z) < 130) ||
+    (def.causeways || []).some((c) => PACKS.some((p) => { const q = pathPoint(c.pts, p.t); return q && Math.hypot(q.x - x, q.z - z) < 110; }));
+  for (let tries = 0, made = 0; tries < 400 && made < N_WILD_PACKS; tries++) {
+    const lim = def.size * 0.38, x = (Math.random() * 2 - 1) * lim, z = (Math.random() * 2 - 1) * lim;
+    if (Math.hypot(x - def.pad.x, z - def.pad.z) < 170 || Math.hypot(x - def.vault.x, z - def.vault.z) < 130) continue;
+    if (def.canyon && pathInfo(def.canyon.pts, x, z).d < def.canyon.wall + 25) continue;
+    if (taken(x, z) || terrain.heightAt(x, z) < def.lava + 2.5) continue;
+    let ok = true;
+    for (let k = 0; k < 8 && ok; k++) { const t = (k / 8) * 6.28; ok = canWalk(x + Math.cos(t) * 12, z + Math.sin(t) * 12, 'hound'); }
+    if (!ok) continue;
+    packHomes.push({ x, z, r: 14, n: 2 + (Math.random() < 0.5 ? 1 : 0) }); made++;
+  }
+  for (const h of packHomes) for (let i = 0; i < h.n && hi < hounds.length; i++) hounds[hi++].home = { x: h.x, z: h.z, r: h.r };
   for (; hi < hounds.length; hi++) hounds[hi].home = null; // unused
 
   // place a creature at its home (herd/pack) or, for roamers, in the band ahead of the rover
@@ -254,12 +279,12 @@ export function createFauna({ root, def, terrain, fx }) {
   }
 
   // returns true if it died
-  function damage(c, n) {
+  function damage(c, n, quiet) {
     if (!c.alive) return false;
     c.hp -= n; c.flash = 0.12;
     if (c.kind === 'hound') { c.state = 'chase'; c.t = 0; } // shooting one wakes it
     else { c.state = 'flee'; c.t = 0; }
-    fx.emit(hitP, 6, { speed: 5, life: 0.3, size: 1.1, colors: [[5, 2.2, 0.5]], drag: 4 });
+    if (!quiet) fx.emit(hitP, 6, { speed: 5, life: 0.3, size: 1.1, colors: [[5, 2.2, 0.5]], drag: 4 });
     if (c.hp <= 0) { kill(c); return true; }
     return false;
   }
@@ -366,5 +391,5 @@ export function createFauna({ root, def, terrain, fx }) {
     return houndsHunting;
   }
 
-  return { list, reset, hideAll, update, hitTest, damage, kill, meadow, deathFx };
+  return { list, reset, hideAll, update, hitTest, damage, kill, meadow, deathFx, packHomes };
 }

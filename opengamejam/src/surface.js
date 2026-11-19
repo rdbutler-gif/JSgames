@@ -5,7 +5,7 @@ import { createTerrain, SURFACES, pathInfo, pathPoint } from './terrain.js';
 import { makeParticles } from './assault.js';
 import { cloneModel, onModel, hasModel } from './models.js';
 import { settings } from './settings.js';
-import { sfx } from './audio.js';
+import { sfx, lanceHum } from './audio.js';
 import { createTitan, TITAN_HP } from './guardian.js';
 import { createFauna } from './fauna.js';
 
@@ -37,6 +37,11 @@ const TURRET_POS = new THREE.Vector3(0, 0.6, 0.15); // seated on the generated c
 // The crosshair sits above screen centre so the rover never covers it; the aim ray goes through it.
 const AIM_NDC_Y = 0.2;
 const ARENA_R = 64;
+// Special weapons: one is selected at a time (held on right mouse, Q or LB). Only the heat lance exists so far.
+// The lance burns whatever the beam touches, harder the longer it stays on one target, and overheats.
+const SPECIALS = {
+  lance: { name: 'HEAT LANCE', range: 75, heatPerSec: 1 / 3.2, coolPerSec: 0.32, restart: 0.3, dps: [3, 9], rampT: 1.0 },
+};
 
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3();
 const q1 = new THREE.Quaternion();
@@ -364,8 +369,18 @@ export function createSurface(hooks) {
     const boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.5, 2.6, 1.1) });
     const bolts = [];
     for (let i = 0; i < 40; i++) { const m = new THREE.Mesh(boltGeo, boltMat); m.visible = false; root.add(m); bolts.push({ m, on: false, p: new THREE.Vector3(), v: new THREE.Vector3(), t: 0 }); }
+    // heat lance: an orange sheath round a white-hot core, stretched from the turret to what it touches
+    const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true).rotateX(Math.PI / 2);
+    const beamMat = (c, o) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false });
+    const lance = {
+      glow: new THREE.Mesh(beamGeo, beamMat(new THREE.Color(2.0, 0.55, 0.1), 0.55)),
+      core: new THREE.Mesh(beamGeo, beamMat(new THREE.Color(3.0, 2.1, 1.0), 1)),
+      light: new THREE.PointLight('#ff7a2a', 0, 18, 2),
+    };
+    for (const m of [lance.glow, lance.core]) { m.visible = false; m.frustumCulled = false; root.add(m); }
+    root.add(lance.light);
     const fauna = createFauna({ root, def, terrain, fx });
-    const b = { def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna };
+    const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna };
     built.set(id, b);
     return b;
   }
@@ -403,7 +418,7 @@ export function createSurface(hooks) {
     rover.hull = 100;
     placeAtPad();
     const taken = !!relics[planetId];
-    S = { time: 0, prompt: null, said: new Set(), hint: 9, hintMode: 'drive', lost: 0, planet: planetId, obj: taken ? 'return' : upgrades.forgeplate ? 'cross' : 'vault', fight: false, gunCd: 0, barrel: 0, recoil: [0, 0], aimLift: 0 };
+    S = { time: 0, prompt: null, said: new Set(), hint: 9, hintMode: 'drive', lost: 0, planet: planetId, obj: taken ? 'return' : upgrades.forgeplate ? 'cross' : 'vault', fight: false, gunCd: 0, barrel: 0, recoil: [0, 0], aimLift: 0, special: 'lance', heat: 0, over: false, lanceOn: false, lanceT: 0, lanceTgt: null, rockAcc: 0 };
     if (T.forge) T.forge.crate.visible = !upgrades.forgeplate;
     T.titan.reset();
     T.fauna.reset(rover.pos, Math.atan2(-v1.set(0, 0, -1).applyQuaternion(rover.quat).x, -v1.z));
@@ -427,7 +442,7 @@ export function createSurface(hooks) {
       ? 'Forgeplate is fitted. The vault is the light column, north-east. The vents cannot touch us now.'
       : 'The vault signal is that light column, north-east. The Wayfarer is on the pad when you want to lift off.'), 6000);
   }
-  function exit() { if (T) { T.titan.reset(); T.fauna.hideAll(); } S = null; scene.clear(); }
+  function exit() { lanceHum(false); if (T) { T.titan.reset(); T.fauna.hideAll(); } S = null; scene.clear(); }
 
   // ---------- the guardian fight ----------
   function wakeGuardian() {
@@ -541,7 +556,7 @@ export function createSurface(hooks) {
     S.recoil[0] = Math.max(0, S.recoil[0] - dt * 2.5); S.recoil[1] = Math.max(0, S.recoil[1] - dt * 2.5);
     mesh.barrels.forEach((b, i) => { b.position.z = -0.85 + S.recoil[i]; });
     S.gunCd -= dt;
-    if (inp.gun && S.gunCd <= 0) {
+    if (inp.gun && S.gunCd <= 0 && !S.lanceOn) {
       S.gunCd = 1 / 7;
       const i = S.barrel = 1 - S.barrel;
       const bl = mesh.barrels[i];
@@ -570,11 +585,7 @@ export function createSurface(hooks) {
       if (fh && (!rh || fh.u <= rh.u)) {
         const died = T.fauna.damage(fh.c, 1);
         S.hitMark = died ? 0.35 : 0.15;
-        if (died) {
-          sfx.explode(false);
-          if (fh.c.kind === 'hound') faunaSay('hound-kill', 'Hound down. They are only following the heat. So are we.');
-          else if (S.obj === 'practice') practiceKill();
-        }
+        if (died) creatureKilled(fh.c);
         else sfx.hit();
         b.on = false; b.m.visible = false; continue;
       }
@@ -584,6 +595,60 @@ export function createSurface(hooks) {
         b.on = false; b.m.visible = false;
       }
     }
+  }
+
+  function creatureKilled(c) {
+    sfx.explode(false);
+    if (c.kind === 'hound') faunaSay('hound-kill', 'Hound down. They are only following the heat. So are we.');
+    else if (S.obj === 'practice') practiceKill();
+  }
+
+  // ---------- heat lance (the special weapon) ----------
+  const lv = new THREE.Vector3(), lEnd = new THREE.Vector3();
+  function updateLance(dt, inp) {
+    const L = SPECIALS[S.special], B = T.lance;
+    S.lanceOn = !!inp.special && !S.over;
+    S.heat = S.lanceOn ? Math.min(1, S.heat + dt * L.heatPerSec) : Math.max(0, S.heat - dt * L.coolPerSec);
+    if (S.heat >= 1 && !S.over) { S.over = true; S.lanceOn = false; sfx.overheat(); say1('lance-hot', 'Lance overheated. Let it cool, the cannon still works.'); }
+    if (S.over && S.heat <= L.restart) { S.over = false; sfx.lanceReady(); }
+    lanceHum(S.lanceOn, S.heat);
+    if (!S.lanceOn) { B.glow.visible = B.core.visible = false; B.light.intensity = 0; S.lanceT = 0; S.lanceTgt = null; return; }
+    // from between the barrels toward the aim point, cut short at the lance's reach
+    mesh.barrels[0].updateMatrixWorld(); mesh.barrels[1].updateMatrixWorld();
+    mesh.barrels[0].localToWorld(v1.set(0, 0, -0.72)); mesh.barrels[1].localToWorld(v2.set(0, 0, -0.72));
+    mz.addVectors(v1, v2).multiplyScalar(0.5);
+    lv.subVectors(aim.p, mz); const full = lv.length() || 1; lv.divideScalar(full);
+    let end = Math.min(full, L.range);
+    segA.copy(mz); segB.copy(mz).addScaledVector(lv, end + 0.8);
+    // what does it touch first?
+    let tgt = null, kind = null, hit = null;
+    const th = T.titan.hitTest(segA, segB);
+    if (th) { const d = th.p.distanceTo(mz); if (d <= end + 0.8) { end = d; tgt = T.titan; kind = 'titan'; hit = th; } }
+    const fh = T.fauna.hitTest(segA, segB);
+    if (fh) { const d = fh.p.distanceTo(mz); if (d < end + 0.8 && (!tgt || d < end)) { end = d; tgt = fh.c; kind = 'fauna'; hit = fh; } }
+    const rh = rockHit(segA, segB);
+    if (rh) { const d = rh.p.distanceTo(mz); if (d < end + 0.8 && (!tgt || d < end)) { end = d; tgt = rh.r; kind = 'rock'; hit = { p: rh.p.clone() }; } }
+    // burn: the ramp builds while the beam stays on one target
+    S.lanceT = tgt && tgt === S.lanceTgt ? S.lanceT + dt : 0;
+    S.lanceTgt = tgt;
+    const n = (L.dps[0] + (L.dps[1] - L.dps[0]) * clamp(S.lanceT / L.rampT, 0, 1)) * dt;
+    if (kind === 'titan') { if (hit.kind === 'core') { T.titan.onBolt(hit, titanCtx, n, true); S.hitMark = 0.1; } }
+    else if (kind === 'fauna') { S.hitMark = 0.1; if (T.fauna.damage(tgt, n, true)) creatureKilled(tgt); }
+    else if (kind === 'rock') {
+      S.rockAcc += n; S.hitMark = 0.08;
+      while (S.rockAcc >= 1 && !tgt.dead) { S.rockAcc -= 1; hitRock(tgt, hit.p); }
+    }
+    // draw it
+    lEnd.copy(mz).addScaledVector(lv, end);
+    const fl = 0.8 + 0.2 * Math.sin(S.time * 63) * Math.sin(S.time * 41);
+    for (const [m, w] of [[B.glow, (0.15 + S.heat * 0.07) * fl], [B.core, 0.045 * fl]]) {
+      m.visible = true; m.position.addVectors(mz, lEnd).multiplyScalar(0.5); m.lookAt(lEnd); m.scale.set(w, w, end);
+    }
+    B.glow.material.color.setRGB(2.0 + S.heat * 0.6, 0.55 + S.heat * 0.4, 0.1 + S.heat * 0.15);
+    B.light.position.copy(lEnd).addScaledVector(lv, -0.6); B.light.intensity = 22 * fl;
+    T.fx.emit(lEnd, 2, { speed: 6, life: 0.35, size: 1.0, colors: [[6, 3, 1], [5, 1.6, 0.3]], drag: 3 });
+    if (Math.random() < dt * 12) T.fauna.deathFx.smoke.emit(lEnd, 1, { speed: 0.6, spread: 0.2, rise: 1.2, life: 1.6, size: 1.1, alpha: 0.45, colors: [[0.12, 0.1, 0.09]] });
+    S.recoil[0] = S.recoil[1] = 0.015 * Math.random(); // the barrels buzz
   }
 
   function updateFight(dt) {
@@ -872,15 +937,11 @@ export function createSurface(hooks) {
       rover.hull = Math.max(25, rover.hull - 18 * dt);
       S.heatWall = 0.5; S.shake = Math.max(S.shake, 0.4);
       if (S.obj === 'vault') setObj('plate');
-      say1('ring-hot', 'Heat wall. We cannot cross without heat plating. The Forge Gate, west.');
+      say1('ring-hot', 'Heat wall! The vent field will melt us. There is a Warden forge to the west, at the end of a lava canyon. We need its heat plating.');
     }
     if (inRing && plated) say1('ring-plated', 'Forgeplate is holding. Keep going.');
 
     // objectives move with what the player has done
-    if (S.obj === 'vault' && !plated && toVault < 170) {
-      setObj('plate');
-      say1('need-plate', 'Stop short of the vault. Its vent field will melt us. There is a Warden forge to the west, at the end of a lava canyon. We need its heat plating first.');
-    }
     if (d.canyon && !plated) {
       const ci = pathInfo(d.canyon.pts, P.x, P.z);
       if (ci.d < 14 && ci.t > 40 && ci.t < 130) say1('canyon', 'Magma Canyon. Those vents erupt on a rhythm. Watch the glow, then go.');
@@ -1024,6 +1085,7 @@ export function createSurface(hooks) {
     camera.updateMatrixWorld();
     updateAim(camera, inp.device);
     updateTurret(dt, inp);
+    updateLance(dt, inp);
     return result;
   }
 
@@ -1118,6 +1180,16 @@ export function createSurface(hooks) {
     ctx.fillStyle = `rgba(${hc},0.95)`; ctx.fillRect(bx, by, bw * clamp(rover.hull / 100, 0, 1), 10);
     text(ctx, 'ROVER HULL', bx, by - 14, 13, hc, 0.9, 'left');
     text(ctx, Math.round(rover.hull) + '%', bx + bw, by - 14, 13, hc, 0.9, 'right');
+    {
+      // special weapon heat, above the hull bar
+      const ly = by - 46, lc = S.over ? RED : S.heat > 0.75 ? '255,150,60' : GOLD;
+      ctx.fillStyle = 'rgba(6,12,22,0.72)'; ctx.fillRect(bx - 4, ly - 4, bw + 8, 14);
+      ctx.fillStyle = 'rgba(' + lc + ',0.2)'; ctx.fillRect(bx, ly, bw, 6);
+      ctx.fillStyle = 'rgba(' + lc + ',0.95)'; ctx.fillRect(bx, ly, bw * S.heat, 6);
+      const padL = device === 'gamepad';
+      text(ctx, SPECIALS[S.special].name + (padL ? ' · LB' : ' · RMB / Q'), bx, ly - 12, 12, lc, 0.85, 'left');
+      text(ctx, S.over ? 'OVERHEAT' : S.lanceOn ? 'FIRING' : 'READY', bx + bw, ly - 12, 12, lc, S.over ? 0.6 + 0.4 * Math.sin(S.time * 14) : 0.85, 'right');
+    }
     if (rover.lavaT > 0 && !(S.heatWall > 0)) text(ctx, 'HEAT CRITICAL', W / 2, H * 0.25, 26 * sc + 10, RED, 0.6 + 0.4 * Math.sin(S.time * 14), 'center', 700);
 
     // WREN subtitle (latest line)
@@ -1140,8 +1212,8 @@ export function createSurface(hooks) {
       const txt = S.hintMode === 'practice'
         ? (pad ? 'RB fire turret · RIGHT STICK aim · the crosshair locks on when close' : 'LEFT CLICK or E fire turret · MOUSE aim · the crosshair locks on when close')
         : S.hintMode === 'gun'
-        ? (pad ? 'RB fire turret · RIGHT STICK aim · keep driving' : 'LEFT CLICK or E fire turret · MOUSE aim · keep driving')
-        : (pad ? 'RT drive · LT brake/reverse · LEFT STICK steer · X handbrake · RIGHT STICK camera · RB turret' : 'W/S drive and brake · A/D steer · SPACE handbrake · MOUSE camera · CLICK turret');
+        ? (pad ? 'RB fire turret · LB heat lance · RIGHT STICK aim · keep driving' : 'LEFT CLICK or E turret · RIGHT CLICK or Q heat lance · MOUSE aim')
+        : (pad ? 'RT drive · LT brake/reverse · LEFT STICK steer · X handbrake · RIGHT STICK camera · RB turret · LB lance' : 'W/S drive and brake · A/D steer · SPACE handbrake · MOUSE camera · CLICK turret · RIGHT CLICK lance');
       text(ctx, txt, W / 2, H * 0.6, 15 * sc + 5, CYAN, Math.min(1, S.hint) * 0.9);
     }
   }

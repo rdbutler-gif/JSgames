@@ -76,6 +76,16 @@ export function createPost(renderer, scene, camera, cockpit) {
   gtao.render = (...a) => { cockpit.setGlass(false); gtaoRender(...a); cockpit.setGlass(true); };
   composer.addPass(gtao);
 
+  // one bad pixel (NaN or infinity) gets blurred by bloom into a screen-sized black block; zero it first
+  const sanitize = new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+      void main(){ vec4 c=texture2D(tDiffuse,vUv);
+        if (!(c.r < 65000.0 && c.g < 65000.0 && c.b < 65000.0) || !(c.r >= 0.0 && c.g >= 0.0 && c.b >= 0.0)) c = vec4(0.0, 0.0, 0.0, 1.0);
+        gl_FragColor = c; }`,
+  });
+  composer.addPass(sanitize);
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.45, 0.92);
   composer.addPass(bloom);
   const lens = new ShaderPass(LensShader);

@@ -215,11 +215,11 @@ export function createTitan({ root, def, terrain, fx }) {
     }
     return { kind: 'armour', p: hitP };
   }
-  function onBolt(hit, ctx) {
+  // n = damage (bolts do 1); quiet = a continuous beam calling every frame (no per-hit sound or burst)
+  function onBolt(hit, ctx, n = 1, quiet = false) {
     if (hit.kind === 'core') {
-      T.hp -= 1; T.coreHits++; T.flash = 0.12; T.hitMark = 0.15;
-      fx.emit(hit.p, 10, { speed: 8, life: 0.5, size: 1.6, colors: [[5, 3, 1], [4, 1.5, 0.3]], drag: 2 });
-      sfx.hit();
+      T.hp -= n; T.coreHits++; T.flash = 0.12; T.hitMark = 0.15;
+      if (!quiet) { fx.emit(hit.p, 10, { speed: 8, life: 0.5, size: 1.6, colors: [[5, 3, 1], [4, 1.5, 0.3]], drag: 2 }); sfx.hit(); }
       if (T.coreHits === 1) ctx.say('That is the core. Keep firing!');
       const st = stageOf(T.hp);
       if (T.hp <= 0) { die(ctx); return; }
@@ -229,7 +229,7 @@ export function createTitan({ root, def, terrain, fx }) {
         ctx.say(st === 1 ? 'It is rerouting the lava. Its shells will leave fire on the ground now. Keep moving.'
           : 'It is burning itself out. Faster shells. Stay off the bright ground, nearly there.');
       }
-    } else {
+    } else if (!quiet) {
       T.armourHits++;
       fx.emit(hit.p, 4, { speed: 6, life: 0.3, size: 0.8, colors: [[3, 2.4, 1.4]], drag: 3 });
       if (T.armourHits % 3 === 0) blip(3200 + Math.random() * 600, 0.03, 'square', 0.015);

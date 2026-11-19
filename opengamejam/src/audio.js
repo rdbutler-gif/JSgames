@@ -77,6 +77,34 @@ export function blip(freq = 880, dur = 0.08, type = 'square', vol = 0.06, delay 
   o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
 }
 
+// Heat lance: a held, buzzing hum that rises with the beam's heat. on = firing, k = 0..1 heat.
+let lance = null;
+export function lanceHum(on, k = 0) {
+  if (!ac) return;
+  const t = ac.currentTime;
+  if (!lance) {
+    const g = ac.createGain(); g.gain.value = 0;
+    const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.value = 900;
+    f.connect(g); g.connect(master);
+    const o1 = ac.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 110;
+    const o2 = ac.createOscillator(); o2.type = 'square'; o2.frequency.value = 221;
+    const lfo = ac.createOscillator(); lfo.frequency.value = 31; const lg = ac.createGain(); lg.gain.value = 18;
+    lfo.connect(lg); lg.connect(o1.frequency); lg.connect(o2.frequency);
+    const len = ac.sampleRate; const buf = ac.createBuffer(1, len, ac.sampleRate); const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const n = ac.createBufferSource(); n.buffer = buf; n.loop = true; const ng = ac.createGain(); ng.gain.value = 0.35;
+    n.connect(ng); ng.connect(f); o1.connect(f); o2.connect(f);
+    o1.start(); o2.start(); lfo.start(); n.start();
+    lance = { g, f, o1, o2 };
+  }
+  clearTimeout(lance.off); if (on) lance.off = setTimeout(() => lanceHum(false), 150); // falls silent if the game stops calling (pause)
+  const vol = on && !settings.muted ? 0.07 + 0.05 * k : 0;
+  lance.g.gain.setTargetAtTime(vol, t, on ? 0.03 : 0.08);
+  lance.f.frequency.setTargetAtTime(700 + 1500 * k, t, 0.1);
+  lance.o1.frequency.setTargetAtTime(105 + 60 * k, t, 0.1);
+  lance.o2.frequency.setTargetAtTime(211 + 120 * k, t, 0.1);
+}
+
 // Filtered noise burst (explosions, impacts). Starts on the call, no pre-delay.
 let noiseBuf = null;
 export function noise(dur = 0.4, vol = 0.2, freq = 900, endFreq = 120, q = 0.8) {
@@ -137,6 +165,8 @@ export const sfx = {
   spool() { blip(180, 1.6, 'sawtooth', 0.05, 0, 4); },
   engage() { blip(140, 0.6, 'sawtooth', 0.09, 0, 0.3); },
   drop() { blip(900, 0.5, 'sawtooth', 0.06, 0, 0.2); },
+  overheat() { noise(0.9, 0.25, 5000, 300, 1.5); blip(300, 0.5, 'sawtooth', 0.05, 0, 0.4); },
+  lanceReady() { blip(880, 0.06, 'triangle', 0.04); blip(1320, 0.08, 'triangle', 0.04, 0.07); },
   bump() { blip(70, 0.35, 'sine', 0.25, 0, 0.6); },
   entry() { blip(60, 3.0, 'sawtooth', 0.12, 0, 2.5); },
 };

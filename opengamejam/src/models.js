@@ -16,6 +16,27 @@ const loaded = new Map();   // name -> normalised template Group
 const waiters = new Map();  // name -> [callback]
 const loader = new GLTFLoader();
 
+// Generated meshes can carry zero-length normals. A GPU normalises them to NaN, and bloom smears
+// NaN pixels into big black blocks (the "black wall" at the Forge Gate). Give each one its face's normal.
+function fixNormals(geo) {
+  const n = geo.attributes.normal, p = geo.attributes.position;
+  if (!n || !p) return;
+  const idx = geo.index, a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const bad = new Set();
+  for (let i = 0; i < n.count; i++) { const x = n.getX(i), y = n.getY(i), z = n.getZ(i); if (!(x * x + y * y + z * z > 1e-8)) bad.add(i); }
+  if (!bad.size) return;
+  const tris = idx ? idx.count / 3 : p.count / 3;
+  for (let t = 0; t < tris && bad.size; t++) {
+    const i0 = idx ? idx.getX(t * 3) : t * 3, i1 = idx ? idx.getX(t * 3 + 1) : t * 3 + 1, i2 = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+    if (!bad.has(i0) && !bad.has(i1) && !bad.has(i2)) continue;
+    a.fromBufferAttribute(p, i0); b.fromBufferAttribute(p, i1).sub(a); c.fromBufferAttribute(p, i2).sub(a);
+    b.cross(c); if (b.lengthSq() < 1e-12) b.set(0, 1, 0); b.normalize();
+    for (const i of [i0, i1, i2]) if (bad.has(i)) { n.setXYZ(i, b.x, b.y, b.z); bad.delete(i); }
+  }
+  for (const i of bad) n.setXYZ(i, 0, 1, 0);
+  n.needsUpdate = true;
+}
+
 function normalise(root, def) {
   root.rotation.set(def.pitch, def.yaw, 0);
   root.updateMatrixWorld(true);
@@ -36,6 +57,7 @@ function normalise(root, def) {
       // Generated maps arrive glossy and metal; this is a painted style, so keep them matte.
       if (m && 'metalness' in m) { m.metalness = Math.min(m.metalness, 0.25); m.roughness = Math.max(m.roughness, 0.6); }
       o.castShadow = false; o.receiveShadow = false;
+      fixNormals(o.geometry);
     }
   });
   holder.userData.size = size.multiplyScalar(k);
