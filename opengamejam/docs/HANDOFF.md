@@ -44,6 +44,23 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
 - **Hull mends** 2.5/s after 6 s without damage, never in the Titan fight.
 - Dev-only: `window.__relic.camera` and `surface.debug.mesh` were exposed for close-up test shots.
 
+### Cockpit remodel and post chain (owner request 2026-11-19, awaiting owner look)
+- `src/cockpit.js` is now built from PBR materials with procedural maps from `src/cockpit-art.js`: panel seams, rivets, wear and grime turned into albedo, roughness and normal maps, all generated on canvases.
+- The cockpit has:
+  - a glareshield with an amber lip and a warm light strip, plus a HUD projector and vents
+  - recessed screen bezels with screws, soft keys and glass
+  - side consoles with backlit keys and LEDs, guarded toggles, knobs, and a throttle quadrant
+  - two live gauges (CELL = boost energy, DRIVE = speed)
+  - outer consoles with breakers, a vent, a stencil and a grab bar
+  - riveted canopy struts with a recessed light channel
+  - canopy glass whose smudges catch the sun
+- Lighting: the sun casts shadows, plus RoomEnvironment reflections at 0.26 and a RectAreaLight under the hood. `cockpit.debugSun` (test hook) overrides the sun direction.
+- `src/post.js` owns the frame: world → cockpit → GTAO (cockpit only, glass hidden) → bloom → lens pass (grade, vignette, chromatic aberration, grain) → output.
+  - The composer target has 4× MSAA.
+  - Grade values per phase live in `LOOK`. There is still no tone curve, so lava brightness is unchanged.
+  - Boost and cruise push chromatic aberration and vignette up a little.
+  - `post.watch` turns AO off after 3 s below 40 fps. `?hq` in the URL pins full quality for headless captures.
+
 ## Owner decisions to respect (also in GAMEPLAN §1)
 
 - The brief (`\\LAPTOP-ILH3Q3AS\RussOldPC\OpenGames\The Last Wayline\gameplan.md`) is a loose guide; build in steps; each step ends playable and the owner tests it.
@@ -78,8 +95,9 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
 ## Assets and spend
 
 - Models in `public/models/`: raider, player (the *Wayfarer*), rover, forgegate, crate. Concepts are in `assets-src/`.
+- Sky: `public/sky/nebula.jpg` (168 KB) is a fal FLUX dev 2048x1024 equirectangular nebula (`tools/gen-skybox.mjs`, dry run unless `--go`; raw + request record in `assets-src/sky-raw/`). `world.js` maps it with a tilt, cross-fades the wrap seam over 6% of the width, fades the poles, and falls back to the procedural sky until it loads. Owner has not seen it yet.
 - SFX in `public/sfx/`: laser, boom, boom-big, cannon, titan-roar (ElevenLabs); raw takes in `assets-src/sfx-raw/`.
-- Spend log: `tools/spend-log.md`. Meshy 105 credits used (about 1,015 left); ElevenLabs about 234 credits; fal unused. Keys: fal in `tools/.env` (git-ignored); Meshy and ElevenLabs are MCP servers.
+- Spend log: `tools/spend-log.md`. Meshy 105 credits used (about 1,015 left); ElevenLabs about 234 credits; fal about $0.075 (one sky image). Keys: fal in `tools/.env` (git-ignored); Meshy and ElevenLabs are MCP servers.
 
 ## Known issues / loose ends
 

@@ -7,10 +7,6 @@ import '@fontsource/chakra-petch/700.css';
 import './style.css';
 
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 import { settings, saveSettings } from './settings.js';
 import { input, initInput, pollInput, endFrame, requestLock, releaseLock } from './input.js';
@@ -19,6 +15,7 @@ import { createWorld } from './world.js';
 import { createSquads } from './fighters.js';
 import { createShip, updateShip, FLIGHT } from './ship.js';
 import { createCockpit } from './cockpit.js';
+import { createPost } from './post.js';
 import { createHud } from './hud.js';
 import { createMenu } from './ui.js';
 import { COMMS_NAME } from './data.js';
@@ -46,7 +43,7 @@ const world = createWorld(scene);
 world.setPixelRatio(PR);
 const squads = createSquads(scene);
 const ship = createShip();
-const cockpit = createCockpit();
+const cockpit = createCockpit(renderer);
 const hud = createHud($('hud'));
 const hudCtx = $('hud').getContext('2d');
 const assault = createAssault(scene, camera, { say: (t) => say(t), note: (t, c) => note(t, c) });
@@ -77,17 +74,14 @@ function relicSecured(id) {
   }, () => say(m.after));
 }
 
-const composer = new EffectComposer(renderer);
-const renderPass = new RenderPass(scene, camera);
-composer.addPass(renderPass);
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.45, 0.92);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
+const post = createPost(renderer, scene, camera, cockpit);
+const renderPass = post.worldPass;
+const bloom = post.bloom;
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false);
-  composer.setSize(w, h);
+  post.setSize(w, h);
   camera.aspect = w / h; camera.updateProjectionMatrix();
   cockpit.resize(w / h);
   hud.resize(w, h);
@@ -563,23 +557,22 @@ function step(dt) {
 }
 
 function draw() {
-  composer.render();
+  post.setMode(G.inSurface ? 'surface' : G.inAssault ? 'assault' : 'flight');
+  const inCockpit = !G.inSurface && !G.inAssault;
+  post.render(G.time, inCockpit ? (ship.cruise === 2 ? 1 : ship.cruise === 1 ? 0.35 : ship.boosting ? 0.6 : 0) : 0, lastDt);
   renderer.setRenderTarget(null);
-  if (!G.inAssault && !G.inSurface) {
-    renderer.clearDepth();
-    renderer.render(cockpit.scene, cockpit.camera);
-  }
   hud.draw(G, camera);
   if (G.inAssault) assault.drawHud(hudCtx, window.innerWidth, window.innerHeight, input.device);
   if (G.inSurface) surface.drawHud(hudCtx, window.innerWidth, window.innerHeight, G, input.device);
 }
 
-let last = performance.now();
+let last = performance.now(), lastDt = 1 / 60;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
-  try { step(dt); draw(); } catch (err) { console.error(err); }
+  lastDt = dt;
+  try { step(dt); draw(); post.watch(dt); } catch (err) { console.error(err); }
   endFrame();
 }
 
@@ -590,4 +583,4 @@ draw();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => cockpit.redrawAll(G));
 document.fonts && document.fonts.load('600 20px "Chakra Petch"').then(() => cockpit.redrawAll(G)).catch(() => {});
 requestAnimationFrame(frame);
-if (import.meta.env.DEV) window.__relic = { G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera };
+if (import.meta.env.DEV) window.__relic = { G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post };

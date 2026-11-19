@@ -21,3 +21,4 @@ Starting Meshy balance: 1,120 credits (2026-11-18). Each row is logged before it
 | 2026-11-19 | ElevenLabs | SFX: Foundry Titan roar, eleven_text_to_sound_v3, 4 takes, flow cXaLksmBbeIQIdNN9EK7 | 67 cr | node fb4RGwXzWNQ5QsaCjp4Z | public/sfx/titan-roar.mp3 (take 4WLK9V5k); alt take in assets-src/sfx-raw/ | EL 234 cr |
 
 **Totals 2026-11-19:** ElevenLabs +134 credits (about 234 total). Meshy unchanged (about 1,015 left).
+| 2026-11-19 | fal | space sky panorama A, fal-ai/flux/dev 2048x1024, seed 7104 (tools/gen-skybox.mjs) | ~$0.075 | 01a1f4e7-8376-76b2-8360-2ef9e77a162f | assets-src/sky-raw/skyA.png, accepted -> public/sky/nebula.jpg | fal ~$0.075 |

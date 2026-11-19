@@ -12,6 +12,7 @@ function makeSky() {
       cB: { value: new THREE.Color('#0e6b7d') },
       cC: { value: new THREE.Color('#7a2f6e') },
       sunDir: { value: SUN_DIR },
+      pano: { value: null }, panoMix: { value: 0 }, tilt: { value: new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0.38, 2.2, 0.22))) },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -22,7 +23,19 @@ function makeSky() {
       }`,
     fragmentShader: NOISE + /* glsl */ `
       uniform vec3 cA, cB, cC, sunDir;
+      uniform sampler2D pano; uniform float panoMix; uniform mat3 tilt;
       varying vec3 vDir;
+      // Painted nebula panorama (fal FLUX, equirectangular). The left/right edges are cross-faded over
+      // W of the width so the wrap has no seam; the poles fade to the void where the projection pinches.
+      const float W = 0.06;
+      vec3 panoAt(vec3 d) {
+        d = tilt * d;
+        float u = atan(d.z, d.x) / 6.2831853 + 0.5, v = asin(clamp(d.y, -1.0, 1.0)) / 3.1415927 + 0.5;
+        float x = u * (1.0 - W);
+        vec3 c = texture2D(pano, vec2(x, v)).rgb;
+        if (x < W) c = mix(texture2D(pano, vec2(x + 1.0 - W, v)).rgb, c, x / W);
+        return c * (1.0 - smoothstep(0.72, 0.97, abs(d.y)));
+      }
       void main() {
         vec3 d = normalize(vDir);
         float n = fbm(d * 2.1 + vec3(3.0));
@@ -34,6 +47,7 @@ function makeSky() {
         col = mix(col, cA * 0.55, neb);
         col = mix(col, cB * 0.6, smoothstep(0.55, 0.85, n2) * neb);
         col += cC * 0.25 * smoothstep(0.6, 0.9, n) * band;
+        if (panoMix > 0.0) col = mix(col, vec3(0.002, 0.003, 0.009) + panoAt(d) * 0.4, panoMix);
         float s = max(dot(d, sunDir), 0.0);
         col += vec3(1.0, 0.75, 0.45) * (pow(s, 14.0) * 0.18 + pow(s, 3.0) * 0.03);
         gl_FragColor = vec4(col, 1.0);
@@ -42,6 +56,16 @@ function makeSky() {
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(1000, 48, 24), mat);
   m.renderOrder = -10; m.frustumCulled = false;
+  // Swap in the painted panorama once it loads, with a short fade; the procedural sky stays as the fallback.
+  new THREE.TextureLoader().load('sky/nebula.jpg', (t) => {
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; // no mip seam where atan wraps
+    t.wrapS = THREE.RepeatWrapping;
+    mat.uniforms.pano.value = t;
+    const t0 = performance.now();
+    const fade = () => { const k = Math.min(1, (performance.now() - t0) / 800); mat.uniforms.panoMix.value = k; if (k < 1) requestAnimationFrame(fade); };
+    fade();
+  });
   return m;
 }
 
