@@ -282,7 +282,11 @@ export function createSurface(hooks) {
     const glyph = new THREE.Mesh(new THREE.TorusGeometry(6, 0.25, 6, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.5, 1.4, 0.3) }));
     glyph.rotation.x = Math.PI / 2; glyph.position.set(def.vault.x, terrain.vaultH + 2.6, def.vault.z); root.add(glyph);
     root.add(mesh.group);
-    const fx = makeParticles(1600); fx.mat.uniforms.pr.value = 1.5; root.add(fx.pts);
+    // surface effects were authored while the particles were never stepped (so never seen); at full
+    // strength they stack into white blobs, so colours are scaled down here. raw: true skips the scaling.
+    const fxRaw = makeParticles(1600); fxRaw.mat.uniforms.pr.value = 1.5; root.add(fxRaw.pts);
+    const FX_GAIN = 0.4;
+    const fx = { ...fxRaw, emit: (p, n, o) => fxRaw.emit(p, n, o.raw ? o : { ...o, colors: o.colors.map((c) => c.map((v) => v * FX_GAIN)) }) };
     const geysers = [];
     const ventMat = () => new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 0.35, 0.08) });
     const addGeyser = (x, z, period, phase, ring) => {
@@ -978,6 +982,7 @@ export function createSurface(hooks) {
     });
     T.lava.material.uniforms.time.value = S.time;
     T.embers.update(dt, rover.pos, S.time);
+    T.fx.update(dt); // sparks, fire and dust (was never stepped, so surface particles never showed)
     T.glyph.rotation.z += dt * 0.3;
     T.sun.position.copy(rover.pos).addScaledVector(v1.set(...d.sky.sunDir).normalize(), 120);
     T.sun.target.position.copy(rover.pos);

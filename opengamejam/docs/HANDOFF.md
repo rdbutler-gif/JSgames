@@ -42,6 +42,8 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
   - Soft aim pull onto the nearest creature within 0.06 rad (pad) / 0.025 (mouse), 4–140 m.
 - Bolts test Titan → creatures/rocks (nearest) → ground; the aim ray does the same so bolts converge on what is under the crosshair. Crosshair hit marker covers creatures and rocks (`S.hitMark`).
 - **Hull mends** 2.5/s after 6 s without damage, never in the Titan fight.
+- **Deaths (owner request 2026-11-19, "they just shrink"):** `src/gibs.js` bursts the body into its own meshes (biggest 14 for a hound, 7 for a skitter), which tumble, bounce on the terrain, trail fire and smoke, then sink after about 4 s. Each death adds a fireball, sparks, a smoke ball (its own normally blended `makeSmoke` points), a short pooled point-light flash, a fire that burns where the body was, and a scorch decal that follows the terrain and fades over 14 s.
+- **Surface particles were never stepped before this** (`T.fx.update` was missing), so rock bursts, muzzle flash, geyser spray and the Titan's shells and slams had never shown. They show now, scaled by `FX_GAIN` 0.4 in `surface.js` because full strength turned into white blobs; `raw: true` on an emit skips the scaling (gibs use it). Owner has not seen any of these yet.
 - Dev-only: `window.__relic.camera` and `surface.debug.mesh` were exposed for close-up test shots.
 
 ### Cockpit remodel and post chain (owner request 2026-11-19, awaiting owner look)

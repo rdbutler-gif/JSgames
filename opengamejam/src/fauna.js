@@ -6,6 +6,7 @@
 //   and stay dead until the next landing, so a causeway can be cleared.
 import * as THREE from 'three';
 import { pathInfo, pathPoint } from './terrain.js';
+import { createDeathFx } from './gibs.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
@@ -221,21 +222,18 @@ export function createFauna({ root, def, terrain, fx }) {
   }
 
   function reset(roverPos, heading) {
+    deathFx.clear();
     for (const c of list) { c.alive = false; c.g.visible = false; c.respawn = Math.random() * 3; }
     if (roverPos) for (const c of list) { c.gone = false; spawn(c, roverPos, heading + (Math.random() - 0.5) * 6); }
   }
-  function hideAll() { for (const c of list) { c.alive = false; c.g.visible = false; } }
+  function hideAll() { for (const c of list) { c.alive = false; c.g.visible = false; } deathFx.clear(); }
 
+  const deathFx = createDeathFx({ root, terrain, fx });
   function kill(c, by) {
-    c.alive = false; c.dead = 1.1; c.respawn = c.herd ? 5 + Math.random() * 6 : 6 + Math.random() * 8;
+    c.alive = false; c.dead = 0; c.respawn = c.herd ? 5 + Math.random() * 6 : 6 + Math.random() * 8;
     if (c.kind === 'hound') c.gone = true; // packs stay cleared until the next landing
-    v1.set(c.x, c.y + (c.kind === 'hound' ? 1.2 : 0.5), c.z);
-    if (c.kind === 'hound') {
-      fx.emit(v1, 40, { speed: 9, life: 0.9, size: 2.2, colors: [[5, 1.8, 0.3], [4, 2.8, 0.8], [0.4, 0.3, 0.28]], drag: 2 });
-      fx.emit(v1, 14, { speed: 4, life: 1.6, size: 4, colors: [[0.5, 0.35, 0.3]], drag: 1.5, dir: v2.set(0, 3, 0) });
-    } else {
-      fx.emit(v1, 18, { speed: 6, life: 0.6, size: 1.4, colors: [[4, 1.6, 0.3], [0.45, 0.35, 0.3]], drag: 3 });
-    }
+    deathFx.burst(c); // the body bursts into its own burning parts
+    c.g.visible = false;
     return by;
   }
 
@@ -268,10 +266,10 @@ export function createFauna({ root, def, terrain, fx }) {
 
   // ctx: { rover, heading, damage(n), shake(k), say(id,line), quiet } — quiet = the Titan fight, no wildlife
   function update(dt, time, ctx) {
+    deathFx.update(dt);
     const R = ctx.rover.pos;
     let houndsHunting = 0;
     for (const c of list) {
-      if (c.dead > 0) { c.dead -= dt; c.g.scale.setScalar(Math.max(0.01, c.dead)); c.g.position.y -= dt * 0.8; if (c.dead <= 0) c.g.visible = false; }
       if (!c.alive) {
         if (ctx.quiet || c.gone || (c.kind === 'hound' && !c.home)) continue;
         c.respawn = (c.respawn || 0) - dt;
@@ -368,5 +366,5 @@ export function createFauna({ root, def, terrain, fx }) {
     return houndsHunting;
   }
 
-  return { list, reset, hideAll, update, hitTest, damage, kill, meadow };
+  return { list, reset, hideAll, update, hitTest, damage, kill, meadow, deathFx };
 }
