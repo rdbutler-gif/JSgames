@@ -1,0 +1,50 @@
+:root {
+  --cyan: #6ef2ff;
+  --amber: #ffb35a;
+  --red: #ff4d6d;
+  --ink: #dff8ff;
+  --panel: rgba(6, 12, 22, 0.88);
+  --edge: rgba(110, 242, 255, 0.4);
+}
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: var(--ink); font-family: 'Chakra Petch', system-ui, sans-serif; }
+body { user-select: none; -webkit-user-select: none; }
+#gl, #hud { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; }
+#hud { pointer-events: none; }
+#heat { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(255,140,40,0) 30%, rgba(255,110,30,0.55) 75%, rgba(255,230,180,0.9) 100%); }
+#fade { position: fixed; inset: 0; pointer-events: none; background: #000; opacity: 0; transition: opacity 0.4s; }
+
+.overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; }
+.overlay.show { display: flex; }
+#pause, #controls, #event { background: rgba(2, 4, 10, 0.55); backdrop-filter: blur(3px); }
+
+.title-wrap { text-align: center; margin-top: -6vh; }
+.kicker { font: 600 14px 'Chakra Petch'; letter-spacing: 0.4em; color: var(--amber); margin-bottom: 10px; }
+h1 { font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: clamp(48px, 8vw, 120px); letter-spacing: 0.1em; margin: 0;
+  color: #fff; text-shadow: 0 0 30px rgba(110, 242, 255, 0.55), 0 0 2px #fff; }
+.sub { font-size: clamp(15px, 1.4vw, 20px); color: #b9d9e6; margin: 10px 0 34px; letter-spacing: 0.05em; }
+.device-hint { margin-top: 22px; font-size: 14px; color: #7fa3b3; letter-spacing: 0.05em; }
+
+.panel { background: var(--panel); border: 1px solid var(--edge); padding: 26px 34px 30px; min-width: min(440px, 90vw); max-width: 92vw;
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  box-shadow: 0 0 40px rgba(110, 242, 255, 0.12) inset; }
+.panel.wide { min-width: min(760px, 92vw); }
+.panel h2 { font-family: 'Orbitron', sans-serif; font-weight: 700; letter-spacing: 0.14em; margin: 0 0 18px; color: #fff; font-size: 26px; }
+.panel h3 { font-size: 15px; letter-spacing: 0.2em; color: var(--amber); margin: 0 0 10px; text-transform: uppercase; }
+.panel p { color: #b9d9e6; line-height: 1.5; max-width: 560px; font-size: 17px; }
+.panel .note { font-size: 14px; color: #8fb2c2; }
+.cols { display: flex; gap: 40px; flex-wrap: wrap; margin-bottom: 18px; }
+.cols > div { flex: 1 1 280px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; font-size: 15px; }
+dt { color: var(--cyan); font-weight: 600; }
+dd { margin: 0; color: #cfe6ef; }
+
+.menu { display: flex; flex-direction: column; gap: 6px; min-width: min(380px, 86vw); margin: 0 auto; }
+.menu button { display: flex; justify-content: space-between; align-items: center; gap: 20px; width: 100%;
+  background: rgba(110, 242, 255, 0.03); border: 1px solid rgba(110, 242, 255, 0.14); color: #cfefff;
+  font: 600 18px 'Chakra Petch', sans-serif; padding: 11px 16px; text-align: left; cursor: pointer; letter-spacing: 0.08em; text-transform: uppercase; }
+.menu button .val { color: var(--amber); font-weight: 600; }
+.menu button.focus, .menu button:hover { border-color: var(--cyan); background: rgba(110, 242, 255, 0.14); color: #fff;
+  box-shadow: 0 0 18px rgba(110, 242, 255, 0.25); }
+.menu button:focus { outline: none; }
+#title .menu button { justify-content: center; font-size: 20px; }

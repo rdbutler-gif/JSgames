@@ -1,0 +1,25 @@
+<!doctype html><html><body style="margin:0;background:#556">
+<canvas id="c" width="900" height="450"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const name = new URLSearchParams(location.search).get('m') || 'raider';
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
+r.outputColorSpace = THREE.SRGBColorSpace;
+const s = new THREE.Scene(); s.background = new THREE.Color('#556');
+s.add(new THREE.AmbientLight('#fff', 1.2)); const d = new THREE.DirectionalLight('#fff', 2); d.position.set(1, 3, 2); s.add(d);
+s.add(new THREE.AxesHelper(0.8)); // red +X, green +Y, blue +Z
+new GLTFLoader().load('/models/' + name + '.glb', (g) => {
+  const L = g.scene, R = g.scene.clone();
+  L.position.x = -0.7; R.position.x = 0.7; s.add(L); s.add(R);
+  const top = new THREE.OrthographicCamera(-1.5, 1.5, 0.75, -0.75, 0.01, 10); top.position.set(0, 3, 0); top.lookAt(0, 0, 0);
+  // left half: view from top (+Y). right half: view from front (+Z)
+  r.setScissorTest(true);
+  r.setViewport(0, 0, 900, 450); r.setScissor(0, 0, 450, 450);
+  const cam1 = new THREE.OrthographicCamera(-0.75, 0.75, 0.75, -0.75, 0.01, 10); cam1.position.set(-0.7, 3, 0); cam1.up.set(0, 0, -1); cam1.lookAt(-0.7, 0, 0);
+  r.setViewport(0, 0, 450, 450); r.render(s, cam1);
+  const cam2 = new THREE.OrthographicCamera(-0.75, 0.75, 0.75, -0.75, 0.01, 10); cam2.position.set(0.7, 0.4, 3); cam2.lookAt(0.7, 0, 0);
+  r.setViewport(450, 0, 450, 450); r.setScissor(450, 0, 450, 450); r.render(s, cam2);
+  document.title = 'ready';
+});
+</script></body></html>

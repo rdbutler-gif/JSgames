@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opengame.io/schema/opengame.json",
+  "title": "The Last Wayline",
+  "kind": "game",
+  "build": {
+    "command": "npm run build",
+    "output": "dist"
+  },
+  "controls": ["keyboard", "mouse", "gamepad"]
+}

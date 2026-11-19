@@ -1,0 +1,9 @@
+{
+  "$schema": "https://opengame.io/schema/opengame.json",
+  "title": "Ember Keeper",
+  "kind": "game",
+  "build": {
+    "output": "."
+  },
+  "controls": ["keyboard", "mouse", "gamepad"]
+}

@@ -1,0 +1,8 @@
+node_modules/
+# dist/ is committed: gamesbyrusko.com (GitHub Pages) serves opengamejam/dist/ as-is. Rebuild before each push.
+.opengame/
+
+# local secrets for build-time asset tools
+tools/.env
+.env
+.env.*

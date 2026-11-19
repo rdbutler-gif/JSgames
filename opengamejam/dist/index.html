@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#04050a">
+<title>The Last Wayline</title>
+  <script type="module" crossorigin src="./assets/index-C-VTwQRi.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DeZkWqd4.css">
+</head>
+<body>
+<canvas id="gl" tabindex="0" aria-label="The Last Wayline"></canvas>
+<canvas id="hud" aria-hidden="true"></canvas>
+<div id="heat" aria-hidden="true"></div>
+<div id="fade" aria-hidden="true"></div>
+
+<div id="title" class="overlay show">
+  <div class="title-wrap">
+    <div class="kicker">THREE KEYS · ONE ROAD HOME</div>
+    <h1>THE LAST WAYLINE</h1>
+    <div class="sub">The Waylines are going dark. Find the three Warden relics before the last road dies.</div>
+    <div id="title-menu" class="menu"></div>
+    <div class="device-hint" id="title-hint"></div>
+  </div>
+</div>
+
+<div id="pause" class="overlay">
+  <div class="panel">
+    <h2>PAUSED</h2>
+    <div id="pause-menu" class="menu"></div>
+  </div>
+</div>
+
+<div id="controls" class="overlay">
+  <div class="panel wide">
+    <h2>CONTROLS</h2>
+    <div class="cols">
+      <div>
+        <h3>Mouse &amp; keyboard</h3>
+        <dl>
+          <dt>Mouse</dt><dd>Steer (pitch &amp; yaw)</dd>
+          <dt>A / D</dt><dd>Roll</dd>
+          <dt>Q / E</dt><dd>Yaw</dd>
+          <dt>W / S</dt><dd>Throttle up / down</dd>
+          <dt>X</dt><dd>Cut throttle</dd>
+          <dt>Shift</dt><dd>Boost (hold)</dd>
+          <dt>C</dt><dd>Cruise drive</dd>
+          <dt>Tab</dt><dd>Next nav target</dd>
+          <dt>F</dt><dd>Accept (engage / land)</dd>
+          <dt>R</dt><dd>Re-center mouse stick</dd>
+          <dt>Arrows</dt><dd>Pitch &amp; yaw (keyboard only)</dd>
+          <dt>Esc / P</dt><dd>Pause</dd>
+        </dl>
+      </div>
+      <div>
+        <h3>Gamepad</h3>
+        <dl>
+          <dt>Left stick</dt><dd>Pitch &amp; yaw</dd>
+          <dt>Right stick</dt><dd>Roll</dd>
+          <dt>RT / LT</dt><dd>Throttle up / down</dd>
+          <dt>B or L3</dt><dd>Boost (hold)</dd>
+          <dt>X</dt><dd>Cruise drive</dd>
+          <dt>LB</dt><dd>Next nav target</dd>
+          <dt>A</dt><dd>Accept (engage / land)</dd>
+          <dt>Y</dt><dd>Cut throttle</dd>
+          <dt>Start</dt><dd>Pause</dd>
+        </dl>
+        <p class="note">Invert Y is in the pause menu. It applies to mouse, stick and arrow keys.</p>
+      </div>
+    </div>
+    <div id="controls-menu" class="menu"></div>
+  </div>
+</div>
+
+<div id="event" class="overlay">
+  <div class="panel">
+    <div class="kicker" id="event-kicker"></div>
+    <h2 id="event-title"></h2>
+    <p id="event-text"></p>
+    <div id="event-menu" class="menu"></div>
+  </div>
+</div>
+
+</body>
+</html>
