@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { pathInfo, pathPoint } from './terrain.js';
 import { createDeathFx } from './gibs.js';
+import { bakeStatic } from './bake.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3();
@@ -22,6 +23,7 @@ const N_HOUND = PACKS.reduce((a, p) => a + p.n, 0);
 const FORGE_PACKS = [{ back: 15, side: -6, n: 3 }, { back: 22, side: 6, n: 2 }];
 const N_WILD_PACKS = 5, N_EXTRA = FORGE_PACKS.reduce((a, p) => a + p.n, 0) + N_WILD_PACKS * 3;
 const SPAWN_MIN = 75, SPAWN_MAX = 150, DESPAWN = 230;
+const DRAW_R = 200, SHADOW_R = 70; // creatures are hidden past DRAW_R and cast shadows only inside SHADOW_R
 
 // Cinder skitter: a basalt-shelled beetle about a metre long, glowing only along its shell seams.
 function makeSkitter(mats) {
@@ -135,6 +137,12 @@ export function createFauna({ root, def, terrain, fx }) {
   const list = [];
   for (let i = 0; i < N_SKITTER; i++) list.push({ kind: 'skitter', k: KIND.skitter, ...makeSkitter(mats) });
   for (let i = 0; i < N_HOUND * Math.max(1, (def.causeways || []).length) + N_EXTRA; i++) list.push({ kind: 'hound', k: KIND.hound, ...makeHound(mats) });
+  // merge each creature's rigid parts (75 meshes per hound -> about 20); gibs keep the separate parts
+  for (const c of list) {
+    const anchors = [...c.legs.map((L) => L.pivot), c.glow, ...(c.kind === 'hound' ? [c.torso, c.head, c.jaw] : [c.body])];
+    const baked = bakeStatic(c.g, anchors);
+    c.gibParts = baked.parts; c.meshes = baked.meshes; c.shadow = true;
+  }
   for (const c of list) {
     c.g.visible = false; root.add(c.g);
     Object.assign(c, { alive: false, x: 0, z: 0, y: 0, yaw: 0, vx: 0, vz: 0, hp: 0, gait: 0, flash: 0, state: 'roam', t: 0, cd: 0, wander: 0, dead: 0, mood: 0 });
@@ -305,7 +313,9 @@ export function createFauna({ root, def, terrain, fx }) {
       const dx = R.x - c.x, dz = R.z - c.z, dist = Math.hypot(dx, dz);
       if (!c.home && dist > DESPAWN) { c.alive = false; c.g.visible = false; c.respawn = 0.5 + Math.random() * 2; continue; }
       if (c.home && dist > 320) { c.g.visible = false; continue; } // homed creatures just sleep when far away
-      c.g.visible = true;
+      c.g.visible = dist < DRAW_R;
+      const sh = dist < SHADOW_R;
+      if (sh !== c.shadow) { c.shadow = sh; for (const m of c.meshes) m.castShadow = sh; }
       // homed creatures drift back when they stray (and hounds give up a chase that drags them off)
       const hx = c.home ? c.home.x - c.x : 0, hz = c.home ? c.home.z - c.z : 0, fromHome = Math.hypot(hx, hz);
       c.t += dt; c.cd -= dt; c.flash = Math.max(0, c.flash - dt);

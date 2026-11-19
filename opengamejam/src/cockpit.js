@@ -2,6 +2,7 @@
 // Lit with PBR materials, a sun that casts the canopy frame's shadow across the dash, and
 // image-based reflections; the post chain in main.js adds AO, bloom and the lens grade.
 import * as THREE from 'three';
+import { bakeStatic } from './bake.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -442,6 +443,10 @@ export function createCockpit(renderer) {
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
   quad(V(-1.22, -0.38, -1.0), V(1.22, -0.38, -1.0), V(0.72, 1.02, -1.33), V(-0.72, 1.02, -1.33));
   for (const s of [-1, 1]) quad(V(s * 1.22, -0.38, -1.0), V(s * 1.6, -0.3, 0.4), V(s * 1.04, 1.18, 0.4), V(s * 0.72, 1.02, -1.33));
+
+  // merge everything that never moves (253 meshes -> one per material); the lever, needles and glass stay separate
+  const baked = bakeStatic(scene, [throttlePivot, ...needles], (o) => o.material === glassMat || o.material === canopyMat);
+  scene.userData.bake = baked.before + " -> " + baked.after;
 
   // see-through layers stay out of the AO pass (they would occlude the whole window)
   const glassMeshes = [];

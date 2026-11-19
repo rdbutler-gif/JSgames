@@ -2,6 +2,7 @@
 // with a fireball, sparks, a smoke plume, a short flash of light and a scorch on the ground.
 // Parts reuse the creature's own geometry and materials, so a death compiles no new shaders.
 import * as THREE from 'three';
+import { VLight } from './lightpool.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), m4 = new THREE.Matrix4();
@@ -84,7 +85,7 @@ export function createDeathFx({ root, terrain, fx }) {
   const smoke = makeSmoke(700);
   root.add(smoke.pts);
   // one pooled flash light, always in the scene so a death never changes the light count
-  const flash = new THREE.PointLight('#ff8a3a', 0, 22, 2);
+  const flash = new VLight('#ff8a3a', 0, 22, 2);
   root.add(flash);
   let flashI = 0;
 
@@ -130,12 +131,11 @@ export function createDeathFx({ root, terrain, fx }) {
     // parts: the creature's own meshes, biggest first, flung out from the body's centre
     c.g.updateMatrixWorld(true); root.updateMatrixWorld();
     const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    // the creature's original pieces (it is drawn merged), placed where its pose has them now
     const parts = [];
-    c.g.traverse((o) => {
-      if (!o.isMesh) return;
-      if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
-      parts.push(o);
-    });
+    if (c.gibParts) for (const p of c.gibParts) parts.push({ geometry: p.geometry, material: p.material, matrixWorld: new THREE.Matrix4().multiplyMatrices(p.anchor.matrixWorld, p.local) });
+    else c.g.traverse((o) => { if (o.isMesh) parts.push(o); });
+    for (const o of parts) if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
     parts.sort((a, b) => b.geometry.boundingSphere.radius - a.geometry.boundingSphere.radius);
     const n = Math.min(parts.length, big ? 14 : 7);
     for (let i = 0; i < n; i++) {

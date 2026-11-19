@@ -31,6 +31,7 @@ initInput(canvas);
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 const PR = Math.min(window.devicePixelRatio || 1, 1.5);
+let renderScale = 1;
 renderer.setPixelRatio(PR);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.autoClear = false;
@@ -80,6 +81,7 @@ const bloom = post.bloom;
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
+  renderer.setPixelRatio(PR * renderScale);
   renderer.setSize(w, h, false);
   post.setSize(w, h);
   camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -88,6 +90,51 @@ function resize() {
 }
 addEventListener('resize', resize);
 resize();
+
+// ---------- graphics quality ----------
+// 0 high (the full look), 1 medium, 2 low. "Auto" starts high (medium on an integrated GPU) and
+// steps down, never up, when frames run long for a few seconds. ?hq pins high for headless captures.
+const QUALITY = [
+  { name: 'HIGH', scale: 1, samples: 4, ao: true, bloomK: 1, shadow: 2048 },
+  { name: 'MEDIUM', scale: 0.85, samples: 2, ao: false, bloomK: 0.5, shadow: 1024 },
+  { name: 'LOW', scale: 0.7, samples: 0, ao: false, bloomK: 0.5, shadow: 1024 },
+];
+const quality = (() => {
+  let level = -1, slowAvg = 1 / 60, slowT = 0, grace = 4;
+  const gpu = (() => { try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : ''; } catch (e) { return ''; } })();
+  const integrated = /intel|uhd|iris|radeon\(tm\) graphics|radeon graphics|vega \d+ graphics|mali|adreno|apple gpu|swiftshader|llvmpipe/i.test(gpu) && !/nvidia|geforce|rtx|gtx|radeon rx/i.test(gpu);
+  function apply(l) {
+    if (l === level) return;
+    level = l; const q = QUALITY[l];
+    renderScale = q.scale; resize();
+    post.setQuality(q);
+    const cs = cockpit.sun.shadow; if (cs.mapSize.x !== q.shadow) { cs.mapSize.set(q.shadow, q.shadow); if (cs.map) { cs.map.dispose(); cs.map = null; } }
+    surface.setShadowSize(q.shadow);
+    world.setPixelRatio(PR * renderScale); assault.setPixelRatio(PR * renderScale);
+    slowT = 0; slowAvg = 1 / 60; grace = 4;
+  }
+  function fromSettings() {
+    const pick = { high: 0, medium: 1, low: 2 }[settings.quality];
+    apply(post.pinned ? 0 : pick !== undefined ? pick : Math.max(level < 0 ? 0 : level, integrated ? 1 : 0));
+  }
+  fromSettings();
+  return {
+    gpu, get level() { return level; }, fromSettings,
+    label() { return settings.quality === 'auto' ? 'AUTO · ' + QUALITY[level].name : QUALITY[level].name; },
+    cycle(d) {
+      const order = ['auto', 'high', 'medium', 'low'];
+      settings.quality = order[(order.indexOf(settings.quality) + (d < 0 ? 3 : 1)) % 4]; saveSettings();
+      if (settings.quality === 'auto') level = -1, apply(integrated ? 1 : 0); else fromSettings();
+    },
+    watch(dt) {
+      if (post.pinned || settings.quality !== 'auto' || level >= 2 || dt > 0.25) return;
+      if (grace > 0) { grace -= dt; return; } // settle after a change or a load
+      slowAvg += (dt - slowAvg) * 0.05;
+      slowT = slowAvg > 1 / 45 ? slowT + dt : Math.max(0, slowT - dt);
+      if (slowT > 2.5) { apply(level + 1); console.warn('graphics: auto quality lowered to ' + QUALITY[level].name); }
+    },
+  };
+})();
 
 // ---------- game context ----------
 const G = {
@@ -120,6 +167,7 @@ let controlsReturn = 'title';
 const titleMenu = createMenu($('title-menu'), () => [
   { label: 'LAUNCH', act: launch },
   { label: 'INVERT Y', value: () => onOff(settings.invertY), adjust: () => { settings.invertY = !settings.invertY; saveSettings(); } },
+  { label: 'GRAPHICS', value: () => quality.label(), adjust: (d) => quality.cycle(d) },
   { label: 'CONTROLS', act: () => openControls('title') },
 ]);
 const pauseMenu = createMenu($('pause-menu'), () => [
@@ -129,6 +177,7 @@ const pauseMenu = createMenu($('pause-menu'), () => [
   { label: 'MOUSE SENSITIVITY', value: () => pct(settings.mouseSens), adjust: (d) => { settings.mouseSens = THREE.MathUtils.clamp(+(settings.mouseSens + d * 0.1).toFixed(2), 0.3, 2.5); saveSettings(); } },
   { label: 'STICK SENSITIVITY', value: () => pct(settings.stickSens), adjust: (d) => { settings.stickSens = THREE.MathUtils.clamp(+(settings.stickSens + d * 0.1).toFixed(2), 0.4, 2); saveSettings(); } },
   { label: 'VOLUME', value: () => (settings.muted ? 'MUTED' : pct(settings.volume)), adjust: (d) => { settings.muted = false; settings.volume = THREE.MathUtils.clamp(+(settings.volume + d * 0.1).toFixed(2), 0, 1); saveSettings(); applyVolume(); } },
+  { label: 'GRAPHICS', value: () => quality.label(), adjust: (d) => quality.cycle(d) },
   { label: 'CONTROLS', act: () => openControls('pause') },
   { label: 'QUIT TO TITLE', act: toTitle },
 ]);
@@ -572,7 +621,7 @@ function frame(now) {
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
   lastDt = dt;
-  try { step(dt); draw(); post.watch(dt); } catch (err) { console.error(err); }
+  try { step(dt); draw(); quality.watch(dt); } catch (err) { console.error(err); }
   endFrame();
 }
 

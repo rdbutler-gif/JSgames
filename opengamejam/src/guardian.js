@@ -2,6 +2,7 @@
 // fights from there. Its armour shrugs off the rover's cannon; after each furnace barrage it
 // has to vent, and the chest plates open on the core. Three heat stages (core HP 60 / 40 / 20).
 import * as THREE from 'three';
+import { VLight } from './lightpool.js';
 import { sfx, noise, blip } from './audio.js';
 
 const clamp = THREE.MathUtils.clamp;
@@ -50,7 +51,7 @@ function buildBody(M) {
   const coreHole = box(4.2, 4.6, 0.4, M.dark, 0, -0.2, -2.45); torso.add(coreHole);
   const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.35, 1), M.core);
   core.position.set(0, -0.2, -2.55); torso.add(core);
-  const coreLight = new THREE.PointLight('#ff8a30', 0, 26, 1.6); coreLight.position.set(0, -0.2, -4); torso.add(coreLight);
+  const coreLight = new VLight('#ff8a30', 0, 26, 1.6); coreLight.position.set(0, -0.2, -4); torso.add(coreLight);
   const plates = [-1, 1].map((s) => {
     const hinge = new THREE.Group(); hinge.position.set(s * 2.35, -0.2, -2.6); torso.add(hinge);
     const p = box(2.35, 4.8, 0.55, M.iron, -s * 1.175, 0, -0.05); hinge.add(p);
@@ -94,7 +95,7 @@ export function createTitan({ root, def, terrain, fx }) {
   root.add(B.body);
   B.body.visible = false;
   // the open shaft glows: it lights the Titan from below and the arena floor around it
-  const shaftLight = new THREE.PointLight('#ff7a2a', 0, 80, 1.3);
+  const shaftLight = new VLight('#ff7a2a', 0, 80, 1.3);
   shaftLight.position.set(C.x, C.y + 2.5, C.z); root.add(shaftLight);
   const restY = C.y + 0.5, sunkY = C.y - 18;
 

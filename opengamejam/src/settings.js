@@ -7,6 +7,7 @@ const defaults = {
   stickSens: 1.0,
   volume: 0.8,
   muted: false,
+  quality: 'auto', // 'auto' | 'high' | 'medium' | 'low'
 };
 
 function load() {

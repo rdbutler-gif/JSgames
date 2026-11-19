@@ -8,6 +8,7 @@ import { settings } from './settings.js';
 import { sfx, lanceHum } from './audio.js';
 import { createTitan, TITAN_HP } from './guardian.js';
 import { createFauna } from './fauna.js';
+import { VLight, createLightPool } from './lightpool.js';
 
 const clamp = THREE.MathUtils.clamp;
 const FONT = '"Chakra Petch", sans-serif';
@@ -37,6 +38,7 @@ const TURRET_POS = new THREE.Vector3(0, 0.6, 0.15); // seated on the generated c
 // The crosshair sits above screen centre so the rover never covers it; the aim ray goes through it.
 const AIM_NDC_Y = 0.2;
 const ARENA_R = 64;
+let shadowSize = 2048; // set by the graphics quality level
 // Special weapons: one is selected at a time (held on right mouse, Q or LB). Only the heat lance exists so far.
 // The lance burns whatever the beam touches, harder the longer it stays on one target, and overheats.
 const SPECIALS = {
@@ -224,7 +226,7 @@ function makeEmberCore() {
     const r = new THREE.Mesh(new THREE.TorusGeometry(2.4 + i * 0.5, 0.07, 6, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.4, 1.6, 0.4) }));
     g.add(r); return r;
   });
-  const light = new THREE.PointLight('#ffa040', 80, 30, 1.5); g.add(light);
+  const light = new VLight('#ffa040', 80, 30, 1.5); g.add(light);
   g.visible = false;
   return { g, core, shell, rings, light };
 }
@@ -257,12 +259,12 @@ export function createSurface(hooks) {
     const embers = makeEmbers(); root.add(embers.pts);
     const sun = new THREE.DirectionalLight(def.sky.sun, 2.6);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(shadowSize, shadowSize);
     Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 300 });
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
     root.add(sun); root.add(sun.target);
     root.add(new THREE.HemisphereLight('#ffb48a', '#3a120a', 0.9));
-    const lavaGlow = new THREE.PointLight('#ff6a1f', 0, 90, 1.6); root.add(lavaGlow);
+    const lavaGlow = new VLight('#ff6a1f', 0, 90, 1.6); root.add(lavaGlow);
     // landing pad: lit ring and the parked Wayfarer
     const pad = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.RingGeometry(def.pad.r * 0.56, def.pad.r * 0.585, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.75, 0.85) }));
@@ -317,7 +319,7 @@ export function createSurface(hooks) {
       const a = (i / 14) * Math.PI * 2, r = 36 + (i % 3) * 7;
       addGeyser(def.vault.x + Math.cos(a) * r, def.vault.z + Math.sin(a) * r, 2.6 + (i % 4) * 0.5, i * 0.7, true);
     }
-    const geyserLight = new THREE.PointLight('#ff7a2a', 0, 40, 1.5); root.add(geyserLight);
+    const geyserLight = new VLight('#ff7a2a', 0, 40, 1.5); root.add(geyserLight);
 
     // Forge Gate and the armory crate
     let forge = null;
@@ -345,7 +347,7 @@ export function createSurface(hooks) {
       const fallback = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.5, 6), new THREE.MeshStandardMaterial({ color: '#d8cdb8', roughness: 0.5, metalness: 0.3, emissive: '#3a1400' }));
       crate.add(fallback);
       onModel('crate', () => { const m = cloneModel('crate'); if (m) { crate.remove(fallback); crate.add(m); } });
-      const crateLight = new THREE.PointLight('#ff8a3a', 25, 14, 1.6); crateLight.position.y = 1.5; crate.add(crateLight);
+      const crateLight = new VLight('#ff8a3a', 25, 14, 1.6); crateLight.position.y = 1.5; crate.add(crateLight);
       root.add(crate);
       forge = { gate, crate, x: F.x, z: F.z, y: gate.position.y };
     }
@@ -375,12 +377,13 @@ export function createSurface(hooks) {
     const lance = {
       glow: new THREE.Mesh(beamGeo, beamMat(new THREE.Color(2.0, 0.55, 0.1), 0.55)),
       core: new THREE.Mesh(beamGeo, beamMat(new THREE.Color(3.0, 2.1, 1.0), 1)),
-      light: new THREE.PointLight('#ff7a2a', 0, 18, 2),
+      light: new VLight('#ff7a2a', 0, 18, 2),
     };
     for (const m of [lance.glow, lance.core]) { m.visible = false; m.frustumCulled = false; root.add(m); }
     root.add(lance.light);
     const fauna = createFauna({ root, def, terrain, fx });
     const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna };
+    b.lights = createLightPool(root, 3); b.lights.collect(); // every point light above is virtual; 3 real ones serve them
     built.set(id, b);
     return b;
   }
@@ -1086,6 +1089,7 @@ export function createSurface(hooks) {
     updateAim(camera, inp.device);
     updateTurret(dt, inp);
     updateLance(dt, inp);
+    T.lights.update(camera.position);
     return result;
   }
 
@@ -1218,7 +1222,14 @@ export function createSurface(hooks) {
     }
   }
 
+  // graphics quality: shadow map size for every planet's sun (built ones too)
+  function setShadowSize(n) {
+    shadowSize = n;
+    for (const b of built.values()) { const l = b.sun; if (l.shadow.mapSize.x === n) continue; l.shadow.mapSize.set(n, n); if (l.shadow.map) { l.shadow.map.dispose(); l.shadow.map = null; } }
+  }
+
   return {
+    setShadowSize,
     scene, enter, exit, update, drawHud, rover, wakeGuardian,
     get active() { return !!S; },
     get debug() { return { S, rover, cam, T, aim, mesh }; },

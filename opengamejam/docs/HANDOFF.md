@@ -67,6 +67,21 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
   - Boost and cruise push chromatic aberration and vignette up a little.
   - `post.watch` turns AO off after 3 s below 40 fps. `?hq` in the URL pins full quality for headless captures.
 
+### Performance pass (owner, 2026-11-19: "lags pretty bad" on an older laptop)
+- **Measured before:** flight 768 draw calls (cockpit had 253 meshes, drawn for colour, shadow and GTAO); Kessa about 1,000 calls, 2,800 shadow casters (each hound was 75 meshes), 8 point lights in every lit shader.
+- **Merging:** `src/bake.js` `bakeStatic(root, anchors, keep)` merges every mesh that never moves into one mesh per material under its nearest moving anchor. Cockpit 253 → 63 meshes (anchors: throttle, needles; glass kept). Creatures merge per moving part (legs, torso, head, jaw, glow). The original pieces are kept as `c.gibParts` so deaths still throw separate parts.
+- **Creature LOD:** hidden past 200 m (`DRAW_R`), cast shadows only inside 70 m (`SHADOW_R`).
+- **Light pool:** `src/lightpool.js`. Every surface point light is now a `VLight` (data only). `createLightPool(root, 3)` owns 3 real PointLights and gives them to the strongest, nearest virtual lights each frame. New surface point lights must be `VLight`s.
+- **After:** flight 103 calls; Kessa pad 461 calls, 6 lights.
+- **Graphics quality:** `QUALITY` in `main.js`.
+  - HIGH: render scale 1, MSAA 4, cockpit AO, full bloom, 2048 shadows.
+  - MEDIUM: 0.85, MSAA 2, no AO, half-size bloom, 1024 shadows.
+  - LOW: 0.7, no MSAA, otherwise as MEDIUM.
+  - `settings.quality` is auto, high, medium or low; GRAPHICS appears in the title and pause menus.
+  - Auto starts HIGH (MEDIUM on an integrated GPU, judged from the WebGL renderer string) and steps down, never up, after about 2.5 s averaging over 22 ms a frame.
+  - `?hq` pins HIGH (`post.pinned`). The old one-shot `post.watch` AO cut is gone.
+- Not yet measured on the owner's laptop.
+
 ## Owner decisions to respect (also in GAMEPLAN §1)
 
 - The brief (`\\LAPTOP-ILH3Q3AS\RussOldPC\OpenGames\The Last Wayline\gameplan.md`) is a loose guide; build in steps; each step ends playable and the owner tests it.

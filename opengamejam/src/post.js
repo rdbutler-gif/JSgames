@@ -87,6 +87,10 @@ export function createPost(renderer, scene, camera, cockpit) {
   });
   composer.addPass(sanitize);
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.45, 0.92);
+  // bloom can run at a fraction of the frame size (it is a blur; half size is hard to tell apart)
+  let bloomK = 1;
+  const bloomSetSize = bloom.setSize.bind(bloom);
+  bloom.setSize = (w, h) => bloomSetSize(Math.max(1, Math.round(w * bloomK)), Math.max(1, Math.round(h * bloomK)));
   composer.addPass(bloom);
   const lens = new ShaderPass(LensShader);
   composer.addPass(lens);
@@ -96,7 +100,7 @@ export function createPost(renderer, scene, camera, cockpit) {
   // ?hq in the URL pins full quality (headless captures run slow on a software GPU)
   const pinned = /[?&]hq/.test(location.search);
   let base = LOOK.flight, kick = 0;
-  let mode = '', lowQuality = false, slowAvg = 1 / 60, slowT = 0;
+  let mode = '', aoOn = true, lastW = 1, lastH = 1;
   function setMode(m) {
     if (m === mode) return;
     mode = m;
@@ -106,20 +110,21 @@ export function createPost(renderer, scene, camera, cockpit) {
     U.lift.value.fromArray(L.lift); U.gain.value.fromArray(L.gain);
     U.sat.value = L.sat; U.contrast.value = L.contrast;
     const inCockpit = m === 'flight' || m === 'title';
-    cockpitPass.enabled = inCockpit; gtao.enabled = inCockpit && !lowQuality;
+    cockpitPass.enabled = inCockpit; gtao.enabled = inCockpit && aoOn;
   }
   setMode('flight');
 
   return {
     composer, worldPass, bloom, lens, gtao, setMode, LOOK,
     get mode() { return mode; },
-    setSize(w, h) { composer.setSize(w, h); U.aspect.value = w / h; },
-    // If the machine cannot hold ~40 fps in the cockpit, AO is the first thing to go (once, for the session).
-    watch(dt) {
-      if (pinned || lowQuality || !gtao.enabled) return;
-      slowAvg += (dt - slowAvg) * 0.05;
-      slowT = slowAvg > 1 / 40 ? slowT + dt : 0;
-      if (slowT > 3) { lowQuality = true; gtao.enabled = false; console.warn('post: cockpit AO off (slow frames)'); }
+    get pinned() { return /[?&]hq/.test(location.search); },
+    setSize(w, h) { lastW = w; lastH = h; composer.setSize(w, h); U.aspect.value = w / h; },
+    // q: { samples (MSAA), ao (cockpit GTAO), bloomK (bloom resolution), grain }
+    setQuality(q) {
+      aoOn = q.ao; gtao.enabled = cockpitPass.enabled && aoOn;
+      bloomK = q.bloomK;
+      for (const t of [composer.renderTarget1, composer.renderTarget2]) if (t.samples !== q.samples) { t.samples = q.samples; t.dispose(); }
+      composer.setSize(lastW, lastH);
     },
     // speed feel: boost and cruise drive pull the lens (more edge fringing and vignette), eased
     render(time, speedKick = 0, dt = 1 / 60) {
