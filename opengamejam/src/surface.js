@@ -99,9 +99,7 @@ function makeRocks(terrain, def, count) {
   for (let i = 0; i < p.count; i++) { v1.fromBufferAttribute(p, i); v1.multiplyScalar(0.75 + Math.random() * 0.45); p.setXYZ(i, v1.x, v1.y * 0.75, v1.z); }
   geo.computeVertexNormals();
   const mat = new THREE.MeshStandardMaterial({ color: '#2e2622', roughness: 0.9, flatShading: true });
-  const inst = new THREE.InstancedMesh(geo, mat, count);
-  inst.castShadow = true; inst.receiveShadow = true;
-  const list = [];
+  const list = [], placed = [];
   const m4 = new THREE.Matrix4();
   let k = 0, tries = 0;
   while (k < count && tries++ < count * 20) {
@@ -115,10 +113,29 @@ function makeRocks(terrain, def, count) {
     const r = big ? 2.2 + Math.random() * 3.8 : 0.25 + Math.random() * 0.45;
     q1.setFromEuler(new THREE.Euler(Math.random() * 0.4, Math.random() * 6.28, Math.random() * 0.4));
     m4.compose(new THREE.Vector3(x, h + r * (big ? 0.25 : -0.1), z), q1, new THREE.Vector3(r, r, r));
-    inst.setMatrixAt(k++, m4);
-    if (big) list.push({ x, z, y: h, r: r * 0.9, idx: k - 1, hp: Math.ceil(r * 2.2), max: Math.ceil(r * 2.2), m: m4.clone() });
+    k++;
+    const rec = { x, z, y: h, r: r * 0.9, m: m4.clone() };
+    placed.push(rec);
+    if (big) { rec.hp = rec.max = Math.ceil(r * 2.2); list.push(rec); }
   }
-  inst.count = k;
+  // split into a 4x4 grid of instanced meshes so the camera and the shadow box can skip whole cells
+  const G = 4, cellW = terrain.size / G, inst = new THREE.Group();
+  const cellsOf = Array.from({ length: G * G }, () => []);
+  for (const r of placed) {
+    const ci = Math.min(G - 1, Math.max(0, Math.floor((r.x + terrain.size / 2) / cellW)));
+    const cj = Math.min(G - 1, Math.max(0, Math.floor((r.z + terrain.size / 2) / cellW)));
+    cellsOf[cj * G + ci].push(r);
+  }
+  for (const group of cellsOf) {
+    if (!group.length) continue;
+    const im = new THREE.InstancedMesh(geo, mat, group.length);
+    im.castShadow = true; im.receiveShadow = true;
+    group.forEach((r, i) => { im.setMatrixAt(i, r.m); r.inst = im; r.idx = i; });
+    im.instanceMatrix.needsUpdate = true;
+    im.computeBoundingSphere();
+    inst.add(im);
+  }
+  for (const r of placed) if (r.hp === undefined) { delete r.m; } // only shootable boulders keep their matrix
   return { inst, list };
 }
 
@@ -246,6 +263,8 @@ export function createSurface(hooks) {
   mesh.body.add(headlight); mesh.body.add(headlight.target);
   const cam = { yaw: 0, elev: 0.3, dist: 9.5, idle: 0, pos: new THREE.Vector3(), look: new THREE.Vector3() };
   let S = null;
+  let hudCam = null; // the camera of the last update, for health bars over creatures
+  const hb = new THREE.Vector3();
 
   function build(id) {
     if (built.has(id)) return built.get(id);
@@ -535,8 +554,8 @@ export function createSurface(hooks) {
     T.fx.emit(p, 5, { speed: 5, life: 0.5, size: 1.1, colors: [[3, 2, 1], [0.45, 0.38, 0.33]], drag: 3 });
     r.m.decompose(ps, qs, sc);
     const k = 0.75 + 0.25 * Math.max(0, r.hp / r.max); // shrinks a little as it is chipped
-    T.rocks.inst.setMatrixAt(r.idx, m4b.compose(ps, qs, v1.copy(sc).multiplyScalar(r.hp > 0 ? k : 0.0001)));
-    T.rocks.inst.instanceMatrix.needsUpdate = true;
+    r.inst.setMatrixAt(r.idx, m4b.compose(ps, qs, v1.copy(sc).multiplyScalar(r.hp > 0 ? k : 0.0001)));
+    r.inst.instanceMatrix.needsUpdate = true;
     if (r.hp <= 0) {
       r.dead = true;
       v1.set(r.x, r.y + r.r * 0.4, r.z);
@@ -1090,6 +1109,7 @@ export function createSurface(hooks) {
     updateTurret(dt, inp);
     updateLance(dt, inp);
     T.lights.update(camera.position);
+    hudCam = camera;
     return result;
   }
 
@@ -1101,6 +1121,22 @@ export function createSurface(hooks) {
   function drawHud(ctx, W, H, G, device) {
     if (!S) return;
     const sc = Math.min(W, H) / 900;
+    // health bars over wounded creatures (nothing over a creature at full health)
+    if (hudCam && T) for (const c of T.fauna.list) {
+      if (!c.alive || !c.g.visible || c.hp >= c.k.hp) continue;
+      const d = Math.hypot(c.x - hudCam.position.x, c.z - hudCam.position.z);
+      if (d > 140) continue;
+      hb.set(c.x, c.y + (c.kind === 'hound' ? 2.35 : 1.0), c.z).project(hudCam);
+      if (hb.z > 1 || Math.abs(hb.x) > 1.05 || Math.abs(hb.y) > 1.05) continue;
+      const x = (hb.x + 1) / 2 * W, y = (1 - hb.y) / 2 * H;
+      const k = clamp(28 / Math.max(d, 1), 0.55, 1.4), bw = (c.kind === 'hound' ? 56 : 34) * k * (0.6 + sc * 0.4), bh = Math.max(3, 6 * k);
+      const f = clamp(c.hp / c.k.hp, 0, 1), a = clamp((140 - d) / 30, 0, 1);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = 'rgba(6,12,22,0.75)'; ctx.fillRect(x - bw / 2 - 2, y - bh / 2 - 2, bw + 4, bh + 4);
+      ctx.fillStyle = 'rgba(' + RED + ',0.25)'; ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh);
+      ctx.fillStyle = 'rgba(' + (f > 0.5 ? AMBER : RED) + ',0.95)'; ctx.fillRect(x - bw / 2, y - bh / 2, bw * f, bh);
+      ctx.globalAlpha = 1;
+    }
     // compass strip
     fwd.set(0, 0, -1).applyQuaternion(rover.quat);
     const camYaw = Math.atan2(-(cam.look.x - cam.pos.x), -(cam.look.z - cam.pos.z));

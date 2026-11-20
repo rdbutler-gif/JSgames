@@ -41,6 +41,7 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
   - **Target practice:** on a first landing the objective is "Target practice · shoot cinder skitters by the pad n/5" (compass ◆ SKITTERS, gun hint). Five turret kills → `upgrades.turretTrained`, victory sting, objective returns to vault/cross. Driving 220 m from the pad skips it (also sets the flag).
   - Soft aim pull onto the nearest creature within 0.06 rad (pad) / 0.025 (mouse), 4–140 m.
 - Bolts test Titan → creatures/rocks (nearest) → ground; the aim ray does the same so bolts converge on what is under the crosshair. Crosshair hit marker covers creatures and rocks (`S.hitMark`).
+- **Creature health bars (owner, 2026-11-19):** `drawHud` projects a bar over every wounded, visible creature within 140 m (none at full health). It scales with distance, fades out past 110 m, and is amber above half health and red below.
 - **Hull mends** 2.5/s after 6 s without damage, never in the Titan fight.
 - **Deaths (owner request 2026-11-19, "they just shrink"):** `src/gibs.js` bursts the body into its own meshes (biggest 14 for a hound, 7 for a skitter), which tumble, bounce on the terrain, trail fire and smoke, then sink after about 4 s. Each death adds a fireball, sparks, a smoke ball (its own normally blended `makeSmoke` points), a short pooled point-light flash, a fire that burns where the body was, and a scorch decal that follows the terrain and fades over 14 s.
 - **Heat lance (owner, 2026-11-19):** the first special weapon. Owner wants a selectable special eventually, so `SPECIALS` in `surface.js` is a table and `S.special` picks one. Hold right mouse / Q / LB (`input.special`). It's a beam from the turret to the aim point (75 m reach) that burns titan core, creatures and rocks at 3 → 9 dps, ramping over 1 s on the same target. Heat fills in 3.2 s; on overheat it locks until heat drops to 0.3. The turret cannot fire bolts while the lance is on. HUD heat bar sits above the hull bar. `lanceHum` in `audio.js` is the looping sound and goes silent by itself if updates stop (pause). `onBolt(hit, ctx, n, quiet)` and `fauna.damage(c, n, quiet)` take a damage amount.
@@ -80,7 +81,12 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
   - `settings.quality` is auto, high, medium or low; GRAPHICS appears in the title and pause menus.
   - Auto starts HIGH (MEDIUM on an integrated GPU, judged from the WebGL renderer string) and steps down, never up, after about 2.5 s averaging over 22 ms a frame.
   - `?hq` pins HIGH (`post.pinned`). The old one-shot `post.watch` AO cut is gone.
-- Not yet measured on the owner's laptop.
+- **Owner laptop, round 1:** Auto settled on MEDIUM and still lagged; LOW by hand was "playable, a little sluggish". Round 2 changes:
+  - **Terrain:** the mesh is now an 8×8 grid of chunks in `terrain.js`. They share the vertex buffers (so `heightAt` still matches what's drawn exactly), and each has its own index and bounds, so the camera and shadow box skip unseen chunks.
+  - **Boulders:** split into a 4×4 grid of InstancedMeshes; each rock keeps `r.inst` and `r.idx`.
+  - **Result:** Kessa pad went from 589k to 261k triangles and from 461 to 363 calls.
+  - **Low** is now render scale 0.6 with bloom at 0.35 size.
+  - **Auto** now steps down when frames average over 19 ms (1/52 s) for 2 s; it used to wait for 22 ms over 2.5 s.
 
 ## Owner decisions to respect (also in GAMEPLAN §1)
 

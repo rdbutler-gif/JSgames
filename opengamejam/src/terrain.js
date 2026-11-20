@@ -235,8 +235,24 @@ export function createTerrain(def) {
   grain.anisotropy = 4;
 
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, map: grain, roughness: 0.92, metalness: 0 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.receiveShadow = true;
+  const mesh = new THREE.Group();
+  const K = 8, per = cells / K, srcIdx = geo.index.array;
+  for (let cj = 0; cj < K; cj++) for (let ci = 0; ci < K; ci++) {
+    const tris = [];
+    for (let j = cj * per; j < (cj + 1) * per; j++) for (let i = ci * per; i < (ci + 1) * per; i++) {
+      const q = (j * cells + i) * 6; // PlaneGeometry writes 6 indices per quad, row by row
+      for (let t = 0; t < 6; t++) tris.push(srcIdx[q + t]);
+    }
+    const g = new THREE.BufferGeometry();
+    for (const k of Object.keys(geo.attributes)) g.setAttribute(k, geo.attributes[k]);
+    g.setIndex(tris);
+    const box = new THREE.Box3();
+    for (const v of tris) box.expandByPoint(new THREE.Vector3().fromBufferAttribute(pos, v));
+    g.boundingBox = box; g.boundingSphere = box.getBoundingSphere(new THREE.Sphere());
+    const m = new THREE.Mesh(g, mat);
+    m.receiveShadow = true;
+    mesh.add(m);
+  }
 
   return { mesh, heightAt, normalAt, size, half, padH, vaultH, def };
 }

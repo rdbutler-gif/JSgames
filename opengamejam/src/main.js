@@ -97,7 +97,7 @@ resize();
 const QUALITY = [
   { name: 'HIGH', scale: 1, samples: 4, ao: true, bloomK: 1, shadow: 2048 },
   { name: 'MEDIUM', scale: 0.85, samples: 2, ao: false, bloomK: 0.5, shadow: 1024 },
-  { name: 'LOW', scale: 0.7, samples: 0, ao: false, bloomK: 0.5, shadow: 1024 },
+  { name: 'LOW', scale: 0.6, samples: 0, ao: false, bloomK: 0.35, shadow: 1024 },
 ];
 const quality = (() => {
   let level = -1, slowAvg = 1 / 60, slowT = 0, grace = 4;
@@ -130,8 +130,8 @@ const quality = (() => {
       if (post.pinned || settings.quality !== 'auto' || level >= 2 || dt > 0.25) return;
       if (grace > 0) { grace -= dt; return; } // settle after a change or a load
       slowAvg += (dt - slowAvg) * 0.05;
-      slowT = slowAvg > 1 / 45 ? slowT + dt : Math.max(0, slowT - dt);
-      if (slowT > 2.5) { apply(level + 1); console.warn('graphics: auto quality lowered to ' + QUALITY[level].name); }
+      slowT = slowAvg > 1 / 52 ? slowT + dt : Math.max(0, slowT - dt * 0.5);
+      if (slowT > 2) { apply(level + 1); console.warn('graphics: auto quality lowered to ' + QUALITY[level].name); }
     },
   };
 })();
