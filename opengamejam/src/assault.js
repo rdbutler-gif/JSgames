@@ -635,6 +635,8 @@ export function createAssault(scene, camera, hooks) {
       // lookAt takes a world-space point; +Z of the holder points at it, so aim it behind the nose.
       if (sp > 40) v1.copy(e.pos).sub(e.vel);
       else v1.set(e.pos.x * 2 - player.pos.x, e.pos.y * 2 - player.pos.y, e.pos.z * 2 - player.pos.z);
+      // lookAt rolls against the holder's up in WORLD space; the arena is turned to the ship, so give it the arena's up
+      e.obj.up.set(0, 1, 0).applyQuaternion(root.quaternion);
       e.obj.lookAt(root.localToWorld(v1));
       e.roll += (clamp(-e.vel.x * 0.006, -1, 1) - e.roll) * (1 - Math.exp(-5 * dt));
       e.obj.rotateZ(e.roll);
