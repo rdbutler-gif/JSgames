@@ -5,7 +5,7 @@ This is the plan we build from. The owner's `gameplan.md` (the long production b
 and ideas**, and it is a loose suggestion: anything in it can change if the game needs it. When
 the two disagree, this file wins, and this file changes whenever the owner decides something new.
 
-*Last updated: 2026-11-18. Session handoff: `docs/HANDOFF.md`.*
+*Last updated: 2026-11-20. Session handoff: `docs/HANDOFF.md`.*
 
 ---
 
@@ -106,8 +106,8 @@ Each step ends playable, with the owner testing before the next.
 | 2 | Phase II formation fight: 3 waves, Warbreaker, dodge, rewards, generated ship models and SFX | **Done**, owner tested |
 | 3 | **Raider threat levels** + WREN assessment + Wayshards rename + canon names in dialog | **Done** |
 | 4 | **Phase III vertical slice on one planet** (Kessa), in three parts: **4a** rover driving, landing and lift-off; **4b** armory site, Forgeplate module, vault behind the lava vents; **4c** guardian, Ember Core, memory #1 | 4a, 4b done. 4c built 2026-11-19 (turret, Foundry Titan, Ember Core, memory #1 "Purpose"), awaiting owner playtest |
-| 4d | **Opening** (owner, 2026-11-19): title scene, PLAY/CONTINUE/NEW GAME/SETTINGS, save, intro card, undock from Lantern, WREN's step-by-step flight tutorial, radio from Ilsa and Orrick, cruise lore beats, planets spread for ~45 s cruise trips, Lantern's line dies after relic 1. Voiced (WREN, Ilsa, Orrick) | **Built 2026-11-19**, awaiting owner playtest |
-| 5 | **Lantern Station** hub: dock back at Lantern, Ilsa briefing, Workshop (upgrades for Wayshards), the air clock on screen | Station model, Ilsa's voice and the line-death beat exist (4d) |
+| 4d | **Opening** (owner, 2026-11-19): title scene, PLAY/CONTINUE/NEW GAME/SETTINGS, save, intro card, undock from Lantern, WREN's step-by-step flight tutorial, radio from Ilsa and Orrick, cruise lore beats, planets spread for ~45 s cruise trips, Lantern's line dies after relic 1. Voiced (WREN, Ilsa, Orrick) | **Done**, owner approved 2026-11-20 |
+| 5 | **Lantern Station** hub: dock back at Lantern, Ilsa briefing, Workshop (upgrades for Wayshards), the air clock on screen | **Built 2026-11-20**, awaiting owner playtest. Air clock at zero is not (yet) a game over: owner to decide |
 | 6 | The other two planets (reusing the Phase III systems with their own terrain, natives, gate and guardian) | |
 | 7 | Ship upgrades that counter raider levels; Hexers, Reavers, Vex encounters | |
 | 8 | Voices: WREN (three stages), Orrick, Ilsa, Vex; music per planet | Started in 4d: WREN = Melz, Ilsa = Cass, Orrick = Obsidian (ElevenLabs library voices) |

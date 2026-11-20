@@ -47,8 +47,8 @@ export function updateShip(s, inp, dt, opts = {}) {
   // boost
   const wantBoost = !autopilot && inp.boost && s.boostEnergy > 0.03 && s.cruise !== 2;
   s.boosting = wantBoost;
-  if (wantBoost) s.boostEnergy = Math.max(0, s.boostEnergy - dt / FLIGHT.boostSeconds);
-  else s.boostEnergy = Math.min(1, s.boostEnergy + dt / 9);
+  if (wantBoost) s.boostEnergy = Math.max(0, s.boostEnergy - dt / (s.boostSecs || FLIGHT.boostSeconds)); // Workshop boost cell
+  else s.boostEnergy = Math.min(1, s.boostEnergy + dt / (s.boostRecharge || 9));
 
   // rotation
   const cruiseK = s.cruise === 2 ? 0.42 : 1;

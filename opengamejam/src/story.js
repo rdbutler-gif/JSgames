@@ -56,7 +56,39 @@ export const LINES = {
   'lore-orrick': ['orrick', 'Still flying, Runner? Every relic you carry makes you worth more to me.'],
   'lore-hum': ['wren', 'The Core is humming. I can hear it from here. I think it knows me.'],
   'welcome': ['wren', 'Welcome back, Runner. Systems are green.'],
+  // ---- Lantern: docking and the hub (step 5) ----
+  'dock-approach': ['wren', "Lantern's bay is open. Bring us in slow toward the mouth, and I'll dock us."],
+  'dock-home': ['wren', "Lantern's on the nav. Ilsa will want to see what we found."],
+  'hub-first-1': ['ilsa', 'Welcome home, Runner. Clamps are on, and the crews are patching your hull.'],
+  'hub-first-2': ['ilsa', 'Spend your Wayshards at the Workshop. Plating, guns, rover parts. Buy what keeps you alive.'],
+  'hub-first-3': ['ilsa', "Kessa's vault is still waiting. Bring home what the Wardens left, and we'll see what it does."],
+  'hub-dark-1': ['ilsa', 'You came back. Good. The whole ring watched the line go out.'],
+  'hub-dark-2': ['ilsa', "We started on fourteen days of reserve air. I've put the count on your screen."],
+  'hub-dark-3': ['wren', 'The relics are keys, Dockmaster. Two more, and I think the Heart will open for us.'],
+  'hub-dark-4': ['ilsa', 'Then fly. And if you can spare Wayshards, the Workshop can send scrubber parts up to us.'],
+  'hub-r2-1': ['ilsa', 'Two relics. The kids are counting days in chalk on the ring walls.'],
+  'hub-r2-2': ['ilsa', "Orrick's wings are thicker on every route now. Buy armour before you go."],
+  'hub-r2-3': ['wren', 'One key left. I can feel the Heart pulling at my charts.'],
+  'hub-r3-1': ['ilsa', "That's all three. Half the station watched you come in."],
+  'hub-r3-2': ['ilsa', 'The charts put the Heart past the Final Gate. Orrick will be waiting. So will Vex.'],
+  'hub-r3-3': ['wren', "When you're ready, Runner. I'll know the way."],
+  'hub-back-1': ['ilsa', 'Clamps on. Welcome back, Runner.'],
+  'hub-back-2': ['ilsa', 'Good to see you in one piece. Mostly one piece.'],
+  'hub-buy-1': ['ilsa', 'Fitting it now.'],
+  'hub-buy-2': ['ilsa', "Done. She'll fly better for it."],
+  'hub-air': ['ilsa', "Scrubber parts on the lift. That's two more days for us. Thank you, Runner."],
+  'hub-launch': ['ilsa', 'Clamps off. Fly safe, Runner.'],
+  'air-low': ['ilsa', "Runner, the air's getting thin up here. Three days left. Please hurry."],
+  'air-out': ['ilsa', "We've sealed the outer ring. Everyone's crowded into the spindle now. Please, Runner."],
 };
+
+// Ilsa's briefings at the dock, by how far the run has come. Each plays once, in order, when it applies.
+export const BRIEFINGS = [
+  { id: 'first', lines: ['hub-first-1', 'hub-first-2', 'hub-first-3'], when: (G) => relicCount(G) === 0 },
+  { id: 'dark', lines: ['hub-dark-1', 'hub-dark-2', 'hub-dark-3', 'hub-dark-4'], when: (G) => G.lanternDark },
+  { id: 'r2', lines: ['hub-r2-1', 'hub-r2-2', 'hub-r2-3'], when: (G) => relicCount(G) >= 2 },
+  { id: 'r3', lines: ['hub-r3-1', 'hub-r3-2', 'hub-r3-3'], when: (G) => relicCount(G) >= 3 },
+];
 
 // one lore beat per cruise trip, in this order, when its condition holds
 const LORE = [
@@ -262,6 +294,17 @@ export function createTutorial(ctx) {
     get active() { return !!cur; },
     start() { step = 0; sawScouts = false; go(STEPS[0]); },
     jump(k) { step = k; go(STEPS[k]); }, // test hook: start at lesson k
+    // Save checkpoint: from the radio call on (lesson 5), a save resumes the lesson instead of the dock.
+    // Earlier lessons place their rings relative to the bay, so they restart from it.
+    get checkpoint() { return cur && step >= 5 ? Math.min(step, STEPS.length - 1) : null; },
+    resume(k) {
+      sawScouts = G.heard.has('t-raid-1');
+      if (k >= STEPS.length - 1 && sawScouts) { step = STEPS.length - 1; raidEnd = null; go(RECRUISE); return; }
+      step = k; go(STEPS[k]);
+      if (k === STEPS.length - 1) beats = G.heard.has('t-orrick-1') ? 2 : G.heard.has('t-cruise-tip') ? 1 : 0;
+    },
+    // landing on a world finishes the tutorial (the entry takes us out of flight before LAND's check runs)
+    complete() { if (cur) finish(); },
     abort() { story.clear(); for (const r of rings) r.g.visible = false; cur = null; task(null); G.waypoint = null; G.lineTag = false; },
     skip() {
       story.clear();

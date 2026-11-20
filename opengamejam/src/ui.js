@@ -1,10 +1,10 @@
 // DOM menus that work with mouse, keyboard and gamepad.
 import { sfx } from './audio.js';
 
-export function createMenu(el, getItems) {
+export function createMenu(el, getItems, onFocus) {
   let items = [], buttons = [], focus = 0;
 
-  function mark() { buttons.forEach((b, i) => b.classList.toggle('focus', i === focus)); }
+  function mark() { buttons.forEach((b, i) => b.classList.toggle("focus", i === focus)); if (onFocus) onFocus(items[focus], focus); }
 
   function refresh() {
     buttons.forEach((b, i) => {

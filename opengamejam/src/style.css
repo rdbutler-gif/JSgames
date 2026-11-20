@@ -64,3 +64,45 @@ dd { margin: 0; color: #cfe6ef; }
   box-shadow: 0 0 18px rgba(110, 242, 255, 0.25); }
 .menu button:focus { outline: none; }
 #title .menu button { font-size: 20px; }
+
+/* ---- Lantern hub (docked) ---- */
+#hub { justify-content: flex-start; align-items: stretch; pointer-events: none;
+  background: linear-gradient(90deg, rgba(2, 5, 12, 0.82) 0%, rgba(2, 5, 12, 0.55) 34%, rgba(2, 5, 12, 0) 56%); }
+.hub-wrap { pointer-events: auto; width: min(470px, calc(100vw - 32px)); height: 100%; overflow-y: auto; padding: clamp(18px, 5vh, 64px) 16px 20px clamp(16px, 5vw, 72px);
+  display: flex; flex-direction: column; box-sizing: border-box; }
+.hub-title { font-family: 'Orbitron', sans-serif; font-weight: 800; letter-spacing: 0.12em; font-size: clamp(34px, 4vw, 52px); margin: 0 0 8px; color: #fff;
+  text-shadow: 0 0 26px rgba(255, 179, 90, 0.45); }
+.hub-status { font: 600 14px 'Chakra Petch'; letter-spacing: 0.12em; color: #b9d9e6; margin-bottom: 18px; line-height: 1.7; transition: color 0.2s; }
+.hub-status i { font-style: normal; color: #4b6b78; margin: 0 8px; }
+.hub-status .shards { color: #ffd36a; }
+.hub-status .air { color: var(--amber); }
+.hub-status .air.low { color: var(--red); }
+.hub-status .line { color: #ffc46a; }
+.hub-status.short .shards { color: var(--red); }
+.hub-wrap .menu { margin: 0; min-width: 0; }
+.hub-wrap h3 { font: 600 15px 'Chakra Petch'; letter-spacing: 0.3em; color: var(--amber); margin: 0 0 10px; }
+#shop-menu { gap: 4px; }
+#shop-menu button { font-size: 14px; padding: 7px 12px; }
+.shop-desc { min-height: 64px; margin: 10px 0 12px; font-size: 14px; color: #b9d9e6; line-height: 1.45; }
+.shop-desc .grp { font-size: 12px; letter-spacing: 0.3em; color: #6f97a6; margin-bottom: 4px; }
+.shop-desc .tier { opacity: 0.55; }
+.shop-desc .tier.next { opacity: 1; }
+.shop-desc .tier.own { opacity: 0.9; color: #ffd36a; }
+.shop-desc b { color: var(--cyan); font-weight: 600; margin-right: 6px; }
+.hub-radio { margin-top: auto; padding: 12px 16px; background: rgba(2, 10, 16, 0.7); border-left: 3px solid var(--amber);
+  opacity: 0; transition: opacity 0.25s; font-size: 16px; line-height: 1.45; color: #e6f4f8; }
+.hub-radio.on { opacity: 1; }
+.hub-radio .who { display: block; font-size: 12px; letter-spacing: 0.3em; font-weight: 700; margin-bottom: 3px; }
+
+/* reserve air, once Lantern's line is dark */
+#airclock { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); pointer-events: none; display: none;
+  font: 700 14px 'Chakra Petch'; letter-spacing: 0.22em; color: var(--amber); padding: 5px 14px;
+  background: rgba(2, 8, 14, 0.55); border: 1px solid rgba(255, 179, 90, 0.35); white-space: nowrap; }
+#airclock.on { display: block; }
+#airclock.low { color: var(--red); border-color: rgba(255, 77, 109, 0.5); animation: airpulse 1.6s ease-in-out infinite; }
+@keyframes airpulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { #airclock.low { animation: none; } }
+
+#saved { position: fixed; right: 18px; bottom: 16px; pointer-events: none; font: 600 13px 'Chakra Petch'; letter-spacing: 0.22em;
+  color: var(--cyan); opacity: 0; transition: opacity 0.4s; }
+#saved.on { opacity: 0.9; }

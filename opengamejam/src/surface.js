@@ -8,6 +8,7 @@ import { settings } from './settings.js';
 import { sfx, lanceHum } from './audio.js';
 import { createTitan, TITAN_HP } from './guardian.js';
 import { createFauna } from './fauna.js';
+import { eff } from './workshop.js';
 import { VLight, createLightPool } from './lightpool.js';
 
 const clamp = THREE.MathUtils.clamp;
@@ -602,10 +603,11 @@ export function createSurface(hooks) {
       segA.copy(b.p); b.p.addScaledVector(b.v, dt); segB.copy(b.p);
       b.m.position.copy(b.p); b.m.lookAt(v1.copy(b.p).add(b.v));
       const h = T.titan.hitTest(segA, segB);
-      if (h) { T.titan.onBolt(h, titanCtx); b.on = false; b.m.visible = false; continue; }
+      const boltDmg = eff(upgrades, 'bore', 'dmg'); // Workshop autocannon bore
+      if (h) { T.titan.onBolt(h, titanCtx, boltDmg); b.on = false; b.m.visible = false; continue; }
       const fh = T.fauna.hitTest(segA, segB), rh = rockHit(segA, segB);
       if (fh && (!rh || fh.u <= rh.u)) {
-        const died = T.fauna.damage(fh.c, 1);
+        const died = T.fauna.damage(fh.c, boltDmg);
         S.hitMark = died ? 0.35 : 0.15;
         if (died) creatureKilled(fh.c);
         else sfx.hit();
@@ -621,6 +623,7 @@ export function createSurface(hooks) {
 
   function creatureKilled(c) {
     sfx.explode(false);
+    if (hooks.shards) hooks.shards(c.kind === 'hound' ? 4 : 1); // natives carry Wayshards
     if (c.kind === 'hound') faunaSay('hound-kill', 'Hound down. They are only following the heat. So are we.');
     else if (S.obj === 'practice') practiceKill();
   }
@@ -630,7 +633,7 @@ export function createSurface(hooks) {
   function updateLance(dt, inp) {
     const L = SPECIALS[S.special], B = T.lance;
     S.lanceOn = !!inp.special && !S.over;
-    S.heat = S.lanceOn ? Math.min(1, S.heat + dt * L.heatPerSec) : Math.max(0, S.heat - dt * L.coolPerSec);
+    S.heat = S.lanceOn ? Math.min(1, S.heat + dt * L.heatPerSec * eff(upgrades, 'sink', 'heatK')) : Math.max(0, S.heat - dt * L.coolPerSec);
     if (S.heat >= 1 && !S.over) { S.over = true; S.lanceOn = false; sfx.overheat(); say1('lance-hot', 'Lance overheated. Let it cool, the cannon still works.'); }
     if (S.over && S.heat <= L.restart) { S.over = false; sfx.lanceReady(); }
     lanceHum(S.lanceOn, S.heat);
@@ -695,6 +698,7 @@ export function createSurface(hooks) {
       T.ember.g.visible = true; T.ember.t = 0;
       setObj('core');
       sfx.victory();
+      if (hooks.shards) hooks.shards(120);
       hooks.say('It is down. And there, rising from the shaft: the Ember Core. Bring us close.');
     }
     // the Ember Core rises and turns
@@ -1038,6 +1042,8 @@ export function createSurface(hooks) {
     {
       const fw = v1.set(0, 0, -1).applyQuaternion(rover.quat);
       T.fauna.update(dt, S.time, { rover, heading: Math.atan2(-fw.x, -fw.z), quiet: S.fight, damage: (n) => { rover.hull -= n; sfx.playerHit(true); }, shake: (k) => { S.shake = Math.max(S.shake, k); }, say: faunaSay });
+      // Workshop armour: every loss this frame, whatever caused it, is cut down
+      if (rover.hull < S.prevHull && rover.hull > 0) rover.hull = S.prevHull - (S.prevHull - rover.hull) * eff(upgrades, 'armour', 'dmgK');
       // the hull mends slowly once nothing has hurt it for a while (never mid-fight)
       if (rover.hull < S.prevHull - 0.001) S.hurtT = S.time;
       if (!S.fight && S.time - S.hurtT > 6 && rover.hull < 100) rover.hull = Math.min(100, rover.hull + 2.5 * dt);

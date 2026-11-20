@@ -29,3 +29,5 @@ Starting Meshy balance: 1,120 credits (2026-11-18). Each row is logged before it
 
 **Totals 2026-11-19 (VO):** ElevenLabs +2191 credits for voice (34 lines, about $0.44). The account showed 5,220 of 40,000 monthly characters used before the batch.
 | 2026-11-20 | ElevenLabs | VO: 5 WREN raider-lesson lines (t-raid-1..3, t-raid-won, t-raid-skip), Melz y66JgmQLcHTfsKiZJM5q, eleven_v4, 1 take each | 399 cr (75+114+104+52+54) | flow cMPVKLNH5kRKNqmCKqLh | accepted; all takes then normalised to -18 LUFS (ffmpeg gain + limiter), originals kept outside the repo | EL ~2,590 cr this month |
+| 2026-11-20 | ElevenLabs | VO: 23 Lantern-hub lines (dock-*, hub-*, air-*; src/story.js), eleven_v4, 1 take each. Ilsa = Cass gOZRcEzY40chlRuMDmLV, WREN = Melz y66JgmQLcHTfsKiZJM5q. Account at 7,810 / 40,000 chars before | ~1,700 cr (1 cr/char) | flow cMPVKLNH5kRKNqmCKqLh | | |
+| 2026-11-20 | ElevenLabs | VO batch result: 23 Lantern-hub lines, 1 take each, normalised to -18 LUFS -> public/vo/<line id>.mp3; raw takes kept outside the repo | 1,488 cr | flow cMPVKLNH5kRKNqmCKqLh | accepted (owner has not heard them yet) | EL ~4,080 cr this month |

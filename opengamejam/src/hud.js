@@ -95,6 +95,18 @@ export function createHud(canvas) {
         }
       });
 
+      // Lantern's dock bay as the nav target: a gold diamond on the bay mouth
+      if ((G.targetIndex === G.lanternNav || G.homeward) && G.bayMouth) { // always shown on the way home
+        const bm = G.bayMouth(), p = project(bm.clone(), cam), d = bm.distanceTo(s.pos);
+        if (onScreen(p, 10)) {
+          const r = 16 * Math.max(0.9, scale);
+          ctx.strokeStyle = `rgba(${GOLD},0.95)`; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x + r, p.y); ctx.lineTo(p.x, p.y + r); ctx.lineTo(p.x - r, p.y); ctx.closePath(); ctx.stroke();
+          text('LANTERN DOCK  ◆', p.x, p.y - r - 16, 15 * Math.max(0.85, scale), GOLD, 1, 'center', 700);
+          text(fmtDist(d), p.x, p.y + r + 14, 13 * Math.max(0.85, scale), GOLD, 0.9);
+        } else edgeArrow(p, GOLD, 'LANTERN');
+      }
+
       // tutorial waypoint
       if (G.waypoint && G.waypoint.obj) {
         const wp = G.waypoint.obj.position;

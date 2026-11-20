@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { LANTERN, HEART } from './data.js';
 import { VLight } from './lightpool.js';
+import { bakeStatic } from './bake.js';
 
 const BAY = { w: 96, h: 52, d: 170, z0: -46, wall: 6, y: -128 }; // the bay hangs below the habitat ring's plane so the way out is clear // interior size; z0 = the back wall's inner face
 export const BAY_MOUTH_Z = BAY.z0 - BAY.d;               // -216: the open end
@@ -146,6 +147,38 @@ export function createStation(scene) {
     const s = new THREE.Mesh(new THREE.BoxGeometry(BAY.w * 0.6, 0.6, 3), glowCyan); s.position.set(0, BAY.h / 2 - 0.4, z); bay.add(s);
     for (const x of [-BAY.w * 0.32, BAY.w * 0.32]) { const g = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 2.4), glowWarm); g.position.set(x, -BAY.h / 2 + 0.3, z); bay.add(g); }
   }
+  // dressing (no collision): wall ribs and roof beams, cargo stacked along the walls, the pad's ring
+  // and hazard stripes on the floor. Shapes stay near the walls and roof so the flight lane is clear.
+  const ribMat = hullMat('#5d5b5a', 0.7);
+  const dressing = new THREE.Group(); bay.add(dressing);
+  const deco = (geo, m, x, y, z, ry = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; dressing.add(o); return o; };
+  const ribGeo = new THREE.BoxGeometry(3, BAY.h, 4), beamGeo = new THREE.BoxGeometry(BAY.w, 3, 4);
+  for (let i = 0; i < 6; i++) {
+    const z = BAY.z0 - 4 - i * 32;
+    for (const sx of [-1, 1]) deco(ribGeo, ribMat, sx * (BAY.w / 2 - 1.5), 0, z);
+    deco(beamGeo, ribMat, 0, BAY.h / 2 - 1.5, z);
+    for (const sx of [-1, 1]) deco(new THREE.BoxGeometry(0.6, BAY.h * 0.7, 0.6), i % 2 ? glowWarm : glowCyan, sx * (BAY.w / 2 - 3.2), 0, z - 2.2);
+  }
+  const crateMats = [hullMat('#6b5a44', 0.85), hullMat('#4d5b63', 0.8), trim];
+  const crateGeo = new THREE.BoxGeometry(7, 7, 7);
+  let cs = 11;
+  const crnd = () => ((cs = (cs * 16807) % 2147483647) / 2147483647);
+  for (const [sx, z0, n] of [[-1, BAY.z0 - 16, 5], [1, BAY.z0 - 20, 4], [-1, BAY.z0 - 128, 3], [1, BAY.z0 - 120, 4]]) {
+    for (let k = 0; k < n; k++) {
+      const col = k % 2, row = Math.floor(k / 2);
+      deco(crateGeo, crateMats[Math.floor(crnd() * 3)], sx * (BAY.w / 2 - 8 - col * 7.6), -BAY.h / 2 + 3.5 + row * 7, z0 - (k % 3) * 7.8, (crnd() - 0.5) * 0.3);
+    }
+  }
+  const padRing = new THREE.Mesh(new THREE.RingGeometry(17, 18.2, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.3, 0.4) }));
+  padRing.position.set(0, -BAY.h / 2 + 0.15, BAY.z0 - 70); dressing.add(padRing);
+  const stripeMat = new THREE.MeshStandardMaterial({ color: '#c99632', roughness: 0.7 });
+  for (let i = 0; i < 14; i++) for (const sx of [-1, 1]) {
+    const s = deco(new THREE.BoxGeometry(5, 0.3, 1.6), stripeMat, sx * (BAY.w / 2 - 12), -BAY.h / 2 + 0.15, BAY.z0 - 6 - i * 12, sx * 0.6);
+    s.castShadow = false;
+  }
+
+  bakeStatic(dressing); // one mesh per material
+
   // docking clamps either side of the ship; they swing open at launch
   const clamps = [];
   for (const sx of [-1, 1]) {
@@ -249,6 +282,9 @@ export function createStation(scene) {
       lanternGlass.color.setRGB(3.4, 2.4, 1.1).multiplyScalar(0.12 + 0.88 * alive * flick);
       lanternLight.intensity = 120 * (0.1 + 0.9 * alive);
       relayMat.emissiveIntensity = 0.5 * alive;
+      // on reserve power the bay runs on its emergency lamps
+      bayLight.color.setRGB(1 - 0.25 * alive, 0.35 + 0.56 * alive, 0.25 + 0.75 * alive);
+      bayLight.intensity = 60 * (0.7 + 0.3 * alive);
       crystal.rotation.y += dt * 0.3;
     },
   };

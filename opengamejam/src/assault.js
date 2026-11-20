@@ -410,7 +410,8 @@ export function createAssault(scene, camera, hooks) {
   function hurtPlayer(dmg) {
     if (player.invuln > 0 || player.dodgeT > 0 || S.over) return;
     S.hitsTaken++;
-    player.invuln = 0.7; player.regenDelay = 4; player.hitFlash = 1;
+    player.invuln = 0.7; player.regenDelay = S.mods.delay; player.hitFlash = 1;
+    dmg *= S.mods.dmgK; // Workshop plating
     S.shake = Math.max(S.shake, 1.6);
     const hadShield = player.shield > 0;
     player.shield -= dmg;
@@ -440,7 +441,7 @@ export function createAssault(scene, camera, hooks) {
   }
 
   // ---------- public API ----------
-  function start({ origin, quat, level = 1, shield = 1, hull = 1, squadName = 'RAIDERS' }) {
+  function start({ origin, quat, level = 1, shield = 1, hull = 1, squadName = 'RAIDERS', mods = {} }) {
     root.position.copy(origin);
     root.quaternion.copy(quat);
     root.updateMatrixWorld(true);
@@ -455,6 +456,7 @@ export function createAssault(scene, camera, hooks) {
       pending: [], slots: [], slotNext: 0, diveT: 0, score: 0, kills: 0, combo: 1, lastKill: -9, hitsTaken: 0,
       banner: null, shake: 0, hitstop: 0, slowmo: 0, over: null, intermission: 0, popups: [], squadName,
       shards: 0, lock: null, hint: 7, lancersCalled: false,
+      mods: { dmgK: 1, regen: 9, delay: 4, fireCd: 0.13, ...mods }, // Workshop upgrades
     };
     camLocal.set(0, CAM_UP + 30, CAM_BACK + 80);
     startWave(0);
@@ -514,7 +516,7 @@ export function createAssault(scene, camera, hooks) {
 
       // shield regen
       player.regenDelay -= dt;
-      if (player.regenDelay <= 0 && player.shield < 100) player.shield = Math.min(100, player.shield + 9 * dt);
+      if (player.regenDelay <= 0 && player.shield < 100) player.shield = Math.min(100, player.shield + S.mods.regen * dt);
 
       // aim assist: nearest enemy inside a small cone ahead of the guns
       S.lock = null;
@@ -531,7 +533,7 @@ export function createAssault(scene, camera, hooks) {
       player.fireCd -= dt;
       player.muzzle = Math.max(0, player.muzzle - dt * 12);
       if (input.fire && player.fireCd <= 0) {
-        player.fireCd = 0.13;
+        player.fireCd = S.mods.fireCd;
         player.gun ^= 1;
         const b = pBolts.find((x) => x.life <= 0);
         if (b) {

@@ -212,4 +212,7 @@ export const sfx = {
   lanceReady() { blip(880, 0.06, 'triangle', 0.04); blip(1320, 0.08, 'triangle', 0.04, 0.07); },
   bump() { blip(70, 0.35, 'sine', 0.25, 0, 0.6); },
   entry() { blip(60, 3.0, 'sawtooth', 0.12, 0, 2.5); },
+  clamp() { blip(55, 0.45, 'sine', 0.3, 0, 0.5); noise(0.3, 0.25, 900, 120, 0.9); blip(48, 0.4, 'square', 0.05, 0.28, 0.6); noise(0.25, 0.2, 700, 100, 0.9); }, // docking clamps close
+  buy() { blip(520, 0.06, 'triangle', 0.06); blip(780, 0.08, 'triangle', 0.06, 0.07); noise(0.2, 0.12, 2400, 600, 1.4); blip(1040, 0.16, 'triangle', 0.05, 0.16); },
+  denied() { blip(220, 0.12, 'square', 0.05); blip(180, 0.16, 'square', 0.05, 0.12); },
 };

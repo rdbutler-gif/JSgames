@@ -129,6 +129,7 @@ function drawScanner(x, G) {
     }
   };
   G.planets.forEach((p, i) => blip(p.center, 'planet', p.data.name, i === G.targetIndex));
+  if (G.bayMouth && G.tutorialDone) blip(G.bayMouth(), 'planet', 'LANTERN', G.targetIndex === G.lanternNav);
   G.squads.forEach((sq) => { if (sq.state === 'patrol') blip(sq.pos, 'enemy', String(sq.level)); });
   x.fillStyle = '#eafdff';
   x.beginPath(); x.moveTo(cx, cy - 8); x.lineTo(cx + 6, cy + 6); x.lineTo(cx - 6, cy + 6); x.closePath(); x.fill();
@@ -149,7 +150,8 @@ function drawNav(x, G) {
   frame(x, 'NAV  ·  COMMS', '#ffb35a');
   x.textAlign = 'right'; x.font = `600 16px ${FONT}`; x.fillStyle = '#ffd36a';
   x.fillText('◆ ' + G.wayshards + ' WAYSHARDS', SW - 16, 19);
-  const p = G.planets[G.targetIndex];
+  // Lantern as a nav target: a stand-in with the fields the screen reads
+  const p = G.planets[G.targetIndex] || { center: G.bayMouth(), data: { R: 0, name: 'LANTERN STATION', lantern: true, blurb: G.lanternDark ? 'Home port · on reserve air' : 'Home port · Workshop and repairs' } };
   const d = Math.max(0, p.center.distanceTo(G.ship.pos) - p.data.R);
   x.textAlign = 'left';
   x.font = `700 30px ${FONT}`; x.fillStyle = '#ffd36a';
@@ -159,7 +161,7 @@ function drawNav(x, G) {
   const etaS = !isFinite(eta) ? '--' : eta > 3600 ? '>1 H' : eta >= 60 ? Math.floor(eta / 60) + 'M ' + Math.floor(eta % 60) + 'S' : Math.floor(eta) + 'S';
   x.fillText(fmtDist(d) + '   ETA ' + etaS, 16, 94);
   x.fillStyle = '#8fc9d6'; x.font = `500 16px ${FONT}`;
-  x.fillText(p.data.blurb.toUpperCase() + ' · RELIC: ' + p.data.relic.toUpperCase(), 16, 120);
+  x.fillText(p.data.lantern ? p.data.blurb.toUpperCase() : p.data.blurb.toUpperCase() + ' · RELIC: ' + p.data.relic.toUpperCase(), 16, 120);
   // relic slots
   G.planets.forEach((pl, i) => {
     const bx = 16 + i * 162, by = 138;

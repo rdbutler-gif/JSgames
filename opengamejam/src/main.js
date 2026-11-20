@@ -23,11 +23,13 @@ import { createAssault } from './assault.js';
 import { loadModels } from './models.js';
 import { createSurface } from './surface.js';
 import { SURFACES } from './terrain.js';
-import { createStation } from './station.js';
+import { createStation, BAY_MOUTH_Z, BAY_Y } from './station.js';
 import { createLightPool } from './lightpool.js';
 import { createStory, createTutorial, LINES } from './story.js';
 import { loadProgress, hasProgress, saveProgress, clearProgress } from './progress.js';
 import { cloneModel, onModel } from './models.js';
+import { createHub, airText } from './hub.js';
+import { eff } from './workshop.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('gl');
@@ -56,7 +58,12 @@ const hudCtx = $('hud').getContext('2d');
 const assault = createAssault(scene, camera, { say: (t) => say(t), note: (t, c) => note(t, c) });
 assault.setPixelRatio(PR);
 loadModels();
-const surface = createSurface({ say: (t) => say(t), event: (e) => surfaceEvent(e), relic: (id) => relicSecured(id) });
+const surface = createSurface({
+  say: (t) => say(t),
+  event: (e) => { surfaceEvent(e); autosave(true); }, // pickups (the Forgeplate)
+  relic: (id) => relicSecured(id),
+  shards: (n) => { G.wayshards += n; },
+});
 
 // WREN's memories unlock by how many relics we hold, whichever planet they came from.
 const MEMORIES = [
@@ -79,7 +86,7 @@ function relicSecured(id) {
     title: m.title,
     text: m.text,
   }, () => say(m.after));
-  saveProgress(G, ship);
+  autosave(true);
 }
 
 const post = createPost(renderer, scene, camera, cockpit);
@@ -158,13 +165,36 @@ const G = {
   upgrades: {}, logs: [], inAssault: false, resumeState: 'flight', assaultSquad: null,
   heard: new Set(), tutorialDone: false, lanternDark: false, task: null, waypoint: null, lineTag: false,
   tripLore: false, tripT: 0, lastLoreT: -999, saveT: 0,
+  where: 'space', surfaceId: null, surfaceOut: null, tutCheckpoint: null,
+  air: 14, scrubbers: 0, briefed: new Set(), dockCount: 0, // Lantern's reserve air (days), Workshop scrubber crates, briefings heard
 };
+// nav targets: the three worlds, then Lantern (its dock bay mouth)
+const LANTERN_NAV = world.planets.length;
+const navCount = () => world.planets.length + 1;
+const bayMouth = () => station.toWorld(new THREE.Vector3(0, BAY_Y, BAY_MOUTH_Z), new THREE.Vector3());
+G.lanternNav = LANTERN_NAV;
+G.bayMouth = bayMouth;
+const AIR_DAY = 300; // seconds of play per day of Lantern's reserve air (14 days ≈ 70 minutes)
+
+// Saves happen on events (loud: the corner shows PROGRESS SAVED) and every few seconds in play (quiet).
+let savedT = null;
+function autosave(loud) {
+  G.tutCheckpoint = tutorial.checkpoint;
+  saveProgress(G, ship);
+  if (loud) { $('saved').classList.add('on'); clearTimeout(savedT); savedT = setTimeout(() => $('saved').classList.remove('on'), 1800); }
+}
+// Workshop upgrades that live on the ship itself (the fight and the rover read theirs when they start)
+function applyUpgrades() {
+  ship.boostSecs = eff(G.upgrades, 'cell', 'boostSecs');
+  ship.boostRecharge = eff(G.upgrades, 'cell', 'recharge');
+}
 // three real lights shared by the station's lamps (and anything else in space that wants one)
 G.station = station;
 const spaceLights = createLightPool(scene, 3); spaceLights.collect();
 
 const story = createStory({ G, sfx, playVoice, voiceState });
-const tutorial = createTutorial({ G, ship, station, scene, story, sfx, input, planets: world.planets, save: () => saveProgress(G, ship) });
+const tutorial = createTutorial({ G, ship, station, scene, story, sfx, input, planets: world.planets, save: () => autosave(true) });
+const hub = createHub({ G, ship, station, scene, story, sfx, $, camera, show: (id, on) => show(id, on), applyUpgrades, autosave, launch: () => launchFromHub() });
 
 // ---------- title scene: the Wayfarer, with the rover slung under it, off Lantern Station ----------
 const titleRig = new THREE.Group(); scene.add(titleRig);
@@ -260,7 +290,9 @@ function startAudio() {
 function resetRun() {
   Object.assign(G, { relics: { kessa: false, thalor: false, vireo: false }, upgrades: {}, wayshards: 0, assaultsWon: 0, logs: [],
     heard: new Set(), tutorialDone: false, lanternDark: false, task: null, waypoint: null, lineTag: false, targetIndex: 0,
-    greeted: new Set(), squadWarn: new Map(), comms: [], notes: [], prompt: null, tripLore: false, lastLoreT: -999 });
+    greeted: new Set(), squadWarn: new Map(), comms: [], notes: [], prompt: null, tripLore: false, lastLoreT: -999,
+    where: 'space', surfaceId: null, surfaceOut: null, tutCheckpoint: null, air: 14, scrubbers: 0, briefed: new Set(), dockCount: 0 });
+  applyUpgrades();
   story.clear();
   station.setLineAlive(true, true);
   ship.hull = 1; ship.shield = 1; ship.boostEnergy = 1;
@@ -285,15 +317,41 @@ function continueGame() {
   resetRun();
   if (p) {
     Object.assign(G, { relics: { ...G.relics, ...p.relics }, upgrades: p.upgrades || {}, wayshards: p.wayshards || 0, assaultsWon: p.assaultsWon || 0,
-      heard: new Set(p.heard || []), tutorialDone: !!p.tutorialDone, lanternDark: !!p.lanternDark, targetIndex: p.targetIndex || 0 });
+      heard: new Set(p.heard || []), tutorialDone: !!p.tutorialDone, lanternDark: !!p.lanternDark, targetIndex: (p.targetIndex || 0) % navCount(),
+      air: Number.isFinite(p.air) ? p.air : 14, scrubbers: p.scrubbers || 0, briefed: new Set(p.briefed || []) });
     station.setLineAlive(!G.lanternDark, true);
+    applyUpgrades();
   }
   show('title', false);
-  if (!G.tutorialDone) { dockShip(); beginFlight(() => tutorial.start()); return; } // the tutorial restarts from the dock
-  if (p && p.ship) {
+  const restorePose = () => {
     ship.pos.fromArray(p.ship.pos); ship.quat.fromArray(p.ship.quat); ship.hull = p.ship.hull || 1;
-  } else { dockShip(); station.snapClamps(true); }
-  ship.vel.set(0, 0, 0); ship.ang.set(0, 0, 0); ship.speed = 0; ship.throttle = 0; ship.cruise = 0; ship.fov = 75;
+    ship.vel.set(0, 0, 0); ship.ang.set(0, 0, 0); ship.speed = 0; ship.throttle = 0; ship.cruise = 0; ship.fov = 75;
+  };
+  if (!G.tutorialDone) {
+    // a save from the radio call on resumes that lesson where we were; earlier ones restart from the dock
+    if (p && p.tut !== null && p.tut !== undefined && p.ship) { restorePose(); const k = p.tut; beginFlight(() => tutorial.resume(k)); }
+    else { dockShip(); beginFlight(() => tutorial.start()); }
+    return;
+  }
+  // back on the landing pad
+  const sp = p && p.where === 'surface' && G.planets.find((pl) => pl.data.id === p.surfaceId);
+  if (sp && SURFACES[sp.data.id]) {
+    const out = new THREE.Vector3().fromArray(p.surfaceOut || [0, 1, 0]).normalize();
+    ship.pos.copy(sp.center).addScaledVector(out, sp.data.R * 1.05);
+    for (const pl of G.planets) if (pl.center.distanceTo(ship.pos) < pl.data.R * 4) G.greeted.add(pl.data.id);
+    G.state = 'surface-in';
+    enterSurface(sp, out);
+    return;
+  }
+  // docked at Lantern
+  if (p && p.where === 'hub') {
+    dockShip(); station.snapClamps(false);
+    G.state = 'hub-in';
+    flash(() => openHub(true));
+    return;
+  }
+  if (p && p.ship) restorePose();
+  else { dockShip(); station.snapClamps(true); }
   for (const pl of G.planets) if (pl.center.distanceTo(ship.pos) < pl.data.R * 4) G.greeted.add(pl.data.id);
   beginFlight(() => story.line('welcome'));
 }
@@ -321,8 +379,9 @@ function updateIntro(dt, P) {
   }
 }
 function pause() {
-  if (G.state !== 'flight' && G.state !== 'assault' && G.state !== 'surface') return;
+  if (G.state !== 'flight' && G.state !== 'assault' && G.state !== 'surface' && G.state !== 'hub') return;
   G.resumeState = G.state;
+  if (G.state === 'hub') show('hub', false);
   G.state = 'paused';
   releaseLock();
   pauseMenu.reset(); pauseMenu.render();
@@ -332,13 +391,15 @@ function resume() {
   show('pause', false);
   G.state = G.resumeState || 'flight';
   initAudio();
+  if (G.state === 'hub') { hub.reshow(); return; } // the hub keeps the cursor
   if (wantsMouse()) requestLock();
 }
 function toTitle() {
   show('pause', false);
-  if (G.state !== 'title') saveProgress(G, ship);
+  if (G.state !== 'title') autosave(false);
   story.clear(); G.task = null; G.waypoint = null; G.lineTag = false;
   if (tutorial.active) tutorial.abort();
+  if (hub.visible || G.where === 'hub') hub.close();
   if (G.inSurface) { surface.exit(); G.inSurface = false; renderPass.scene = scene; }
   if (G.inAssault) { assault.stop(); G.inAssault = false; if (G.assaultSquad) G.assaultSquad.release(false); G.assaultSquad = null; }
   show('title', true);
@@ -407,6 +468,8 @@ function cruiseBlock(margin) {
   for (const sq of G.squads) {
     if (sq.state === 'patrol' && sq.pos.distanceTo(ship.pos) < 2400 + margin) return { reason: 'HOSTILES IN RANGE', squad: sq };
   }
+  // Lantern's traffic zone: cruise drops us out short of the station, so we can dock (not during the tutorial's launch)
+  if (G.tutorialDone && station.root.position.distanceTo(ship.pos) < 1800 + margin) return { reason: 'LANTERN TRAFFIC ZONE', lantern: true };
   return null;
 }
 
@@ -433,6 +496,7 @@ function handleCruise(dt) {
       ship.cruise = 0; ship.shake = 1.4; sfx.drop();
       note('DROPPED FROM CRUISE · ' + b.reason, '255,179,90');
       if (b.squad) { G.cruiseDrop = { squad: b.squad, t: G.time }; if (!tutorial.active || G.heard.has('t-raid-3')) say('Scrap Crown ahead. I pulled us out of cruise. Engage them, or slip past.'); }
+      if (b.lantern) say('Lantern ahead. Cruise is off. Bring us to the bay mouth to dock.');
     }
   }
 }
@@ -497,7 +561,18 @@ function updatePrompts() {
     }
     if (surf < p.data.R * 0.9) { G.prompt = { type: 'land', planet: p, label: 'BEGIN LANDING · ' + p.data.name }; return; }
   }
+  // Lantern's dock: in front of the bay mouth, close and slow enough
+  if (G.tutorialDone && !tutorial.active) {
+    const L = station.local(ship.pos, tmpV);
+    const d = bayMouth().distanceTo(ship.pos);
+    if (d < 4500 && !G.heard.has('dock-approach')) story.line('dock-approach');
+    if (d < 1500) {
+      if (L.z < BAY_MOUTH_Z + 10) G.prompt = { type: 'dock', label: 'DOCK AT LANTERN' };
+      else if (G.time - (G.dockHintT || -99) > 20) { G.dockHintT = G.time; say('The bay opens the other way. Swing round to the mouth.'); }
+    }
+  }
 }
+const tmpV = new THREE.Vector3();
 
 function acceptPrompt() {
   const pr = G.prompt;
@@ -508,7 +583,93 @@ function acceptPrompt() {
     startAssault(sq);
   } else if (pr.type === 'land') {
     startEntry(pr.planet);
+  } else if (pr.type === 'dock') {
+    startDocking();
   }
+}
+
+// ---------- Lantern: docking, the hub and launch ----------
+// WREN flies us in: a curve from where we are to a point on the bay's axis outside the mouth, then
+// straight down the bay to the clamps, nose first. The cradle turns the ship round while we are docked.
+const dockPath = { p0: new THREE.Vector3(), p1: new THREE.Vector3(), p2: new THREE.Vector3(), p3: new THREE.Vector3(), q0: new THREE.Quaternion(), t: 0, T: 8 };
+const bez = (a, b, c, d, t, out) => {
+  const u = 1 - t;
+  return out.set(0, 0, 0).addScaledVector(a, u * u * u).addScaledVector(b, 3 * u * u * t).addScaledVector(c, 3 * u * t * t).addScaledVector(d, t * t * t);
+};
+function startDocking() {
+  G.state = 'docking';
+  ship.cruise = 0; ship.boosting = false;
+  sfx.engage();
+  say('Docking. I have the stick.');
+  const D = dockPath;
+  D.p0.copy(ship.pos);
+  const L = station.local(ship.pos, new THREE.Vector3());
+  const dist = bayMouth().distanceTo(ship.pos);
+  D.p1.copy(ship.pos).addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(ship.quat), Math.min(dist * 0.3, 120 + ship.speed * 1.5));
+  // on the bay's axis, between us and the mouth, so the curve never doubles back
+  station.toWorld(new THREE.Vector3(0, BAY_Y - 6, Math.min(BAY_MOUTH_Z - 90, (L.z + BAY_MOUTH_Z) / 2)), D.p2);
+  station.toWorld(new THREE.Vector3(0, BAY_Y - 15, -116), D.p3); // inside, over the clamps
+  D.q0.copy(ship.quat);
+  D.t = 0;
+  D.T = THREE.MathUtils.clamp(D.p0.distanceTo(D.p3) / 220, 6, 10);
+}
+const dkA = new THREE.Vector3(), dkB = new THREE.Vector3(), dkQ = new THREE.Quaternion(), dkM = new THREE.Matrix4();
+function updateDocking(dt) {
+  const D = dockPath;
+  D.t += dt;
+  const k = Math.min(1, D.t / D.T);
+  const e = k * k * (3 - 2 * k); // ease in and out
+  bez(D.p0, D.p1, D.p2, D.p3, e, dkA);
+  bez(D.p0, D.p1, D.p2, D.p3, Math.min(1, e + 0.02), dkB);
+  const prev = ship.pos.clone();
+  ship.pos.copy(dkA);
+  if (dt > 0.002) { // skip zero-length frames, they would read as huge speeds
+    ship.vel.subVectors(ship.pos, prev).divideScalar(dt);
+    ship.speed += (ship.vel.length() - ship.speed) * Math.min(1, dt * 6);
+  }
+  ship.throttle = 0.2; ship.ang.set(0, 0, 0);
+  // face along the path, level with the station; the last stretch faces straight into the bay
+  if (dkB.distanceToSquared(dkA) > 1e-4) {
+    dkM.lookAt(dkA, dkB, station.toWorld(new THREE.Vector3(0, 1e6, 0), new THREE.Vector3()).sub(station.root.position).normalize());
+    dkQ.setFromRotationMatrix(dkM);
+    ship.quat.slerp(dkQ, Math.min(1, dt * (k < 0.15 ? 2 : 4)));
+  }
+  ship.fov += (70 - ship.fov) * Math.min(1, dt * 2);
+  if (k >= 1) {
+    G.state = 'hub-in';
+    sfx.clamp(); ship.shake = 1.2;
+    setTimeout(() => flash(() => openHub(false)), 700);
+  }
+}
+function openHub() {
+  G.state = 'hub';
+  G.where = 'hub';
+  G.prompt = null; G.task = null; G.waypoint = null;
+  dockShip(); station.snapClamps(false);
+  releaseLock();
+  hub.open();
+  autosave(true);
+}
+function launchFromHub() {
+  G.state = 'hub-out';
+  sfx.ui();
+  flash(() => {
+    hub.close();
+    dockShip(); station.snapClamps(false); station.setClamps(true);
+    G.where = 'space';
+    // aim the nav at the nearest world still holding its relic
+    if (G.targetIndex === LANTERN_NAV) {
+      let best = -1, bd = Infinity;
+      G.planets.forEach((p, i) => { if (!G.relics[p.data.id]) { const d = p.center.distanceTo(ship.pos); if (d < bd) { bd = d; best = i; } } });
+      if (best >= 0) G.targetIndex = best;
+    }
+    G.state = 'flight';
+    camera.fov = ship.fov; camera.updateProjectionMatrix();
+    if (wantsMouse()) requestLock();
+    story.clear(); story.line('hub-launch');
+    note('CLAMPS RELEASED · THROTTLE UP', '255,211,106');
+    autosave(false);
+  });
 }
 
 // ---------- Phase II ----------
@@ -520,7 +681,8 @@ function startAssault(sq) {
     G.assaultSquad = sq;
     G.inAssault = true;
     // Fight where we met them, facing the way we were flying.
-    assault.start({ origin: ship.pos, quat: ship.quat, level: sq.level, shield: ship.shield, hull: ship.hull, squadName: sq.name });
+    assault.start({ origin: ship.pos, quat: ship.quat, level: sq.level, shield: ship.shield, hull: ship.hull, squadName: sq.name,
+      mods: { dmgK: eff(G.upgrades, 'plating', 'dmgK'), regen: eff(G.upgrades, 'capacitor', 'regen'), delay: eff(G.upgrades, 'capacitor', 'delay'), fireCd: eff(G.upgrades, 'repeater', 'fireCd') } });
     G.state = 'assault';
     if (wantsMouse()) requestLock();
   });
@@ -537,7 +699,7 @@ function endAssault(r) {
     if (r.win) {
       G.assaultsWon++;
       G.wayshards += r.wayshards;
-      saveProgress(G, ship);
+      autosave(true);
       ship.shield = 1; ship.hull = Math.min(1, Math.max(0.6, r.hull + 0.15));
       showEvent('PHASE II · VICTORY', sq.name + ' BROKEN',
         `Kills ${r.kills} · score ${r.score}${r.hitsTaken === 0 ? ' · flawless' : ''}. You recovered ${r.wayshards} Wayshards (${G.wayshards} in the hold). Field repairs patched the hull to ${Math.round(ship.hull * 100)}%. Wayshards buy upgrades at Lantern Station.`,
@@ -566,6 +728,7 @@ function startEntry(p) {
   G.entry = { planet: p, t: 0 };
   ship.cruise = 0;
   sfx.entry();
+  if (tutorial.active) tutorial.complete(); // landing is the tutorial's last lesson
   say('Entry corridor locked. Hold on, this gets bumpy.');
 }
 function updateEntry(dt) {
@@ -609,6 +772,8 @@ function enterSurface(p, out) {
     G.inSurface = true;
     camera.fov = 68; camera.updateProjectionMatrix();
     G.state = 'surface';
+    G.where = 'surface'; G.surfaceId = p.data.id; G.surfaceOut = out.toArray();
+    autosave(true);
     if (wantsMouse()) requestLock();
   });
 }
@@ -638,13 +803,66 @@ function leaveSurface() {
     ship.speed = 120; ship.vel.set(0, 0, 0); ship.throttle = 0.5; ship.ang.set(0, 0, 0); ship.fov = 75;
     camera.fov = 75; camera.updateProjectionMatrix();
     G.state = 'flight';
+    G.where = 'space';
     say('Back in orbit. The rover is stowed.');
     if (!G.lanternDark && Object.values(G.relics).some(Boolean)) {
       G.lanternDark = true;
-      setTimeout(() => { station.setLineAlive(false); story.lines(['r1-dark-1', 'r1-dark-2', 'r1-dark-3']); }, 2500);
+      // the line dies; WREN sets course for home right away (not after the talk, which a quit could cut short)
+      G.targetIndex = LANTERN_NAV;
+      setTimeout(() => {
+        station.setLineAlive(false);
+        sfx.target(); note('NAV TARGET · LANTERN', '255,211,106');
+        story.lines(['r1-dark-1', 'r1-dark-2', 'r1-dark-3', 'dock-home']);
+      }, 2500);
     }
-    saveProgress(G, ship);
+    autosave(true);
   });
+}
+
+// ---------- the standing objective (after the tutorial) ----------
+// A line at the top of the canopy so the player always knows what's next. Going home after the line
+// dies (until Ilsa's "dark" briefing at the dock) comes first; then the worlds still holding relics.
+// If the nav isn't on the objective, the line says which key sets it.
+G.homeward = false;
+let remindT = 0;
+function updateObjective(dt) {
+  const navKey = input.device === 'gamepad' ? 'LB' : 'TAB';
+  G.homeward = G.lanternDark && !G.briefed.has('dark');
+  if (G.homeward) {
+    if (G.targetIndex !== LANTERN_NAV) G.task = { label: 'SET NAV TO LANTERN · RETURN HOME', key: () => navKey };
+    else G.task = { label: 'RETURN TO LANTERN · DOCK IN THE BAY', key: () => 'OBJECTIVE' };
+    // a nudge now and then on the long way home
+    remindT += dt;
+    if (remindT > 120 && !story.busy && station.root.position.distanceTo(ship.pos) > 20000) {
+      remindT = 0;
+      say(G.targetIndex === LANTERN_NAV ? 'Lantern is on the nav. Follow the gold marker, and cruise when we are pointed at it.' : 'Lantern needs us. Set it on the nav, ' + navKey + ', and I will mark the way.');
+    }
+    return;
+  }
+  const left = G.planets.filter((p) => !G.relics[p.data.id]);
+  if (!left.length) { G.task = null; return; }
+  const onOne = left.some((p) => G.planets.indexOf(p) === G.targetIndex);
+  G.task = onOne
+    ? { label: 'RECOVER THE ' + G.planets[G.targetIndex].data.relic.toUpperCase() + ' · ' + G.planets[G.targetIndex].data.name, key: () => 'OBJECTIVE' }
+    : { label: 'NEXT RELIC · ' + left.map((p) => p.data.name).join(' OR ') + ' · SET NAV', key: () => navKey };
+}
+
+// ---------- Lantern's reserve air ----------
+// Once the line is dark, the station breathes from reserves. The clock runs on play time (flight, fights,
+// the surface), never in menus or while docked. At zero Lantern seals its outer ring; it is not a game over.
+const AIR_STATES = new Set(['flight', 'assault', 'surface', 'entry', 'docking']);
+let airShown = '';
+function updateAir(dt) {
+  const el = $('airclock');
+  const on = G.lanternDark && (AIR_STATES.has(G.state) || G.state === 'event');
+  if (G.lanternDark && AIR_STATES.has(G.state)) {
+    const before = G.air;
+    G.air = Math.max(0, G.air - dt / AIR_DAY);
+    if (before > 3 && G.air <= 3 && !G.heard.has('air-low')) story.line('air-low');
+    if (before > 0 && G.air <= 0 && !G.heard.has('air-out')) story.line('air-out');
+  }
+  const s = on ? (G.air <= 0 ? 'LANTERN AIR · OUTER RING SEALED' : 'LANTERN AIR · ' + airText(G.air)) : '';
+  if (s !== airShown) { airShown = s; el.textContent = s; el.classList.toggle('on', !!s); el.classList.toggle('low', G.air <= 3); }
 }
 
 // ---------- main loop ----------
@@ -692,8 +910,17 @@ function step(dt) {
     case 'entry':
       updateEntry(dt);
       break;
+    case 'docking':
+      updateDocking(dt);
+      break;
+    case 'hub':
+      if (P.has('pause')) { pause(); break; }
+      hub.update(dt, P);
+      break;
     case 'surface': {
       if (P.has('pause')) { pause(); break; }
+      G.saveT += dt;
+      if (G.saveT > 15) { G.saveT = 0; autosave(false); }
       const r = surface.update(dt, input, camera);
       if (r && r.type === 'orbit') leaveSurface();
       if (r && r.type === 'vault') {
@@ -714,8 +941,9 @@ function step(dt) {
     case 'flight': {
       if (P.has('pause')) { pause(); break; }
       if (P.has('target')) {
-        G.targetIndex = (G.targetIndex + 1) % G.planets.length;
-        sfx.target(); note('NAV TARGET · ' + G.planets[G.targetIndex].data.name, '255,211,106');
+        // Lantern joins the list once the tutorial is done (its lessons count on three targets)
+        G.targetIndex = (G.targetIndex + 1) % (G.tutorialDone ? navCount() : G.planets.length);
+        sfx.target(); note('NAV TARGET · ' + (G.targetIndex === LANTERN_NAV ? 'LANTERN' : G.planets[G.targetIndex].data.name), '255,211,106');
       }
       if (P.has('zero')) ship.throttle = 0;
       handleCruise(dt);
@@ -724,16 +952,19 @@ function step(dt) {
       updatePrompts();
       if (P.has('accept')) acceptPrompt();
       tutorial.update(dt);
+      if (!tutorial.active && G.tutorialDone) updateObjective(dt);
       // one lore beat per cruise trip, a few seconds in, never over other talk
       if (ship.cruise === 2 && G.tutorialDone) {
         G.tripT += dt;
         if (G.tripT > 7 && !G.tripLore && !story.busy) { G.tripLore = true; if (story.lore()) G.lastLoreT = G.time; }
       }
       G.saveT += dt;
-      if (G.saveT > 10 && G.tutorialDone) { G.saveT = 0; saveProgress(G, ship); }
+      if (G.saveT > 10 && (G.tutorialDone || tutorial.checkpoint !== null)) { G.saveT = 0; autosave(false); }
       break;
     }
   }
+
+  updateAir(dt);
 
   // Threat rises once we hold a relic: Orrick knows what we carry.
   squads.setEscalation(Object.values(G.relics).some(Boolean) ? 1 : 0);
@@ -741,7 +972,7 @@ function step(dt) {
   if (G.inSurface) {
     const rv = surface.rover;
     updateEngine({ cruise: 0, spool: 0, boosting: false, throttle: Math.min(1, Math.abs(input.drive) * 0.5 + Math.abs(rv.speed) / 30), speed: Math.abs(rv.speed) * 8 }, G.state === 'surface');
-  } else updateEngine(ship, G.state === 'flight' || G.state === 'entry' || G.inAssault);
+  } else updateEngine(ship, G.state === 'flight' || G.state === 'entry' || G.state === 'docking' || G.inAssault);
   // shields recharge slowly in flight
   if (G.state === 'flight') {
     ship.shield = Math.min(1, ship.shield + dt * 0.02);
@@ -753,6 +984,7 @@ function step(dt) {
   if (G.inAssault) { world.update(camera.position, ZERO, dt); return; }
   titleRig.visible = inTitle();
   if (inTitle()) { titleCamera(dt); world.update(camera.position, ZERO, dt); spaceLights.update(camera.position); return; }
+  if (hub.visible) { hub.updateCamera(dt); world.update(camera.position, ZERO, dt); spaceLights.update(camera.position); return; }
   // camera = ship pose + head motion + shake
   const sh = ship.shake;
   G.shakeOffset.set((Math.random() - 0.5) * sh * 0.012, (Math.random() - 0.5) * sh * 0.012, 0);
@@ -769,11 +1001,12 @@ function step(dt) {
 }
 
 function draw() {
-  post.setMode(G.inSurface ? 'surface' : G.inAssault ? 'assault' : inTitle() ? 'title' : 'flight');
-  const inCockpit = !G.inSurface && !G.inAssault && !inTitle();
+  post.setMode(G.inSurface ? 'surface' : G.inAssault ? 'assault' : (inTitle() || hub.visible) ? 'title' : 'flight');
+  const inCockpit = !G.inSurface && !G.inAssault && !inTitle() && !hub.visible;
   post.render(G.time, inCockpit ? (ship.cruise === 2 ? 1 : ship.cruise === 1 ? 0.35 : ship.boosting ? 0.6 : 0) : 0, lastDt);
   renderer.setRenderTarget(null);
-  if (!inTitle()) hud.draw(G, camera); else hudCtx.clearRect(0, 0, hudCtx.canvas.width, hudCtx.canvas.height);
+  if (!inTitle() && !hub.visible) hud.draw(G, camera); else hudCtx.clearRect(0, 0, hudCtx.canvas.width, hudCtx.canvas.height);
+  const hudHidden = hub.visible; if (hudHidden !== G.hudHidden) { G.hudHidden = hudHidden; $('hud').style.visibility = hudHidden ? 'hidden' : ''; } // docked: the canopy HUD has nothing to show
   if (G.inAssault) assault.drawHud(hudCtx, window.innerWidth, window.innerHeight, input.device);
   if (G.inSurface) surface.drawHud(hudCtx, window.innerWidth, window.innerHeight, G, input.device);
 }
@@ -795,4 +1028,4 @@ draw();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => cockpit.redrawAll(G));
 document.fonts && document.fonts.load('600 20px "Chakra Petch"').then(() => cockpit.redrawAll(G)).catch(() => {});
 requestAnimationFrame(frame);
-if (import.meta.env.DEV) window.__relic = { G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post, station, story, tutorial, newGame, continueGame };
+if (import.meta.env.DEV) window.__relic = { leaveSurface, hub, startDocking, openHub, startEntry, toTitle, launchFromHub, autosave, G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post, station, story, tutorial, newGame, continueGame };
