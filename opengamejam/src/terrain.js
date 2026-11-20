@@ -91,6 +91,31 @@ export const SURFACES = {
     },
     colors: { low: '#4a160a', mid: '#2a211d', high: '#6b5a4c', ash: '#5a3a2a', cliff: '#14100e' },
     sky: { top: '#1a0b0a', horizon: '#a8441c', fog: '#5a2614', fogDensity: 0.0019, sun: '#ffb070', sunDir: [0.55, 0.32, -0.45] },
+    hazard: 'lava', // the low plane is molten: it burns and drags (surface.js)
+    hemi: ['#ffb48a', '#3a120a'], rock: '#2e2622', accent: [3.5, 1.4, 0.3], weather: 'embers',
+    vents: true, titan: true, fauna: true, // the vault's vent field, the Foundry Titan, hounds and skitters
+  },
+  // Thalor: snow shelves stepping down to a frozen sea. The "lava" level is the sea ice: solid, flat,
+  // and slick (the rover slides on it). The rings hang in the sky.
+  thalor: {
+    seed: 57, size: 1600, cells: 400, lava: 0,
+    pad: { x: 0, z: 0, r: 26 },
+    vault: { x: -430, z: 470 },
+    hazard: 'ice',
+    height(x, z) {
+      const s = this.seed;
+      const base = (fbm(x * 0.0028, z * 0.0028, s) - 0.47) * 95;      // broad shelves and the sea basins
+      // terraces: flat shelves joined by steep (but climbable) risers
+      const t = 8, f = base / t, k = Math.floor(f), fr = f - k;
+      const terr = (k + smooth(0.5, 1, fr)) * t;
+      let h = base + (terr - base) * 0.8;
+      h += ridged(x * 0.009, z * 0.009, s + 5) * 7;                    // wind-carved ridges
+      h += (fbm(x * 0.05, z * 0.05, s + 9, 3) - 0.5) * 1.6;            // sastrugi: the bumps the rover feels
+      return h;
+    },
+    colors: { low: '#7f9fb3', mid: '#d3dde4', high: '#f4f8fb', ash: '#aab9c4', cliff: '#3c4b58' },
+    sky: { top: '#0a1a33', horizon: '#a9cde2', fog: '#b4cfdf', fogDensity: 0.0015, sun: '#f2f7ff', sunDir: [-0.5, 0.22, 0.6], rings: true },
+    hemi: ['#cfe6ff', '#5a6f80'], rock: '#56687a', accent: [0.9, 2.6, 3.4], weather: 'snow',
   },
 };
 

@@ -105,7 +105,8 @@ export function createHub(ctx) {
     G.upgrades[u.id] = tier(G.upgrades, u.id) + 1;
     sfx.buy();
     ctx.applyUpgrades();
-    if (!story.busy) story.line(buyBark++ % 2 ? 'hub-buy-2' : 'hub-buy-1');
+    if (u.id === 'rime') { story.flush(); story.line('hub-rime'); }
+    else if (!story.busy) story.line(buyBark++ % 2 ? 'hub-buy-2' : 'hub-buy-1');
     ctx.autosave(true);
     shopMenu.render();
   }

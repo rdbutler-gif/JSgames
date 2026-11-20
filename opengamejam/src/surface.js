@@ -39,6 +39,7 @@ const TURRET_POS = new THREE.Vector3(0, 0.6, 0.15); // seated on the generated c
 // The crosshair sits above screen centre so the rover never covers it; the aim ray goes through it.
 const AIM_NDC_Y = 0.2;
 const ARENA_R = 64;
+const ICE_GRIP = 0.2; // share of normal tyre grip on Thalor's sea ice
 let shadowSize = 2048; // set by the graphics quality level
 // Special weapons: one is selected at a time (held on right mouse, Q or LB). Only the heat lance exists so far.
 // The lance burns whatever the beam touches, harder the longer it stays on one target, and overheats.
@@ -54,14 +55,24 @@ function makeSky(def) {
   const g = new THREE.SphereGeometry(4000, 32, 16);
   const m = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { top: { value: new THREE.Color(def.sky.top) }, hor: { value: new THREE.Color(def.sky.horizon) }, sunDir: { value: new THREE.Vector3(...def.sky.sunDir).normalize() }, sunCol: { value: new THREE.Color(def.sky.sun) } },
+    uniforms: { top: { value: new THREE.Color(def.sky.top) }, hor: { value: new THREE.Color(def.sky.horizon) }, sunDir: { value: new THREE.Vector3(...def.sky.sunDir).normalize() }, sunCol: { value: new THREE.Color(def.sky.sun) },
+      rings: { value: def.sky.rings ? 1 : 0 }, ringN: { value: new THREE.Vector3(0.35, 0.55, -0.76).normalize() } },
     vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: `uniform vec3 top, hor, sunDir, sunCol; varying vec3 vD;
+    fragmentShader: `uniform vec3 top, hor, sunDir, sunCol, ringN; uniform float rings; varying vec3 vD;
       void main(){ float h = clamp(vD.y, -0.2, 1.0);
         vec3 c = mix(hor, top, pow(max(h, 0.0), 0.45));
         c = mix(c, hor * 0.5, smoothstep(0.0, -0.2, vD.y));
         float s = max(dot(vD, sunDir), 0.0);
         c += sunCol * (pow(s, 600.0) * 4.0 + pow(s, 12.0) * 0.35);
+        // the planet's rings: a broad banded arc across the sky (seen from inside their plane's offset)
+        if (rings > 0.5) {
+          float d = dot(vD, ringN);
+          float band = smoothstep(0.10, 0.13, d) * (1.0 - smoothstep(0.29, 0.32, d));
+          float gap = 1.0 - 0.85 * smoothstep(0.003, 0.0, abs(d - 0.215));            // a dark division
+          float bands = 0.65 + 0.35 * sin(d * 260.0) * sin(d * 97.0);
+          float a = band * gap * bands * smoothstep(-0.02, 0.12, vD.y) * 0.55;
+          c = mix(c, vec3(0.93, 0.96, 1.0), a);
+        }
         gl_FragColor = vec4(c, 1.0); }`,
   });
   return new THREE.Mesh(g, m);
@@ -94,12 +105,49 @@ function makeLava(def, size) {
   return mesh;
 }
 
+// Thalor's frozen sea: a flat sheet at the "lava" level, pale blue with white pressure cracks.
+// Low roughness so the low sun glints off it. It has no uniforms to step.
+function makeIce(def, size) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+  const g = cv.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 512, 512); grd.addColorStop(0, '#9cc3d6'); grd.addColorStop(0.5, '#b7d7e6'); grd.addColorStop(1, '#8fb9cf');
+  g.fillStyle = grd; g.fillRect(0, 0, 512, 512);
+  let sd = 3;
+  const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(255,255,255,${0.03 + rnd() * 0.05})`; g.beginPath(); g.arc(rnd() * 512, rnd() * 512, 6 + rnd() * 40, 0, 7); g.fill(); }
+  g.lineCap = 'round';
+  for (let i = 0; i < 26; i++) { // cracks: jagged random walks, drawn wrapped so the tile repeats
+    let x = rnd() * 512, y = rnd() * 512, a = rnd() * 6.28;
+    g.strokeStyle = `rgba(240,250,255,${0.35 + rnd() * 0.4})`; g.lineWidth = 0.6 + rnd() * 1.4;
+    g.beginPath(); g.moveTo(x, y);
+    for (let k = 0; k < 30; k++) { a += (rnd() - 0.5) * 0.9; x += Math.cos(a) * 9; y += Math.sin(a) * 9; g.lineTo(x, y); }
+    g.stroke();
+    for (const [ox, oy] of [[512, 0], [-512, 0], [0, 512], [0, -512]]) { g.save(); g.translate(ox, oy); g.stroke(); g.restore(); }
+  }
+  const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(size / 60, size / 60);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  const mat = new THREE.MeshStandardMaterial({ map: tex, color: '#ffffff', roughness: 0.22, metalness: 0.05 });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2), mat);
+  mesh.position.y = def.lava; mesh.receiveShadow = true;
+  return mesh;
+}
+
+// Stand-ins for the Kessa-only systems, so a world without them runs the same update code.
+function noTitan() {
+  return { reset() {}, wake() {}, update() { return null; }, hitTest() { return null; }, onBolt() {}, state: 'dormant', hp: 0, open: 0, hitMark: 0, act: '',
+    centre: new THREE.Vector3(), corePos: (o) => o, debug: { stage: 0 } };
+}
+function noFauna() {
+  return { list: [], reset() {}, hideAll() {}, update() {}, hitTest() { return null; }, damage() { return false; }, kill() {}, meadow: null, packHomes: [],
+    deathFx: { smoke: { emit() {} }, clear() {} } };
+}
+
 function makeRocks(terrain, def, count) {
   const geo = new THREE.IcosahedronGeometry(1, 1);
   const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) { v1.fromBufferAttribute(p, i); v1.multiplyScalar(0.75 + Math.random() * 0.45); p.setXYZ(i, v1.x, v1.y * 0.75, v1.z); }
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ color: '#2e2622', roughness: 0.9, flatShading: true });
+  const mat = new THREE.MeshStandardMaterial({ color: def.rock || '#2e2622', roughness: 0.9, flatShading: true });
   const list = [], placed = [];
   const m4 = new THREE.Matrix4();
   let k = 0, tries = 0;
@@ -147,12 +195,15 @@ function onRoad(def, x, z, margin) {
   return false;
 }
 
-function makeEmbers() {
+function makeEmbers(kind = 'embers') { // rising embers (Kessa) or falling, drifting snow (Thalor)
+  const snow = kind === 'snow';
   const N = 400, pos = new Float32Array(N * 3), P = [];
   for (let i = 0; i < N; i++) P.push(new THREE.Vector3((Math.random() - 0.5) * 120, Math.random() * 40, (Math.random() - 0.5) * 120));
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
-  const m = new THREE.PointsMaterial({ color: new THREE.Color(3, 1.2, 0.3), size: 0.18, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+  const m = snow
+    ? new THREE.PointsMaterial({ color: new THREE.Color(1.1, 1.15, 1.25), size: 0.16, transparent: true, opacity: 0.9, depthWrite: false })
+    : new THREE.PointsMaterial({ color: new THREE.Color(3, 1.2, 0.3), size: 0.18, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
   const pts = new THREE.Points(g, m);
   pts.frustumCulled = false;
   return {
@@ -160,8 +211,9 @@ function makeEmbers() {
     update(dt, centre, t) {
       for (let i = 0; i < N; i++) {
         const p = P[i];
-        p.y += dt * (1.2 + (i % 7) * 0.3); p.x += Math.sin(t * 0.7 + i) * dt * 0.6;
-        if (p.y > 40) p.y = 0;
+        if (snow) { p.y -= dt * (1.6 + (i % 5) * 0.35); p.x += (2.2 + Math.sin(t * 0.9 + i) * 1.2) * dt; p.z += Math.cos(t * 0.6 + i * 1.7) * dt * 0.8; if (p.y < 0) { p.y = 40; p.x = (Math.random() - 0.5) * 120; } if (p.x > 60) p.x -= 120; }
+        else { p.y += dt * (1.2 + (i % 7) * 0.3); p.x += Math.sin(t * 0.7 + i) * dt * 0.6; }
+        if (!snow && p.y > 40) p.y = 0;
         pos[i * 3] = centre.x + p.x; pos[i * 3 + 1] = centre.y - 5 + p.y; pos[i * 3 + 2] = centre.z + p.z;
       }
       g.attributes.position.needsUpdate = true;
@@ -274,16 +326,16 @@ export function createSurface(hooks) {
     const terrain = createTerrain(def);
     root.add(terrain.mesh);
     const sky = makeSky(def); root.add(sky);
-    const lava = makeLava(def, def.size); root.add(lava);
+    const lava = def.hazard === 'ice' ? makeIce(def, def.size) : makeLava(def, def.size); root.add(lava);
     const rocks = makeRocks(terrain, def, 1400); root.add(rocks.inst);
-    const embers = makeEmbers(); root.add(embers.pts);
+    const embers = makeEmbers(def.weather); root.add(embers.pts);
     const sun = new THREE.DirectionalLight(def.sky.sun, 2.6);
     sun.castShadow = true;
     sun.shadow.mapSize.set(shadowSize, shadowSize);
     Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 300 });
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
     root.add(sun); root.add(sun.target);
-    root.add(new THREE.HemisphereLight('#ffb48a', '#3a120a', 0.9));
+    root.add(new THREE.HemisphereLight(...(def.hemi || ['#ffb48a', '#3a120a']), 0.9));
     const lavaGlow = new VLight('#ff6a1f', 0, 90, 1.6); root.add(lavaGlow);
     // landing pad: lit ring and the parked Wayfarer
     const pad = new THREE.Group();
@@ -302,11 +354,11 @@ export function createSurface(hooks) {
     pad.add(shipHolder);
     root.add(pad);
     // vault beacon: a light column visible across the map
-    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 400, 12, 1, true), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.7, 0.2), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    const beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 400, 12, 1, true), new THREE.MeshBasicMaterial({ color: new THREE.Color(...(def.accent || [3.5, 1.4, 0.3])).multiplyScalar(0.46), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
     beacon.position.set(def.vault.x, terrain.vaultH + 200, def.vault.z); root.add(beacon);
     const vaultBase = new THREE.Mesh(new THREE.CylinderGeometry(9, 11, 3, 6), new THREE.MeshStandardMaterial({ color: '#d8cdb8', roughness: 0.6, metalness: 0.2 }));
     vaultBase.position.set(def.vault.x, terrain.vaultH + 1, def.vault.z); vaultBase.castShadow = true; vaultBase.receiveShadow = true; root.add(vaultBase);
-    const glyph = new THREE.Mesh(new THREE.TorusGeometry(6, 0.25, 6, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.5, 1.4, 0.3) }));
+    const glyph = new THREE.Mesh(new THREE.TorusGeometry(6, 0.25, 6, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(...(def.accent || [3.5, 1.4, 0.3])) }));
     glyph.rotation.x = Math.PI / 2; glyph.position.set(def.vault.x, terrain.vaultH + 2.6, def.vault.z); root.add(glyph);
     root.add(mesh.group);
     // surface effects were authored while the particles were never stepped (so never seen); at full
@@ -335,7 +387,8 @@ export function createSurface(hooks) {
     // vent field around the vault: always hot, only Forgeplate gets through
     const ventRing = new THREE.Mesh(new THREE.RingGeometry(30, 56, 64, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.1, 0.3, 0.06), transparent: true, opacity: 0.14, blending: THREE.AdditiveBlending, depthWrite: false }));
     ventRing.position.set(def.vault.x, terrain.vaultH + 0.12, def.vault.z); root.add(ventRing);
-    for (let i = 0; i < 14; i++) {
+    ventRing.visible = !!def.vents;
+    for (let i = 0; i < (def.vents ? 14 : 0); i++) {
       const a = (i / 14) * Math.PI * 2, r = 36 + (i % 3) * 7;
       addGeyser(def.vault.x + Math.cos(a) * r, def.vault.z + Math.sin(a) * r, 2.6 + (i % 4) * 0.5, i * 0.7, true);
     }
@@ -374,7 +427,7 @@ export function createSurface(hooks) {
     // the vault base is solid
     rocks.list.push({ x: def.vault.x, z: def.vault.z, y: terrain.vaultH, r: 10 });
     // guardian, its arena wall, and the relic
-    const titan = createTitan({ root, def, terrain, fx });
+    const titan = def.titan ? createTitan({ root, def, terrain, fx }) : noTitan();
     // heat curtain: bright at the ground, fading out by head height, with flickering streaks
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
     const cx2 = cv.getContext('2d');
@@ -401,7 +454,7 @@ export function createSurface(hooks) {
     };
     for (const m of [lance.glow, lance.core]) { m.visible = false; m.frustumCulled = false; root.add(m); }
     root.add(lance.light);
-    const fauna = createFauna({ root, def, terrain, fx });
+    const fauna = def.fauna ? createFauna({ root, def, terrain, fx }) : noFauna();
     const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna };
     b.lights = createLightPool(root, 3); b.lights.collect(); // every point light above is virtual; 3 real ones serve them
     built.set(id, b);
@@ -441,7 +494,7 @@ export function createSurface(hooks) {
     rover.hull = 100;
     placeAtPad();
     const taken = !!relics[planetId];
-    S = { time: 0, prompt: null, said: new Set(), hint: 9, hintMode: 'drive', lost: 0, planet: planetId, obj: taken ? 'return' : upgrades.forgeplate ? 'cross' : 'vault', fight: false, gunCd: 0, barrel: 0, recoil: [0, 0], aimLift: 0, special: 'lance', heat: 0, over: false, lanceOn: false, lanceT: 0, lanceTgt: null, rockAcc: 0 };
+    S = { time: 0, prompt: null, said: new Set(), hint: 9, hintMode: 'drive', lost: 0, planet: planetId, obj: taken ? 'return' : planetId === 'kessa' && upgrades.forgeplate ? 'cross' : 'vault', fight: false, gunCd: 0, barrel: 0, recoil: [0, 0], aimLift: 0, special: 'lance', heat: 0, over: false, lanceOn: false, lanceT: 0, lanceTgt: null, rockAcc: 0 };
     if (T.forge) T.forge.crate.visible = !upgrades.forgeplate;
     T.titan.reset();
     T.fauna.reset(rover.pos, Math.atan2(-v1.set(0, 0, -1).applyQuaternion(rover.quat).x, -v1.z));
@@ -451,8 +504,14 @@ export function createSurface(hooks) {
     T.bolts.forEach((b) => { b.on = false; b.m.visible = false; });
     T.glyph.visible = !taken;
     applyPlating();
-    hooks.say('Rover is down. Kessa is basalt and lava. Stay off the bright ground.');
     S.practiceN = 0;
+    if (planetId === 'thalor') {
+      // Thalor (step 6a): the drive to the vault; the way in (Compass Trim, the ice maze) is the next build step
+      hooks.say('Rover is down. Thalor. Snow shelves, and the sea is frozen solid between them.');
+      if (!taken) setTimeout(() => S && S.time < 12 && S.obj === 'vault' && hooks.say('The vault signal is that cold light column. The Wayfarer is on the pad when you want to lift off.'), 6000);
+      return;
+    }
+    hooks.say('Rover is down. Kessa is basalt and lava. Stay off the bright ground.');
     if (!taken && !upgrades.turretTrained && T.fauna.meadow) {
       S.objAfter = S.obj; S.obj = 'practice';
       setTimeout(() => {
@@ -729,10 +788,12 @@ export function createSurface(hooks) {
   const qInv = new THREE.Quaternion();
 
   // Lava is a molten crust: wheels sink half a metre into it and burn, but never go under.
+  // Sea ice (Thalor) is solid at its own level.
   const CRUST = 0.55;
-  function ground(x, z) { return Math.max(T.terrain.heightAt(x, z), T.def.lava - CRUST); }
+  const crust = () => (T.def.hazard === 'ice' ? 0 : CRUST);
+  function ground(x, z) { return Math.max(T.terrain.heightAt(x, z), T.def.lava - crust()); }
   function groundNormal(x, z, out) {
-    if (T.terrain.heightAt(x, z) < T.def.lava - CRUST) return out.set(0, 1, 0);
+    if (T.terrain.heightAt(x, z) < T.def.lava - crust()) return out.set(0, 1, 0);
     return T.terrain.normalAt(x, z, out);
   }
   function pointVel(r, out) { return out.crossVectors(rover.ang, r).add(rover.vel); }
@@ -798,9 +859,12 @@ export function createSurface(hooks) {
       }
       Fl -= vl * R.roll;
       if (rearHand) Fl -= Math.sign(vl) * Math.min(Math.abs(vl) * 6, R.brake / 4);
-      let Fy = -vs * R.grip * (rearHand ? 0.3 : 1);
+      // sea ice: a fraction of the grip, so the rover slides and needs room to stop and turn
+      const iceK = T.def.hazard === 'ice' && T.terrain.heightAt(cp.x, cp.z) < T.def.lava + 0.02 ? ICE_GRIP : 1;
+      if (iceK < 1) { rover.onIce = 0.25; Fl += vl * R.roll * 0.7; } // less rolling drag on ice too
+      let Fy = -vs * R.grip * (rearHand ? 0.3 : 1) * iceK;
       // friction circle: total tyre force limited by load
-      const lim = R.mu * Fs * (rearHand ? 0.55 : 1);
+      const lim = R.mu * Fs * (rearHand ? 0.55 : 1) * iceK;
       const mag = Math.hypot(Fl, Fy);
       if (mag > lim) { Fl *= lim / mag; Fy *= lim / mag; }
       fc.copy(wf).multiplyScalar(Fl).addScaledVector(ws, Fy);
@@ -809,11 +873,11 @@ export function createSurface(hooks) {
       applyAt(fc, v3);
       rover.wheelSpin[w] += (vl / R.wheelR) * h;
       // lava under a wheel
-      if (cp.y < T.def.lava + 0.05) rover.lavaT = 0.3;
+      if (T.def.hazard === 'lava' && cp.y < T.def.lava + 0.05) rover.lavaT = 0.3;
     }
 
     // the chassis down in the lava burns too (rolled over, or bellied in)
-    if (rover.pos.y < T.def.lava + 1.0) rover.lavaT = 0.3;
+    if (T.def.hazard === 'lava' && rover.pos.y < T.def.lava + 1.0) rover.lavaT = 0.3;
 
     // hull points: keep the body out of the ground (rolled or high-centred)
     for (const p of HULL_PTS) {
@@ -955,6 +1019,15 @@ export function createSurface(hooks) {
     T.geyserLight.intensity = nearest && nd < 60 ? 30 : 0;
     if (nearest) T.geyserLight.position.set(nearest.x, nearest.y + 6, nearest.z);
 
+    // Thalor: reaching the vault is as far as this build goes
+    if (d.hazard === 'ice') {
+      if (S.obj === 'vault' && toVault < 45) {
+        setObj('scouted');
+        hooks.say('There it is. The vault is sealed under the rime, and the way in is a maze of ice. We will need something to read it. Next time.');
+      }
+      return null;
+    }
+
     // the vent field: impassable heat without Forgeplate
     const inRing = toVault > 30 && toVault < 56;
     S.heatWall = Math.max(0, (S.heatWall || 0) - dt);
@@ -1004,6 +1077,8 @@ export function createSurface(hooks) {
     const steps = 4, h = dt / steps;
     let grounded = 0;
     rover.lavaT = Math.max(0, rover.lavaT - dt);
+    rover.onIce = Math.max(0, (rover.onIce || 0) - dt);
+    if (rover.onIce > 0) say1('ice', 'Sea ice. There is almost no grip out here. Ease off, and turn early.');
     for (let i = 0; i < steps; i++) grounded = physicsStep(h, inp);
     S.grounded = grounded;
 
@@ -1073,7 +1148,7 @@ export function createSurface(hooks) {
       if (FRONT[w]) wh.pivot.rotateY(rover.steer);
       wh.spin.rotation.x = -rover.wheelSpin[w];
     });
-    T.lava.material.uniforms.time.value = S.time;
+    if (T.lava.material.uniforms) T.lava.material.uniforms.time.value = S.time; // the ice sheet has no clock
     T.embers.update(dt, rover.pos, S.time);
     T.fx.update(dt); // sparks, fire and dust (was never stepped, so surface particles never showed)
     T.glyph.rotation.z += dt * 0.3;
@@ -1081,7 +1156,7 @@ export function createSurface(hooks) {
     T.sun.target.position.copy(rover.pos);
     T.sky.position.copy(camera.position);
     // lava light near the rover when lava is close below
-    const nearLava = clamp(1 - (rover.pos.y - d.lava) / 12, 0, 1);
+    const nearLava = d.hazard === 'lava' ? clamp(1 - (rover.pos.y - d.lava) / 12, 0, 1) : 0;
     T.lavaGlow.position.set(rover.pos.x, d.lava + 2, rover.pos.z);
     T.lavaGlow.intensity = nearLava * 26;
 
@@ -1180,6 +1255,7 @@ export function createSurface(hooks) {
       guardian: 'Destroy the Foundry Titan · shoot its core when it vents',
       core: 'Take the Ember Core',
       return: 'Return to the Wayfarer and lift off',
+      scouted: 'Vault found · the way in is the next build step · lift off when ready',
     };
     text(ctx, OBJ[S.obj] || '', W / 2, 90, 14 * sc + 5, '230,251,255', 0.9, 'center', 600);
     if (S.objFlash > 0) {

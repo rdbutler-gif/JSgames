@@ -29,7 +29,7 @@ import { createStory, createTutorial, LINES } from './story.js';
 import { loadProgress, hasProgress, saveProgress, clearProgress } from './progress.js';
 import { cloneModel, onModel } from './models.js';
 import { createHub, airText } from './hub.js';
-import { eff } from './workshop.js';
+import { eff, tier, UPGRADE } from './workshop.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('gl');
@@ -557,15 +557,21 @@ function updatePrompts() {
     const surf = p.center.distanceTo(ship.pos) - p.data.R;
     if (surf < p.data.R * 2.2 && !G.greeted.has(p.data.id)) {
       G.greeted.add(p.data.id);
-      if (!tutorial.active) say(titleCase(p.data.name) + ' ahead. The vault signal is strong: the ' + p.data.relic + '. Take us down when you are ready.');
+      if (stormBlocks(p)) story.lines(['thalor-storm-1', 'thalor-storm-2']);
+      else if (!tutorial.active) say(titleCase(p.data.name) + ' ahead. The vault signal is strong: the ' + p.data.relic + '. Take us down when you are ready.');
     }
-    if (surf < p.data.R * 0.9) { G.prompt = { type: 'land', planet: p, label: 'BEGIN LANDING · ' + p.data.name }; return; }
+    if (surf < p.data.R * 0.9) {
+      G.prompt = stormBlocks(p)
+        ? { type: 'storm', planet: p, label: 'RING STORM · NEEDS RIME SHIELDING' }
+        : { type: 'land', planet: p, label: 'BEGIN LANDING · ' + p.data.name };
+      return;
+    }
   }
   // Lantern's dock: in front of the bay mouth, close and slow enough
   if (G.tutorialDone && !tutorial.active) {
     const L = station.local(ship.pos, tmpV);
     const d = bayMouth().distanceTo(ship.pos);
-    if (d < 4500 && !G.heard.has('dock-approach')) story.line('dock-approach');
+    if (d < 4500 && !G.dockHinted) { G.dockHinted = true; story.line('dock-approach'); } // once; re-armed when Lantern is picked on the nav again
     if (d < 1500) {
       if (L.z < BAY_MOUTH_Z + 10) G.prompt = { type: 'dock', label: 'DOCK AT LANTERN' };
       else if (G.time - (G.dockHintT || -99) > 20) { G.dockHintT = G.time; say('The bay opens the other way. Swing round to the mouth.'); }
@@ -581,6 +587,9 @@ function acceptPrompt() {
     sfx.engage();
     const sq = pr.squad;
     startAssault(sq);
+  } else if (pr.type === 'storm') {
+    sfx.denied();
+    say('Not without Rime Shielding. The Workshop at Lantern has it: ' + UPGRADE.rime.costs[0] + ' Wayshards. We have ' + G.wayshards + '.');
   } else if (pr.type === 'land') {
     startEntry(pr.planet);
   } else if (pr.type === 'dock') {
@@ -596,6 +605,9 @@ const bez = (a, b, c, d, t, out) => {
   const u = 1 - t;
   return out.set(0, 0, 0).addScaledVector(a, u * u * u).addScaledVector(b, 3 * u * u * t).addScaledVector(c, 3 * u * t * t).addScaledVector(d, t * t * t);
 };
+// Thalor's ring storm: no landing until the Wayfarer has Rime Shielding (the Workshop, 300 Wayshards)
+function stormBlocks(p) { return p.data.id === 'thalor' && tier(G.upgrades, 'rime') < 1; }
+
 function startDocking() {
   G.state = 'docking';
   ship.cruise = 0; ship.boosting = false;
@@ -842,6 +854,15 @@ function updateObjective(dt) {
   const left = G.planets.filter((p) => !G.relics[p.data.id]);
   if (!left.length) { G.task = null; return; }
   const onOne = left.some((p) => G.planets.indexOf(p) === G.targetIndex);
+  const tgt = G.planets[G.targetIndex];
+  if (onOne && stormBlocks(tgt)) {
+    // the way to Thalor goes through raider fights: say what it costs and how far along we are
+    const cost = UPGRADE.rime.costs[0];
+    G.task = G.wayshards >= cost
+      ? { label: 'BUY RIME SHIELDING AT LANTERN · THEN THALOR', key: () => 'OBJECTIVE' }
+      : { label: 'RIME SHIELDING FOR THALOR · ◆ ' + G.wayshards + ' / ' + cost + ' · FIGHT RAIDERS FOR WAYSHARDS', key: () => 'OBJECTIVE' };
+    return;
+  }
   G.task = onOne
     ? { label: 'RECOVER THE ' + G.planets[G.targetIndex].data.relic.toUpperCase() + ' · ' + G.planets[G.targetIndex].data.name, key: () => 'OBJECTIVE' }
     : { label: 'NEXT RELIC · ' + left.map((p) => p.data.name).join(' OR ') + ' · SET NAV', key: () => navKey };
@@ -863,6 +884,7 @@ function updateAir(dt) {
   }
   const s = on ? (G.air <= 0 ? 'LANTERN AIR · OUTER RING SEALED' : 'LANTERN AIR · ' + airText(G.air)) : '';
   if (s !== airShown) { airShown = s; el.textContent = s; el.classList.toggle('on', !!s); el.classList.toggle('low', G.air <= 3); }
+  el.classList.toggle('side', !!(G.inSurface || G.inAssault)); // the rover compass and the fight HUD own the top centre
 }
 
 // ---------- main loop ----------
@@ -943,6 +965,7 @@ function step(dt) {
       if (P.has('target')) {
         // Lantern joins the list once the tutorial is done (its lessons count on three targets)
         G.targetIndex = (G.targetIndex + 1) % (G.tutorialDone ? navCount() : G.planets.length);
+        if (G.targetIndex === LANTERN_NAV) G.dockHinted = false;
         sfx.target(); note('NAV TARGET · ' + (G.targetIndex === LANTERN_NAV ? 'LANTERN' : G.planets[G.targetIndex].data.name), '255,211,106');
       }
       if (P.has('zero')) ship.throttle = 0;

@@ -106,3 +106,4 @@ dd { margin: 0; color: #cfe6ef; }
 #saved { position: fixed; right: 18px; bottom: 16px; pointer-events: none; font: 600 13px 'Chakra Petch'; letter-spacing: 0.22em;
   color: var(--cyan); opacity: 0; transition: opacity 0.4s; }
 #saved.on { opacity: 0.9; }
+#airclock.side { left: auto; right: 16px; transform: none; top: 12px; font-size: 13px; }

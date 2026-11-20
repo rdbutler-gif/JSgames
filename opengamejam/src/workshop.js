@@ -12,6 +12,9 @@ export const UPGRADES = [
     tiers: ['Guns fire 20% faster', 'Guns fire 40% faster'], fireCd: [0.13, 0.108, 0.093] },
   { id: 'cell', group: 'WAYFARER', name: 'BOOST CELL', costs: [60, 150],
     tiers: ['Boost lasts 6.5 s and recharges faster', 'Boost lasts 9 s'], boostSecs: [4.5, 6.5, 9], recharge: [9, 7, 6] },
+  // the way down to Thalor: its rings shed ice into a storm no plain hull survives. Priced so it takes raider fights.
+  { id: 'rime', group: 'WAYFARER', name: 'RIME SHIELDING', costs: [300],
+    tiers: ['Ice-rated hull plates: the Wayfarer can fly down through Thalor\'s ring storm'] },
   // ---- the rover (Phase III) ----
   { id: 'armour', group: 'ROVER', name: 'ROVER ARMOUR', costs: [70, 180],
     tiers: ['The rover takes 20% less damage', 'The rover takes 35% less damage'], dmgK: [1, 0.8, 0.65] },

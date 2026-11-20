@@ -80,6 +80,10 @@ export const LINES = {
   'hub-launch': ['ilsa', 'Clamps off. Fly safe, Runner.'],
   'air-low': ['ilsa', "Runner, the air's getting thin up here. Three days left. Please hurry."],
   'air-out': ['ilsa', "We've sealed the outer ring. Everyone's crowded into the spindle now. Please, Runner."],
+  // ---- Thalor (step 6): the ring storm needs Rime Shielding ----
+  'thalor-storm-1': ['wren', "Thalor's rings are shedding ice. That storm would tear our hull apart on the way down."],
+  'thalor-storm-2': ['wren', "Lantern's Workshop can fit Rime Shielding. It isn't cheap. The Scrap Crown wings carry Wayshards. We take theirs."],
+  'hub-rime': ['ilsa', "Rime Shielding's fitted. Thalor's storm can't stop you now. Bring that compass home."],
 };
 
 // Ilsa's briefings at the dock, by how far the run has come. Each plays once, in order, when it applies.

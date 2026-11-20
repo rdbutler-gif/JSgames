@@ -108,7 +108,7 @@ Each step ends playable, with the owner testing before the next.
 | 4 | **Phase III vertical slice on one planet** (Kessa), in three parts: **4a** rover driving, landing and lift-off; **4b** armory site, Forgeplate module, vault behind the lava vents; **4c** guardian, Ember Core, memory #1 | 4a, 4b done. 4c built 2026-11-19 (turret, Foundry Titan, Ember Core, memory #1 "Purpose"), awaiting owner playtest |
 | 4d | **Opening** (owner, 2026-11-19): title scene, PLAY/CONTINUE/NEW GAME/SETTINGS, save, intro card, undock from Lantern, WREN's step-by-step flight tutorial, radio from Ilsa and Orrick, cruise lore beats, planets spread for ~45 s cruise trips, Lantern's line dies after relic 1. Voiced (WREN, Ilsa, Orrick) | **Done**, owner approved 2026-11-20 |
 | 5 | **Lantern Station** hub: dock back at Lantern, Ilsa briefing, Workshop (upgrades for Wayshards), the air clock on screen | **Built 2026-11-20**, awaiting owner playtest. Air clock at zero is not (yet) a game over: owner to decide |
-| 6 | The other two planets (reusing the Phase III systems with their own terrain, natives, gate and guardian) | |
+| 6 | The other two planets (reusing the Phase III systems with their own terrain, natives, gate and guardian) | Thalor 6a built 2026-11-20: ring-storm gate (Rime Shielding, 300, owner: "impossible without upgrading ship first, encouraging Raider battles"), surface and drive to the vault. 6b Compass Trim + ice maze, 6c Sentinel Prime next |
 | 7 | Ship upgrades that counter raider levels; Hexers, Reavers, Vex encounters | |
 | 8 | Voices: WREN (three stages), Orrick, Ilsa, Vex; music per planet | Started in 4d: WREN = Melz, Ilsa = Cass, Orrick = Obsidian (ElevenLabs library voices) |
 | 9 | Final Gate run, *Last Light* boss, ending choice | |

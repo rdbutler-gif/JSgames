@@ -13,13 +13,37 @@
 | 4b | Magma Canyon, geysers, Forge Gate, Forgeplate pickup, vault vent field | Done, owner re-tested ("fine") |
 | 4c | Rover turret, Foundry Titan fight, Ember Core, WREN memory #1 | Done, owner played it through (Titan stays as is) |
 | 4d | Opening: title scene, menus, save, intro, Lantern undock, WREN tutorial, radio, cruise lore, spread planets, voices | Done. Owner approved 2026-11-20: voice levels, tutorial pace, voice casting, cruise distances, nebula sky, cockpit, surface effects, performance on the weak laptop |
-| 5 | Lantern hub: docking, Ilsa's briefings, Workshop, air clock, scrubber parts, saves on events | **Built 2026-11-20, headless-tested, awaiting owner playtest** |
+| 5 | Lantern hub: docking, Ilsa's briefings, Workshop, air clock, scrubber parts, saves on events | Built 2026-11-20; owner flew home and docked on the live site ("it worked"). Docking line repeated until docked: fixed (once per approach) |
+| 6a | Thalor: ring-storm gate (Rime Shielding, 300 Wayshards), the surface (snow shelves, slick sea ice, rings in the sky, snow), drive to the vault | **Built 2026-11-20, headless-tested, awaiting owner playtest** |
 
 Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
 ## First thing next session
 
-0. **Ask the owner to play step 5.** Suggested path: take the Ember Core on Kessa, lift off and hear the line die. WREN sets the nav to LANTERN. Cruise home (cruise drops out ~4.4 km from Lantern), fly to the bay mouth, and DOCK AT LANTERN. In the hub: hear Ilsa's briefing, buy something in the WORKSHOP, buy SCRUBBER PARTS, then LAUNCH. Quit in a few places (on Kessa, docked, in flight) and CONTINUE each time. Ask:
+0. **Ask the owner to play 6a (Thalor).** Owner request (2026-11-20): "begin creating Thalor and make it impossible without upgrading ship first, encouraging Raider battles to gain currency". Ask:
+   - Is 300 Wayshards the right price? While the nav is on Thalor, the objective line shows ◆ n / 300.
+   - How does the sea ice drive? Grip on the ice is `ICE_GRIP` (0.2) in surface.js. Measured: 27° slip at full lock, and braking from 15 m/s leaves 6 m/s after 1 s, against 1 m/s on snow.
+   - How do the look, the rings in the sky and the snow read?
+   - Next: 6b is the Compass Trim module and the ice maze. 6c is the Sentinel Prime guardian, the Rime Compass relic and WREN memory 2 (Truth).
+
+### How 6a works (Thalor)
+- **The gate:** `stormBlocks(p)` in main.js blocks landing on Thalor until `G.upgrades.rime` is set. That's the Workshop's RIME SHIELDING: one tier, 300 Wayshards.
+  - The landing prompt reads RING STORM · NEEDS RIME SHIELDING. Accepting it has WREN give the price and what we hold.
+  - On the first approach WREN says `thalor-storm-1` and `thalor-storm-2`: the Scrap Crown carry Wayshards. Ilsa says `hub-rime` when the shielding is bought.
+  - While the nav is on Thalor without the shielding, the objective reads RIME SHIELDING FOR THALOR · ◆ n / 300 · FIGHT RAIDERS FOR WAYSHARDS.
+- **The surface** (`SURFACES.thalor` in terrain.js):
+  - Terraced shelves in 8 m steps, with risers no steeper than about 45°, plus wind ridges and sastrugi bumps.
+  - The `lava` level (0) is the frozen sea, drawn by `makeIce` in surface.js (canvas cracks, low roughness). It's solid, with no crust to sink into.
+  - Wheels on the ice get `ICE_GRIP` of their normal grip, and WREN warns once.
+  - The sky shader draws the rings (`rings` uniform), and `weather: 'snow'` turns the ember particles into falling snow.
+  - Each planet's profile sets its own `hemi` light, `rock` colour and `accent` (beacon and glyph colour).
+- **Kessa-only systems** sit behind flags in Kessa's profile: `vents`, `titan` and `fauna`.
+  - On a world without them, `noTitan()` and `noFauna()` stand in, so the update code runs unchanged.
+  - `hazard: 'lava'` gates the lava burn and the lava glow.
+- **On Thalor so far:** land and drive to the vault beacon. Within 45 m the objective becomes `scouted` ("Vault found · the way in is the next build step"). Lift off from the pad as usual.
+- **Air clock:** it moves to the top-right corner on surfaces and in fights, because it covered the rover compass.
+
+1. (Step 5 questions still open:) Suggested path: take the Ember Core on Kessa, lift off and hear the line die. WREN sets the nav to LANTERN. Cruise home (cruise drops out ~4.4 km from Lantern), fly to the bay mouth, and DOCK AT LANTERN. In the hub: hear Ilsa's briefing, buy something in the WORKSHOP, buy SCRUBBER PARTS, then LAUNCH. Quit in a few places (on Kessa, docked, in flight) and CONTINUE each time. Ask:
    - Does CONTINUE now bring you back where you left off? (Owner bug 2026-11-20: landing on Kessa, quitting and continuing restarted the tutorial. Fixed, see below.)
    - Does docking feel right? WREN flies you in over 6–10 s. Is the hub view good?
    - Are the upgrade prices and effects right (`src/workshop.js`)? Is the Wayshard income right? It comes from fights, plus 4 per hound, 1 per skitter and 120 for the Titan.
