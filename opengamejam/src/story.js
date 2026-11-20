@@ -35,7 +35,12 @@ export const LINES = {
   't-orrick-1': ['orrick', "Lantern Runner. Dagan Orrick, Scrap Crown. I hear you're vault hunting."],
   't-orrick-2': ['orrick', 'Those vaults are mine. Go home and keep breathing, while you still can.'],
   't-orrick-3': ['wren', 'Orrick. His raiders strip dying stations. Expect company.'],
-  't-scouts': ['wren', 'Scrap Crown scouts. Fight them for Wayshards, or fly around them and cruise on.'],
+  // ---- tutorial: the first raider encounter ----
+  't-raid-1': ['wren', 'Raiders on the route. Cruise drops us out when anything hostile gets close.'],
+  't-raid-2': ['wren', 'Their tag shows the threat level. Threat one is a few light fighters. The higher the number, the harder the fight.'],
+  't-raid-3': ['wren', "Fly in close and engage, and we fight them for Wayshards. Or steer wide, and cruise on once we're clear."],
+  't-raid-won': ['wren', 'Good flying. Wayshards buy upgrades back at Lantern.'],
+  't-raid-skip': ['wren', "We slipped past them. Not every fight is worth taking."],
   't-recruise': ['wren', 'Clear. Point us at Kessa and engage cruise again.'],
   't-wardens': ['wren', 'The Wardens built the Waylines, then vanished. Two hundred years, and no one has made a new one.'],
   't-kessa': ['wren', "That's Kessa. The vault is down there. Take us in when you're ready."],
@@ -115,6 +120,7 @@ export function createStory(ctx) {
     lines(ids, done) { ids.forEach((id, i) => line(id, i === ids.length - 1 && done ? { then: done } : {})); if (!ids.length && done) done(); },
     get busy() { return !!cur || queue.length > 0; },
     clear() { queue.length = 0; cur = null; },
+    flush() { queue.length = 0; }, // drop what is waiting; the line being spoken finishes
     // a lore beat for this cruise trip, if one is due
     lore() {
       const b = LORE.find((x) => !G.heard.has(x.id) && x.when(G));
@@ -167,7 +173,7 @@ export function createTutorial(ctx) {
     target: { key: 'TAB', pad: 'LB', label: 'NAV TARGET · KESSA' },
     face: { key: 'MOUSE', pad: 'LEFT STICK', label: 'TURN TOWARD KESSA' },
     cruise: { key: 'C', pad: 'X', label: 'ENGAGE CRUISE DRIVE' },
-    engage: { key: 'F', pad: 'A', label: 'ENGAGE, OR FLY AROUND THEM' },
+    engage: { key: 'F', pad: 'A', label: 'ENGAGE THEM, OR STEER WIDE' },
     land: { key: 'F', pad: 'A', label: 'BEGIN LANDING' },
   };
   function task(k) { const t = KEYS[k]; G.task = t ? { label: t.label, key: () => t[dev()] } : null; }
@@ -205,17 +211,31 @@ export function createTutorial(ctx) {
     } },
     { lines: ['t-cruise'], task: 'cruise', check: () => ship.cruise === 2 },
     // the trip: a tip, Orrick's broadcast, then (usually) his scouts on the route
-    { lines: [], task: null, enter() { cruiseT = 0; beats = 0; }, check(dt) {
+    { lines: [], task: null, enter() { cruiseT = 0; beats = 0; G.cruiseDrop = null; }, check(dt) {
       if (ship.cruise === 2) cruiseT += dt;
       if (beats === 0 && cruiseT > 1.5) { beats = 1; story.line('t-cruise-tip'); }
       if (beats === 1 && cruiseT > 3 && !story.busy) { beats = 2; story.lines(['t-orrick-1', 't-orrick-2', 't-orrick-3']); }
-      if (G.prompt && G.prompt.type === 'engage' && !sawScouts) { sawScouts = true; return 'scouts'; }
+      if (!sawScouts && ((G.cruiseDrop && G.cruiseDrop.squad) || (G.prompt && G.prompt.type === 'engage'))) { sawScouts = true; return 'scouts'; }
       if (G.prompt && G.prompt.type === 'land') return 'land';
       return false;
     } },
   ];
-  const SCOUTS = { lines: ['t-scouts'], task: 'engage', check: () => !(G.prompt && G.prompt.type === 'engage') && G.state === 'flight' && !G.inAssault };
-  const RECRUISE = { lines: ['t-recruise'], task: 'cruise', enter() { cruiseT = 0; }, check(dt) {
+  // the first raiders: why cruise dropped, what the threat tag means, fight or slip past.
+  // Ends when they are beaten, we lost, or we are clear of them (cruise is free again).
+  let raidEnd = null;
+  // past them: cruising again, or well clear of every patrol (cruise drops us inside 5 km, and can't hold until we are past that)
+  const raidClear = () => !G.squads.some((sq) => sq.state === 'patrol' && sq.pos.distanceTo(ship.pos) < 5200);
+  const SCOUTS = { lines: ['t-raid-1', 't-raid-2', 't-raid-3'], task: 'engage', enter() { story.flush(); raidEnd = null; G.cruiseDrop = null; G.lastAssault = null; }, check() {
+    if (G.state !== 'flight' || G.inAssault) return false; // in the fight, or its result card is up
+    if (G.lastAssault) { raidEnd = G.lastAssault.win ? 'won' : 'lost'; return true; }
+    if (ship.cruise === 2 || raidClear()) { raidEnd = 'skip'; return true; }
+    return false;
+  } };
+  const RECRUISE = { lines: ['t-recruise'], task: 'cruise', enter() {
+    cruiseT = 0;
+    this.lines = raidEnd === 'won' ? ['t-raid-won', 't-recruise'] : raidEnd === 'skip' ? ['t-raid-skip', 't-recruise'] : ['t-recruise'];
+    if (raidEnd === 'skip' && ship.cruise > 0) this.lines = ['t-raid-skip'];
+  }, check(dt) {
     if (ship.cruise === 2) cruiseT += dt;
     if (cruiseT > 1.5 && !G.heard.has('t-wardens') && !story.busy) story.line('t-wardens');
     if (G.prompt && G.prompt.type === 'land') return 'land';

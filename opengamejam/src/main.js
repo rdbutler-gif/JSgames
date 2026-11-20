@@ -432,7 +432,7 @@ function handleCruise(dt) {
     if (b) {
       ship.cruise = 0; ship.shake = 1.4; sfx.drop();
       note('DROPPED FROM CRUISE · ' + b.reason, '255,179,90');
-      if (b.squad) say('Scrap Crown ahead. I pulled us out of cruise. Engage them, or slip past.');
+      if (b.squad) { G.cruiseDrop = { squad: b.squad, t: G.time }; if (!tutorial.active || G.heard.has('t-raid-3')) say('Scrap Crown ahead. I pulled us out of cruise. Engage them, or slip past.'); }
     }
   }
 }
@@ -484,7 +484,7 @@ function updatePrompts() {
     const d = sq.pos.distanceTo(ship.pos);
     if (d < 3200) {
       const last = G.squadWarn.get(sq.id) || -999;
-      if (G.time - last > 40) { G.squadWarn.set(sq.id, G.time); if (!tutorial.active || G.heard.has('t-scouts')) say(assessSquad(sq)); sfx.alert(); } // WREN introduces the first scouts herself
+      if (G.time - last > 40) { G.squadWarn.set(sq.id, G.time); if (!tutorial.active || G.heard.has('t-raid-3')) say(assessSquad(sq)); sfx.alert(); } // WREN introduces the first scouts herself
     }
     if (d < 1700 && d < bd) { bd = d; best = sq; }
   }
@@ -529,7 +529,7 @@ function endAssault(r) {
   G.state = 'assault-out';
   flash(() => {
     assault.stop();
-    G.inAssault = false;
+    G.inAssault = false; G.lastAssault = { win: r.win };
     const sq = G.assaultSquad; G.assaultSquad = null;
     sq.release(r.win);
     ship.vel.set(0, 0, 0); ship.ang.set(0, 0, 0); ship.speed = 60; ship.throttle = 0.3;
@@ -541,7 +541,7 @@ function endAssault(r) {
       ship.shield = 1; ship.hull = Math.min(1, Math.max(0.6, r.hull + 0.15));
       showEvent('PHASE II · VICTORY', sq.name + ' BROKEN',
         `Kills ${r.kills} · score ${r.score}${r.hitsTaken === 0 ? ' · flawless' : ''}. You recovered ${r.wayshards} Wayshards (${G.wayshards} in the hold). Field repairs patched the hull to ${Math.round(ship.hull * 100)}%. Wayshards buy upgrades at Lantern Station.`,
-        () => { closeEvent(); note(sq.name + ' SCATTERED', '255,211,106'); say('Wayshards stowed. Good flying, Runner.'); });
+        () => { closeEvent(); note(sq.name + ' SCATTERED', '255,211,106'); if (!tutorial.active) say('Wayshards stowed. Good flying, Runner.'); });
     } else {
       G.wayshards += Math.round(r.wayshards / 2);
       ship.shield = 0.3; ship.hull = 0.25;

@@ -161,9 +161,11 @@ export function playVoice(id, radio = false) {
   if (settings.muted) return buf.duration;
   const t = ac.currentTime;
   const src = ac.createBufferSource(); src.buffer = buf;
-  const g = ac.createGain(); g.gain.value = radio ? 1.25 : 1.0;
+  // takes are normalised to -18 LUFS; the radio chain's drive adds about 3.5 dB, so its gain takes it back
+  // to WREN's level (measured offline: the old drive 2.2 x 1.25 ran radio ~8 dB hotter and clipped)
+  const g = ac.createGain(); g.gain.value = radio ? 0.62 : 1.0;
   if (radio) {
-    if (!driveCurve) { driveCurve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; driveCurve[i] = Math.tanh(x * 2.2); } }
+    if (!driveCurve) { driveCurve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; driveCurve[i] = Math.tanh(x * 1.4) / Math.tanh(1.4); } }
     const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420;
     const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
     const ws = ac.createWaveShaper(); ws.curve = driveCurve;
