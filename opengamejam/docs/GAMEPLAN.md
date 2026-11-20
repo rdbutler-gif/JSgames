@@ -27,7 +27,7 @@ the two disagree, this file wins, and this file changes whenever the owner decid
 
 ## 2. Canon we keep from the brief
 
-- **Setting:** the Veyra Cluster. The Wardens built the **Waylines** (gate roads) and vanished 200 years ago. Gates are going dark: **the Quiet**.
+- **Setting:** the Veyra Cluster. The Wardens built the **Waylines** and vanished 200 years ago. A Wayline is a line of light between worlds that carries air, water and power; every colony lives on one. Warden **relays** (rings along the line) keep the light steady. Every line runs to one place the charts call **the Heart**. The lines are going dark: **the Quiet**. (Owner, 2026-11-19: never call them "gate roads".)
 - **The player:** a Runner flying the *Wayfarer* out of **Lantern Station**, which is about to be cut off.
 - **WREN:** the ship's navigator AI. She was built by the Wardens, and learns over the game that she *is* the restart, and that it will overwrite her.
 - **The three worlds and relics:**
@@ -35,7 +35,7 @@ the two disagree, this file wins, and this file changes whenever the owner decid
   - **Vireo:** violet fog and floating rock. The **Veil Lens** (memory / sight). Natives: **the Hollowed**.
   - **Thalor:** ice and rings. The **Rime Compass** (direction). Natives: **Sentinels**.
 - **The Scrap Crown:** the Raiders, led by **Dagan "Ashjaw" Orrick**, with the ace **Vex Calloway**. Orrick wants to restart one lane and hold every colony hostage.
-- **Lantern Station:** Dockmaster **Ilsa Brandt**. It has an air clock once its lane dies.
+- **Lantern Station:** Dockmaster **Ilsa Brandt**. It has no world of its own; everything it breathes comes down its Wayline from the Heart. The line dies the moment the first relic leaves its vault (WREN: "I don't think that was chance"), and Lantern goes on reserve air.
 - **Endings:** **Restart** (WREN becomes the road) or **Sever** (WREN lives, the roads die). Surrender is a stretch goal.
 
 ---
@@ -106,10 +106,11 @@ Each step ends playable, with the owner testing before the next.
 | 2 | Phase II formation fight: 3 waves, Warbreaker, dodge, rewards, generated ship models and SFX | **Done**, owner tested |
 | 3 | **Raider threat levels** + WREN assessment + Wayshards rename + canon names in dialog | **Done** |
 | 4 | **Phase III vertical slice on one planet** (Kessa), in three parts: **4a** rover driving, landing and lift-off; **4b** armory site, Forgeplate module, vault behind the lava vents; **4c** guardian, Ember Core, memory #1 | 4a, 4b done. 4c built 2026-11-19 (turret, Foundry Titan, Ember Core, memory #1 "Purpose"), awaiting owner playtest |
-| 5 | **Lantern Station** hub screen: Ilsa briefing, Workshop (upgrades for Wayshards), air clock after the first relic | |
+| 4d | **Opening** (owner, 2026-11-19): title scene, PLAY/CONTINUE/NEW GAME/SETTINGS, save, intro card, undock from Lantern, WREN's step-by-step flight tutorial, radio from Ilsa and Orrick, cruise lore beats, planets spread for ~45 s cruise trips, Lantern's line dies after relic 1. Voiced (WREN, Ilsa, Orrick) | **Built 2026-11-19**, awaiting owner playtest |
+| 5 | **Lantern Station** hub: dock back at Lantern, Ilsa briefing, Workshop (upgrades for Wayshards), the air clock on screen | Station model, Ilsa's voice and the line-death beat exist (4d) |
 | 6 | The other two planets (reusing the Phase III systems with their own terrain, natives, gate and guardian) | |
 | 7 | Ship upgrades that counter raider levels; Hexers, Reavers, Vex encounters | |
-| 8 | Voices: WREN (three stages), Orrick, Ilsa, Vex; music per planet | |
+| 8 | Voices: WREN (three stages), Orrick, Ilsa, Vex; music per planet | Started in 4d: WREN = Melz, Ilsa = Cass, Orrick = Obsidian (ElevenLabs library voices) |
 | 9 | Final Gate run, *Last Light* boss, ending choice | |
 | 10 | Polish, performance, accessibility, trailer, jam submission | |
 

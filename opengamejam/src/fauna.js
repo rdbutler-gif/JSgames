@@ -21,7 +21,9 @@ const PACKS = [{ t: 150, n: 2 }, { t: 260, n: 3 }, { t: 370, n: 2 }, { t: 470, n
 const N_HOUND = PACKS.reduce((a, p) => a + p.n, 0);
 // extra packs (owner, 2026-11-19): two guarding the Forge Gate apron, and a few out in open country
 const FORGE_PACKS = [{ back: 15, side: -6, n: 3 }, { back: 22, side: 6, n: 2 }];
-const N_WILD_PACKS = 5, N_EXTRA = FORGE_PACKS.reduce((a, p) => a + p.n, 0) + N_WILD_PACKS * 3;
+// packs on the canyon ridge road itself, between the geysers (t = metres along the canyon; vents at 170, 240, ... 545)
+const RIDGE_PACKS = [{ t: 80, n: 2 }, { t: 205, n: 3 }, { t: 338, n: 2 }, { t: 462, n: 3 }];
+const N_WILD_PACKS = 5, N_EXTRA = FORGE_PACKS.reduce((a, p) => a + p.n, 0) + RIDGE_PACKS.reduce((a, p) => a + p.n, 0) + N_WILD_PACKS * 3;
 const SPAWN_MIN = 75, SPAWN_MAX = 150, DESPAWN = 230;
 const DRAW_R = 200, SHADOW_R = 70; // creatures are hidden past DRAW_R and cast shadows only inside SHADOW_R
 
@@ -167,7 +169,7 @@ export function createFauna({ root, def, terrain, fx }) {
     if (Math.abs(x) > lim || Math.abs(z) > lim) return false;
     if (terrain.heightAt(x, z) < def.lava + 0.8) return false;
     if (Math.hypot(x - def.vault.x, z - def.vault.z) < 90) return false;
-    if (kind === 'hound' && def.canyon && !nearForge(x, z) && pathInfo(def.canyon.pts, x, z).d < def.canyon.wall + 6) return false;
+    if (kind === 'hound' && def.canyon && !nearForge(x, z)) { const d = pathInfo(def.canyon.pts, x, z).d; if (d < def.canyon.wall + 6 && d > def.canyon.half - 0.8) return false; }
     return true;
   };
 
@@ -195,6 +197,10 @@ export function createFauna({ root, def, terrain, fx }) {
     for (let i = 0; i < p.n && hi < hounds.length; i++) hounds[hi++].home = { x: q.x, z: q.z, r: 16, dx: q.dx, dz: q.dz };
   }
   const packHomes = [];
+  if (def.canyon) for (const p of RIDGE_PACKS) {
+    const q = pathPoint(def.canyon.pts, p.t);
+    if (q) packHomes.push({ x: q.x, z: q.z, r: 12, n: p.n, dx: q.dx, dz: q.dz, ridge: true });
+  }
   if (def.canyon && def.canyon.forge) {
     // on the apron in front of the gate, facing the way the rover comes up the canyon
     const F = def.canyon.forge, pts = def.canyon.pts, a = pts[pts.length - 1], b = pts[pts.length - 2];
@@ -202,7 +208,7 @@ export function createFauna({ root, def, terrain, fx }) {
     for (const p of FORGE_PACKS) packHomes.push({ x: F.x - ux * p.back - uz * p.side, z: F.z - uz * p.back + ux * p.side, r: 9, n: p.n });
   }
   // wild packs: open, dry ground away from the pad, the vault, the canyon, and each other
-  const taken = (x, z) => packHomes.some((h) => Math.hypot(h.x - x, h.z - z) < 130) ||
+  const taken = (x, z) => packHomes.some((h) => !h.ridge && Math.hypot(h.x - x, h.z - z) < 130) ||
     (def.causeways || []).some((c) => PACKS.some((p) => { const q = pathPoint(c.pts, p.t); return q && Math.hypot(q.x - x, q.z - z) < 110; }));
   for (let tries = 0, made = 0; tries < 400 && made < N_WILD_PACKS; tries++) {
     const lim = def.size * 0.38, x = (Math.random() * 2 - 1) * lim, z = (Math.random() * 2 - 1) * lim;
@@ -214,7 +220,7 @@ export function createFauna({ root, def, terrain, fx }) {
     if (!ok) continue;
     packHomes.push({ x, z, r: 14, n: 2 + (Math.random() < 0.5 ? 1 : 0) }); made++;
   }
-  for (const h of packHomes) for (let i = 0; i < h.n && hi < hounds.length; i++) hounds[hi++].home = { x: h.x, z: h.z, r: h.r };
+  for (const h of packHomes) for (let i = 0; i < h.n && hi < hounds.length; i++) hounds[hi++].home = h.dx !== undefined ? { x: h.x, z: h.z, r: h.r, dx: h.dx, dz: h.dz } : { x: h.x, z: h.z, r: h.r };
   for (; hi < hounds.length; hi++) hounds[hi].home = null; // unused
 
   // place a creature at its home (herd/pack) or, for roamers, in the band ahead of the rover

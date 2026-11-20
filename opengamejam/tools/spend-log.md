@@ -22,3 +22,9 @@ Starting Meshy balance: 1,120 credits (2026-11-18). Each row is logged before it
 
 **Totals 2026-11-19:** ElevenLabs +134 credits (about 234 total). Meshy unchanged (about 1,015 left).
 | 2026-11-19 | fal | space sky panorama A, fal-ai/flux/dev 2048x1024, seed 7104 (tools/gen-skybox.mjs) | ~$0.075 | 01a1f4e7-8376-76b2-8360-2ef9e77a162f | assets-src/sky-raw/skyA.png, accepted -> public/sky/nebula.jpg | fal ~$0.075 |
+| 2026-11-19 | ElevenLabs | VO probe: WREN 't-hello' (voice Melz y66JgmQLcHTfsKiZJM5q), eleven_v4, 1 take | ~60 chars | | | |
+| 2026-11-19 | ElevenLabs | VO probe result: t-hello, 60 cr, 4.4 s, flow cMPVKLNH5kRKNqmCKqLh, gen Spzc4VNGKIhGo4FM2ZM8 | 60 cr | | public/vo/t-hello.mp3, accepted | EL 294 cr |
+| 2026-11-19 | ElevenLabs | VO batch: remaining 33 script lines (src/story.js LINES), eleven_v4, 1 take each. WREN = Melz y66JgmQLcHTfsKiZJM5q, Ilsa = Cass gOZRcEzY40chlRuMDmLV, Orrick = Obsidian QjEdRoRdZC2i3ncmFpNy | ~2,100 cr (1 cr/char) | flow cMPVKLNH5kRKNqmCKqLh | | |
+| 2026-11-19 | ElevenLabs | VO batch result: 33 lines, 1 take each, all downloaded to public/vo/<line id>.mp3 (34 files with the probe, 3.1 MB) | 2131 cr | flow cMPVKLNH5kRKNqmCKqLh | accepted (owner has not heard them yet) | EL ~2425 cr |
+
+**Totals 2026-11-19 (VO):** ElevenLabs +2191 credits for voice (34 lines, about $0.44). The account showed 5,220 of 40,000 monthly characters used before the batch.

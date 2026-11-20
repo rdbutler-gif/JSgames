@@ -59,9 +59,9 @@ export function updateEngine(s, active) {
   engOsc[1].frequency.setTargetAtTime(base * 1.011, t, 0.12);
   engOsc[2].frequency.setTargetAtTime(base * 2.003, t, 0.12);
   engFilter.frequency.setTargetAtTime(180 + s.throttle * 600 + boost * 900 + cruise * 1400, t, 0.12);
-  engGain.gain.setTargetAtTime(active ? 0.05 + s.throttle * 0.07 + boost * 0.05 : 0, t, 0.2);
+  engGain.gain.setTargetAtTime(active ? (0.05 + s.throttle * 0.07 + boost * 0.05) * voiceDuck() : 0, t, 0.2);
   const sf = Math.min(1, s.speed / 600);
-  rushGain.gain.setTargetAtTime(active ? boost * 0.22 + cruise * 0.32 + sf * 0.03 : 0, t, 0.25);
+  rushGain.gain.setTargetAtTime(active ? (boost * 0.22 + cruise * 0.32 + sf * 0.03) * voiceDuck() : 0, t, 0.25);
   rushFilter.frequency.setTargetAtTime(260 + sf * 700 + cruise * 1600, t, 0.25);
 }
 
@@ -143,7 +143,48 @@ export function playSample(name, vol = 1, rate = 1) {
   return true;
 }
 
+// Voice lines (public/vo/<id>.mp3). Radio speakers go through a narrow band and a little drive,
+// with a hiss bed under them; WREN is the ship's own voice and plays clean. The engine ducks under speech.
+const voices = new Map();
+export function loadVoice(id) {
+  if (!ac || voices.has(id)) return;
+  voices.set(id, null);
+  fetch('vo/' + id + '.mp3').then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+    .then((b) => ac.decodeAudioData(b)).then((buf) => voices.set(id, buf)).catch(() => voices.set(id, false)); // no take: subtitles only
+}
+// 'none' (never requested), 'loading', 'ready' or 'missing'
+export function voiceState(id) { if (!voices.has(id)) return 'none'; const v = voices.get(id); return v === null ? 'loading' : v === false ? 'missing' : 'ready'; }
+let driveCurve = null;
+export function playVoice(id, radio = false) {
+  const buf = voices.get(id);
+  if (!ac || !buf) return 0;
+  if (settings.muted) return buf.duration;
+  const t = ac.currentTime;
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const g = ac.createGain(); g.gain.value = radio ? 1.25 : 1.0;
+  if (radio) {
+    if (!driveCurve) { driveCurve = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i / 128 - 1; driveCurve[i] = Math.tanh(x * 2.2); } }
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
+    const ws = ac.createWaveShaper(); ws.curve = driveCurve;
+    src.connect(hp); hp.connect(ws); ws.connect(lp); lp.connect(g);
+    if (!noiseBuf) noise(0.01, 0.0001);
+    const h = ac.createBufferSource(); h.buffer = noiseBuf; h.loop = true;
+    const hf = ac.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = 2400; hf.Q.value = 0.7;
+    const hg = ac.createGain(); hg.gain.setValueAtTime(0.0001, t); hg.gain.exponentialRampToValueAtTime(0.018, t + 0.05);
+    hg.gain.setValueAtTime(0.018, t + buf.duration); hg.gain.exponentialRampToValueAtTime(0.0001, t + buf.duration + 0.25);
+    h.connect(hf); hf.connect(hg); hg.connect(master); h.start(t); h.stop(t + buf.duration + 0.3);
+  } else src.connect(g);
+  g.connect(master);
+  src.start(t);
+  duck = Math.max(duck, t + buf.duration);
+  return buf.duration;
+}
+let duck = 0;
+export function voiceDuck() { return ac && ac.currentTime < duck ? 0.45 : 1; }
+
 export const sfx = {
+  radio() { noise(0.18, 0.08, 3800, 900, 1.2); blip(1800, 0.04, 'square', 0.025, 0.02); },
   shoot() { if (!playSample('laser', 0.35, 0.95 + Math.random() * 0.1)) { blip(1500, 0.09, 'square', 0.035, 0, 0.35); blip(220, 0.06, 'sawtooth', 0.04, 0, 0.5); } },
   enemyShot() { blip(420, 0.16, 'sawtooth', 0.025, 0, 0.6); },
   cannon() { if (!playSample('cannon', 0.3, 0.92 + Math.random() * 0.16) && !playSample('laser', 0.22, 0.55 + Math.random() * 0.08)) { blip(320, 0.08, 'square', 0.05, 0, 0.4); noise(0.08, 0.12, 2500, 400); } },

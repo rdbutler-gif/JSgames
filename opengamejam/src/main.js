@@ -10,7 +10,7 @@ import * as THREE from 'three';
 
 import { settings, saveSettings } from './settings.js';
 import { input, initInput, pollInput, endFrame, requestLock, releaseLock } from './input.js';
-import { initAudio, applyVolume, updateEngine, sfx } from './audio.js';
+import { initAudio, applyVolume, updateEngine, sfx, loadVoice, playVoice, voiceState } from './audio.js';
 import { createWorld } from './world.js';
 import { createSquads } from './fighters.js';
 import { createShip, updateShip, FLIGHT } from './ship.js';
@@ -23,6 +23,11 @@ import { createAssault } from './assault.js';
 import { loadModels } from './models.js';
 import { createSurface } from './surface.js';
 import { SURFACES } from './terrain.js';
+import { createStation } from './station.js';
+import { createLightPool } from './lightpool.js';
+import { createStory, createTutorial, LINES } from './story.js';
+import { loadProgress, hasProgress, saveProgress, clearProgress } from './progress.js';
+import { cloneModel, onModel } from './models.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('gl');
@@ -39,8 +44,9 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, 1, 0.5, 250000);
+const camera = new THREE.PerspectiveCamera(75, 1, 1, 420000); // the worlds are ~110,000 u from Lantern and ~190,000 u apart
 const world = createWorld(scene);
+const station = createStation(scene);
 world.setPixelRatio(PR);
 const squads = createSquads(scene);
 const ship = createShip();
@@ -73,6 +79,7 @@ function relicSecured(id) {
     title: m.title,
     text: m.text,
   }, () => say(m.after));
+  saveProgress(G, ship);
 }
 
 const post = createPost(renderer, scene, camera, cockpit);
@@ -149,37 +156,82 @@ const G = {
   entry: null,
   wayshards: 0, assaultsWon: 0, inSurface: false, surfacePlanet: null,
   upgrades: {}, logs: [], inAssault: false, resumeState: 'flight', assaultSquad: null,
+  heard: new Set(), tutorialDone: false, lanternDark: false, task: null, waypoint: null, lineTag: false,
+  tripLore: false, tripT: 0, lastLoreT: -999, saveT: 0,
 };
+// three real lights shared by the station's lamps (and anything else in space that wants one)
+G.station = station;
+const spaceLights = createLightPool(scene, 3); spaceLights.collect();
 
-function say(text) {
-  G.comms.push({ from: COMMS_NAME, text, t: 0 });
-  if (G.comms.length > 6) G.comms.shift();
-  sfx.comms();
+const story = createStory({ G, sfx, playVoice, voiceState });
+const tutorial = createTutorial({ G, ship, station, scene, story, sfx, input, planets: world.planets, save: () => saveProgress(G, ship) });
+
+// ---------- title scene: the Wayfarer, with the rover slung under it, off Lantern Station ----------
+const titleRig = new THREE.Group(); scene.add(titleRig);
+// the ship sits well off the station, the camera on its far side, so Lantern hangs behind it; the look point
+// is pushed left so the ship fills the right half, clear of the menu
+const TITLE = (() => {
+  const at = new THREE.Vector3(-760, 150, -1350), d = at.clone().normalize();
+  const side = new THREE.Vector3(-d.z, 0, d.x).normalize(); // swing round so Lantern sits off to one side behind the ship
+  const cam = at.clone().addScaledVector(d, 30).addScaledVector(side, -9).add(new THREE.Vector3(0, -4, 0));
+  const fwd = at.clone().sub(cam).normalize(), right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+  return { at, cam, look: at.clone().addScaledVector(right, -10).add(new THREE.Vector3(0, -1, 0)) };
+})();
+titleRig.position.copy(TITLE.at);
+const titleShip = new THREE.Group(); titleRig.add(titleShip);
+onModel('player', () => { const m = cloneModel('player'); titleShip.add(m); });
+onModel('rover', () => { const r = cloneModel('rover'); r.scale.setScalar(1.35); r.position.set(0, -4.6, 1.5); titleShip.add(r); });
+const titleKey = new THREE.PointLight('#9fdcff', 900, 120, 1.6); titleKey.position.set(-20, 18, -30); titleRig.add(titleKey);
+const titleRim = new THREE.PointLight('#ffb070', 700, 120, 1.6); titleRim.position.set(30, 6, 26); titleRig.add(titleRim);
+function titleCamera(dt) {
+  titleShip.rotation.y += dt * 0.12;
+  titleShip.position.y = Math.sin(G.time * 0.6) * 0.6;
+  camera.position.copy(TITLE.cam);
+  camera.lookAt(TITLE.look);
+  if (camera.fov !== 50) { camera.fov = 50; camera.updateProjectionMatrix(); }
+  camera.updateMatrixWorld();
 }
+const inTitle = () => G.state === 'title' || G.state === 'intro' || ((G.state === 'settings' || G.state === 'controls') && menuReturn === 'title');
+
+function say(text) { story.say(text); }
 function note(text, rgb) { G.notes.push({ text, t: G.time, rgb }); if (G.notes.length > 4) G.notes.shift(); }
 
 // ---------- overlays & menus ----------
 const show = (id, on) => $(id).classList.toggle('show', on);
 const onOff = (v) => (v ? 'ON' : 'OFF');
 const pct = (v) => Math.round(v * 100) + '%';
-let controlsReturn = 'title';
+let menuReturn = 'title';
+let confirmNew = false;
+function cancelNew() { confirmNew = false; $('title-confirm').textContent = ''; titleMenu.reset(); titleMenu.render(); }
 
-const titleMenu = createMenu($('title-menu'), () => [
-  { label: 'LAUNCH', act: launch },
-  { label: 'INVERT Y', value: () => onOff(settings.invertY), adjust: () => { settings.invertY = !settings.invertY; saveSettings(); } },
-  { label: 'GRAPHICS', value: () => quality.label(), adjust: (d) => quality.cycle(d) },
-  { label: 'CONTROLS', act: () => openControls('title') },
-]);
+const titleMenu = createMenu($('title-menu'), () => {
+  if (confirmNew) return [
+    { label: 'CANCEL', act: cancelNew },
+    { label: 'ERASE AND START OVER', act: () => { confirmNew = false; $('title-confirm').textContent = ''; newGame(); } },
+  ];
+  const saved = hasProgress();
+  return [
+    saved ? { label: 'CONTINUE', act: continueGame } : { label: 'PLAY', act: newGame },
+    ...(saved ? [{ label: 'NEW GAME', act: () => { confirmNew = true; $('title-confirm').textContent = 'THIS ERASES YOUR SAVED PROGRESS'; titleMenu.reset(); titleMenu.render(); } }] : []),
+    { label: 'SETTINGS', act: () => openSettings('title') },
+    { label: 'CONTROLS', act: () => openControls('title') },
+  ];
+});
 const pauseMenu = createMenu($('pause-menu'), () => [
   { label: 'RESUME', act: resume },
+  { label: 'SETTINGS', act: () => openSettings('pause') },
+  { label: 'CONTROLS', act: () => openControls('pause') },
+  ...(tutorial.active ? [{ label: 'SKIP TUTORIAL', act: () => { tutorial.skip(); resume(); } }] : []),
+  { label: 'QUIT TO TITLE', act: toTitle },
+]);
+const settingsMenu = createMenu($('settings-menu'), () => [
   { label: 'INVERT Y', value: () => onOff(settings.invertY), adjust: () => { settings.invertY = !settings.invertY; saveSettings(); } },
   { label: 'MOUSE MODE', value: () => (settings.mouseMode === 'stick' ? 'VIRTUAL STICK' : 'DIRECT'), adjust: () => { settings.mouseMode = settings.mouseMode === 'stick' ? 'direct' : 'stick'; saveSettings(); } },
   { label: 'MOUSE SENSITIVITY', value: () => pct(settings.mouseSens), adjust: (d) => { settings.mouseSens = THREE.MathUtils.clamp(+(settings.mouseSens + d * 0.1).toFixed(2), 0.3, 2.5); saveSettings(); } },
   { label: 'STICK SENSITIVITY', value: () => pct(settings.stickSens), adjust: (d) => { settings.stickSens = THREE.MathUtils.clamp(+(settings.stickSens + d * 0.1).toFixed(2), 0.4, 2); saveSettings(); } },
   { label: 'VOLUME', value: () => (settings.muted ? 'MUTED' : pct(settings.volume)), adjust: (d) => { settings.muted = false; settings.volume = THREE.MathUtils.clamp(+(settings.volume + d * 0.1).toFixed(2), 0, 1); saveSettings(); applyVolume(); } },
   { label: 'GRAPHICS', value: () => quality.label(), adjust: (d) => quality.cycle(d) },
-  { label: 'CONTROLS', act: () => openControls('pause') },
-  { label: 'QUIT TO TITLE', act: toTitle },
+  { label: 'BACK', act: closeSettings },
 ]);
 const controlsMenu = createMenu($('controls-menu'), () => [{ label: 'BACK', act: closeControls }]);
 let eventDone = null;
@@ -187,6 +239,7 @@ const eventMenu = createMenu($('event-menu'), () => [{ label: 'CONTINUE', act: (
 
 titleMenu.render();
 pauseMenu.render();
+settingsMenu.render();
 controlsMenu.render();
 eventMenu.render();
 
@@ -199,18 +252,72 @@ updateTitleHint();
 
 function wantsMouse() { return input.device !== 'gamepad'; }
 
-function launch() {
+// ---------- starting play ----------
+function startAudio() {
   initAudio();
+  for (const id of Object.keys(LINES)) loadVoice(id);
+}
+function resetRun() {
+  Object.assign(G, { relics: { kessa: false, thalor: false, vireo: false }, upgrades: {}, wayshards: 0, assaultsWon: 0, logs: [],
+    heard: new Set(), tutorialDone: false, lanternDark: false, task: null, waypoint: null, lineTag: false, targetIndex: 0,
+    greeted: new Set(), squadWarn: new Map(), comms: [], notes: [], prompt: null, tripLore: false, lastLoreT: -999 });
+  story.clear();
+  station.setLineAlive(true, true);
+  ship.hull = 1; ship.shield = 1; ship.boostEnergy = 1;
+}
+// in the dock bay, clamps shut, engines idle
+function dockShip() {
+  station.dockPose(ship.pos, ship.quat);
+  station.snapClamps(false);
+  ship.vel.set(0, 0, 0); ship.ang.set(0, 0, 0); ship.speed = 0; ship.throttle = 0; ship.cruise = 0; ship.fov = 75;
+}
+function newGame() {
+  startAudio();
+  clearProgress();
+  resetRun();
+  dockShip();
   show('title', false);
-  G.state = 'flight';
-  ship.throttle = 0.4;
-  if (wantsMouse()) requestLock();
-  if (!G.launched) {
-    G.launched = true;
-    setTimeout(() => say('Systems green, Runner. The chart marks three Warden vaults: Kessa, Vireo and Thalor. Three keys. One road home.'), 900);
-    setTimeout(() => G.state === 'flight' && say(input.device === 'gamepad'
-      ? 'Long hops? Press X for cruise drive. LB cycles your nav target.'
-      : 'Long hops? Press C for cruise drive. Tab cycles your nav target.'), 7500);
+  playIntro(() => beginFlight(() => tutorial.start()));
+}
+function continueGame() {
+  startAudio();
+  const p = loadProgress();
+  resetRun();
+  if (p) {
+    Object.assign(G, { relics: { ...G.relics, ...p.relics }, upgrades: p.upgrades || {}, wayshards: p.wayshards || 0, assaultsWon: p.assaultsWon || 0,
+      heard: new Set(p.heard || []), tutorialDone: !!p.tutorialDone, lanternDark: !!p.lanternDark, targetIndex: p.targetIndex || 0 });
+    station.setLineAlive(!G.lanternDark, true);
+  }
+  show('title', false);
+  if (!G.tutorialDone) { dockShip(); beginFlight(() => tutorial.start()); return; } // the tutorial restarts from the dock
+  if (p && p.ship) {
+    ship.pos.fromArray(p.ship.pos); ship.quat.fromArray(p.ship.quat); ship.hull = p.ship.hull || 1;
+  } else { dockShip(); station.snapClamps(true); }
+  ship.vel.set(0, 0, 0); ship.ang.set(0, 0, 0); ship.speed = 0; ship.throttle = 0; ship.cruise = 0; ship.fov = 75;
+  for (const pl of G.planets) if (pl.center.distanceTo(ship.pos) < pl.data.R * 4) G.greeted.add(pl.data.id);
+  beginFlight(() => story.line('welcome'));
+}
+function beginFlight(then) {
+  flash(() => {
+    G.state = 'flight';
+    camera.fov = ship.fov; camera.updateProjectionMatrix();
+    if (wantsMouse()) requestLock();
+    setTimeout(then, 1200);
+  });
+}
+// three short lines on black, then the cockpit
+let introT = -1, introDone = null, introStart = 0;
+function playIntro(done) {
+  G.state = 'intro'; introT = 0; introDone = done; introStart = performance.now();
+  for (let i = 0; i < 3; i++) $('intro-' + i).classList.remove('on');
+  show('intro', true);
+}
+function updateIntro(dt, P) {
+  introT = (performance.now() - introStart) / 1000; // wall clock: a slow frame never stretches the card
+  for (let i = 0; i < 3; i++) if (introT > 0.4 + i * 1.9) $('intro-' + i).classList.add('on');
+  if (introT > 7.6 || (introT > 0.5 && (P.has('accept') || P.has('back') || P.has('pause') || P.size > 0))) {
+    show('intro', false); G.state = 'intro-out';
+    const d = introDone; introDone = null; d();
   }
 }
 function pause() {
@@ -229,6 +336,9 @@ function resume() {
 }
 function toTitle() {
   show('pause', false);
+  if (G.state !== 'title') saveProgress(G, ship);
+  story.clear(); G.task = null; G.waypoint = null; G.lineTag = false;
+  if (tutorial.active) tutorial.abort();
   if (G.inSurface) { surface.exit(); G.inSurface = false; renderPass.scene = scene; }
   if (G.inAssault) { assault.stop(); G.inAssault = false; if (G.assaultSquad) G.assaultSquad.release(false); G.assaultSquad = null; }
   show('title', true);
@@ -237,15 +347,29 @@ function toTitle() {
   updateTitleHint();
 }
 function openControls(from) {
-  controlsReturn = from;
+  menuReturn = from;
   show(from === 'title' ? 'title' : 'pause', false);
   show('controls', true);
   G.state = 'controls';
 }
 function closeControls() {
   show('controls', false);
-  if (controlsReturn === 'title') { show('title', true); G.state = 'title'; }
-  else { show('pause', true); G.state = 'paused'; }
+  backToMenu();
+}
+function openSettings(from) {
+  menuReturn = from;
+  show(from === 'title' ? 'title' : 'pause', false);
+  settingsMenu.reset(); settingsMenu.render();
+  show('settings', true);
+  G.state = 'settings';
+}
+function closeSettings() {
+  show('settings', false);
+  backToMenu();
+}
+function backToMenu() {
+  if (menuReturn === 'title') { show('title', true); G.state = 'title'; titleMenu.render(); }
+  else { pauseMenu.render(); show('pause', true); G.state = 'paused'; }
 }
 function showEvent(kicker, title, textBody, done) {
   $('event-kicker').textContent = kicker;
@@ -299,7 +423,10 @@ function handleCruise(dt) {
   if (ship.cruise === 1) {
     ship.spool += dt;
     if (cruiseBlock(0)) { ship.cruise = 0; note('CRUISE ABORTED', '255,120,90'); }
-    else if (ship.spool >= FLIGHT.spoolTime) { ship.cruise = 2; note('CRUISE ENGAGED', '255,179,90'); sfx.engage(); ship.shake = 1.2; }
+    else if (ship.spool >= FLIGHT.spoolTime) {
+      ship.cruise = 2; note('CRUISE ENGAGED', '255,179,90'); sfx.engage(); ship.shake = 1.2;
+      G.tripT = 0; if (G.time - G.lastLoreT > 50) G.tripLore = false;
+    }
   } else if (ship.cruise === 2) {
     const b = cruiseBlock(2600);
     if (b) {
@@ -311,6 +438,14 @@ function handleCruise(dt) {
 }
 
 function handleCollisions() {
+  const n = station.collide(ship.pos, 9);
+  if (n) {
+    const vn = ship.vel.dot(n);
+    if (vn < 0) ship.vel.addScaledVector(n, -vn * 1.2);
+    if (ship.speed > 40) { ship.shake = Math.min(1.5, ship.speed / 120); sfx.bump(); }
+    ship.speed *= 0.5;
+    if (ship.cruise) ship.cruise = 0;
+  }
   for (const p of G.planets) {
     const min = p.data.R * 1.015;
     const n = new THREE.Vector3().subVectors(ship.pos, p.center);
@@ -349,7 +484,7 @@ function updatePrompts() {
     const d = sq.pos.distanceTo(ship.pos);
     if (d < 3200) {
       const last = G.squadWarn.get(sq.id) || -999;
-      if (G.time - last > 40) { G.squadWarn.set(sq.id, G.time); say(assessSquad(sq)); sfx.alert(); }
+      if (G.time - last > 40) { G.squadWarn.set(sq.id, G.time); if (!tutorial.active || G.heard.has('t-scouts')) say(assessSquad(sq)); sfx.alert(); } // WREN introduces the first scouts herself
     }
     if (d < 1700 && d < bd) { bd = d; best = sq; }
   }
@@ -358,7 +493,7 @@ function updatePrompts() {
     const surf = p.center.distanceTo(ship.pos) - p.data.R;
     if (surf < p.data.R * 2.2 && !G.greeted.has(p.data.id)) {
       G.greeted.add(p.data.id);
-      say(titleCase(p.data.name) + ' ahead. The vault signal is strong: the ' + p.data.relic + '. Take us down when you are ready.');
+      if (!tutorial.active) say(titleCase(p.data.name) + ' ahead. The vault signal is strong: the ' + p.data.relic + '. Take us down when you are ready.');
     }
     if (surf < p.data.R * 0.9) { G.prompt = { type: 'land', planet: p, label: 'BEGIN LANDING · ' + p.data.name }; return; }
   }
@@ -402,6 +537,7 @@ function endAssault(r) {
     if (r.win) {
       G.assaultsWon++;
       G.wayshards += r.wayshards;
+      saveProgress(G, ship);
       ship.shield = 1; ship.hull = Math.min(1, Math.max(0.6, r.hull + 0.15));
       showEvent('PHASE II · VICTORY', sq.name + ' BROKEN',
         `Kills ${r.kills} · score ${r.score}${r.hitsTaken === 0 ? ' · flawless' : ''}. You recovered ${r.wayshards} Wayshards (${G.wayshards} in the hold). Field repairs patched the hull to ${Math.round(ship.hull * 100)}%. Wayshards buy upgrades at Lantern Station.`,
@@ -503,6 +639,11 @@ function leaveSurface() {
     camera.fov = 75; camera.updateProjectionMatrix();
     G.state = 'flight';
     say('Back in orbit. The rover is stowed.');
+    if (!G.lanternDark && Object.values(G.relics).some(Boolean)) {
+      G.lanternDark = true;
+      setTimeout(() => { station.setLineAlive(false); story.lines(['r1-dark-1', 'r1-dark-2', 'r1-dark-3']); }, 2500);
+    }
+    saveProgress(G, ship);
   });
 }
 
@@ -518,15 +659,25 @@ function step(dt) {
   if (import.meta.env.DEV && window.__bot) window.__bot(input, G);
   G.device = input.device;
   G.locked = input.locked;
-  for (const c of G.comms) c.t += dt;
+  // dialogue runs on the wall clock (voices play in real time), and holds while a menu is open
+  const nowMs = performance.now(), realDt = Math.min(0.25, (nowMs - (G.wallMs || nowMs)) / 1000); G.wallMs = nowMs;
+  const talkOn = !['paused', 'settings', 'controls', 'event'].includes(G.state);
+  if (talkOn) for (const c of G.comms) c.t += realDt;
+  if (talkOn) story.update(realDt);
   const P = input.pressed;
 
   switch (G.state) {
     case 'title':
+      if (confirmNew && (P.has('back') || P.has('pause'))) { cancelNew(); break; }
       titleMenu.nav(P);
       if (P.size || input.device === 'gamepad') updateTitleHint();
-      updateShip(ship, input, dt, { autopilot: true });
-      ship.speed = 35; ship.throttle = 0.15;
+      break;
+    case 'intro':
+      updateIntro(dt, P);
+      break;
+    case 'settings':
+      if (P.has('back') || P.has('pause')) closeSettings();
+      else settingsMenu.nav(P);
       break;
     case 'paused':
       if (P.has('pause') || P.has('back')) resume();
@@ -572,6 +723,14 @@ function step(dt) {
       handleCollisions();
       updatePrompts();
       if (P.has('accept')) acceptPrompt();
+      tutorial.update(dt);
+      // one lore beat per cruise trip, a few seconds in, never over other talk
+      if (ship.cruise === 2 && G.tutorialDone) {
+        G.tripT += dt;
+        if (G.tripT > 7 && !G.tripLore && !story.busy) { G.tripLore = true; if (story.lore()) G.lastLoreT = G.time; }
+      }
+      G.saveT += dt;
+      if (G.saveT > 10 && G.tutorialDone) { G.saveT = 0; saveProgress(G, ship); }
       break;
     }
   }
@@ -589,8 +748,11 @@ function step(dt) {
     if (ship.hull < 0.6) ship.hull = Math.min(0.6, ship.hull + dt * 0.003); // repair drones, up to 60%
   }
 
+  station.update(dt);
   if (G.inSurface) return;
   if (G.inAssault) { world.update(camera.position, ZERO, dt); return; }
+  titleRig.visible = inTitle();
+  if (inTitle()) { titleCamera(dt); world.update(camera.position, ZERO, dt); spaceLights.update(camera.position); return; }
   // camera = ship pose + head motion + shake
   const sh = ship.shake;
   G.shakeOffset.set((Math.random() - 0.5) * sh * 0.012, (Math.random() - 0.5) * sh * 0.012, 0);
@@ -602,15 +764,16 @@ function step(dt) {
   camera.updateMatrixWorld();
 
   world.update(camera.position, ship.vel, dt);
+  spaceLights.update(camera.position);
   cockpit.update(G, dt);
 }
 
 function draw() {
-  post.setMode(G.inSurface ? 'surface' : G.inAssault ? 'assault' : 'flight');
-  const inCockpit = !G.inSurface && !G.inAssault;
+  post.setMode(G.inSurface ? 'surface' : G.inAssault ? 'assault' : inTitle() ? 'title' : 'flight');
+  const inCockpit = !G.inSurface && !G.inAssault && !inTitle();
   post.render(G.time, inCockpit ? (ship.cruise === 2 ? 1 : ship.cruise === 1 ? 0.35 : ship.boosting ? 0.6 : 0) : 0, lastDt);
   renderer.setRenderTarget(null);
-  hud.draw(G, camera);
+  if (!inTitle()) hud.draw(G, camera); else hudCtx.clearRect(0, 0, hudCtx.canvas.width, hudCtx.canvas.height);
   if (G.inAssault) assault.drawHud(hudCtx, window.innerWidth, window.innerHeight, input.device);
   if (G.inSurface) surface.drawHud(hudCtx, window.innerWidth, window.innerHeight, G, input.device);
 }
@@ -632,4 +795,4 @@ draw();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => cockpit.redrawAll(G));
 document.fonts && document.fonts.load('600 20px "Chakra Petch"').then(() => cockpit.redrawAll(G)).catch(() => {});
 requestAnimationFrame(frame);
-if (import.meta.env.DEV) window.__relic = { G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post };
+if (import.meta.env.DEV) window.__relic = { G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post, station, story, tutorial, newGame, continueGame };

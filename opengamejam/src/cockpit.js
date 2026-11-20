@@ -180,7 +180,7 @@ function drawNav(x, G) {
     const newest = i === msgs.length - 1;
     const shown = newest ? m.text.slice(0, Math.floor(m.t * 55)) : m.text;
     x.fillStyle = newest ? '#6ef2ff' : '#4f8c99';
-    x.fillText(m.from + ':', 16, y);
+    x.fillText((m.short || m.from) + ':', 16, y);
     x.fillStyle = newest ? '#e6fbff' : '#6f98a3';
     const lines = wrap(x, shown, SW - 100);
     lines.slice(0, newest ? 3 : 1).forEach((ln, k) => x.fillText(ln, 84, y + k * 21));

@@ -934,6 +934,10 @@ export function createSurface(hooks) {
       if (erupt) {
         if (Math.random() < 0.6) T.fx.emit(v1.set(g.x, g.y + 1, g.z), 3, { speed: 4, life: 1.2, size: 1.6, colors: [[4, 1.4, 0.3], [5, 3, 0.8], [0.6, 0.3, 0.25]], drag: 0.4, dir: v2.set(0, 16, 0) });
         if (dist < nd) { nd = dist; nearest = g; }
+        if (T.fauna && dist < 80) for (const c of T.fauna.list) {
+          if (!c.alive || Math.abs(c.x - g.x) > 4.5 || Math.abs(c.z - g.z) > 4.5 || S.time - (c.ventT || -9) < 1.2) continue;
+          if (Math.hypot(c.x - g.x, c.z - g.z) < 4.5) { c.ventT = S.time; if (T.fauna.damage(c, 3, true)) sfx.explode(false); }
+        }
         if (dist < 5.5 && S.time - g.hitT > 1.2) {
           g.hitT = S.time;
           rover.vel.y += plated ? 4 : 7;

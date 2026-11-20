@@ -18,7 +18,23 @@ body { user-select: none; -webkit-user-select: none; }
 .overlay.show { display: flex; }
 #pause, #controls, #event { background: rgba(2, 4, 10, 0.55); backdrop-filter: blur(3px); }
 
-.title-wrap { text-align: center; margin-top: -6vh; }
+#title { justify-content: flex-start; background: linear-gradient(90deg, rgba(2,4,10,0.78) 0%, rgba(2,4,10,0.45) 34%, rgba(2,4,10,0) 58%); }
+.title-wrap { text-align: left; margin-left: max(16px, 7vw); max-width: min(560px, 92vw); }
+.title-wrap h1 { font-size: clamp(44px, 6.4vw, 104px); line-height: 0.98; }
+.title-wrap .sub { max-width: 460px; }
+.title-wrap .menu { margin: 0; }
+#title .menu button { justify-content: flex-start; padding-left: 22px; position: relative; }
+#title .menu button.focus::before, #title .menu button:hover::before { content: ''; position: absolute; left: 8px; top: 50%; width: 6px; height: 6px; margin-top: -3px; background: var(--amber); transform: rotate(45deg); }
+.kicker.small { font-size: 13px; letter-spacing: 0.2em; color: var(--red); min-height: 0; margin: 0 0 8px; }
+.kicker.small:empty { display: none; }
+#settings { background: rgba(2, 4, 10, 0.55); backdrop-filter: blur(3px); }
+#intro { background: #000; }
+.intro-wrap { text-align: center; padding: 0 16px; }
+.intro-line { opacity: 0; transition: opacity 1.1s ease; font: 600 14px 'Chakra Petch'; letter-spacing: 0.4em; color: var(--amber); margin: 0 0 26px; }
+.intro-line.big { font: 500 clamp(22px, 2.6vw, 34px) 'Chakra Petch'; letter-spacing: 0.04em; color: #e6f7ff; }
+.intro-line em { font-style: normal; color: var(--cyan); }
+.intro-line.on { opacity: 1; }
+.intro-skip { position: fixed; bottom: 28px; left: 0; right: 0; font-size: 13px; color: #56707c; letter-spacing: 0.1em; }
 .kicker { font: 600 14px 'Chakra Petch'; letter-spacing: 0.4em; color: var(--amber); margin-bottom: 10px; }
 h1 { font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: clamp(48px, 8vw, 120px); letter-spacing: 0.1em; margin: 0;
   color: #fff; text-shadow: 0 0 30px rgba(110, 242, 255, 0.55), 0 0 2px #fff; }
@@ -47,4 +63,4 @@ dd { margin: 0; color: #cfe6ef; }
 .menu button.focus, .menu button:hover { border-color: var(--cyan); background: rgba(110, 242, 255, 0.14); color: #fff;
   box-shadow: 0 0 18px rgba(110, 242, 255, 0.25); }
 .menu button:focus { outline: none; }
-#title .menu button { justify-content: center; font-size: 20px; }
+#title .menu button { font-size: 20px; }

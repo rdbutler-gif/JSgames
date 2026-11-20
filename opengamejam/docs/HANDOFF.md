@@ -11,11 +11,25 @@
 | 3 | Raider threat levels 1–5, WREN assessments, Wayshards, canon names | Done |
 | 4a | Rover driving on Kessa (raycast vehicle), landing pad, lift-off | Done, owner approved the driving; Meshy rover body fitted |
 | 4b | Magma Canyon, geysers, Forge Gate, Forgeplate pickup, vault vent field | Done, owner re-tested ("fine") |
-| 4c | Rover turret, Foundry Titan fight, Ember Core, WREN memory #1 | **Built 2026-11-19, bot-tested headless, awaiting owner playtest** |
+| 4c | Rover turret, Foundry Titan fight, Ember Core, WREN memory #1 | Done, owner played it through (Titan stays as is) |
+| 4d | Opening: title scene, menus, save, intro, Lantern undock, WREN tutorial, radio, cruise lore, spread planets, voices | **Built 2026-11-19, bot-tested headless, awaiting owner playtest** |
 
 Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs raider levels, 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
 ## First thing next session
+
+0. **Ask the owner to play the new opening (4d)** from a NEW GAME, with sound on: title scene, intro card, undock, the whole tutorial, Orrick's broadcast, the scouts, the trip to Kessa. Ask: is the tutorial pace right (WREN waits for each action), do the three voices fit (WREN / Ilsa / Orrick), is a ~35 s cruise from Lantern and ~55 s between worlds too long or short, does the title read well. Then quit and CONTINUE.
+
+### How the opening works (4d, owner request 2026-11-19)
+- **Title** (`index.html` #title, `main.js` `titleMenu`): a live 3D scene: `titleRig` holds the Wayfarer (`player.glb`) with the rover slung under it, off Lantern Station; `TITLE` sets the camera; post mode `title` has no cockpit. Menu: PLAY (no save) or CONTINUE + NEW GAME (save exists; NEW GAME asks to confirm, CANCEL first), SETTINGS (its own panel, also reachable from pause), CONTROLS.
+- **Save** (`src/progress.js`, localStorage `wayline-progress-v1`): relics, upgrades, Wayshards, wins, lines heard, `lanternDark`, nav target and (after the tutorial) the ship's pose. Saved every 10 s in flight, on relics, wins, leaving a surface and quitting. A save made mid-tutorial restarts the tutorial from the dock.
+- **Intro** (#intro): three lines on black on the wall clock, any key skips, then the cockpit in Lantern's dock bay.
+- **Lantern Station** (`src/station.js`): procedural: spindle, habitat ring, dock bay (below the ring plane, opens toward -Z, clamps), the lantern crystal on top and **Lantern's Wayline**: an additive beam to `HEART` (`data.js`) that widens with distance so it stays visible as a thread, with cargo pulses flowing home and 8 relay rings. Ship-vs-station collision (spindle, ring, bay slabs). `setLineAlive(false)` fades it (after relic 1). The station's lamps are `VLight`s served by a 3-light pool in the space scene.
+- **Story** (`src/story.js`): `LINES` is the whole voiced script (34 lines, id -> [speaker, text]); `public/vo/<id>.mp3` is each take. `createStory` queues lines, plays the voice (radio speakers through a band-pass + drive + hiss in `audio.js playVoice`), times subtitles to the take, waits up to 2 s for a take still loading, ducks the engine, and runs on the wall clock (holds in menus). `say(text)` still works for unscripted WREN lines (text only, dropped if stale).
+- **Tutorial** (`createTutorial`): one lesson at a time, each waits for the action (latched, so doing it early counts) and for WREN to finish: throttle out of the bay -> steer through a ring -> roll a full turn -> "that's Lantern's Wayline" (HUD tags the line) -> boost through a ring -> Ilsa's radio call (the Quiet; the three vaults; "Kessa's closest") -> nav target Kessa -> face it -> cruise -> on the trip: cruise tip, **Orrick's broadcast**, then RUST scouts on the route ("fight them, or fly around") -> cruise again (Wardens lore) -> "That's Kessa" -> landing ends it. HUD shows the task with its key (pad or keyboard). Pause has SKIP TUTORIAL. `tutorial.jump(k)` is a test hook.
+- **Distances** (`data.js`): Lantern at the origin; Kessa, Thalor, Vireo ~110,000 u from it and ~190,000 u apart (cruise 3,400 u/s: ~35 s from Lantern, ~55 s world to world). Squadrons sit on the routes (level 1 out of Lantern, 2 between worlds, 3 on each approach). Camera far plane 420,000, near 1.
+- **Lore during travel:** one beat per cruise trip, 7 s in, never over other talk (`LORE` in story.js: relays, Orrick's taunt after a relic, Ilsa's "only light they knew" once Lantern is dark, the Runners, the Core humming, the Heart).
+- **After relic 1:** back in orbit, Lantern's line fades out and Ilsa + WREN call it (lines `r1-dark-*`). The air clock itself is still step 5.
 
 1. Ask the owner to play 4c on gamepad (Y inverted): drive to the vault with Forgeplate, ENTER THE VAULT, fight the Titan, take the Ember Core. Things to ask:
    - **Aim vertical sense**: owner said it was wrong; right-stick term flipped 2026-11-19 (`-inp.lookY` in the surface camera). Reconfirm. Turret also lowered onto the cab roof (TURRET_POS y 0.6, z 0.15) after "floating" note.
@@ -46,6 +60,7 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
 - **Deaths (owner request 2026-11-19, "they just shrink"):** `src/gibs.js` bursts the body into its own meshes (biggest 14 for a hound, 7 for a skitter), which tumble, bounce on the terrain, trail fire and smoke, then sink after about 4 s. Each death adds a fireball, sparks, a smoke ball (its own normally blended `makeSmoke` points), a short pooled point-light flash, a fire that burns where the body was, and a scorch decal that follows the terrain and fades over 14 s.
 - **Heat lance (owner, 2026-11-19):** the first special weapon. Owner wants a selectable special eventually, so `SPECIALS` in `surface.js` is a table and `S.special` picks one. Hold right mouse / Q / LB (`input.special`). It's a beam from the turret to the aim point (75 m reach) that burns titan core, creatures and rocks at 3 → 9 dps, ramping over 1 s on the same target. Heat fills in 3.2 s; on overheat it locks until heat drops to 0.3. The turret cannot fire bolts while the lance is on. HUD heat bar sits above the hull bar. `lanceHum` in `audio.js` is the looping sound and goes silent by itself if updates stop (pause). `onBolt(hit, ctx, n, quiet)` and `fauna.damage(c, n, quiet)` take a damage amount.
 - **More hounds (owner, 2026-11-19):** `FORGE_PACKS` puts 3 + 2 hounds on the Forge Gate apron. Hounds may walk within `forge.r + 8` of the gate but still not up the canyon. `N_WILD_PACKS` 5 packs of 2–3 sit at random dry spots (over 170 m from the pad, 130 m from the vault, clear of the canyon and of each other). 28 homed hounds in total.
+- **Canyon ridge hounds (owner, 2026-11-19: "none on that narrow causeway"):** `RIDGE_PACKS` puts 2/3/2/3 hounds on the Magma Canyon ridge road at 80/205/338/462 m, between the geysers. Hounds may walk the ridge (`d < half - 0.8`) but not the trenches or walls. Erupting vents now scald creatures too (3 damage, 1.2 s apart), so a hound chasing you through a vent can die there. 38 homed hounds in total. Owner on the rest (2026-11-19): leave Titan difficulty as is, turret aim is good, sounds OK for now.
 - **Plate objective (owner, 2026-11-19):** the "get the Forgeplate" objective no longer fires 170 m out. The player drives into the heat wall (30–56 m from the vault), gets pushed back and burned, and only then gets the objective and WREN's line about the forge.
 - **Forge Gate "black wall" (owner, 2026-11-19):** `forgegate.glb` had 6 zero-length normals; real GPUs normalise them to NaN and bloom smeared the NaN pixels into a screen-filling black block as the gate came into view (headless software rendering hid it). `models.js` `fixNormals` now gives every zero normal its face normal on load, and `post.js` runs a sanitize pass before bloom that zeroes any NaN or infinite pixel.
 - **Surface particles were never stepped before this** (`T.fx.update` was missing), so rock bursts, muzzle flash, geyser spray and the Titan's shells and slams had never shown. They show now, scaled by `FX_GAIN` 0.4 in `surface.js` because full strength turned into white blobs; `raw: true` on an emit skips the scaling (gibs use it). Owner has not seen any of these yet.
@@ -118,6 +133,10 @@ Then: step 5 Lantern Station hub, 6 the other two planets, 7 ship upgrades vs ra
 | `src/surface.js` | Phase III: rover physics (`R` tuning), lava crust, camera, geysers, Forge Gate, vent field, missions, HUD |
 | `src/models.js` | GLB loading and normalising (by length or height), `cloneModel`, `onModel` |
 | `src/input.js`, `audio.js`, `ui.js`, `settings.js` | Input (pad, mouse, keys), synth and sample audio, menus, saved settings |
+| `src/station.js` | Lantern Station, its Wayline beam and relays, station collision, dock pose |
+| `src/story.js` | The voiced script (`LINES`), line queue and subtitles, the flight tutorial, cruise lore beats |
+| `src/progress.js` | Save slot: load, save, clear |
+| `public/vo/` | One mp3 per script line (ElevenLabs eleven_v4; WREN = Melz, Ilsa = Cass, Orrick = Obsidian) |
 
 ## Assets and spend
 

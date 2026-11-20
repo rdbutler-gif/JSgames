@@ -46,7 +46,7 @@ export function createHud(canvas) {
     let dx = p.cx, dy = -p.cy;
     if (p.behind && Math.hypot(dx, dy) < 1e-3) dy = 1;
     const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
-    const rx = W * 0.4, ry = H * 0.26;
+    const rx = W * 0.4, ry = H * 0.21; // stays clear of the subtitle box below
     const t = 1 / Math.sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
     const x = cx + dx * t, y = cy + dy * t;
     const ang = Math.atan2(dy, dx);
@@ -94,6 +94,26 @@ export function createHud(canvas) {
           edgeArrow(p, GOLD, pl.data.name);
         }
       });
+
+      // tutorial waypoint
+      if (G.waypoint && G.waypoint.obj) {
+        const wp = G.waypoint.obj.position;
+        const p = project(wp, cam);
+        if (onScreen(p, 10)) {
+          const r = 18 * Math.max(0.9, scale), a = 0.7 + 0.3 * Math.sin(G.time * 6);
+          ctx.strokeStyle = `rgba(${CYAN},${a})`; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x + r, p.y); ctx.lineTo(p.x, p.y + r); ctx.lineTo(p.x - r, p.y); ctx.closePath(); ctx.stroke();
+          text(G.waypoint.label + ' · ' + fmtDist(wp.distanceTo(s.pos)), p.x, p.y + r + 14, 13 * Math.max(0.85, scale), CYAN, 0.9);
+        } else edgeArrow(p, CYAN, G.waypoint.label);
+      }
+      if (G.lineTag && G.station) {
+        // the stretch of the line just ahead of where we are along it
+        const along = Math.max(0, tmp.copy(s.pos).sub(G.station.beamStart).dot(G.station.beamDir)) + 2500;
+        tmp.copy(G.station.beamStart).addScaledVector(G.station.beamDir, along);
+        const p = project(tmp.clone(), cam);
+        if (onScreen(p, 10)) text('LANTERN WAYLINE', p.x, p.y - 18, 14 * Math.max(0.85, scale), GOLD, 0.95, 'center', 700);
+        else edgeArrow(p, GOLD, 'WAYLINE');
+      }
 
       // raider squadrons
       G.squads.forEach((sq) => {
@@ -159,16 +179,48 @@ export function createHud(canvas) {
         ny += 28 * Math.max(0.85, scale);
       }
 
-      // subtitles for the latest comms line
+      // subtitles for the line being spoken: speaker in their colour, text wrapped to two lines at most
       const last = G.comms[G.comms.length - 1];
-      if (last && last.t < 7) {
-        const a = Math.min(1, (7 - last.t) * 1.5);
-        const shown = last.text.slice(0, Math.floor(last.t * 55));
-        ctx.font = `500 ${Math.round(18 * Math.max(0.85, scale))}px ${FONT}`;
-        const w = Math.min(W * 0.7, ctx.measureText(last.from + ': ' + last.text).width + 40);
-        ctx.fillStyle = `rgba(2,10,16,${0.55 * a})`;
-        ctx.fillRect(cx - w / 2, H * 0.625 - 18, w, 36);
-        text(last.from + ':  ' + shown, cx, H * 0.625, 18 * Math.max(0.85, scale), '220,250,255', a, 'center', 500);
+      const life = last ? (last.dur || 7) + 0.8 : 0;
+      if (last && last.t < life) {
+        const a = Math.min(1, last.t * 6, (life - last.t) * 2);
+        const fs = Math.round(18 * Math.max(0.85, scale));
+        ctx.font = `500 ${fs}px ${FONT}`;
+        const maxW = Math.min(W - 32, 760 * Math.max(0.85, scale));
+        const words = last.text.split(' '), rows = [];
+        let row = '';
+        for (const wd of words) { const t2 = row ? row + ' ' + wd : wd; if (ctx.measureText(t2).width > maxW - 40 && row) { rows.push(row); row = wd; } else row = t2; }
+        rows.push(row);
+        const shownN = Math.floor(last.t * 60);
+        const rgb = last.rgb || '110,242,255';
+        const lh = fs * 1.35, top = H * 0.64, bh = rows.length * lh + 34;
+        const bw = Math.min(maxW, Math.max(...rows.map((r) => ctx.measureText(r).width)) + 48);
+        ctx.fillStyle = `rgba(2,10,16,${0.6 * a})`;
+        ctx.fillRect(cx - bw / 2, top - 22, bw, bh);
+        ctx.fillStyle = `rgba(${rgb},${a})`; ctx.fillRect(cx - bw / 2, top - 22, 3, bh);
+        text((last.radio ? '◉ ' : '') + last.from, cx, top - 6, 12 * Math.max(0.85, scale), rgb, a, 'center', 700);
+        let used = 0;
+        rows.forEach((r, i) => {
+          const vis = r.slice(0, Math.max(0, shownN - used)); used += r.length + 1;
+          ctx.font = `500 ${fs}px ${FONT}`;
+          const full = ctx.measureText(r).width;
+          text(vis, cx - full / 2, top + 14 + i * lh, fs, '225,248,255', a, 'left', 500);
+        });
+      }
+
+      // the tutorial's current task, with its key
+      if (G.task && G.state === 'flight') {
+        const label = G.task.label, key = G.task.key();
+        const fs = Math.round(16 * Math.max(0.85, scale));
+        ctx.font = `700 ${fs}px ${FONT}`;
+        const kw = ctx.measureText(key).width + 18, lw = ctx.measureText(label).width;
+        const bw = kw + lw + 36, x0 = cx - bw / 2, y = H * 0.1;
+        const pulse = 0.7 + 0.3 * Math.sin(G.time * 4);
+        ctx.fillStyle = 'rgba(2,10,16,0.6)'; ctx.fillRect(x0, y - 18, bw, 36);
+        ctx.strokeStyle = `rgba(${GOLD},${pulse})`; ctx.lineWidth = 1.5; ctx.strokeRect(x0, y - 18, bw, 36);
+        ctx.fillStyle = `rgba(${GOLD},1)`; ctx.fillRect(x0 + 8, y - 12, kw, 24);
+        text(key, x0 + 8 + kw / 2, y + 1, fs - 2, '2,10,16', 1, 'center', 700);
+        text(label, x0 + 8 + kw + 12, y + 1, fs, GOLD, 1, 'left', 700);
       }
 
       // action prompt

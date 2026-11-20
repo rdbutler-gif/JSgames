@@ -109,7 +109,7 @@ export function createPost(renderer, scene, camera, cockpit) {
     U.vignette.value = L.vignette; U.ca.value = L.ca; U.grain.value = L.grain;
     U.lift.value.fromArray(L.lift); U.gain.value.fromArray(L.gain);
     U.sat.value = L.sat; U.contrast.value = L.contrast;
-    const inCockpit = m === 'flight' || m === 'title';
+    const inCockpit = m === 'flight';
     cockpitPass.enabled = inCockpit; gtao.enabled = inCockpit && aoOn;
   }
   setMode('flight');
