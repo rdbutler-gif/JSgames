@@ -1,6 +1,6 @@
 # The Last Wayline — Session Handoff
 
-*Updated 2026-11-20. Read this first, then `docs/GAMEPLAN.md` (the working plan).*
+*Updated 2026-11-21 (end of session). Read this first, then `docs/GAMEPLAN.md` (the working plan).*
 
 ## Where we are
 
@@ -16,13 +16,20 @@
 | 5 | Lantern hub: docking, Ilsa's briefings, Workshop, air clock, scrubber parts, saves on events | Built 2026-11-20; owner flew home and docked on the live site ("it worked"). Docking line repeated until docked: fixed (once per approach) |
 | 6a | Thalor: ring-storm gate (Rime Shielding, 300 Wayshards), the surface (snow shelves, slick sea ice, rings in the sky, snow), drive to the vault | Done. Owner 2026-11-21: 300 is right ("required me to encounter two raider fights"), Thalor "looks great", ice could be more slippery (ICE_GRIP 0.2 -> 0.1) |
 | 6b | Thalor: Rime Spire + Compass Trim, the ice maze and its whiteout, Thalor creatures (rime crawlers, shardbacks) | Done. Owner 2026-11-21: ice handling "perfect" (after nitro and rear-drive cookies); shardback damage and health "just right", wants more creatures (done); the maze is fine as an obstacle |
-| 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest** |
+| 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest.** Owner tested a first version and asked for fixes (all done, untested by owner): creatures stand on the sea ice, the fight camera stays inside the arena, the maze sinks after the kill, memories are voiced (no card) |
+| — | Rover sound: ElevenLabs motor and tyre loops | **Built 2026-11-21, owner has not heard it yet** |
 
-Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
+Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
 ## First thing next session
 
-0. **Ask the owner to play 6c: the Sentinel Prime fight.** Owner request (2026-11-21): "build the sentinal prime guardian fight now". Ask:
+**Everything is committed and pushed** (last commit 81c40fa, live at gamesbyrusko.com/opengamejam/dist/). The owner tests on the live site, so push each finished build (see memory: wayline-deploy).
+
+0. **The owner was about to test** (2026-11-21): the Sentinel Prime fight, the maze sinking afterwards, the voiced memories on Kessa and Thalor, and the new rover sound. Ask about each:
+   - **Rover sound:** the takes were picked by measurement, not by ear. Do the motor and the tyre crunch sound right? Re-rolling a take costs about 17 credits.
+   - **Voiced memories:** do the Warden voices (Katherine, Vaughn) fit? Is the memory easy to follow while driving? The banner shows 3.8 s after taking the relic.
+   - **Maze sinking:** is 5.5 s right?
+   - **Sentinel Prime:**
    - Is the fight readable: the glowing floor band, then the sweep?
    - Does nitro get you across in time?
    - Is the frozen floor from stage 2 fun?
