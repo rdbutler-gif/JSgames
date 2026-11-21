@@ -100,6 +100,15 @@ export const LINES = {
   'thalor-storm-1': ['wren', "Thalor's rings are shedding ice. That storm would tear our hull apart on the way down."],
   'thalor-storm-2': ['wren', "Lantern's Workshop can fit Rime Shielding. It isn't cheap. The Scrap Crown wings carry Wayshards. We take theirs."],
   'hub-rime': ['ilsa', "Rime Shielding's fitted. Thalor's storm can't stop you now. Bring that compass home."],
+  // ---- armory memory fragments, voiced on the drive back to the vault (owner, 2026-11-21: not on the card) ----
+  'frag-forge-1': ['wren', "Runner, about that plate. I didn't read its schema back there. I remembered it."],
+  'frag-forge-2': ['wren', "I've fitted Forgeplate before. To a hull I can't picture, with Warden hands around me. I don't know how I know that."],
+  'frag-trim-1': ['warden', 'Follow the cold. It always leads you home.'],
+  'frag-trim-2': ['wren', "That voice. I know it, the way you know an old song. I don't know whose it is."],
+  // ---- Vireo (step 7): the veil fog needs a Veil Sounder ----
+  'vireo-fog-1': ['wren', "Vireo is under the veil. That fog swallows every return I send. I can't find the ground to put us down on."],
+  'vireo-fog-2': ['wren', "Lantern's Workshop can fit a Veil Sounder. It's three hundred Wayshards. The Scrap Crown carry plenty."],
+  'hub-sounder': ['ilsa', "Your Sounder's in. It'll ping the ground through that fog. Watch the edges down there. Vireo's rock doesn't all stay put."],
 };
 
 // Ilsa's briefings at the dock, by how far the run has come. Each plays once, in order, when it applies.

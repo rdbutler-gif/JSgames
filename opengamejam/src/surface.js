@@ -163,6 +163,91 @@ function makeIce(def, size) {
   return mesh;
 }
 
+// Vireo's veil: the top of a sea of violet fog, drawn as a slow-swirling translucent sheet over a darker
+// one further down, so the chasm floors fade out instead of showing. Its clock is stepped like the lava's.
+function makeVeil(def, size) {
+  const mk = (deep) => {
+    const m = new THREE.ShaderMaterial({
+      fog: true, transparent: true, depthWrite: false,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { time: { value: 0 } }]),
+      vertexShader: `varying vec2 vP; #include <fog_pars_vertex>
+        void main(){ vP = position.xz; vec4 mvPosition = modelViewMatrix * vec4(position,1.0); gl_Position = projectionMatrix * mvPosition; #include <fog_vertex> }`,
+      fragmentShader: `uniform float time; varying vec2 vP; #include <fog_pars_fragment>
+        float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+        float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
+        float fb(vec2 p){ return n(p)*0.5 + n(p*2.1+3.1)*0.3 + n(p*4.3-1.7)*0.2; }
+        void main(){ vec2 p = vP * ${deep ? '0.012' : '0.02'};
+          vec2 w = vec2(fb(p + vec2(time*0.03, 0.0)), fb(p + vec2(5.2, time*0.025)));
+          float a = fb(p * 1.6 + w * 1.8 + vec2(-time*0.02, time*0.015));
+          vec3 c = ${deep ? 'mix(vec3(0.07,0.03,0.14), vec3(0.16,0.08,0.28), a)' : 'mix(vec3(0.20,0.10,0.38), vec3(0.62,0.42,0.95), smoothstep(0.45, 0.85, a))'};
+          gl_FragColor = vec4(c, ${deep ? '0.96' : '0.55 + 0.35 * smoothstep(0.3, 0.8, a)'});
+          #include <fog_fragment>
+        }`,
+    });
+    m.vertexShader = m.vertexShader.replace(/#include <([a-z_]+)>/g, '\n#include <$1>\n');
+    m.fragmentShader = m.fragmentShader.replace(/#include <([a-z_]+)>/g, '\n#include <$1>\n');
+    return m;
+  };
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2), mk(false));
+  top.position.y = def.lava; top.renderOrder = 2;
+  const deep = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2), mk(true));
+  deep.position.y = -12; top.add(deep); // a child, so it sits at lava - 12
+  const tick = top.material.uniforms.time;
+  deep.onBeforeRender = () => { deep.material.uniforms.time.value = tick.value; };
+  return top;
+}
+
+// Vireo's floating rock: islands with flat tops and pointed undersides, hanging over the mesas and the
+// veil and bobbing slowly, each with a few violet crystals glowing underneath. Scenery only (no collision).
+function makeIslands(def, terrain, accent) {
+  const geo = new THREE.ConeGeometry(1, 1.7, 11, 4).rotateX(Math.PI).translate(0, -0.85, 0); // top at y 0, tip at -1.7
+  const p = geo.attributes.position;
+  const col = new Float32Array(p.count * 3), cTop = new THREE.Color('#7c6c94'), cSide = new THREE.Color('#2e2640'), cc = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    v1.fromBufferAttribute(p, i);
+    const r = Math.hypot(v1.x, v1.z);
+    if (r > 0.01) { const k = 0.8 + Math.sin(Math.atan2(v1.z, v1.x) * 3 + v1.y * 4) * 0.12 + Math.random() * 0.14; v1.x *= k; v1.z *= k; }
+    if (v1.y < -0.05) v1.y += (Math.random() - 0.5) * 0.12;
+    p.setXYZ(i, v1.x, v1.y, v1.z);
+    cc.copy(v1.y > -0.02 ? cTop : cSide).multiplyScalar(0.85 + Math.random() * 0.3);
+    col[i * 3] = cc.r; col[i * 3 + 1] = cc.g; col[i * 3 + 2] = cc.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const N = 70, K = 3; // islands, crystals per island
+  const rockM = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, flatShading: true }), N);
+  const crys = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 0).scale(0.35, 1, 0.35), new THREE.MeshBasicMaterial({ color: new THREE.Color(...accent).multiplyScalar(0.55) }), N * K);
+  rockM.frustumCulled = crys.frustumCulled = false;
+  const list = [];
+  let sd = 11;
+  const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < N; i++) {
+    const x = (rnd() - 0.5) * terrain.size * 0.95, z = (rnd() - 0.5) * terrain.size * 0.95;
+    const big = rnd() < 0.15;
+    const r = big ? 26 + rnd() * 30 : 4 + rnd() * rnd() * 20;
+    const y = Math.max(terrain.heightAt(x, z), def.lava) + (big ? 90 + rnd() * 120 : 28 + rnd() * 100) + r * 0.4;
+    const cr = Array.from({ length: K }, () => [(rnd() - 0.5) * 0.9, -0.9 - rnd() * 0.7, (rnd() - 0.5) * 0.9, 0.12 + rnd() * 0.16]);
+    list.push({ x, y, z, r, yaw: rnd() * 6.28, spin: (rnd() - 0.5) * 0.03, bob: 1 + rnd() * 2.5, ph: rnd() * 6.28, cr });
+  }
+  const m4 = new THREE.Matrix4(), m5 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), pp = new THREE.Vector3();
+  const update = (t) => {
+    list.forEach((I, i) => {
+      q.setFromAxisAngle(UP, I.yaw + t * I.spin);
+      pp.set(I.x, I.y + Math.sin(t * 0.25 + I.ph) * I.bob, I.z);
+      m4.compose(pp, q, s.set(I.r, I.r * 0.85, I.r));
+      rockM.setMatrixAt(i, m4);
+      I.cr.forEach((c, k) => {
+        m5.compose(v2.set(c[0], c[1], c[2]), q1.identity(), v3.setScalar(c[3] * 2.2)).premultiply(m4);
+        crys.setMatrixAt(i * K + k, m5);
+      });
+    });
+    rockM.instanceMatrix.needsUpdate = true; crys.instanceMatrix.needsUpdate = true;
+  };
+  update(0);
+  const g = new THREE.Group(); g.add(rockM, crys);
+  return { g, list, update };
+}
+
 // Stand-ins for the Kessa-only systems, so a world without them runs the same update code.
 function noTitan() {
   return { reset() {}, wake() {}, update() { return null; }, hitTest() { return null; }, onBolt() {}, state: 'dormant', hp: 0, open: 0, hitMark: 0, act: '',
@@ -227,14 +312,15 @@ function onRoad(def, x, z, margin) {
   return false;
 }
 
-function makeEmbers(kind = 'embers') { // rising embers (Kessa) or falling, drifting snow (Thalor)
-  const snow = kind === 'snow';
+function makeEmbers(kind = 'embers') { // rising embers (Kessa), falling, drifting snow (Thalor), or Vireo's slow violet motes
+  const snow = kind === 'snow', motes = kind === 'motes';
   const N = 400, pos = new Float32Array(N * 3), P = [];
   for (let i = 0; i < N; i++) P.push(new THREE.Vector3((Math.random() - 0.5) * 120, Math.random() * 40, (Math.random() - 0.5) * 120));
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
   const m = snow
     ? new THREE.PointsMaterial({ color: new THREE.Color(1.1, 1.15, 1.25), size: 0.16, transparent: true, opacity: 0.9, depthWrite: false })
+    : motes ? new THREE.PointsMaterial({ color: new THREE.Color(1.3, 0.75, 2.2), size: 0.2, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false })
     : new THREE.PointsMaterial({ color: new THREE.Color(3, 1.2, 0.3), size: 0.18, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
   const pts = new THREE.Points(g, m);
   pts.frustumCulled = false;
@@ -243,9 +329,10 @@ function makeEmbers(kind = 'embers') { // rising embers (Kessa) or falling, drif
     update(dt, centre, t) {
       for (let i = 0; i < N; i++) {
         const p = P[i];
-        if (snow) { p.y -= dt * (1.6 + (i % 5) * 0.35); p.x += (2.2 + Math.sin(t * 0.9 + i) * 1.2) * dt; p.z += Math.cos(t * 0.6 + i * 1.7) * dt * 0.8; if (p.y < 0) { p.y = 40; p.x = (Math.random() - 0.5) * 120; } if (p.x > 60) p.x -= 120; }
+        if (motes) { p.y += Math.sin(t * 0.4 + i * 0.7) * dt * 0.5; p.x += Math.sin(t * 0.21 + i) * dt * 0.7; p.z += Math.cos(t * 0.17 + i * 1.3) * dt * 0.7; p.y = (p.y + 40) % 40; }
+        else if (snow) { p.y -= dt * (1.6 + (i % 5) * 0.35); p.x += (2.2 + Math.sin(t * 0.9 + i) * 1.2) * dt; p.z += Math.cos(t * 0.6 + i * 1.7) * dt * 0.8; if (p.y < 0) { p.y = 40; p.x = (Math.random() - 0.5) * 120; } if (p.x > 60) p.x -= 120; }
         else { p.y += dt * (1.2 + (i % 7) * 0.3); p.x += Math.sin(t * 0.7 + i) * dt * 0.6; }
-        if (!snow && p.y > 40) p.y = 0;
+        if (!snow && !motes && p.y > 40) p.y = 0;
         pos[i * 3] = centre.x + p.x; pos[i * 3 + 1] = centre.y - 5 + p.y; pos[i * 3 + 2] = centre.z + p.z;
       }
       g.attributes.position.needsUpdate = true;
@@ -359,7 +446,9 @@ export function createSurface(hooks) {
     const terrain = createTerrain(def);
     root.add(terrain.mesh);
     const sky = makeSky(def); root.add(sky);
-    const lava = def.hazard === 'ice' ? makeIce(def, def.size) : makeLava(def, def.size); root.add(lava);
+    const lava = def.hazard === 'ice' ? makeIce(def, def.size) : def.hazard === 'veil' ? makeVeil(def, def.size) : makeLava(def, def.size); root.add(lava);
+    const islands = def.islands ? makeIslands(def, terrain, def.accent) : null;
+    if (islands) root.add(islands.g);
     const rocks = makeRocks(terrain, def, 1400); root.add(rocks.inst);
     const embers = makeEmbers(def.weather); root.add(embers.pts);
     const sun = new THREE.DirectionalLight(def.sky.sun, 2.6);
@@ -554,7 +643,7 @@ export function createSurface(hooks) {
     // creatures (and the parts they shatter into) stand on the sea ice, not on the sea bed under it
     const walkGround = def.hazard === 'ice' ? { ...terrain, heightAt: (x, z) => Math.max(terrain.heightAt(x, z), def.lava) } : terrain;
     const fauna = def.fauna ? createFauna({ root, def, terrain: walkGround, fx }) : noFauna();
-    const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire, G, arenaR, beacon };
+    const b = { islands, lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire, G, arenaR, beacon };
     b.lights = createLightPool(root, 3); b.lights.collect(); // every point light above is virtual; 3 real ones serve them
     built.set(id, b);
     return b;
@@ -617,6 +706,12 @@ export function createSurface(hooks) {
       if (!taken) setTimeout(() => S && S.time < 12 && (S.obj === 'vault' || S.obj === 'maze') && hooks.say(trim
         ? 'The Compass Trim is fitted. The maze lanes are lit. Follow them to the vault.'
         : 'The vault signal is that cold light column. The Wayfarer is on the pad when you want to lift off.'), 6000);
+      return;
+    }
+    if (planetId === 'vireo') {
+      // Vireo (7a): mesas over the veil, light gravity, land bridges to the vault. The way in is 7b.
+      hooks.say('Rover is down. Vireo. Gravity is light here, so we will float off every crest. And that fog has no floor I can find. Stay on the rock.');
+      if (!taken) setTimeout(() => S && S.time < 14 && S.obj === 'vault' && hooks.say('The vault signal is the violet column, to the north-west. There are land bridges between the mesas.'), 7000);
       return;
     }
     hooks.say('Rover is down. Kessa is basalt and lava. Stay off the bright ground.');
@@ -901,10 +996,11 @@ export function createSurface(hooks) {
   // Lava is a molten crust: wheels sink half a metre into it and burn, but never go under.
   // Sea ice (Thalor) is solid at its own level.
   const CRUST = 0.55;
-  const crust = () => (T.def.hazard === 'ice' ? 0 : CRUST);
-  function ground(x, z) { return Math.max(T.terrain.heightAt(x, z), T.def.lava - crust()); }
+  // Vireo's veil is fog, not a floor: the ground there is the chasm bed far below.
+  const floorY = () => (T.def.hazard === 'veil' ? -Infinity : T.def.lava - (T.def.hazard === 'ice' ? 0 : CRUST));
+  function ground(x, z) { return Math.max(T.terrain.heightAt(x, z), floorY()); }
   function groundNormal(x, z, out) {
-    if (T.terrain.heightAt(x, z) < T.def.lava - crust()) return out.set(0, 1, 0);
+    if (T.terrain.heightAt(x, z) < floorY()) return out.set(0, 1, 0);
     return T.terrain.normalAt(x, z, out);
   }
   function pointVel(r, out) { return out.crossVectors(rover.ang, r).add(rover.vel); }
@@ -915,7 +1011,7 @@ export function createSurface(hooks) {
     fwd.set(0, 0, -1).applyQuaternion(rover.quat);
     right.set(1, 0, 0).applyQuaternion(rover.quat);
     up.set(0, 1, 0).applyQuaternion(rover.quat);
-    force.set(0, -R.gravity, 0); torque.set(0, 0, 0);
+    force.set(0, -(T.def.gravity || R.gravity), 0); torque.set(0, 0, 0);
     const vF = rover.vel.dot(fwd);
     rover.speed = vF;
 
@@ -986,7 +1082,7 @@ export function createSurface(hooks) {
         const limL = R.mu * Fs * (FRONT[w] ? ICE_FRONT : ICE_DRIVE), limS = R.mu * Fs * iceK * spin * (rearHand ? 0.55 : 1);
         Fl = clamp(Fl, -limL, limL); Fy = clamp(Fy, -limS, limS);
       } else {
-        const lim = R.mu * Fs * (rearHand ? 0.55 : 1);
+        const lim = R.mu * Fs * (rearHand ? 0.55 : 1) * (T.def.gripK || 1); // light gravity means light load: Vireo pads the grip back
         const mag = Math.hypot(Fl, Fy);
         if (mag > lim) { Fl *= lim / mag; Fy *= lim / mag; }
       }
@@ -1104,10 +1200,12 @@ export function createSurface(hooks) {
     setObj('cross');
     sfx.victory();
     T.fx.emit(T.forge.crate.position, 120, { speed: 14, life: 1.4, size: 2.2, colors: [[4, 2, 0.6], [5, 3.6, 1.6]], drag: 1.5 });
-    hooks.say('Hold still. I am matching to this plate\'s schema... Oh. I have done this before.');
+    hooks.say('Forgeplate is fused on. Back to the vault.');
+    // the memory fragment is voiced on the drive back, not written on the card (owner, 2026-11-21)
+    S.frag = { at: S.time + 5, lines: ['frag-forge-1', 'frag-forge-2'] };
     hooks.event && hooks.event({
       kicker: 'ARMORY · KESSA', title: 'FORGEPLATE HULL',
-      text: 'Warden ablative plating, fused to the rover. Heat vents cannot touch you, and lava burns slower. WREN recovered a memory fragment: she knows this plating. She does not know how.',
+      text: 'Warden heat plating, fused to the rover. Heat vents cannot touch you, and lava burns slower.',
     });
   }
 
@@ -1131,8 +1229,9 @@ export function createSurface(hooks) {
     hooks.say('The trim is reading the ice already. There. The maze has lanes, and now I can see them.');
     hooks.event && hooks.event({
       kicker: 'ARMORY · THALOR', title: 'COMPASS TRIM',
-      text: 'A Warden navigation trim, fitted to the rover\'s mast. It reads the lanes the Wardens cut through the ice, and the whiteout in the maze no longer blinds it. WREN recovered a memory fragment: a voice saying "follow the cold". She knows the voice. She does not know whose it is.',
+      text: 'A Warden navigation trim, fitted to the rover\'s mast. It reads the lanes the Wardens cut through the ice, and the whiteout in the maze no longer blinds it.',
     });
+    S.frag = { at: S.time + 6, lines: ['frag-trim-1', 'frag-trim-2'] };
   }
   function thalorMissions(dt, P, toVault) {
     if (S.sinking > 0 && T.maze) {
@@ -1168,7 +1267,7 @@ export function createSurface(hooks) {
     if (T.spire) { T.spire.halo.rotation.z += dt * 0.4; T.spire.tip.rotation.y += dt * 0.6; }
     // the centre: the vault door wakes Sentinel Prime (main shows the card, then calls wakeGuardian)
     if (!S.prompt && S.obj === 'maze' && toVault < 24) {
-      S.prompt = { type: 'vault', label: 'ENTER THE VAULT' };
+      S.prompt = { type: 'vault', label: 'OPEN THE VAULT' };
       say1('door2', 'We are through. The vault is right here, and the ice over it is humming. Ready when you are.');
     }
     if (!S.prompt && S.obj === 'core' && T.ember.g.visible && T.ember.t > 2 && toVault < 14) S.prompt = { type: 'core', label: 'TAKE THE ' + T.G.relic };
@@ -1179,6 +1278,54 @@ export function createSurface(hooks) {
       const q = M.path[bi];
       M.laneLight.position.set(q[0], ground(q[0], q[1]) + 2, q[1]);
       M.laneLight.intensity = bd < 900 ? 18 : 0;
+    }
+    return null;
+  }
+
+  // ---------- Vireo: the veil and the mesas ----------
+  // Drop into the veil and the fog slows the fall, the view goes violet, and after a second WREN hauls the
+  // rover back to the last open rock it stood on (away from any edge), for a little hull.
+  function veilStep(dt) {
+    const d = T.def;
+    S.veilFlash = Math.max(0, (S.veilFlash || 0) - dt);
+    if (!S.safe) { S.safe = []; S.safeT = 0; S.veilN = 0; }
+    S.safeT += dt;
+    if (S.safeT > 0.4 && S.grounded >= 3 && rover.pos.y > d.lava + 3) {
+      S.safeT = 0;
+      const x = rover.pos.x, z = rover.pos.z;
+      let ok = true;
+      for (let k = 0; k < 8 && ok; k++) { const a = (k * Math.PI) / 4; if (T.terrain.heightAt(x + Math.cos(a) * 8, z + Math.sin(a) * 8) < d.lava + 3) ok = false; }
+      if (ok) { S.safe.push({ x, z, yaw: Math.atan2(-fwd.x, -fwd.z) }); if (S.safe.length > 12) S.safe.shift(); }
+    }
+    if (rover.pos.y > d.lava - 1.5) { S.veilT = 0; return; }
+    S.veilT = (S.veilT || 0) + dt;
+    rover.vel.multiplyScalar(Math.exp(-2.5 * dt)); // the fog is thick: it slows the fall
+    if (S.veilT < 1.0) return;
+    const p = S.safe.length > 2 ? S.safe[S.safe.length - 3] : S.safe[S.safe.length - 1];
+    if (p) {
+      rover.pos.set(p.x, ground(p.x, p.z) + 1.4, p.z);
+      rover.quat.setFromAxisAngle(UP, p.yaw);
+    } else placeAtPad();
+    rover.vel.set(0, 0, 0); rover.ang.set(0, 0, 0);
+    cam.yaw = 0; cam.pos.copy(rover.pos).add(v1.set(0, 4, 10).applyQuaternion(rover.quat));
+    rover.hull -= 12; sfx.playerHit(true);
+    S.veilT = 0; S.veilFlash = 1.2; S.veilN++;
+    hooks.say(S.veilN === 1
+      ? 'Into the veil! I have the tether on the rock. Hold on... got us. The hull felt that. Stay away from the edges.'
+      : S.veilN % 2 ? 'Hauled us out again. Mind the edges.' : 'Got us. The veil is not a road.');
+  }
+  function vireoMissions(dt, P, toVault) {
+    const d = T.def;
+    // the first long hang off a crest
+    if (S.grounded === 0 && rover.pos.y - ground(P.x, P.z) > 2.5) S.airT = (S.airT || 0) + dt; else S.airT = 0;
+    if (S.airT > 0.7) say1('float', 'Light gravity. We hang in the air off every crest. Land it straight.');
+    for (const c of d.causeways || []) {
+      const ci = pathInfo(c.pts, P.x, P.z);
+      if (ci.d < c.half && ci.t > 60 && T.terrain.heightAt(P.x + 14, P.z) < d.lava) say1('bridge', 'A land bridge. Warden work, I think. Keep it straight: the drop on either side goes into the veil.');
+    }
+    if (S.obj === 'vault' && toVault < 45) {
+      setObj('scouted');
+      say1('vault-v', 'The vault. Its door is a curtain of the veil, and it pushes back. There is a way through somewhere on this rock.');
     }
     return null;
   }
@@ -1224,6 +1371,7 @@ export function createSurface(hooks) {
     if (nearest) T.geyserLight.position.set(nearest.x, nearest.y + 6, nearest.z);
 
     if (d.hazard === 'ice') return thalorMissions(dt, P, toVault);
+    if (d.hazard === 'veil') return vireoMissions(dt, P, toVault);
 
     // the vent field: impassable heat without Forgeplate
     const inRing = toVault > 30 && toVault < 56;
@@ -1255,7 +1403,7 @@ export function createSurface(hooks) {
     }
     if (!S.prompt && S.obj === 'core' && T.ember.g.visible && T.ember.t > 2 && toVault < 14) S.prompt = { type: 'core', label: 'TAKE THE ' + T.G.relic };
     if (!S.prompt && plated && toVault < 24 && S.obj === 'cross') {
-      S.prompt = { type: 'vault', label: 'ENTER THE VAULT' };
+      S.prompt = { type: 'vault', label: 'OPEN THE VAULT' };
       say1('door', 'The door knows the plating. It is opening for us.');
     }
     // crate bob
@@ -1286,6 +1434,9 @@ export function createSurface(hooks) {
     if (rover.onIce > 0) say1('ice', 'Sea ice. There is almost no grip out here. Ease off, and turn early.');
     for (let i = 0; i < steps; i++) grounded = physicsStep(h, inp);
     S.grounded = grounded;
+    if (T.def.hazard === 'veil') veilStep(dt);
+    // a memory fragment from an armory pickup, voiced a few seconds into the drive (S.time stops while a card is up)
+    if (S.frag && S.time > S.frag.at) { hooks.lines && hooks.lines(S.frag.lines); S.frag = null; }
 
     // lava burns the rover; drag pulls it in
     if (rover.lavaT > 0) {
@@ -1364,6 +1515,7 @@ export function createSurface(hooks) {
       scene.fog.density += (want - scene.fog.density) * Math.min(1, dt * 2);
     }
     T.embers.update(dt, rover.pos, S.time);
+    if (T.islands) T.islands.update(S.time);
     T.fx.update(dt); // sparks, fire and dust (was never stepped, so surface particles never showed)
     if (S.nitroT > 0) for (const sx of [-0.55, 0.55]) { // twin exhaust flames off the tail
       v2.set(sx, 0.25, 2.0).applyQuaternion(rover.quat).add(rover.pos);
@@ -1411,6 +1563,7 @@ export function createSurface(hooks) {
     }
     const gy = ground(v1.x, v1.z) + 1.4;
     if (v1.y < gy) v1.y = gy;
+    if (d.hazard === 'veil' && v1.y < d.lava + 4) v1.y = d.lava + 4; // stay over the veil: watch the rover sink into it
     cam.pos.lerp(v1, 1 - Math.exp(-8 * dt));
     // a shortened boom looks past the rover, along the view, so it sees the fight over the rover's roof
     const ahead = S.fight ? (1 - (S.camKeep ?? 1)) * 9 : 0;
@@ -1435,6 +1588,19 @@ export function createSurface(hooks) {
   function text(ctx, str, x, y, size, rgb, a = 1, align = 'center', weight = 600) {
     ctx.font = `${weight} ${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'middle';
     ctx.fillStyle = `rgba(${rgb},${a})`; ctx.fillText(str, x, y);
+  }
+  // A dark box with an amber kicker and a white line. The line shrinks to fit, and the box grows to hold it,
+  // so the text never runs past the box (owner, 2026-11-21).
+  function panel(ctx, W, y, kicker, line, size, a) {
+    const maxW = Math.min(W * 0.92, 980) - 48;
+    ctx.font = `700 ${size}px ${FONT}`;
+    const w = ctx.measureText(line).width;
+    if (w > maxW) size *= maxW / w;
+    ctx.font = `700 ${size}px ${FONT}`;
+    const bw = Math.min(W * 0.92, Math.max(Math.min(W * 0.84, 520), ctx.measureText(line).width + 48));
+    ctx.fillStyle = `rgba(6,12,22,${0.9 * a})`; ctx.fillRect(W / 2 - bw / 2, y - 38, bw, 76);
+    text(ctx, kicker, W / 2, y - 14, Math.min(size * 0.7, 14 * Math.min(W, 900) / 900 + 5), AMBER, a, 'center', 700);
+    text(ctx, line, W / 2, y + 14, size, '255,255,255', a, 'center', 700);
   }
   function drawHud(ctx, W, H, G, device) {
     if (!S) return;
@@ -1492,21 +1658,32 @@ export function createSurface(hooks) {
       practice: 'Target practice · shoot cinder skitters by the pad ' + Math.min(5, S.practiceN || 0) + '/5',
       vault: 'Reach the vault signal',
       plate: 'Find heat plating · the Forge Gate, end of the Magma Canyon',
-      cross: 'Cross the vent field to the vault',
+      cross: 'Return to the vault',
       guardian: T.G.obj,
       core: 'Take ' + T.G.relicName,
       return: 'Return to the Wayfarer and lift off',
       trim: 'Get through the whiteout · find the Rime Spire across the sea',
       maze: 'Follow the lit lanes through the ice maze to the vault',
-      scouted: 'Through the maze · the guardian is the next build step',
+      scouted: S.planet === 'vireo' ? 'Vault found · the way through the veil is the next build step' : 'Through the maze · the guardian is the next build step',
     };
     text(ctx, OBJ[S.obj] || '', W / 2, 90, 14 * sc + 5, '230,251,255', 0.9, 'center', 600);
-    if (S.objFlash > 0) {
+    // a short card that fades by itself (the vault opening), then the NEW OBJECTIVE flash waits its turn
+    if (S.banner) {
+      const B = S.banner, t = (B.t += 1 / 60);
+      const a = Math.min(1, t / 0.3) * Math.min(1, (B.dur - t) / 0.8);
+      if (t >= B.dur) S.banner = null;
+      else panel(ctx, W, H * 0.3, B.kicker, B.title, 22 * sc + 10, Math.max(0, a));
+    } else if (S.objFlash > 0) {
       S.objFlash -= 1 / 60;
       const a = Math.min(1, S.objFlash) * Math.min(1, (4 - S.objFlash) * 4);
-      ctx.fillStyle = `rgba(6,12,22,${0.9 * a})`; ctx.fillRect(W / 2 - Math.min(W * 0.42, 420), H * 0.33 - 38, Math.min(W * 0.84, 840), 76);
-      text(ctx, 'NEW OBJECTIVE', W / 2, H * 0.33 - 14, 14 * sc + 5, AMBER, a, 'center', 700);
-      text(ctx, OBJ[S.obj] || '', W / 2, H * 0.33 + 14, 20 * sc + 8, '255,255,255', a, 'center', 700);
+      panel(ctx, W, H * 0.33, 'NEW OBJECTIVE', OBJ[S.obj] || '', 20 * sc + 8, a);
+    }
+    {
+      const va = Math.max(clamp(S.veilT || 0, 0, 1) * 0.8, Math.min(1, S.veilFlash || 0) * 0.6);
+      if (va > 0.01) {
+        ctx.fillStyle = `rgba(42,18,74,${va})`; ctx.fillRect(0, 0, W, H);
+        if (S.veilT > 0) text(ctx, 'IN THE VEIL · HAULING BACK', W / 2, H * 0.25, 24 * sc + 10, '205,170,255', 0.6 + 0.4 * Math.sin(S.time * 10), 'center', 700);
+      }
     }
     if (S.whiteout > 0) text(ctx, 'WHITEOUT · SENSORS BLIND', W / 2, H * 0.25, 24 * sc + 10, '200,235,255', 0.6 + 0.4 * Math.sin(S.time * 10), 'center', 700);
     if (S.heatWall > 0) text(ctx, 'HEAT WALL · NEED HEAT PLATING', W / 2, H * 0.25, 24 * sc + 10, RED, 0.6 + 0.4 * Math.sin(S.time * 14), 'center', 700);
@@ -1605,7 +1782,7 @@ export function createSurface(hooks) {
 
   return {
     setShadowSize,
-    scene, enter, exit, update, drawHud, rover, wakeGuardian,
+    scene, enter, exit, update, drawHud, rover, wakeGuardian, banner: (kicker, title, dur = 3.2) => { if (S) S.banner = { kicker, title, dur, t: 0 }; },
     get active() { return !!S; },
     get debug() { return { S, rover, cam, T, aim, mesh }; },
   };

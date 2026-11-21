@@ -125,6 +125,35 @@ export const SURFACES = {
     maze: { rings: [72, 56, 40], gaps: [2.4, 2.4 + Math.PI, 2.4], blocks: [2.4 + Math.PI / 2, 2.4 + Math.PI * 1.5], gapW: 9 },
     plateau: 86,
   },
+  // Vireo: flat-topped mesas standing out of a sea of violet fog (the veil). The "lava" level is the top
+  // of the veil: below it there is no floor the Wayfarer can see, and a rover that drops in is hauled
+  // back (surface.js). Land bridges (causeways) join the pad's mesa to the vault's. Gravity is light.
+  vireo: {
+    seed: 83, size: 1600, cells: 400, lava: 2,
+    pad: { x: 0, z: 0, r: 26 },
+    vault: { x: -470, z: -440 },
+    hazard: 'veil', gravity: 8, gripK: 1.45, // floaty: long hangs off every crest; the grip is padded back up a little
+    causeways: [
+      { pts: [[-24, -22], [-120, -70], [-215, -170], [-300, -230], [-385, -335], [-448, -418]], half: 6.5, h: 9 },
+      { pts: [[28, 24], [150, 120], [260, 250], [340, 380]], half: 6.5, h: 9 }, // out to the far mesas (7b's armory)
+    ],
+    height(x, z) {
+      const s = this.seed;
+      // mesa mask: high where the rock stands, low where the chasms run; the pad and the vault sit on rock
+      let m = fbm(x * 0.0042, z * 0.0042, s) + (fbm(x * 0.011, z * 0.011, s + 3, 3) - 0.5) * 0.18;
+      const near = (px, pz, r) => 1 - smooth(r * 0.6, r, Math.hypot(x - px, z - pz));
+      m += near(this.pad.x, this.pad.z, 150) * 0.3 + near(this.vault.x, this.vault.z, 160) * 0.3;
+      const rock = smooth(0.47, 0.515, m);                               // sheer cliffs at the mesa edges
+      const top = 20 + ridged(x * 0.006, z * 0.006, s + 5) * 14            // mesa tops at different heights
+        + (fbm(x * 0.05, z * 0.05, s + 9, 3) - 0.5) * 1.8;                 // the bumps the rover feels
+      const floor = -38 + fbm(x * 0.01, z * 0.01, s + 21, 3) * 10;         // the chasm floors, deep under the veil
+      return floor + (top - floor) * rock;
+    },
+    colors: { low: '#1d1430', mid: '#5a5468', high: '#b9aecb', ash: '#6c4e8c', cliff: '#1a1424' },
+    sky: { top: '#0d0820', horizon: '#6d4a9a', fog: '#3e2860', fogDensity: 0.0024, sun: '#ead8ff', sunDir: [0.4, 0.28, 0.55] },
+    hemi: ['#c8b0ff', '#24163a'], rock: '#3a3148', accent: [2.2, 1.0, 3.8], weather: 'motes',
+    islands: true, // floating rock overhead
+  },
 };
 
 // Ridge road, lava trenches either side, then walls. Fades in over the first 40 m so the

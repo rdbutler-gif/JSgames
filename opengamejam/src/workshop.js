@@ -15,6 +15,9 @@ export const UPGRADES = [
   // the way down to Thalor: its rings shed ice into a storm no plain hull survives. Priced so it takes raider fights.
   { id: 'rime', group: 'WAYFARER', name: 'RIME SHIELDING', costs: [300],
     tiers: ['Ice-rated hull plates: the Wayfarer can fly down through Thalor\'s ring storm'] },
+  // the way down to Vireo: its veil fog swallows every radar return, so there is no ground to land on
+  { id: 'sounder', group: 'WAYFARER', name: 'VEIL SOUNDER', costs: [300],
+    tiers: ['A deep-fog sounding array: the Wayfarer can find the ground through Vireo\'s veil'] },
   // ---- the rover (Phase III) ----
   { id: 'armour', group: 'ROVER', name: 'ROVER ARMOUR', costs: [70, 180],
     tiers: ['The rover takes 20% less damage', 'The rover takes 35% less damage'], dmgK: [1, 0.8, 0.65] },

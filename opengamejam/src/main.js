@@ -62,6 +62,7 @@ const surface = createSurface({
   say: (t) => say(t),
   event: (e) => { surfaceEvent(e); autosave(true); }, // pickups (the Forgeplate)
   relic: (id) => relicSecured(id),
+  lines: (ids) => story.lines(ids), // voiced lines from the surface (armory memory fragments)
   shards: (n) => { G.wayshards += n; },
 });
 
@@ -499,7 +500,9 @@ function handleCruise(dt) {
       ship.cruise = 0; ship.shake = 1.4; sfx.drop();
       note('DROPPED FROM CRUISE · ' + b.reason, '255,179,90');
       if (b.squad) { G.cruiseDrop = { squad: b.squad, t: G.time }; if (!tutorial.active || G.heard.has('t-raid-3')) say('Scrap Crown ahead. I pulled us out of cruise. Engage them, or slip past.'); }
-      if (b.lantern) say('Lantern ahead. Cruise is off. Bring us to the bay mouth to dock.');
+      // Lantern: brake hard and settle to a crawl with the whole station in view, about 2.5 km out
+      // (it used to coast 5 km at full throttle, straight into or past the station; owner, 2026-11-21)
+      if (b.lantern) { ship.brakeT = 3; ship.throttle = 0.2; say('Lantern ahead. Cruise is off, and I have slowed us right down. Bring us to the bay mouth to dock.'); }
     }
   }
 }
@@ -560,12 +563,14 @@ function updatePrompts() {
     const surf = p.center.distanceTo(ship.pos) - p.data.R;
     if (surf < p.data.R * 2.2 && !G.greeted.has(p.data.id)) {
       G.greeted.add(p.data.id);
-      if (stormBlocks(p)) story.lines(['thalor-storm-1', 'thalor-storm-2']);
+      const gate = stormBlocks(p);
+      if (gate) story.lines(gate.lines);
       else if (!tutorial.active) say(titleCase(p.data.name) + ' ahead. The vault signal is strong: the ' + p.data.relic + '. Take us down when you are ready.');
     }
     if (surf < p.data.R * 0.9) {
-      G.prompt = stormBlocks(p)
-        ? { type: 'storm', planet: p, label: 'RING STORM · NEEDS RIME SHIELDING' }
+      const gate = stormBlocks(p);
+      G.prompt = gate
+        ? { type: 'storm', planet: p, label: gate.prompt }
         : { type: 'land', planet: p, label: 'BEGIN LANDING · ' + p.data.name };
       return;
     }
@@ -592,7 +597,8 @@ function acceptPrompt() {
     startAssault(sq);
   } else if (pr.type === 'storm') {
     sfx.denied();
-    say('Not without Rime Shielding. The Workshop at Lantern has it: ' + UPGRADE.rime.costs[0] + ' Wayshards. We have ' + G.wayshards + '.');
+    const gate = stormBlocks(pr.planet);
+    say('Not without ' + gate.need + '. The Workshop at Lantern has it: ' + UPGRADE[gate.up].costs[0] + ' Wayshards. We have ' + G.wayshards + '.');
   } else if (pr.type === 'land') {
     startEntry(pr.planet);
   } else if (pr.type === 'dock') {
@@ -608,8 +614,16 @@ const bez = (a, b, c, d, t, out) => {
   const u = 1 - t;
   return out.set(0, 0, 0).addScaledVector(a, u * u * u).addScaledVector(b, 3 * u * u * t).addScaledVector(c, 3 * u * t * t).addScaledVector(d, t * t * t);
 };
-// Thalor's ring storm: no landing until the Wayfarer has Rime Shielding (the Workshop, 300 Wayshards)
-function stormBlocks(p) { return p.data.id === 'thalor' && tier(G.upgrades, 'rime') < 1; }
+// What stops a landing until the Workshop has fitted the part: Thalor's ring storm (Rime Shielding),
+// Vireo's veil fog (the Veil Sounder). Each is 300 Wayshards. Returns the gate, or null when clear.
+const LANDING_GATES = {
+  thalor: { up: 'rime', need: 'Rime Shielding', prompt: 'RING STORM · NEEDS RIME SHIELDING', lines: ['thalor-storm-1', 'thalor-storm-2'] },
+  vireo: { up: 'sounder', need: 'a Veil Sounder', prompt: 'VEIL FOG · NEEDS A VEIL SOUNDER', lines: ['vireo-fog-1', 'vireo-fog-2'] },
+};
+function stormBlocks(p) {
+  const g = LANDING_GATES[p.data.id];
+  return g && tier(G.upgrades, g.up) < 1 ? g : null;
+}
 
 function startDocking() {
   G.state = 'docking';
@@ -859,12 +873,13 @@ function updateObjective(dt) {
   if (!left.length) { G.task = null; return; }
   const onOne = left.some((p) => G.planets.indexOf(p) === G.targetIndex);
   const tgt = G.planets[G.targetIndex];
-  if (onOne && stormBlocks(tgt)) {
-    // the way to Thalor goes through raider fights: say what it costs and how far along we are
-    const cost = UPGRADE.rime.costs[0];
+  const gate = onOne && stormBlocks(tgt);
+  if (gate) {
+    // the way down goes through raider fights: say what it costs and how far along we are
+    const cost = UPGRADE[gate.up].costs[0], part = UPGRADE[gate.up].name, world = tgt.data.name;
     G.task = G.wayshards >= cost
-      ? { label: 'BUY RIME SHIELDING AT LANTERN · THEN THALOR', key: () => 'OBJECTIVE' }
-      : { label: 'RIME SHIELDING FOR THALOR · ◆ ' + G.wayshards + ' / ' + cost + ' · FIGHT RAIDERS FOR WAYSHARDS', key: () => 'OBJECTIVE' };
+      ? { label: 'BUY ' + part + ' AT LANTERN · THEN ' + world, key: () => 'OBJECTIVE' }
+      : { label: part + ' FOR ' + world + ' · ◆ ' + G.wayshards + ' / ' + cost + ' · FIGHT RAIDERS FOR WAYSHARDS', key: () => 'OBJECTIVE' };
     return;
   }
   G.task = onOne
@@ -950,14 +965,11 @@ function step(dt) {
       const r = surface.update(dt, input, camera);
       if (r && r.type === 'orbit') leaveSurface();
       if (r && r.type === 'vault') {
+        // no card: a short title fades over the view and the fight starts at once (owner, 2026-11-21)
         sfx.engage();
-        const V = G.surfacePlanet && G.surfacePlanet.planet.data.id === 'thalor'
-          ? ['PHASE III · THALOR', 'THE VAULT WAKES', 'The Compass Trim reads the seal, and the rime over the vault splits with a sound like a bell. Light climbs out of the crack, and something climbs with it: a Warden sentinel, ringed in ice, still keeping the Rime Compass after all these years.']
-          : ['PHASE III · KESSA', 'THE VAULT OPENS', 'The door reads the Forgeplate and grinds aside. Heat rolls up out of the shaft, and something old and enormous climbs with it: the foundry guardian, still keeping the Ember Core after all these years.'];
-        showEvent(V[0], V[1], V[2], () => {
-          show('event', false); G.state = 'surface'; if (wantsMouse()) requestLock();
-          surface.wakeGuardian();
-        });
+        const thalor = G.surfacePlanet && G.surfacePlanet.planet.data.id === 'thalor';
+        surface.banner(thalor ? 'PHASE III · THALOR' : 'PHASE III · KESSA', thalor ? 'THE VAULT WAKES' : 'THE VAULT OPENS', 3.2);
+        surface.wakeGuardian();
       }
       break;
     }
@@ -1037,10 +1049,20 @@ function step(dt) {
   cockpit.update(G, dt);
 }
 
+// The title backdrop is a still of Thalor (owner, 2026-11-21). Until it loads, the live title scene shows;
+// once it is up, the 3D title scene is not drawn at all (nothing to spend on a weak laptop at the menu).
+const titleBg = { el: $('title-bg'), ready: false, on: false };
+{
+  const img = new Image();
+  img.onload = () => { titleBg.el.style.setProperty('--title-img', 'url("' + img.src + '")'); titleBg.ready = true; };
+  img.src = 'title/thalor.jpg';
+}
 function draw() {
+  const bgOn = titleBg.ready && inTitle();
+  if (bgOn !== titleBg.on) { titleBg.on = bgOn; titleBg.el.classList.toggle('on', bgOn); }
   post.setMode(G.inSurface ? 'surface' : G.inAssault ? 'assault' : (inTitle() || hub.visible) ? 'title' : 'flight');
   const inCockpit = !G.inSurface && !G.inAssault && !inTitle() && !hub.visible;
-  post.render(G.time, inCockpit ? (ship.cruise === 2 ? 1 : ship.cruise === 1 ? 0.35 : ship.boosting ? 0.6 : 0) : 0, lastDt);
+  if (!bgOn) post.render(G.time, inCockpit ? (ship.cruise === 2 ? 1 : ship.cruise === 1 ? 0.35 : ship.boosting ? 0.6 : 0) : 0, lastDt);
   renderer.setRenderTarget(null);
   if (!inTitle() && !hub.visible) hud.draw(G, camera); else hudCtx.clearRect(0, 0, hudCtx.canvas.width, hudCtx.canvas.height);
   const hudHidden = hub.visible; if (hudHidden !== G.hudHidden) { G.hudHidden = hudHidden; $('hud').style.visibility = hudHidden ? 'hidden' : ''; } // docked: the canopy HUD has nothing to show

@@ -106,6 +106,7 @@ export function createHub(ctx) {
     sfx.buy();
     ctx.applyUpgrades();
     if (u.id === 'rime') { story.flush(); story.line('hub-rime'); }
+    else if (u.id === 'sounder') { story.flush(); story.line('hub-sounder'); }
     else if (!story.busy) story.line(buyBark++ % 2 ? 'hub-buy-2' : 'hub-buy-1');
     ctx.autosave(true);
     shopMenu.render();

@@ -17,7 +17,8 @@
 | 6a | Thalor: ring-storm gate (Rime Shielding, 300 Wayshards), the surface (snow shelves, slick sea ice, rings in the sky, snow), drive to the vault | Done. Owner 2026-11-21: 300 is right ("required me to encounter two raider fights"), Thalor "looks great", ice could be more slippery (ICE_GRIP 0.2 -> 0.1) |
 | 6b | Thalor: Rime Spire + Compass Trim, the ice maze and its whiteout, Thalor creatures (rime crawlers, shardbacks) | Done. Owner 2026-11-21: ice handling "perfect" (after nitro and rear-drive cookies); shardback damage and health "just right", wants more creatures (done); the maze is fine as an obstacle |
 | 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest.** Owner tested a first version and asked for fixes (all done, untested by owner): creatures stand on the sea ice, the fight camera stays inside the arena, the maze sinks after the kill, memories are voiced (no card) |
-| — | Rover sound: ElevenLabs motor and tyre loops | **Built 2026-11-21, owner has not heard it yet** |
+| — | Rover sound: ElevenLabs motor and tyre loops | Done. Owner 2026-11-21: "I have tested the new sounds of the rover and it is good" |
+| 7a | Vireo: veil-fog gate (Veil Sounder, 300 Wayshards), the surface (mesas over a violet fog sea, land bridges, floating rock, light gravity), haul-back from the veil, drive to the vault | **Built 2026-11-21, bot-tested headless, not committed or pushed, owner has not played it.** Owner said "Go" to: low gravity, a 300-shard gate |
 
 Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
@@ -36,6 +37,52 @@ Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop 
    - Fight length and damage. With the bot standing in for good shooting, it was about 40 s. A bot that never dodges took 16–32 hull per cycle, mostly from spikes.
    - Does the TRUTH memory land?
    - Next: Vireo (step 6, the third world). The objective sends you home to Lantern for Ilsa's r2 briefing first.
+
+### Title backdrop (owner, 2026-11-21: "a screen shot of the wayfarer and the rover parked on Thalor with the sun glinting off the ice ... with room for the menu buttons")
+- **The image:** `public/title/thalor.jpg` (2542×1344, 130 KB) is a staged in-game capture. The Wayfarer and rover are parked on a Thalor shelf at (-240, -144), looking toward the low sun across the sea ice.
+  - The vehicles sit on the right; the left 40% is snow and sky for the menu.
+  - For the shot only: ice roughness 0.1 (a tight glint streak instead of a bloomed ball), bloom 0.22, the rover headlight off, and the fauna, beacon and nearby boulders hidden.
+  - To retake it, use the instructions at the top of `tools/test/title-shot.example.mjs`.
+- **In the game:** `#title-bg` (index.html, style.css) shows it whenever `inTitle()`, with a slow 48 s zoom (off for reduced motion). Narrow screens crop from the left.
+  - While it shows, `draw()` skips the 3D title render, which also saves the weak laptop work at the menu. The live Lantern title scene only shows until the image loads.
+
+### Owner playtest fixes (2026-11-21, Kessa run and the trip home)
+
+- **NEW OBJECTIVE text ran past its box:** the surface flash (and the vault banner) now draw through `panel()` in surface.js. It shrinks the line to fit and grows the box to hold it, up to 92% of the width. WREN's `#memory` banner (style.css) is now `width: max-content; max-width: 92vw`.
+- **"Ablative" on the Forgeplate card:** now reads "Warden heat plating". (The Workshop upgrade is still called ABLATIVE PLATING. Ask whether to rename it.)
+- **Memory fragments are voiced, not written on the pickup cards:**
+  - Forgeplate: `frag-forge-1/2` (WREN) play 5 s into the drive back to the vault.
+  - Compass Trim: `frag-trim-1` (Warden, Katherine: "Follow the cold") and `frag-trim-2` (WREN) play 6 s after.
+  - Mechanism: `S.frag` in surface.js and the `lines` hook in main.js. `S.time` stops while a card is up.
+- **Objective `cross`** reads "Return to the vault". The vault prompt reads **OPEN THE VAULT** (Kessa and Thalor).
+- **No vault card:** THE VAULT OPENS / THE VAULT WAKES is now a 3.2 s banner (`surface.banner`) that fades by itself. The fight starts at once, and the NEW OBJECTIVE flash waits until the banner has gone.
+- **Cruise into Lantern overshot:** after a cruise drop the velocity only followed the falling engine speed at grip 2.4, so the ship coasted about 5.3 km and still had full throttle. A Lantern drop now sets `ship.brakeT = 3` (a 4200 u/s² brake, grip 7) and throttle 0.2.
+  - Measured: it drops at about 4,400 from Lantern and settles at about 2,520 at 46 u/s, with the whole station in view.
+  - Drops for other reasons (raiders, gravity wells) are unchanged.
+
+### How 7a works (Vireo: the gate and the surface, owner 2026-11-21: "Go")
+- **The gate:** the landing gates are now one table, `LANDING_GATES` in main.js: `{ up, need, prompt, lines }` per world. `stormBlocks(p)` returns the gate or null.
+  - Vireo needs the Workshop's **VEIL SOUNDER** (`sounder` in workshop.js, one tier, 300 Wayshards).
+  - The prompt reads VEIL FOG · NEEDS A VEIL SOUNDER. On the first approach WREN says `vireo-fog-1` and `vireo-fog-2`. Ilsa says `hub-sounder` when it's bought (hub.js).
+  - The objective while the nav is on a gated world is built from the table: `<PART> FOR <WORLD> · ◆ n / 300 · FIGHT RAIDERS FOR WAYSHARDS`.
+- **The surface** (`SURFACES.vireo` in terrain.js):
+  - Flat-topped mesas (tops about 20–34 m) with sheer cliffs, over chasms about 40 m deep.
+  - A mesa mask is raised round the pad and the vault so both sit on rock. About 56% of the map is rock.
+  - Two causeways are the land bridges: pad → vault (about 640 m, a 34 s drive for the bot at 60–70 km/h), and pad → the far south-east mesas, for 7b's armory.
+  - `lava` (2) is the top of the **veil**, a fog sea. `makeVeil` in surface.js draws a swirling translucent sheet over a darker one 12 m down.
+  - The veil is not a floor: `floorY()` is -Infinity for `hazard: 'veil'`, so wheels fall to the chasm bed.
+- **The haul-back** (`veilStep`):
+  - Below `lava - 1.5`, the fog slows the fall, the view goes violet with IN THE VEIL · HAULING BACK, and after 1 s WREN pulls the rover back. It costs 12 hull.
+  - The rover lands on a safe point from about 1.2 s earlier. Safe points are sampled every 0.4 s, and only when nothing within 8 m is below the veil.
+  - The camera stays at least 4 m above the veil, so you watch the rover sink.
+- **Light gravity:** `def.gravity` 8 (the default is 14). `def.gripK` 1.45 pads the tyre limit back up, because grip scales with load.
+  - Off a cliff, the bot hung about 3 s before reaching the veil. On the pad → vault bridge route it stayed grounded throughout.
+- **Floating rock** (`makeIslands`): 70 instanced islands with flat tops, pointed undersides and three glowing violet crystals each. They bob and turn slowly. Scenery only: no collision, no shadows.
+- **Look:** violet sky and fog, `weather: 'motes'` (slow drifting violet specks), violet beacon and glyph.
+- **Lines** (subtitles, not voiced): landing, the vault direction, the first long hang, the first land bridge, the vault ("its door is a curtain of the veil, and it pushes back").
+- **At the vault:** within 45 m the objective becomes `scouted` (Vault found · the way through the veil is the next build step).
+- **Not yet:** the Hollowed (creatures), Phase Blink and the veil gates (7b), the Hollowed Matriarch and the Veil Lens (7c), and FATE's voiced lines.
+- **Tests:** a test script drives the pad → vault bridge with a path-following bot, then drives off a cliff to check the haul-back. Note: tests must wait about 9.5 s after Enter for the intro to finish.
 
 ### How 6c works (Sentinel Prime)
 - **The fight** (`src/sentinel.js`, same interface as guardian.js):
@@ -309,7 +356,7 @@ Owner's notes: "The ice is slippery enough, but we need to work on the way the r
 ## Known issues / loose ends
 
 - Commits go to JSgames main together with the built `dist/` (that is the deploy), and only when the owner asks.
-- Thalor and Vireo landings still show the Phase III placeholder card (no surfaces yet).
+- Every world now has a surface; the Phase III placeholder card in main.js `updateEntry` is unused unless a planet lacks a `SURFACES` entry.
 - Mouse feel for Phase I flight has never been tested by the owner (they played on gamepad/touchpad).
 - The rover HUD's "THREAT"/raider systems do not appear on the surface (no raiders on planets yet).
 - `docs/GAMEPLAN.md` is the source of truth for the plan; keep it updated as decisions change.

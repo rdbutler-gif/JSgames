@@ -69,7 +69,9 @@ export function updateShip(s, inp, dt, opts = {}) {
   if (s.boosting) target = FLIGHT.boostSpeed;
   if (s.cruise === 2) target = FLIGHT.cruiseSpeed;
   const up = s.cruise === 2 ? 1500 : s.boosting ? 320 : 120;
-  const down = s.speed > FLIGHT.boostSpeed ? 2600 : 170;
+  // a hard brake (the Lantern cruise drop): sheds cruise speed fast and the velocity follows it closely
+  s.brakeT = Math.max(0, (s.brakeT || 0) - dt);
+  const down = s.brakeT > 0 ? 4200 : s.speed > FLIGHT.boostSpeed ? 2600 : 170;
   const prev = s.speed;
   if (s.speed < target) s.speed = Math.min(target, s.speed + up * dt);
   else s.speed = Math.max(target, s.speed - down * dt);
@@ -78,7 +80,7 @@ export function updateShip(s, inp, dt, opts = {}) {
   // velocity follows the nose with some slip
   fwd.copy(FWD).applyQuaternion(s.quat);
   desired.copy(fwd).multiplyScalar(s.speed);
-  const grip = s.cruise === 2 ? 7 : 2.4;
+  const grip = s.cruise === 2 || s.brakeT > 0 ? 7 : 2.4;
   s.vel.lerp(desired, 1 - Math.exp(-grip * dt));
   s.pos.addScaledVector(s.vel, dt);
 

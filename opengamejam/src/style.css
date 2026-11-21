@@ -18,6 +18,14 @@ body { user-select: none; -webkit-user-select: none; }
 .overlay.show { display: flex; }
 #pause, #controls, #event { background: rgba(2, 4, 10, 0.55); backdrop-filter: blur(3px); }
 
+/* the title backdrop: a still of the Wayfarer and the rover on Thalor (tools: title-shot), drifting slowly.
+   The vehicles sit right of centre, so narrow screens crop from the left and keep them in view. */
+#title-bg { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.8s; overflow: hidden; }
+#title-bg.on { opacity: 1; }
+#title-bg::before { content: ''; position: absolute; inset: 0; background-image: var(--title-img); background-size: cover; background-position: 74% 60%;
+  transform-origin: 74% 62%; animation: title-drift 48s ease-in-out infinite alternate; }
+@keyframes title-drift { from { transform: scale(1); } to { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { #title-bg::before { animation: none; } }
 #title { justify-content: flex-start; background: linear-gradient(90deg, rgba(2,4,10,0.78) 0%, rgba(2,4,10,0.45) 34%, rgba(2,4,10,0) 58%); }
 .title-wrap { text-align: left; margin-left: max(16px, 7vw); max-width: min(560px, 92vw); }
 .title-wrap h1 { font-size: clamp(44px, 6.4vw, 104px); line-height: 0.98; }
@@ -109,7 +117,7 @@ dd { margin: 0; color: #cfe6ef; }
 #airclock.side { left: auto; right: 16px; transform: none; top: 12px; font-size: 13px; }
 
 /* WREN's memory banner: a short title while the memory plays as voice */
-#memory { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); pointer-events: none; text-align: center;
+#memory { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); pointer-events: none; text-align: center; width: max-content; max-width: 92vw; box-sizing: border-box;
   opacity: 0; transition: opacity 0.6s; padding: 12px 26px; background: rgba(6, 10, 22, 0.7); border: 1px solid rgba(205, 185, 255, 0.4); }
 #memory.on { opacity: 1; }
 #memory span { display: block; font: 600 13px 'Chakra Petch'; letter-spacing: 0.3em; color: #ffd36a; margin-bottom: 4px; }
