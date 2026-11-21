@@ -1291,7 +1291,7 @@ export function createSurface(hooks) {
     T.lavaGlow.intensity = nearLava * 26;
 
     // ----- camera: chase behind the heading, orbit with right stick or mouse -----
-    const inv = settings.invertY ? -1 : 1;
+    const inv = settings.invertRover ? -1 : 1;
     const heading = Math.atan2(-fwd.x, -fwd.z);
     if (S.fight && S.lastHeading !== undefined) { let dh = heading - S.lastHeading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); cam.yaw -= dh; }
     S.lastHeading = heading;

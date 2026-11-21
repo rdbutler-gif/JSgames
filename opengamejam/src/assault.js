@@ -490,7 +490,7 @@ export function createAssault(scene, camera, hooks) {
       const accel = 1 - Math.exp(-11 * dt);
       player.vel.x += (input.moveX * 100 - player.vel.x) * accel;
       player.vel.y += (input.moveY * 80 - player.vel.y) * accel;
-      const inv = settings.invertY ? -1 : 1;
+      const inv = settings.invertFight ? -1 : 1;
       player.pos.x += input.mouseDX * 0.085;
       player.pos.y += input.mouseDY * 0.085 * inv; // same sense as the stick here
       // dodge roll: a burst sideways with a short window where nothing hits you

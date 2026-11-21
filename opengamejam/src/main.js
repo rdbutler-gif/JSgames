@@ -255,7 +255,9 @@ const pauseMenu = createMenu($('pause-menu'), () => [
   { label: 'QUIT TO TITLE', act: toTitle },
 ]);
 const settingsMenu = createMenu($('settings-menu'), () => [
-  { label: 'INVERT Y', value: () => onOff(settings.invertY), adjust: () => { settings.invertY = !settings.invertY; saveSettings(); } },
+  { label: 'INVERT Y · SPACE FLIGHT', value: () => onOff(settings.invertFlight), adjust: () => { settings.invertFlight = !settings.invertFlight; saveSettings(); } },
+  { label: 'INVERT Y · RAIDER FIGHTS', value: () => onOff(settings.invertFight), adjust: () => { settings.invertFight = !settings.invertFight; saveSettings(); } },
+  { label: 'INVERT Y · ROVER TURRET', value: () => onOff(settings.invertRover), adjust: () => { settings.invertRover = !settings.invertRover; saveSettings(); } },
   { label: 'MOUSE MODE', value: () => (settings.mouseMode === 'stick' ? 'VIRTUAL STICK' : 'DIRECT'), adjust: () => { settings.mouseMode = settings.mouseMode === 'stick' ? 'direct' : 'stick'; saveSettings(); } },
   { label: 'MOUSE SENSITIVITY', value: () => pct(settings.mouseSens), adjust: (d) => { settings.mouseSens = THREE.MathUtils.clamp(+(settings.mouseSens + d * 0.1).toFixed(2), 0.3, 2.5); saveSettings(); } },
   { label: 'STICK SENSITIVITY', value: () => pct(settings.stickSens), adjust: (d) => { settings.stickSens = THREE.MathUtils.clamp(+(settings.stickSens + d * 0.1).toFixed(2), 0.4, 2); saveSettings(); } },

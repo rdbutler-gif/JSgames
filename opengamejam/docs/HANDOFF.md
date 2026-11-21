@@ -28,6 +28,9 @@ Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop ex
    - Are there enough crawlers and shardbacks?
    - Next: 6c, the Sentinel Prime guardian in the maze's centre, the Rime Compass relic and WREN memory 2 (Truth).
 
+### Invert Y per mode (owner, 2026-11-21)
+- Settings has three toggles: INVERT Y · SPACE FLIGHT (`settings.invertFlight`, input.js `input.pitch`), RAIDER FIGHTS (`invertFight`, input.js `input.moveY` and the mouse in assault.js) and ROVER TURRET (`invertRover`, the surface camera and aim in surface.js). An old saved single `invertY` carries over to all three on load. The fight's base sense is still the opposite of flight's (owner's call 2026-11-18); each toggle flips its own mode from there.
+
 ### How 6b works (Thalor, after the gate)
 - **The flow:**
   1. Land, and drive for the vault beacon.

@@ -164,8 +164,7 @@ export function pollInput(dt) {
     input.padName = gp.id;
   }
 
-  const inv = settings.invertY ? -1 : 1;
-  input.pitch = clamp(pitchUp * inv, -1.5, 1.5);
+  input.pitch = clamp(pitchUp * (settings.invertFlight ? -1 : 1), -1.5, 1.5);
   input.yaw = clamp(yaw, -1.5, 1.5);
   input.roll = clamp(roll, -1, 1);
   input.throttleRate = clamp(thr, -1, 1);
@@ -179,7 +178,7 @@ export function pollInput(dt) {
   input.special = special;
   input.drive = clamp(drive, -1, 1);
   input.moveX = clamp(mvx, -1, 1);
-  input.moveY = clamp((mvy + padMvy) * inv, -1, 1);
+  input.moveY = clamp((mvy + padMvy) * (settings.invertFight ? -1 : 1), -1, 1);
 }
 
 export function endFrame() { input.pressed.clear(); }
