@@ -22,11 +22,24 @@ Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop ex
 ## First thing next session
 
 0. **Ask the owner to play 6b (Thalor).** Owner request (2026-11-21): "Continue with the next steps for the Thalor adventure. Thalor needs its own types of creatures also." Ask:
-   - Is the ice slippery enough now (`ICE_GRIP` 0.1)?
+   - Ice: owner says slippery enough (2026-11-21). Now: do the cookies feel right, and is the nitro too strong?
    - Is the maze fun? Is it too long? The bot took 56 s at 9 m/s.
    - Do the shardbacks feel fair? Charge 23 m/s, ram 11 and a knockback, then a 1.8 s stun. Two hits in a row took 22 hull in the bot test.
    - Are there enough crawlers and shardbacks?
    - Next: 6c, the Sentinel Prime guardian in the maze's centre, the Rime Compass relic and WREN memory 2 (Truth).
+
+### Rover handling, nitro and creature numbers (owner, 2026-11-21)
+Owner's notes: "The ice is slippery enough, but we need to work on the way the rover handles. It is very underpowered, but that's ok. We can add a nitro boost with a cooldown timer... While driving on ice, if the rear wheels did the work, it would spin out and do cookies like a real car on ice." The shardbacks are "just right in damage and health, but there needs to be more of them and more creatures overall on both planets." The maze is "an obstacle to drive through"; keep calling it a maze.
+- **Nitro** (`NITRO` in surface.js): boost (Shift / pad B, the same input as flight boost) fires it when charged.
+  - It burns for 2.5 s, then the 8 s cooldown starts.
+  - It's a thrust of 14 on the chassis (`force` along `fwd`, fading toward 1.8 × top speed), plus ×1.5 engine. Measured on open ground: 7 → 31 m/s in under 2 s (that was with an earlier thrust of 17).
+  - There are twin exhaust flames, +8° FOV, `sfx.nitro`, and a NITRO bar above the lance bar (READY / BURNING / CHARGING). The controls hint mentions it.
+- **Ice handling:**
+  - On ice the engine drives the rear wheels only (`share`).
+  - Ice limits the forward and side grip separately: rear forward `ICE_DRIVE` 0.4, rear side `ICE_GRIP` 0.1 (and ×0.4 at full throttle: wheelspin), front `ICE_FRONT` 0.14.
+  - Power oversteer: with both rear wheels on ice, throttle plus steering adds yaw torque (`ICE_SPIN` 6) up to `ICE_SPIN_MAX` 2.8 rad/s.
+  - Measured: full throttle and full lock on ice turns the body 422° in 4 s with 54° slip (cookies). Snow and Kessa ground are unchanged (192°, 5° slip).
+- **Creature counts:** `N_SKITTER` 34 (skitters / crawlers, pad herd 10). Kessa `N_WILD_PACKS` 10 (55 hounds built, ~50 placed). `THALOR_PACKS` gives 29 shardbacks.
 
 ### Invert Y per mode (owner, 2026-11-21)
 - Settings has three toggles: INVERT Y · SPACE FLIGHT (`settings.invertFlight`, input.js `input.pitch`), RAIDER FIGHTS (`invertFight`, input.js `input.moveY` and the mouse in assault.js) and ROVER TURRET (`invertRover`, the surface camera and aim in surface.js). An old saved single `invertY` carries over to all three on load. The fight's base sense is still the opposite of flight's (owner's call 2026-11-18); each toggle flips its own mode from there.

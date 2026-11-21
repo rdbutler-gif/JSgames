@@ -39,7 +39,16 @@ const TURRET_POS = new THREE.Vector3(0, 0.6, 0.15); // seated on the generated c
 // The crosshair sits above screen centre so the rover never covers it; the aim ray goes through it.
 const AIM_NDC_Y = 0.2;
 const ARENA_R = 64;
-const ICE_GRIP = 0.1; // share of normal tyre grip on Thalor's sea ice
+const ICE_GRIP = 0.1; // share of normal tyre grip on Thalor's sea ice (rear tyres; the fronts keep a little more)
+const ICE_FRONT = 0.14;
+// Nitro (owner, 2026-11-21): a short rocket push with a cooldown. It is a force on the chassis, not on the
+// tyres, so it works on ice too (and spins you if you are sideways).
+const NITRO = { dur: 2.5, cd: 8, thrust: 14, topK: 1.8, engineK: 1.5 };
+// on ice the tyres' forward and side grip are limited separately: spinning rear tyres still push
+// (ICE_DRIVE of normal traction) while their side grip collapses, which swings the tail out
+const ICE_DRIVE = 0.4;
+// power oversteer on ice: throttle with steering swings the tail out (cookies), up to ICE_SPIN_MAX rad/s of yaw
+const ICE_SPIN = 6, ICE_SPIN_MAX = 2.8;
 let shadowSize = 2048; // set by the graphics quality level
 // Special weapons: one is selected at a time (held on right mouse, Q or LB). Only the heat lance exists so far.
 // The lance burns whatever the beam touches, harder the longer it stays on one target, and overheats.
@@ -884,7 +893,7 @@ export function createSurface(hooks) {
     const steerMax = THREE.MathUtils.lerp(R.steerMax, R.steerFast, clamp(Math.abs(vF) / R.topSpeed, 0, 1));
     rover.steer += (-inp.moveX * steerMax - rover.steer) * Math.min(1, R.steerRate * h);
 
-    let grounded = 0;
+    let grounded = 0, rearIce = 0;
     const drive = inp.drive;
     for (let w = 0; w < 4; w++) {
       const m = MOUNTS[w];
@@ -920,25 +929,36 @@ export function createSurface(hooks) {
       ws.crossVectors(wf, nrm).normalize();
       const vl = pv.dot(wf), vs = pv.dot(ws);
       const rearHand = inp.handbrake && !FRONT[w];
+      // sea ice: a fraction of the grip, so the rover slides and needs room to stop and turn
+      const onIce = T.def.hazard === 'ice' && T.terrain.heightAt(cp.x, cp.z) < T.def.lava + 0.02;
+      const iceK = onIce ? (FRONT[w] ? ICE_FRONT : ICE_GRIP) : 1;
+      // drive split: all four on solid ground; on ice the rear wheels do the work (so the tail steps out)
+      const share = onIce ? (FRONT[w] ? 0 : 0.5) : 0.25;
+      const nitroK = S.nitroT > 0 ? NITRO.engineK : 1;
       let Fl = 0;
       if (drive > 0.05) {
-        const top = R.topSpeed * (T.boost || 1);
+        const top = R.topSpeed * (T.boost || 1) * (S.nitroT > 0 ? NITRO.topK : 1);
         if (vF < -1) Fl = R.brake / 4 * drive; // braking out of reverse
-        else Fl = R.engine / 4 * drive * clamp(1 - vF / top, 0, 1);
+        else Fl = R.engine * share * nitroK * drive * clamp(1 - vF / top, 0, 1);
       } else if (drive < -0.05) {
         if (vF > 1) Fl = -R.brake / 4 * -drive;
-        else Fl = -R.engine / 4 * -drive * 0.7 * clamp(1 + vF / R.reverseTop, 0, 1);
+        else Fl = -R.engine * share * -drive * 0.7 * clamp(1 + vF / R.reverseTop, 0, 1);
       }
       Fl -= vl * R.roll;
       if (rearHand) Fl -= Math.sign(vl) * Math.min(Math.abs(vl) * 6, R.brake / 4);
-      // sea ice: a fraction of the grip, so the rover slides and needs room to stop and turn
-      const iceK = T.def.hazard === 'ice' && T.terrain.heightAt(cp.x, cp.z) < T.def.lava + 0.02 ? ICE_GRIP : 1;
-      if (iceK < 1) { rover.onIce = 0.25; Fl += vl * R.roll * 0.7; } // less rolling drag on ice too
-      let Fy = -vs * R.grip * (rearHand ? 0.3 : 1) * iceK;
+      if (onIce) { rover.onIce = 0.25; Fl += vl * R.roll * 0.7; if (!FRONT[w]) rearIce++; } // less rolling drag on ice too
+      // throttle on ice spins the rear tyres: they lose most of their side grip, and round she goes
+      const spin = onIce && !FRONT[w] && Math.abs(drive) > 0.05 ? 1 - 0.6 * Math.abs(drive) : 1;
+      let Fy = -vs * R.grip * (rearHand ? 0.3 : 1) * iceK * spin;
       // friction circle: total tyre force limited by load
-      const lim = R.mu * Fs * (rearHand ? 0.55 : 1) * iceK;
-      const mag = Math.hypot(Fl, Fy);
-      if (mag > lim) { Fl *= lim / mag; Fy *= lim / mag; }
+      if (onIce) {
+        const limL = R.mu * Fs * (FRONT[w] ? ICE_FRONT : ICE_DRIVE), limS = R.mu * Fs * iceK * spin * (rearHand ? 0.55 : 1);
+        Fl = clamp(Fl, -limL, limL); Fy = clamp(Fy, -limS, limS);
+      } else {
+        const lim = R.mu * Fs * (rearHand ? 0.55 : 1);
+        const mag = Math.hypot(Fl, Fy);
+        if (mag > lim) { Fl *= lim / mag; Fy *= lim / mag; }
+      }
       fc.copy(wf).multiplyScalar(Fl).addScaledVector(ws, Fy);
       // apply tyre forces closer to the centre of mass so it carves instead of tipping
       v3.copy(rel).addScaledVector(up, -rel.dot(up) * 0.92);
@@ -982,6 +1002,14 @@ export function createSurface(hooks) {
       torque.addScaledVector(right, -inp.drive * R.airTorque);
       torque.addScaledVector(UP, -inp.moveX * R.airTorque * 0.8); // steer = yaw in the air, never roll
     }
+
+    // power oversteer: both rear wheels on ice, throttle and lock -> the tail comes round
+    if (rearIce === 2 && drive > 0.2 && Math.abs(inp.moveX) > 0.2) {
+      const yawRate = rover.ang.dot(up), want = -Math.sign(inp.moveX);
+      if (yawRate * want < ICE_SPIN_MAX) torque.addScaledVector(up, want * ICE_SPIN * drive * Math.abs(inp.moveX));
+    }
+    // nitro: a straight push along the chassis, fading toward its own top speed
+    if (S.nitroT > 0) force.addScaledVector(fwd, NITRO.thrust * clamp(1 - vF / (R.topSpeed * NITRO.topK), 0, 1));
 
     // rocks: push the chassis out of boulders
     for (const r of T.rocks.list) {
@@ -1198,6 +1226,14 @@ export function createSurface(hooks) {
     const steps = 4, h = dt / steps;
     let grounded = 0;
     rover.lavaT = Math.max(0, rover.lavaT - dt);
+    // nitro: press boost (Shift / pad B) when it is charged
+    S.nitroT = Math.max(0, (S.nitroT || 0) - dt); S.nitroCd = Math.max(0, (S.nitroCd || 0) - dt);
+    if (inp.boost && !S.boostPrev && S.nitroCd <= 0) {
+      S.nitroT = NITRO.dur; S.nitroCd = NITRO.dur + NITRO.cd; S.shake = Math.max(S.shake, 0.5);
+      sfx.nitro && sfx.nitro();
+      say1('nitro', 'Nitro. It recharges in a few seconds. Good for getting out of trouble.');
+    } else if (inp.boost && !S.boostPrev && S.nitroCd > 0) sfx.denied && sfx.denied();
+    S.boostPrev = inp.boost;
     rover.onIce = Math.max(0, (rover.onIce || 0) - dt);
     if (rover.onIce > 0) say1('ice', 'Sea ice. There is almost no grip out here. Ease off, and turn early.');
     for (let i = 0; i < steps; i++) grounded = physicsStep(h, inp);
@@ -1281,6 +1317,11 @@ export function createSurface(hooks) {
     }
     T.embers.update(dt, rover.pos, S.time);
     T.fx.update(dt); // sparks, fire and dust (was never stepped, so surface particles never showed)
+    if (S.nitroT > 0) for (const sx of [-0.55, 0.55]) { // twin exhaust flames off the tail
+      v2.set(sx, 0.25, 2.0).applyQuaternion(rover.quat).add(rover.pos);
+      v3.set(0, 0, 1).applyQuaternion(rover.quat).multiplyScalar(9).add(rover.vel);
+      T.fx.emit(v2, 3, { raw: true, speed: 2, life: 0.22, size: 1.1, colors: [[1.2, 2.2, 3.2], [2.6, 1.6, 0.6], [3, 2.6, 1.6]], drag: 3, dir: v3 });
+    }
     T.glyph.rotation.z += dt * 0.3;
     T.sun.position.copy(rover.pos).addScaledVector(v1.set(...d.sky.sunDir).normalize(), 120);
     T.sun.target.position.copy(rover.pos);
@@ -1317,7 +1358,7 @@ export function createSurface(hooks) {
     if (S.shake > 0) camera.position.add(v3.set(Math.random() - 0.5, Math.random() - 0.5, 0).multiplyScalar(S.shake * 0.3));
     camera.up.set(0, 1, 0);
     camera.lookAt(cam.look);
-    const fov = 68 + clamp(Math.abs(rover.speed) - 15, 0, 10) * 0.6;
+    const fov = 68 + clamp(Math.abs(rover.speed) - 15, 0, 10) * 0.6 + (S.nitroT > 0 ? 8 : 0);
     if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
     camera.updateMatrixWorld();
     updateAim(camera, inp.device);
@@ -1456,6 +1497,15 @@ export function createSurface(hooks) {
       const padL = device === 'gamepad';
       text(ctx, SPECIALS[S.special].name + (padL ? ' · LB' : ' · RMB / Q'), bx, ly - 12, 12, lc, 0.85, 'left');
       text(ctx, S.over ? 'OVERHEAT' : S.lanceOn ? 'FIRING' : 'READY', bx + bw, ly - 12, 12, lc, S.over ? 0.6 + 0.4 * Math.sin(S.time * 14) : 0.85, 'right');
+      // nitro, above the lance: drains while it burns, refills over the cooldown
+      const ny = ly - 38, on = S.nitroT > 0, ready = !on && (S.nitroCd || 0) <= 0;
+      const nf = on ? S.nitroT / NITRO.dur : ready ? 1 : 1 - (S.nitroCd || 0) / NITRO.cd;
+      const nc = on ? '140,230,255' : ready ? CYAN : '120,150,170';
+      ctx.fillStyle = 'rgba(6,12,22,0.72)'; ctx.fillRect(bx - 4, ny - 4, bw + 8, 14);
+      ctx.fillStyle = 'rgba(' + nc + ',0.2)'; ctx.fillRect(bx, ny, bw, 6);
+      ctx.fillStyle = 'rgba(' + nc + ',0.95)'; ctx.fillRect(bx, ny, bw * clamp(nf, 0, 1), 6);
+      text(ctx, 'NITRO' + (padL ? ' · B' : ' · SHIFT'), bx, ny - 12, 12, nc, 0.85, 'left');
+      text(ctx, on ? 'BURNING' : ready ? 'READY' : 'CHARGING', bx + bw, ny - 12, 12, nc, ready ? 0.6 + 0.4 * Math.abs(Math.sin(S.time * 3)) : 0.85, 'right');
     }
     if (rover.lavaT > 0 && !(S.heatWall > 0)) text(ctx, 'HEAT CRITICAL', W / 2, H * 0.25, 26 * sc + 10, RED, 0.6 + 0.4 * Math.sin(S.time * 14), 'center', 700);
 
@@ -1480,7 +1530,7 @@ export function createSurface(hooks) {
         ? (pad ? 'RB fire turret · RIGHT STICK aim · the crosshair locks on when close' : 'LEFT CLICK or E fire turret · MOUSE aim · the crosshair locks on when close')
         : S.hintMode === 'gun'
         ? (pad ? 'RB fire turret · LB heat lance · RIGHT STICK aim · keep driving' : 'LEFT CLICK or E turret · RIGHT CLICK or Q heat lance · MOUSE aim')
-        : (pad ? 'RT drive · LT brake/reverse · LEFT STICK steer · X handbrake · RIGHT STICK camera · RB turret · LB lance' : 'W/S drive and brake · A/D steer · SPACE handbrake · MOUSE camera · CLICK turret · RIGHT CLICK lance');
+        : (pad ? 'RT drive · LT brake/reverse · LEFT STICK steer · X handbrake · B nitro · RIGHT STICK camera · RB turret · LB lance' : 'W/S drive and brake · A/D steer · SPACE handbrake · SHIFT nitro · MOUSE camera · CLICK turret · RIGHT CLICK lance');
       text(ctx, txt, W / 2, H * 0.6, 15 * sc + 5, CYAN, Math.min(1, S.hint) * 0.9);
     }
   }

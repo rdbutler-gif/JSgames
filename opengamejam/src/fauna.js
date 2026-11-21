@@ -77,17 +77,17 @@ function makeShardback(mats) {
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return { g, torso, head, jaw, legs, glow };
 }
-const N_SKITTER = 20, N_PAD_HERD = 9;
+const N_SKITTER = 34, N_PAD_HERD = 10; // owner 2026-11-21: more creatures on both planets
 const PACKS = [{ t: 150, n: 2 }, { t: 260, n: 3 }, { t: 370, n: 2 }, { t: 470, n: 3 }]; // metres along each causeway
 const N_HOUND = PACKS.reduce((a, p) => a + p.n, 0);
 // extra packs (owner, 2026-11-19): two guarding the Forge Gate apron, and a few out in open country
 const FORGE_PACKS = [{ back: 15, side: -6, n: 3 }, { back: 22, side: 6, n: 2 }];
 // packs on the canyon ridge road itself, between the geysers (t = metres along the canyon; vents at 170, 240, ... 545)
 const RIDGE_PACKS = [{ t: 80, n: 2 }, { t: 205, n: 3 }, { t: 338, n: 2 }, { t: 462, n: 3 }];
-const N_WILD_PACKS = 5, N_EXTRA = FORGE_PACKS.reduce((a, p) => a + p.n, 0) + RIDGE_PACKS.reduce((a, p) => a + p.n, 0) + N_WILD_PACKS * 3;
+const N_WILD_PACKS = 10, N_EXTRA = FORGE_PACKS.reduce((a, p) => a + p.n, 0) + RIDGE_PACKS.reduce((a, p) => a + p.n, 0) + N_WILD_PACKS * 3;
 const SPAWN_MIN = 75, SPAWN_MAX = 150, DESPAWN = 230;
 // Thalor's shardback packs (sizes); placed like Kessa's wild packs, plus two guarding the Rime Spire (def.spire)
-const THALOR_PACKS = [2, 2, 1, 2, 1, 2, 2, 2];
+const THALOR_PACKS = [2, 2, 2, 3, 2, 2, 3, 2, 2, 3, 2, 2, 2]; // first pack guards the spire
 const DRAW_R = 200, SHADOW_R = 70; // creatures are hidden past DRAW_R and cast shadows only inside SHADOW_R
 
 // Cinder skitter: a basalt-shelled beetle about a metre long, glowing only along its shell seams.
