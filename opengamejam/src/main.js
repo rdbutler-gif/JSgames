@@ -10,7 +10,7 @@ import * as THREE from 'three';
 
 import { settings, saveSettings } from './settings.js';
 import { input, initInput, pollInput, endFrame, requestLock, releaseLock } from './input.js';
-import { initAudio, applyVolume, updateEngine, sfx, loadVoice, playVoice, voiceState } from './audio.js';
+import { initAudio, applyVolume, updateEngine, updateRover, stopRover, roverDebug, sfx, loadVoice, playVoice, voiceState } from './audio.js';
 import { createWorld } from './world.js';
 import { createSquads } from './fighters.js';
 import { createShip, updateShip, FLIGHT } from './ship.js';
@@ -1001,8 +1001,15 @@ function step(dt) {
   squads.update(dt);
   if (G.inSurface) {
     const rv = surface.rover;
-    updateEngine({ cruise: 0, spool: 0, boosting: false, throttle: Math.min(1, Math.abs(input.drive) * 0.5 + Math.abs(rv.speed) / 30), speed: Math.abs(rv.speed) * 8 }, G.state === 'surface');
-  } else updateEngine(ship, G.state === 'flight' || G.state === 'entry' || G.state === 'docking' || G.inAssault);
+    const SD = surface.debug.S;
+    const roverOn = updateRover({ speed: Math.abs(rv.speed), throttle: input.drive, nitro: !!(SD && SD.nitroT > 0),
+      ice: (rv.iceWheels || 0) >= 2, contact: rv.contact.filter(Boolean).length / 4 }, G.state === 'surface');
+    // the rover has its own sound; the ship's synth is silent down here (it stands in only until the loops load)
+    updateEngine({ cruise: 0, spool: 0, boosting: false, throttle: Math.min(1, Math.abs(input.drive) * 0.5 + Math.abs(rv.speed) / 30), speed: Math.abs(rv.speed) * 8 }, G.state === 'surface' && !roverOn);
+  } else {
+    stopRover();
+    updateEngine(ship, G.state === 'flight' || G.state === 'entry' || G.state === 'docking' || G.inAssault);
+  }
   // shields recharge slowly in flight
   if (G.state === 'flight') {
     ship.shield = Math.min(1, ship.shield + dt * 0.02);
@@ -1058,4 +1065,4 @@ draw();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => cockpit.redrawAll(G));
 document.fonts && document.fonts.load('600 20px "Chakra Petch"').then(() => cockpit.redrawAll(G)).catch(() => {});
 requestAnimationFrame(frame);
-if (import.meta.env.DEV) window.__relic = { leaveSurface, hub, startDocking, openHub, startEntry, toTitle, launchFromHub, autosave, G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post, station, story, tutorial, newGame, continueGame };
+if (import.meta.env.DEV) window.__relic = { roverDebug, leaveSurface, hub, startDocking, openHub, startEntry, toTitle, launchFromHub, autosave, G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post, station, story, tutorial, newGame, continueGame };

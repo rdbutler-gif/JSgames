@@ -42,6 +42,40 @@ export function initAudio() {
   loadSample('boom-big', 'sfx/boom-big.mp3');
   loadSample('cannon', 'sfx/cannon.mp3');
   loadSample('titan-roar', 'sfx/titan-roar.mp3');
+  // the rover's own sound (owner, 2026-11-21): a motor loop and a tyre/ground loop, seamless WAVs
+  loadSample('rover-motor', 'sfx/rover-motor.wav');
+  loadSample('rover-ground', 'sfx/rover-ground.wav');
+}
+
+// Rover sound: two endless loops, started on first use. The motor's pitch follows speed and throttle
+// (and jumps with nitro); the ground loop follows speed, fades in the air and almost vanishes on ice.
+// Returns false until both loops are loaded, so the caller can fall back to the synth engine.
+const loops = {};
+function loop(name) {
+  if (loops[name]) return loops[name];
+  const buf = samples.get(name);
+  if (!buf) return null;
+  const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+  const g = ac.createGain(); g.gain.value = 0;
+  src.connect(g); g.connect(master); src.start();
+  return (loops[name] = { src, g });
+}
+export function updateRover(r, active) {
+  if (!ac) return false;
+  const m = loop('rover-motor'), gr = loop('rover-ground');
+  if (!m || !gr) return false;
+  const t = ac.currentTime, duck = voiceDuck();
+  const sp = Math.min(1.6, r.speed / 25), thr = Math.min(1, Math.abs(r.throttle));
+  m.src.playbackRate.setTargetAtTime(0.72 + sp * 0.5 + thr * 0.12 + (r.nitro ? 0.22 : 0), t, 0.12);
+  m.g.gain.setTargetAtTime(active ? (0.16 + thr * 0.22 + Math.min(1, sp) * 0.14 + (r.nitro ? 0.12 : 0)) * duck : 0, t, active ? 0.15 : 0.08);
+  const ground = Math.min(1, r.speed / 14) * r.contact * (r.ice ? 0.22 : 1);
+  gr.src.playbackRate.setTargetAtTime(0.85 + Math.min(1, sp) * 0.3, t, 0.2);
+  gr.g.gain.setTargetAtTime(active ? ground * 0.32 * duck : 0, t, 0.1);
+  return true;
+}
+export function stopRover() {
+  if (!ac) return;
+  for (const k of Object.keys(loops)) loops[k].g.gain.setTargetAtTime(0, ac.currentTime, 0.08);
 }
 
 export function applyVolume() {
@@ -217,3 +251,9 @@ export const sfx = {
   nitro() { noise(0.9, 0.35, 500, 2600, 1.6); blip(90, 0.8, 'sawtooth', 0.1, 0, 2.2); },
   denied() { blip(220, 0.12, 'square', 0.05); blip(180, 0.16, 'square', 0.05, 0.12); },
 };
+// test hook: current rover loop levels and pitch
+export function roverDebug() {
+  const o = {};
+  for (const k of Object.keys(loops)) o[k] = { gain: +loops[k].g.gain.value.toFixed(3), rate: +loops[k].src.playbackRate.value.toFixed(3) };
+  return { ctx: ac ? ac.state : 'none', loaded: ['rover-motor', 'rover-ground'].map((n) => !!samples.get(n)), ...o };
+}

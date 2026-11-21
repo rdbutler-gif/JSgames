@@ -53,6 +53,36 @@ Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop ex
   - FATE (memory 3) has no lines yet: it falls back to one WREN line.
 - **Tests:** a fight bot circles at r 24, and the test lands core hits while `open > 0.6`. Kessa's Titan passed the same flow after the shared-table change.
 
+### Rover sound (owner, 2026-11-21: "create a distinct sound for the rover. Right now it borrows the same sound as the space ship")
+- **The loops:** two ElevenLabs loops (`eleven_text_to_sound_v3`), chosen by measurement, without listening. The test was steady loudness (spread under 1.3 dB) and the spectrum.
+  - **Motor:** take A, with a strong 113 Hz tone and the most whine.
+  - **Ground:** take B, with the most crunch (15% of its energy at 800–3200 Hz).
+- **Seamless:** each is an 8 s loop with a 1 s equal-power crossfade into the audio just before the loop start. The seam jump is smaller than a normal sample step.
+  - They're 16-bit mono WAV at 22 kHz, because MP3 padding can click at a loop point.
+  - `public/sfx/rover-motor.wav` and `rover-ground.wav`, 353 KB each. The raw takes are in `assets-src/sfx-raw/`.
+- **`updateRover`** in audio.js:
+  - Motor pitch is 0.72 + speed/25 × 0.5 + throttle × 0.12, plus 0.22 on nitro.
+  - Motor gain is 0.16 at idle, up to about 0.64 on nitro.
+  - Ground gain follows speed × the share of wheels touching the ground, × 0.22 on ice (spinning wheels on ice: the motor revs, there's little crunch).
+- **The ship's synth** is silent on surfaces once the loops load (it covers until then). `stopRover` runs everywhere else.
+- **Tests:** `__relic.roverDebug()` reads the live levels. `rover.iceWheels` counts wheels on ice each physics step.
+
+### Rover handling, nitro and creature numbers (owner, 2026-11-21)
+Owner's notes: "The ice is slippery enough, but we need to work on the way the rover handles. It is very underpowered, but that's ok. We can add a nitro boost with a cooldown timer... While driving on ice, if the rear wheels did the work, it would spin out and do cookies like a real car on ice." The shardbacks are "just right in damage and health, but there needs to be more of them and more creatures overall on both planets." The maze is "an obstacle to drive through"; keep calling it a maze.
+- **Nitro** (`NITRO` in surface.js): boost (Shift / pad B, the same input as flight boost) fires it when charged.
+  - It burns for 2.5 s, then the 8 s cooldown starts.
+  - It's a thrust of 14 on the chassis (`force` along `fwd`, fading toward 1.8 × top speed), plus ×1.5 engine. Measured on open ground: 7 → 31 m/s in under 2 s (that was with an earlier thrust of 17).
+  - There are twin exhaust flames, +8° FOV, `sfx.nitro`, and a NITRO bar above the lance bar (READY / BURNING / CHARGING). The controls hint mentions it.
+- **Ice handling:**
+  - On ice the engine drives the rear wheels only (`share`).
+  - Ice limits the forward and side grip separately: rear forward `ICE_DRIVE` 0.4, rear side `ICE_GRIP` 0.1 (and ×0.4 at full throttle: wheelspin), front `ICE_FRONT` 0.14.
+  - Power oversteer: with both rear wheels on ice, throttle plus steering adds yaw torque (`ICE_SPIN` 6) up to `ICE_SPIN_MAX` 2.8 rad/s.
+  - Measured: full throttle and full lock on ice turns the body 422° in 4 s with 54° slip (cookies). Snow and Kessa ground are unchanged (192°, 5° slip).
+- **Creature counts:** `N_SKITTER` 34 (skitters / crawlers, pad herd 10). Kessa `N_WILD_PACKS` 10 (55 hounds built, ~50 placed). `THALOR_PACKS` gives 29 shardbacks.
+
+### Invert Y per mode (owner, 2026-11-21)
+- Settings has three toggles: INVERT Y · SPACE FLIGHT (`settings.invertFlight`, input.js `input.pitch`), RAIDER FIGHTS (`invertFight`, input.js `input.moveY` and the mouse in assault.js) and ROVER TURRET (`invertRover`, the surface camera and aim in surface.js). An old saved single `invertY` carries over to all three on load. The fight's base sense is still the opposite of flight's (owner's call 2026-11-18); each toggle flips its own mode from there.
+
 ### How 6b works (Thalor, after the gate)
 - **The flow:**
   1. Land, and drive for the vault beacon.

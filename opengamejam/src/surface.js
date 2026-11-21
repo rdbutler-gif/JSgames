@@ -923,7 +923,7 @@ export function createSurface(hooks) {
     const steerMax = THREE.MathUtils.lerp(R.steerMax, R.steerFast, clamp(Math.abs(vF) / R.topSpeed, 0, 1));
     rover.steer += (-inp.moveX * steerMax - rover.steer) * Math.min(1, R.steerRate * h);
 
-    let grounded = 0, rearIce = 0;
+    let grounded = 0, rearIce = 0, iceN = 0;
     const drive = inp.drive;
     for (let w = 0; w < 4; w++) {
       const m = MOUNTS[w];
@@ -977,7 +977,7 @@ export function createSurface(hooks) {
       }
       Fl -= vl * R.roll;
       if (rearHand) Fl -= Math.sign(vl) * Math.min(Math.abs(vl) * 6, R.brake / 4);
-      if (onIce) { if (!S.fight) rover.onIce = 0.25; Fl += vl * R.roll * 0.7; if (!FRONT[w]) rearIce++; } // less rolling drag on ice too
+      if (onIce) { if (!S.fight) rover.onIce = 0.25; Fl += vl * R.roll * 0.7; if (!FRONT[w]) rearIce++; iceN++; } // less rolling drag on ice too
       // throttle on ice spins the rear tyres: they lose most of their side grip, and round she goes
       const spin = onIce && !FRONT[w] && Math.abs(drive) > 0.05 ? 1 - 0.6 * Math.abs(drive) : 1;
       let Fy = -vs * R.grip * (rearHand ? 0.3 : 1) * iceK * spin;
@@ -1073,6 +1073,7 @@ export function createSurface(hooks) {
     const lim = T.terrain.half * 0.9;
     if (Math.abs(rover.pos.x) > lim) { rover.pos.x = Math.sign(rover.pos.x) * lim; rover.vel.x *= -0.3; }
     if (Math.abs(rover.pos.z) > lim) { rover.pos.z = Math.sign(rover.pos.z) * lim; rover.vel.z *= -0.3; }
+    rover.iceWheels = iceN; // for the rover sound
     return grounded;
   }
 
