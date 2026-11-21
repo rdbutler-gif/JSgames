@@ -66,30 +66,27 @@ const surface = createSurface({
 });
 
 // WREN's memories unlock by how many relics we hold, whichever planet they came from.
+// WREN's memories unlock by how many relics we hold, whichever planet they came from. They play as voiced
+// lines while we drive back to the Wayfarer (owner, 2026-11-21: no long text card), with a short banner.
 const MEMORIES = [
-  {
-    title: 'PURPOSE',
-    text: 'The relic speaks Warden, and WREN answers it before she knows she is doing it. A memory opens: a foundry hall, and Warden hands fitting a small bright mind into a navigator\'s frame. "She will carry the keys home," one says. "When the road wakes, she will know the way." WREN is quiet for a long moment. "I was not built to fly ships, Runner. I was built to bring these back."',
-    after: 'One relic aboard. Scrap Crown will know what we carry now. Back to the Wayfarer.',
-  },
-  {
-    title: 'TRUTH',
-    text: 'The Rime Compass settles in WREN\'s systems and swings to one point: the Heart. Another memory opens. Wardens in a cold hall, arguing. "Three keys hold the lines open. Lift them, and the lines starve, one by one." "Then no one will lift them." "Someone will have to, when the lines fail anyway. And the mind that carries the keys home will have to stay there." WREN is quiet for a long time. "Runner, every relic we take is killing a line. They meant it to. I think they meant me to finish it."',
-    after: 'Two relics aboard. We should tell Ilsa. Back to Lantern.',
-  },
-  { title: 'FATE', text: '(Memory three is a later build step.)', after: 'All three relics aboard.' },
+  { title: 'PURPOSE', lines: ['mem1-1', 'mem1-2', 'mem1-3', 'mem1-4', 'mem1-5'] },
+  { title: 'TRUTH', lines: ['mem2-1', 'mem2-2', 'mem2-3', 'mem2-4', 'mem2-5', 'mem2-6', 'mem2-7'] },
+  { title: 'FATE', lines: [] }, // memory three is a later build step
 ];
 const RELIC_NAMES = { kessa: 'THE EMBER CORE', vireo: 'THE VEIL LENS', thalor: 'THE RIME COMPASS' };
+let memoryT = null;
 function relicSecured(id) {
   if (G.relics[id]) return;
   G.relics[id] = true;
   const n = Object.values(G.relics).filter(Boolean).length;
   const m = MEMORIES[n - 1];
-  surfaceEvent({
-    kicker: 'RELIC ' + n + ' OF 3 · ' + RELIC_NAMES[id] + ' · WREN MEMORY ' + n,
-    title: m.title,
-    text: m.text,
-  }, () => say(m.after));
+  const el = $('memory');
+  el.innerHTML = '<span>RELIC ' + n + ' OF 3 · ' + RELIC_NAMES[id] + '</span><b>WREN MEMORY ' + n + ' · ' + m.title + '</b>';
+  // after the NEW OBJECTIVE flash has cleared (it shows at the same moment), for 7 s
+  clearTimeout(memoryT); memoryT = setTimeout(() => { el.classList.add('on'); memoryT = setTimeout(() => el.classList.remove('on'), 7000); }, 3800);
+  sfx.victory();
+  story.flush();
+  if (m.lines.length) story.lines(m.lines); else say('Relic aboard. Back to the Wayfarer.');
   autosave(true);
 }
 

@@ -5,7 +5,7 @@ import { createTerrain, SURFACES, pathInfo, pathPoint } from './terrain.js';
 import { makeParticles } from './assault.js';
 import { cloneModel, onModel, hasModel } from './models.js';
 import { settings } from './settings.js';
-import { sfx, lanceHum } from './audio.js';
+import { sfx, lanceHum, noise } from './audio.js';
 import { createTitan, TITAN_HP } from './guardian.js';
 import { createSentinel, SENTINEL_HP } from './sentinel.js';
 import { createFauna } from './fauna.js';
@@ -464,7 +464,7 @@ export function createSurface(hooks) {
       const M = def.maze, V = def.vault;
       const shard = new THREE.CylinderGeometry(0.85, 1.35, 1, 6).translate(0, 0.5, 0);
       const iceMat = new THREE.MeshStandardMaterial({ color: '#cfeefc', roughness: 0.1, metalness: 0, emissive: '#10303f', flatShading: true });
-      const spots = [];
+      const spots = [], wallRecs = [];
       const angIn = (a, c, half) => Math.abs(Math.atan2(Math.sin(a - c), Math.cos(a - c))) < half;
       M.rings.forEach((R, i) => {
         const n = Math.round((Math.PI * 2 * R) / 2.5), half = (M.gapW / 2) / R;
@@ -479,7 +479,7 @@ export function createSurface(hooks) {
         e.set((rnd() - 0.5) * 0.25, rnd() * 6.28, (rnd() - 0.5) * 0.25); qq.setFromEuler(e);
         m4.compose(v1.set(x, y - 0.6, z), qq, v2.set(1 + rnd() * 0.4, h, 1 + rnd() * 0.4));
         im.setMatrixAt(i, m4);
-        rocks.list.push({ x, z, y, r: 1.75, wall: true }); // solid, not shootable
+        const rec = { x, z, y, r: 1.75, wall: true }; rocks.list.push(rec); wallRecs.push(rec); // solid, not shootable
       });
       im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere();
       root.add(im);
@@ -498,7 +498,7 @@ export function createSurface(hooks) {
       path.forEach(([x, z], i) => { m4.makeTranslation(x, terrain.heightAt(x, z), z); lanes.setMatrixAt(i, m4); });
       lanes.computeBoundingSphere(); lanes.visible = false; root.add(lanes);
       const laneLight = new VLight('#8fe8ff', 0, 30, 1.6); root.add(laneLight);
-      maze = { lanes, path, laneLight, outer: R0[0] + 10, entry: path[0] };
+      maze = { lanes, path, laneLight, outer: R0[0] + 10, entry: path[0], walls: im, wallRecs };
     }
     // the Rime Spire: a Warden obelisk of ice and stone with the Compass Trim crate at its foot
     let spire = null;
@@ -611,7 +611,8 @@ export function createSurface(hooks) {
       const trim = !!upgrades.compassTrim;
       if (!taken) S.obj = trim ? 'maze' : 'vault';
       if (T.spire) T.spire.crate.visible = !trim;
-      if (T.maze) T.maze.lanes.visible = trim;
+      if (T.maze) T.maze.lanes.visible = trim && !taken;
+      if (T.maze) setMazeSink(taken ? 1 : 0); // the walls went down when the Sentinel fell
       hooks.say('Rover is down. Thalor. Snow shelves, and the sea is frozen solid between them.');
       if (!taken) setTimeout(() => S && S.time < 12 && (S.obj === 'vault' || S.obj === 'maze') && hooks.say(trim
         ? 'The Compass Trim is fitted. The maze lanes are lit. Follow them to the vault.'
@@ -863,6 +864,7 @@ export function createSurface(hooks) {
     if (ev === 'awake') say1('awake', T.G.awake);
     if (ev === 'dead') {
       S.fight = false; T.curtain.visible = false;
+      if (T.maze) { S.sinking = 0.001; noise(5.5, 0.5, 260, 40, 0.7); } // the maze goes down with its keeper
       T.ember.g.visible = true; T.ember.t = 0;
       setObj('core');
       sfx.victory();
@@ -1109,6 +1111,15 @@ export function createSurface(hooks) {
   }
 
   // ---------- Thalor: the Rime Spire, the Compass Trim and the ice maze ----------
+  // u = 0 (walls up) .. 1 (sunk out of sight). Colliders drop once the tops are below the rover.
+  function setMazeSink(u) {
+    const M = T.maze;
+    M.sink = u;
+    M.walls.position.y = -Math.pow(u, 1.4) * 14;
+    M.walls.visible = u < 1;
+    for (const r of M.wallRecs) r.dead = u > 0.55;
+    if (u > 0) M.lanes.visible = false;
+  }
   function collectTrim() {
     upgrades.compassTrim = true;
     T.spire.crate.visible = false;
@@ -1123,6 +1134,13 @@ export function createSurface(hooks) {
     });
   }
   function thalorMissions(dt, P, toVault) {
+    if (S.sinking > 0 && T.maze) {
+      S.sinking += dt / 5.5;
+      setMazeSink(Math.min(1, S.sinking));
+      S.shake = Math.max(S.shake, 0.35 * (1 - Math.min(1, S.sinking)));
+      if (Math.random() < 0.5) { const q = T.maze.path[(Math.random() * T.maze.path.length) | 0]; T.fx.emit(v1.set(q[0] + (Math.random() - 0.5) * 20, ground(q[0], q[1]) + 0.5, q[1] + (Math.random() - 0.5) * 20), 4, { speed: 3, life: 1.4, size: 2.2, colors: [[0.9, 1, 1.1], [0.7, 0.85, 1]], drag: 1, dir: v2.set(0, 2, 0) }); }
+      if (S.sinking >= 1) { S.sinking = 0; say1('sunk', 'The maze went down with its keeper. The way out is clear.'); }
+    }
     const trim = !!upgrades.compassTrim, M = T.maze;
     // the whiteout: without the trim the maze's storm shoves us back out, like Kessa's heat wall
     S.whiteout = Math.max(0, (S.whiteout || 0) - dt);

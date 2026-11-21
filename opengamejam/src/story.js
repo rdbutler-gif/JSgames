@@ -11,6 +11,9 @@ export const SPEAKERS = {
   wren: { name: 'WREN', rgb: '110,242,255', radio: false },
   ilsa: { name: 'ILSA BRANDT · LANTERN DOCK', short: 'ILSA', rgb: '255,196,106', radio: true },
   orrick: { name: 'DAGAN ORRICK · SCRAP CROWN', short: 'ORRICK', rgb: '255,110,110', radio: true },
+  // voices in WREN's recovered memories: played through the radio filter, like an old recording
+  warden: { name: 'WARDEN · MEMORY', short: 'WARDEN', rgb: '205,185,255', radio: true },
+  warden2: { name: 'WARDEN · MEMORY', short: 'WARDEN', rgb: '205,185,255', radio: true },
 };
 
 export const LINES = {
@@ -80,6 +83,19 @@ export const LINES = {
   'hub-launch': ['ilsa', 'Clamps off. Fly safe, Runner.'],
   'air-low': ['ilsa', "Runner, the air's getting thin up here. Three days left. Please hurry."],
   'air-out': ['ilsa', "We've sealed the outer ring. Everyone's crowded into the spindle now. Please, Runner."],
+  // ---- WREN's memories, played as we drive back to the Wayfarer (owner, 2026-11-21: voiced, not a text card) ----
+  'mem1-1': ['wren', 'The relic spoke Warden, and I answered it before I knew I was doing it.'],
+  'mem1-2': ['wren', "I remember a foundry hall. Warden hands, fitting a small bright mind into a navigator's frame."],
+  'mem1-3': ['warden', 'She will carry the keys home. When the road wakes, she will know the way.'],
+  'mem1-4': ['wren', "Runner... I wasn't built to fly ships. I was built to bring these back."],
+  'mem1-5': ['wren', "One relic aboard. Let's get back to the Wayfarer."],
+  'mem2-1': ['wren', 'The Compass found north for me. It points at the Heart.'],
+  'mem2-2': ['wren', 'Another memory. Wardens in a cold hall, arguing.'],
+  'mem2-3': ['warden2', 'Three keys hold the lines open. Lift them, and the lines starve, one by one.'],
+  'mem2-4': ['warden', 'Then no one will lift them.'],
+  'mem2-5': ['warden2', 'Someone will have to, when the lines fail anyway. And the mind that carries the keys home will have to stay there.'],
+  'mem2-6': ['wren', 'Runner, every relic we take is killing a line. They meant it to. I think they meant me to finish it.'],
+  'mem2-7': ['wren', 'Two relics aboard. Back to the Wayfarer, and then to Ilsa.'],
   // ---- Thalor (step 6): the ring storm needs Rime Shielding ----
   'thalor-storm-1': ['wren', "Thalor's rings are shedding ice. That storm would tear our hull apart on the way down."],
   'thalor-storm-2': ['wren', "Lantern's Workshop can fit Rime Shielding. It isn't cheap. The Scrap Crown wings carry Wayshards. We take theirs."],

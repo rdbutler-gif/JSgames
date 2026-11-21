@@ -107,3 +107,10 @@ dd { margin: 0; color: #cfe6ef; }
   color: var(--cyan); opacity: 0; transition: opacity 0.4s; }
 #saved.on { opacity: 0.9; }
 #airclock.side { left: auto; right: 16px; transform: none; top: 12px; font-size: 13px; }
+
+/* WREN's memory banner: a short title while the memory plays as voice */
+#memory { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); pointer-events: none; text-align: center;
+  opacity: 0; transition: opacity 0.6s; padding: 12px 26px; background: rgba(6, 10, 22, 0.7); border: 1px solid rgba(205, 185, 255, 0.4); }
+#memory.on { opacity: 1; }
+#memory span { display: block; font: 600 13px 'Chakra Petch'; letter-spacing: 0.3em; color: #ffd36a; margin-bottom: 4px; }
+#memory b { display: block; font: 700 clamp(18px, 2.2vw, 26px) 'Orbitron', sans-serif; letter-spacing: 0.12em; color: #e6dcff; }

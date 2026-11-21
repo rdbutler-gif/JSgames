@@ -43,6 +43,14 @@ Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop ex
 - **Owner fixes (2026-11-21):**
   - "Creatures on Thalor walk below the ice": fauna gets a ground that stops at the sea ice (`walkGround` in surface.js `build`). Their debris uses the same ground.
   - "The camera shouldn't go behind the ice walls": in any guardian fight (Kessa's too) the chase-camera boom is shortened until the camera is within `arenaR - 0.5` of the centre. The camera rises up to 3.5 m and its look point moves up to 9 m ahead along the view (`S.camKeep`), so a short boom looks over the rover at the fight.
+- **After the fight** (owner, 2026-11-21: "the ice walls should fall/sink so you don't have to drive out of it", and the long post-fight text should be "voice acted and played while driving back to the wayfarer", on Kessa too):
+  - **The maze sinks:** when Sentinel Prime dies, `S.sinking` runs `setMazeSink` over 5.5 s. The InstancedMesh goes down 14 m and hides, the wall colliders (`maze.wallRecs`) switch off past 55%, and there's a rumble, frost puffs and WREN ("The maze went down with its keeper"). Landing again after the relic, the walls are already down.
+  - **Memories are voiced, not a card:**
+    - `relicSecured` (main.js) no longer opens an event card.
+    - It shows a short banner (#memory: RELIC n OF 3 · name / WREN MEMORY n · TITLE) 3.8 s later, after the NEW OBJECTIVE flash, for 7 s.
+    - It queues the memory as voiced lines (`MEMORIES[n].lines`): PURPOSE = `mem1-1..5`, TRUTH = `mem2-1..7` in story.js.
+  - **The Warden voices** are new speakers `warden` (Katherine J7gii3pWdApH2b9t8Q3G) and `warden2` (Vaughn n0VJsPm60ki3xLLyCLFE). They play through the radio filter, like an old recording.
+  - FATE (memory 3) has no lines yet: it falls back to one WREN line.
 - **Tests:** a fight bot circles at r 24, and the test lands core hits while `open > 0.6`. Kessa's Titan passed the same flow after the shared-table change.
 
 ### How 6b works (Thalor, after the gate)
@@ -252,7 +260,7 @@ Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop ex
 | `src/progress.js` | Save slot: load, save, clear (what it holds: see "How step 5 works") |
 | `src/hub.js` | Lantern hub: the docked view, briefings, Workshop menu and purchases |
 | `src/workshop.js` | Upgrade table (tiers, costs, effects), scrubber parts, `tier` / `eff` helpers |
-| `public/vo/` | One mp3 per script line (ElevenLabs eleven_v4; WREN = Melz, Ilsa = Cass, Orrick = Obsidian) |
+| `public/vo/` | One mp3 per script line (ElevenLabs eleven_v4; WREN = Melz, Ilsa = Cass, Orrick = Obsidian, Wardens in memories = Katherine and Vaughn) |
 
 ## Assets and spend
 
