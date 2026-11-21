@@ -72,7 +72,11 @@ const MEMORIES = [
     text: 'The relic speaks Warden, and WREN answers it before she knows she is doing it. A memory opens: a foundry hall, and Warden hands fitting a small bright mind into a navigator\'s frame. "She will carry the keys home," one says. "When the road wakes, she will know the way." WREN is quiet for a long moment. "I was not built to fly ships, Runner. I was built to bring these back."',
     after: 'One relic aboard. Scrap Crown will know what we carry now. Back to the Wayfarer.',
   },
-  { title: 'TRUTH', text: '(Memory two is a later build step.)', after: 'Two relics aboard.' },
+  {
+    title: 'TRUTH',
+    text: 'The Rime Compass settles in WREN\'s systems and swings to one point: the Heart. Another memory opens. Wardens in a cold hall, arguing. "Three keys hold the lines open. Lift them, and the lines starve, one by one." "Then no one will lift them." "Someone will have to, when the lines fail anyway. And the mind that carries the keys home will have to stay there." WREN is quiet for a long time. "Runner, every relic we take is killing a line. They meant it to. I think they meant me to finish it."',
+    after: 'Two relics aboard. We should tell Ilsa. Back to Lantern.',
+  },
   { title: 'FATE', text: '(Memory three is a later build step.)', after: 'All three relics aboard.' },
 ];
 const RELIC_NAMES = { kessa: 'THE EMBER CORE', vireo: 'THE VEIL LENS', thalor: 'THE RIME COMPASS' };
@@ -841,7 +845,8 @@ G.homeward = false;
 let remindT = 0;
 function updateObjective(dt) {
   const navKey = input.device === 'gamepad' ? 'LB' : 'TAB';
-  G.homeward = G.lanternDark && !G.briefed.has('dark');
+  const nRel = Object.values(G.relics).filter(Boolean).length;
+  G.homeward = (G.lanternDark && !G.briefed.has('dark')) || (nRel >= 2 && !G.briefed.has('r2')) || (nRel >= 3 && !G.briefed.has('r3'));
   if (G.homeward) {
     if (G.targetIndex !== LANTERN_NAV) G.task = { label: 'SET NAV TO LANTERN · RETURN HOME', key: () => navKey };
     else G.task = { label: 'RETURN TO LANTERN · DOCK IN THE BAY', key: () => 'OBJECTIVE' };
@@ -949,7 +954,10 @@ function step(dt) {
       if (r && r.type === 'orbit') leaveSurface();
       if (r && r.type === 'vault') {
         sfx.engage();
-        showEvent('PHASE III · KESSA', 'THE VAULT OPENS', 'The door reads the Forgeplate and grinds aside. Heat rolls up out of the shaft, and something old and enormous climbs with it: the foundry guardian, still keeping the Ember Core after all these years.', () => {
+        const V = G.surfacePlanet && G.surfacePlanet.planet.data.id === 'thalor'
+          ? ['PHASE III · THALOR', 'THE VAULT WAKES', 'The Compass Trim reads the seal, and the rime over the vault splits with a sound like a bell. Light climbs out of the crack, and something climbs with it: a Warden sentinel, ringed in ice, still keeping the Rime Compass after all these years.']
+          : ['PHASE III · KESSA', 'THE VAULT OPENS', 'The door reads the Forgeplate and grinds aside. Heat rolls up out of the shaft, and something old and enormous climbs with it: the foundry guardian, still keeping the Ember Core after all these years.'];
+        showEvent(V[0], V[1], V[2], () => {
           show('event', false); G.state = 'surface'; if (wantsMouse()) requestLock();
           surface.wakeGuardian();
         });

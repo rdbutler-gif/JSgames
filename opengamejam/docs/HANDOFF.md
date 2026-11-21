@@ -15,34 +15,32 @@
 | 4d | Opening: title scene, menus, save, intro, Lantern undock, WREN tutorial, radio, cruise lore, spread planets, voices | Done. Owner approved 2026-11-20: voice levels, tutorial pace, voice casting, cruise distances, nebula sky, cockpit, surface effects, performance on the weak laptop |
 | 5 | Lantern hub: docking, Ilsa's briefings, Workshop, air clock, scrubber parts, saves on events | Built 2026-11-20; owner flew home and docked on the live site ("it worked"). Docking line repeated until docked: fixed (once per approach) |
 | 6a | Thalor: ring-storm gate (Rime Shielding, 300 Wayshards), the surface (snow shelves, slick sea ice, rings in the sky, snow), drive to the vault | Done. Owner 2026-11-21: 300 is right ("required me to encounter two raider fights"), Thalor "looks great", ice could be more slippery (ICE_GRIP 0.2 -> 0.1) |
-| 6b | Thalor: Rime Spire + Compass Trim, the ice maze and its whiteout, Thalor creatures (rime crawlers, shardbacks) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest** |
+| 6b | Thalor: Rime Spire + Compass Trim, the ice maze and its whiteout, Thalor creatures (rime crawlers, shardbacks) | Done. Owner 2026-11-21: ice handling "perfect" (after nitro and rear-drive cookies); shardback damage and health "just right", wants more creatures (done); the maze is fine as an obstacle |
+| 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest** |
 
 Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
 ## First thing next session
 
-0. **Ask the owner to play 6b (Thalor).** Owner request (2026-11-21): "Continue with the next steps for the Thalor adventure. Thalor needs its own types of creatures also." Ask:
-   - Ice: owner says slippery enough (2026-11-21). Now: do the cookies feel right, and is the nitro too strong?
-   - Is the maze fun? Is it too long? The bot took 56 s at 9 m/s.
-   - Do the shardbacks feel fair? Charge 23 m/s, ram 11 and a knockback, then a 1.8 s stun. Two hits in a row took 22 hull in the bot test.
-   - Are there enough crawlers and shardbacks?
-   - Next: 6c, the Sentinel Prime guardian in the maze's centre, the Rime Compass relic and WREN memory 2 (Truth).
+0. **Ask the owner to play 6c: the Sentinel Prime fight.** Owner request (2026-11-21): "build the sentinal prime guardian fight now". Ask:
+   - Is the fight readable: the glowing floor band, then the sweep?
+   - Does nitro get you across in time?
+   - Is the frozen floor from stage 2 fun?
+   - Fight length and damage. With the bot standing in for good shooting, it was about 40 s. A bot that never dodges took 16–32 hull per cycle, mostly from spikes.
+   - Does the TRUTH memory land?
+   - Next: Vireo (step 6, the third world). The objective sends you home to Lantern for Ilsa's r2 briefing first.
 
-### Rover handling, nitro and creature numbers (owner, 2026-11-21)
-Owner's notes: "The ice is slippery enough, but we need to work on the way the rover handles. It is very underpowered, but that's ok. We can add a nitro boost with a cooldown timer... While driving on ice, if the rear wheels did the work, it would spin out and do cookies like a real car on ice." The shardbacks are "just right in damage and health, but there needs to be more of them and more creatures overall on both planets." The maze is "an obstacle to drive through"; keep calling it a maze.
-- **Nitro** (`NITRO` in surface.js): boost (Shift / pad B, the same input as flight boost) fires it when charged.
-  - It burns for 2.5 s, then the 8 s cooldown starts.
-  - It's a thrust of 14 on the chassis (`force` along `fwd`, fading toward 1.8 × top speed), plus ×1.5 engine. Measured on open ground: 7 → 31 m/s in under 2 s (that was with an earlier thrust of 17).
-  - There are twin exhaust flames, +8° FOV, `sfx.nitro`, and a NITRO bar above the lance bar (READY / BURNING / CHARGING). The controls hint mentions it.
-- **Ice handling:**
-  - On ice the engine drives the rear wheels only (`share`).
-  - Ice limits the forward and side grip separately: rear forward `ICE_DRIVE` 0.4, rear side `ICE_GRIP` 0.1 (and ×0.4 at full throttle: wheelspin), front `ICE_FRONT` 0.14.
-  - Power oversteer: with both rear wheels on ice, throttle plus steering adds yaw torque (`ICE_SPIN` 6) up to `ICE_SPIN_MAX` 2.8 rad/s.
-  - Measured: full throttle and full lock on ice turns the body 422° in 4 s with 54° slip (cookies). Snow and Kessa ground are unchanged (192°, 5° slip).
-- **Creature counts:** `N_SKITTER` 34 (skitters / crawlers, pad herd 10). Kessa `N_WILD_PACKS` 10 (55 hounds built, ~50 placed). `THALOR_PACKS` gives 29 shardbacks.
-
-### Invert Y per mode (owner, 2026-11-21)
-- Settings has three toggles: INVERT Y · SPACE FLIGHT (`settings.invertFlight`, input.js `input.pitch`), RAIDER FIGHTS (`invertFight`, input.js `input.moveY` and the mouse in assault.js) and ROVER TURRET (`invertRover`, the surface camera and aim in surface.js). An old saved single `invertY` carries over to all three on load. The fight's base sense is still the opposite of flight's (owner's call 2026-11-18); each toggle flips its own mode from there.
+### How 6c works (Sentinel Prime)
+- **The fight** (`src/sentinel.js`, same interface as guardian.js):
+  - At the maze centre (within 24 m) with the trim, the prompt is ENTER THE VAULT. main.js shows THE VAULT WAKES, then `wakeGuardian`.
+  - It rises from the vault and hovers `HOVER` above it, at `SCALE` 1.35. Four ice shields orbit at `SHIELD_R` and take every shot.
+  - The cycle: **guard** (ice spikes under the rover: a ring for 1.1 s, then a burst for 16 damage and a launch) → **charge** (the band we are in glows for 1.5 s: inner r 11–23.5 or outer r 23.5–35.5) → **sweep** (a frost blade turns one full turn over that band; 18 damage and a fling along the sweep) → **expose** (the shields fly out, the spindle parts, the core takes hits) → guard.
+  - Stages by core HP (60 / 40 / 20), from `STAGE`. Stage 2 freezes the arena floor: `icy` is read by the rover tyres as ice inside `arenaR`. Stage 3 sweeps with two blades and throws spikes in threes.
+- **The arena:** `def.arenaR` 36, inside the maze's inner ring. The arena wall reuses the Titan's curtain, but per world: Thalor's is dim cyan (`curtainK`), because a bright cyan wall bloomed the whole view white. The maze fog and the vault beacon are off during the fight.
+- **Per-world text and colours:** `GUARD` in surface.js (Kessa and Thalor) holds the guardian name and short name, the relic, WREN's wake / awake / wall / dead lines, the objective, the HP for the HUD bar, the wall colour and the relic colours. `makeEmberCore(colors)` draws either relic.
+- **After the kill:** 120 Wayshards, TAKE THE RIME COMPASS, then `relicSecured` shows memory 2 **TRUTH** (main.js `MEMORIES`): the keys hold the lines open, taking them starves the lines, and the mind that carries them home has to stay. WREN: "I think they meant me to finish it."
+- **Homeward:** `G.homeward` now also covers relic 2 (until briefing `r2`) and relic 3 (`r3`), so the objective sends you to Lantern for Ilsa after each relic.
+- **Tests:** a fight bot circles at r 24, and the test lands core hits while `open > 0.6`. Kessa's Titan passed the same flow after the shared-table change.
 
 ### How 6b works (Thalor, after the gate)
 - **The flow:**

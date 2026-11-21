@@ -117,6 +117,7 @@ export const SURFACES = {
     sky: { top: '#0a1a33', horizon: '#a9cde2', fog: '#b4cfdf', fogDensity: 0.0015, sun: '#f2f7ff', sunDir: [-0.5, 0.22, 0.6], rings: true },
     hemi: ['#cfe6ff', '#5a6f80'], rock: '#56687a', accent: [0.9, 2.6, 3.4], weather: 'snow',
     fauna: 'thalor', // rime crawlers and shardbacks
+    sentinel: true, arenaR: 36, // Sentinel Prime fights inside the maze's inner ring (r 40)
     // the Rime Spire: a Warden armory on the far side of the sea, holding the Compass Trim
     spire: { x: 420, z: 380, r: 22 },
     // the ice maze round the vault: three ring walls, one gap each, and a radial wall in each corridor

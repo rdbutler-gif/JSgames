@@ -7,6 +7,7 @@ import { cloneModel, onModel, hasModel } from './models.js';
 import { settings } from './settings.js';
 import { sfx, lanceHum } from './audio.js';
 import { createTitan, TITAN_HP } from './guardian.js';
+import { createSentinel, SENTINEL_HP } from './sentinel.js';
 import { createFauna } from './fauna.js';
 import { eff } from './workshop.js';
 import { VLight, createLightPool } from './lightpool.js';
@@ -39,6 +40,27 @@ const TURRET_POS = new THREE.Vector3(0, 0.6, 0.15); // seated on the generated c
 // The crosshair sits above screen centre so the rover never covers it; the aim ray goes through it.
 const AIM_NDC_Y = 0.2;
 const ARENA_R = 64;
+// Each world's vault guardian and relic: names, WREN's lines, and colours for the arena wall and the relic.
+const GUARD = {
+  kessa: {
+    name: 'FOUNDRY TITAN', short: 'TITAN', relic: 'EMBER CORE', relicName: 'the Ember Core', hp: TITAN_HP, curtain: [2.4, 0.7, 0.15],
+    wake: 'Something is climbing out of the shaft. A Warden foundry guardian. Its armour is too thick for us. Watch for the vents.',
+    awake: 'Foundry Titan. Keep moving, its shells land where you are going.',
+    wall: 'It has sealed the field with heat. There is no way out but through it.',
+    dead: 'It is down. And there, rising from the shaft: the Ember Core. Bring us close.',
+    obj: 'Destroy the Foundry Titan · shoot its core when it vents',
+    colors: { core: [5, 2.6, 0.8], ring: [3.4, 1.6, 0.4], shell: '#3a2418', em: '#5a1e04', light: '#ffa040', burst: [[5, 2.6, 0.8], [5, 4, 2]] },
+  },
+  thalor: {
+    name: 'SENTINEL PRIME', short: 'SENTINEL', relic: 'RIME COMPASS', relicName: 'the Rime Compass', hp: SENTINEL_HP, curtain: [0.18, 0.55, 0.75], curtainK: 0.55,
+    wake: 'The ice over the vault is breaking. A Warden sentinel. Those shields will eat our shots. Watch the floor.',
+    awake: 'Sentinel Prime. When the floor glows under us, get to the other ring, fast. Shoot the core when the shields fly out.',
+    wall: 'It has walled the centre in. We finish this here.',
+    dead: 'It is gone. And there, over the vault: the Rime Compass. Bring us close.',
+    obj: 'Shatter Sentinel Prime · shoot the core when its shields fly out',
+    colors: { core: [1.6, 3.2, 4], ring: [1.2, 2.6, 3.4], shell: '#20323e', em: '#0d3a4e', light: '#9fe6ff', burst: [[1.6, 2.6, 3.2], [2.6, 3, 3.4]] },
+  },
+};
 const ICE_GRIP = 0.1; // share of normal tyre grip on Thalor's sea ice (rear tyres; the fronts keep a little more)
 const ICE_FRONT = 0.14;
 // Nitro (owner, 2026-11-21): a short rocket push with a cooldown. It is a force on the chassis, not on the
@@ -296,17 +318,18 @@ function makeRoverMesh() {
 }
 
 // The Ember Core: a slow-turning heart of light with two orbiting rings.
-function makeEmberCore() {
+// (Thalor's Rime Compass is the same shape in ice colours.)
+function makeEmberCore(c = GUARD.kessa.colors) {
   const g = new THREE.Group();
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 2.6, 0.8) }));
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(...c.core) }));
   g.add(core);
-  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6, 1), new THREE.MeshStandardMaterial({ color: '#3a2418', roughness: 0.4, metalness: 0.7, emissive: '#5a1e04', wireframe: true }));
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6, 1), new THREE.MeshStandardMaterial({ color: c.shell, roughness: 0.4, metalness: 0.7, emissive: c.em, wireframe: true }));
   g.add(shell);
   const rings = [0, 1].map((i) => {
-    const r = new THREE.Mesh(new THREE.TorusGeometry(2.4 + i * 0.5, 0.07, 6, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.4, 1.6, 0.4) }));
+    const r = new THREE.Mesh(new THREE.TorusGeometry(2.4 + i * 0.5, 0.07, 6, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(...c.ring) }));
     g.add(r); return r;
   });
-  const light = new VLight('#ffa040', 80, 30, 1.5); g.add(light);
+  const light = new VLight(c.light, 80, 30, 1.5); g.add(light);
   g.visible = false;
   return { g, core, shell, rings, light };
 }
@@ -500,7 +523,8 @@ export function createSurface(hooks) {
     // the vault base is solid
     rocks.list.push({ x: def.vault.x, z: def.vault.z, y: terrain.vaultH, r: 10 });
     // guardian, its arena wall, and the relic
-    const titan = def.titan ? createTitan({ root, def, terrain, fx }) : noTitan();
+    const titan = def.titan ? createTitan({ root, def, terrain, fx }) : def.sentinel ? createSentinel({ root, def, terrain, fx }) : noTitan();
+    const G = GUARD[id] || GUARD.kessa, arenaR = def.arenaR || ARENA_R;
     // heat curtain: bright at the ground, fading out by head height, with flickering streaks
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
     const cx2 = cv.getContext('2d');
@@ -509,9 +533,9 @@ export function createSurface(hooks) {
     cx2.globalCompositeOperation = 'multiply';
     for (let i = 0; i < 256; i += 4) { const k = 120 + Math.random() * 135; cx2.fillStyle = `rgb(${k},${k},${k})`; cx2.fillRect(i, 0, 4, 64); }
     const ctex = new THREE.CanvasTexture(cv); ctex.wrapS = THREE.RepeatWrapping; ctex.repeat.set(10, 1);
-    const curtain = new THREE.Mesh(new THREE.CylinderGeometry(ARENA_R, ARENA_R, 7, 96, 1, true), new THREE.MeshBasicMaterial({ map: ctex, color: new THREE.Color(2.4, 0.7, 0.15), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    const curtain = new THREE.Mesh(new THREE.CylinderGeometry(arenaR, arenaR, 7, 96, 1, true), new THREE.MeshBasicMaterial({ map: ctex, color: new THREE.Color(...G.curtain), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
     curtain.position.set(def.vault.x, terrain.vaultH + 3.2, def.vault.z); curtain.visible = false; root.add(curtain);
-    const ember = makeEmberCore(); root.add(ember.g);
+    const ember = makeEmberCore(G.colors); root.add(ember.g);
     // turret bolts
     const boltGeo = new THREE.BoxGeometry(0.11, 0.11, 2.4);
     const boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3.5, 2.6, 1.1) });
@@ -528,7 +552,7 @@ export function createSurface(hooks) {
     for (const m of [lance.glow, lance.core]) { m.visible = false; m.frustumCulled = false; root.add(m); }
     root.add(lance.light);
     const fauna = def.fauna ? createFauna({ root, def, terrain, fx }) : noFauna();
-    const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire };
+    const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire, G, arenaR, beacon };
     b.lights = createLightPool(root, 3); b.lights.collect(); // every point light above is virtual; 3 real ones serve them
     built.set(id, b);
     return b;
@@ -576,6 +600,7 @@ export function createSurface(hooks) {
     T.ember.g.visible = false;
     T.bolts.forEach((b) => { b.on = false; b.m.visible = false; });
     T.glyph.visible = !taken;
+    T.beacon.visible = true;
     applyPlating();
     S.practiceN = 0;
     if (planetId === 'thalor') {
@@ -614,12 +639,12 @@ export function createSurface(hooks) {
     T.curtain.visible = true;
     T.titan.wake(rover.pos);
     S.hint = 8; S.hintMode = 'gun';
-    hooks.say('Something is climbing out of the shaft. A Warden foundry guardian. Its armour is too thick for us. Watch for the vents.');
+    hooks.say(T.G.wake);
   }
   function arenaRespawn() {
     const d = T.def;
     const a = Math.atan2(rover.pos.z - d.vault.z, rover.pos.x - d.vault.x);
-    rover.pos.set(d.vault.x + Math.cos(a) * 52, 0, d.vault.z + Math.sin(a) * 52);
+    rover.pos.set(d.vault.x + Math.cos(a) * (T.arenaR - 12), 0, d.vault.z + Math.sin(a) * (T.arenaR - 12));
     rover.pos.y = ground(rover.pos.x, rover.pos.z) + 1.4;
     rover.vel.set(0, 0, 0); rover.ang.set(0, 0, 0);
     rover.quat.setFromAxisAngle(UP, Math.atan2(-(d.vault.x - rover.pos.x), -(d.vault.z - rover.pos.z)));
@@ -820,26 +845,27 @@ export function createSurface(hooks) {
     const d = T.def;
     // the arena wall: heat that pushes you back in while the guardian lives
     const toC = Math.hypot(rover.pos.x - d.vault.x, rover.pos.z - d.vault.z);
-    T.curtain.material.opacity = S.fight ? 0.55 + 0.15 * Math.sin(S.time * 5) + clamp((toC - ARENA_R + 14) / 14, 0, 1) * 0.4 : 0;
+    T.curtain.material.opacity = (S.fight ? 0.55 + 0.15 * Math.sin(S.time * 5) + clamp((toC - T.arenaR + 14) / 14, 0, 1) * 0.4 : 0) * (T.G.curtainK || 1);
     T.curtain.material.map.offset.x = S.time * 0.02;
-    T.ventRing.visible = !S.fight && T.titan.state === 'dormant' && !relics[S.planet];
-    if (S.fight && toC > ARENA_R - 3) {
+    T.ventRing.visible = !!d.vents && !S.fight && T.titan.state === 'dormant' && !relics[S.planet];
+    T.beacon.visible = !S.fight && T.titan.state === 'dormant'; // the vault's light column would run through the guardian
+    if (S.fight && toC > T.arenaR - 3) {
       const nx = (rover.pos.x - d.vault.x) / toC, nz = (rover.pos.z - d.vault.z) / toC;
       const outv = rover.vel.x * nx + rover.vel.z * nz;
       if (outv > 0) { rover.vel.x -= nx * outv * 1.6; rover.vel.z -= nz * outv * 1.6; }
       rover.vel.x -= nx * 30 * dt; rover.vel.z -= nz * 30 * dt;
       S.shake = Math.max(S.shake, 0.3);
-      say1('arena-wall', 'It has sealed the field with heat. There is no way out but through it.');
+      say1('arena-wall', T.G.wall);
     }
     const ev = T.titan.update(dt, titanCtx);
-    if (ev === 'awake') say1('awake', 'Foundry Titan. Keep moving, its shells land where you are going.');
+    if (ev === 'awake') say1('awake', T.G.awake);
     if (ev === 'dead') {
       S.fight = false; T.curtain.visible = false;
       T.ember.g.visible = true; T.ember.t = 0;
       setObj('core');
       sfx.victory();
       if (hooks.shards) hooks.shards(120);
-      hooks.say('It is down. And there, rising from the shaft: the Ember Core. Bring us close.');
+      hooks.say(T.G.dead);
     }
     // the Ember Core rises and turns
     if (T.ember.g.visible) {
@@ -848,7 +874,7 @@ export function createSurface(hooks) {
       T.ember.g.position.set(C.x, C.y + Math.min(5, T.ember.t * 2) + Math.sin(S.time * 1.6) * 0.3, C.z);
       T.ember.core.rotation.y += dt * 0.6; T.ember.shell.rotation.y -= dt * 0.3; T.ember.shell.rotation.x += dt * 0.2;
       T.ember.rings[0].rotation.set(S.time * 0.9, S.time * 0.4, 0); T.ember.rings[1].rotation.set(-S.time * 0.5, 0, S.time * 0.7);
-      if (Math.random() < 0.4) T.fx.emit(T.ember.g.position, 1, { speed: 2, life: 1.2, size: 1, colors: [[4, 2, 0.5]], drag: 0.5 });
+      if (Math.random() < 0.4) T.fx.emit(T.ember.g.position, 1, { speed: 2, life: 1.2, size: 1, colors: [T.G.colors.core.map((v) => v * 0.8)], drag: 0.5 });
     }
   }
 
@@ -857,7 +883,7 @@ export function createSurface(hooks) {
     T.glyph.visible = false;
     setObj('return');
     sfx.victory();
-    T.fx.emit(T.ember.g.position, 160, { speed: 16, life: 1.6, size: 2.4, colors: [[5, 2.6, 0.8], [5, 4, 2]], drag: 1.4 });
+    T.fx.emit(T.ember.g.position, 160, { speed: 16, life: 1.6, size: 2.4, colors: T.G.colors.burst, drag: 1.4 });
     if (hooks.relic) hooks.relic(S.planet); else relics[S.planet] = true; // main records it (relics is G.relics)
   }
 
@@ -930,7 +956,8 @@ export function createSurface(hooks) {
       const vl = pv.dot(wf), vs = pv.dot(ws);
       const rearHand = inp.handbrake && !FRONT[w];
       // sea ice: a fraction of the grip, so the rover slides and needs room to stop and turn
-      const onIce = T.def.hazard === 'ice' && T.terrain.heightAt(cp.x, cp.z) < T.def.lava + 0.02;
+      const onIce = (T.def.hazard === 'ice' && T.terrain.heightAt(cp.x, cp.z) < T.def.lava + 0.02) ||
+        (T.titan.icy && Math.hypot(cp.x - T.def.vault.x, cp.z - T.def.vault.z) < T.arenaR); // Sentinel Prime's frozen arena
       const iceK = onIce ? (FRONT[w] ? ICE_FRONT : ICE_GRIP) : 1;
       // drive split: all four on solid ground; on ice the rear wheels do the work (so the tail steps out)
       const share = onIce ? (FRONT[w] ? 0 : 0.5) : 0.25;
@@ -946,7 +973,7 @@ export function createSurface(hooks) {
       }
       Fl -= vl * R.roll;
       if (rearHand) Fl -= Math.sign(vl) * Math.min(Math.abs(vl) * 6, R.brake / 4);
-      if (onIce) { rover.onIce = 0.25; Fl += vl * R.roll * 0.7; if (!FRONT[w]) rearIce++; } // less rolling drag on ice too
+      if (onIce) { if (!S.fight) rover.onIce = 0.25; Fl += vl * R.roll * 0.7; if (!FRONT[w]) rearIce++; } // less rolling drag on ice too
       // throttle on ice spins the rear tyres: they lose most of their side grip, and round she goes
       const spin = onIce && !FRONT[w] && Math.abs(drive) > 0.05 ? 1 - 0.6 * Math.abs(drive) : 1;
       let Fy = -vs * R.grip * (rearHand ? 0.3 : 1) * iceK * spin;
@@ -1118,12 +1145,12 @@ export function createSurface(hooks) {
       T.spire.crate.position.y = T.spire.y + Math.sin(S.time * 1.8) * 0.25;
     }
     if (T.spire) { T.spire.halo.rotation.z += dt * 0.4; T.spire.tip.rotation.y += dt * 0.6; }
-    // the centre: as far as this build goes (the guardian is 6c)
-    if (S.obj === 'maze' && toVault < 18) {
-      setObj('scouted');
-      sfx.victory();
-      hooks.say('We are through. The vault is right here, and something under the ice is waking up. Not today. Lift off when you are ready.');
+    // the centre: the vault door wakes Sentinel Prime (main shows the card, then calls wakeGuardian)
+    if (!S.prompt && S.obj === 'maze' && toVault < 24) {
+      S.prompt = { type: 'vault', label: 'ENTER THE VAULT' };
+      say1('door2', 'We are through. The vault is right here, and the ice over it is humming. Ready when you are.');
     }
+    if (!S.prompt && S.obj === 'core' && T.ember.g.visible && T.ember.t > 2 && toVault < 14) S.prompt = { type: 'core', label: 'TAKE THE ' + T.G.relic };
     // a lane light that follows the rover along the path so the lanes glow near us
     if (M && M.lanes.visible) {
       let bi = 0, bd = Infinity;
@@ -1205,7 +1232,7 @@ export function createSurface(hooks) {
       if (fd < 9) S.prompt = { type: 'collect', label: 'COLLECT FORGEPLATE' };
       if (fd < 30) say1('forge', 'The Forge Gate. There is a Warden armory crate inside. Bring us close.');
     }
-    if (!S.prompt && S.obj === 'core' && T.ember.g.visible && T.ember.t > 2 && toVault < 14) S.prompt = { type: 'core', label: 'TAKE THE EMBER CORE' };
+    if (!S.prompt && S.obj === 'core' && T.ember.g.visible && T.ember.t > 2 && toVault < 14) S.prompt = { type: 'core', label: 'TAKE THE ' + T.G.relic };
     if (!S.prompt && plated && toVault < 24 && S.obj === 'cross') {
       S.prompt = { type: 'vault', label: 'ENTER THE VAULT' };
       say1('door', 'The door knows the plating. It is opening for us.');
@@ -1312,7 +1339,7 @@ export function createSurface(hooks) {
     if (T.maze && scene.fog) {
       const tv = Math.hypot(rover.pos.x - d.vault.x, rover.pos.z - d.vault.z);
       const k = clamp(1 - (tv - T.maze.outer) / 40, 0, 1);
-      const want = d.sky.fogDensity * (1 + k * (upgrades.compassTrim || relics[S.planet] ? 1.2 : 9));
+      const want = d.sky.fogDensity * (1 + k * (S.fight || T.titan.state !== 'dormant' ? 0 : upgrades.compassTrim || relics[S.planet] ? 1.2 : 9));
       scene.fog.density += (want - scene.fog.density) * Math.min(1, dt * 2);
     }
     T.embers.update(dt, rover.pos, S.time);
@@ -1423,16 +1450,16 @@ export function createSurface(hooks) {
       if (Math.hypot(rover.pos.x - d.vault.x, rover.pos.z - d.vault.z) > T.maze.outer + 4) mark(bear(e[0], e[1]), '◆ MAZE ENTRY ' + Math.round(de) + ' M', AMBER, true);
       else mark(bear(d.vault.x, d.vault.z), '◆ VAULT ' + Math.round(dv) + ' M', AMBER, true);
     }
-    else if (S.obj === 'guardian') mark(bear(d.vault.x, d.vault.z), '◆ TITAN', RED, true);
-    else if (S.obj === 'core') mark(bear(d.vault.x, d.vault.z), '◆ EMBER CORE ' + Math.round(dv) + ' M', GOLD, true);
+    else if (S.obj === 'guardian') mark(bear(d.vault.x, d.vault.z), '◆ ' + T.G.short, RED, true);
+    else if (S.obj === 'core') mark(bear(d.vault.x, d.vault.z), '◆ ' + T.G.relic + ' ' + Math.round(dv) + ' M', GOLD, true);
     else if (S.obj !== 'return') mark(bear(d.vault.x, d.vault.z), '◆ VAULT ' + Math.round(dv) + ' M', AMBER, true);
     const OBJ = {
       practice: 'Target practice · shoot cinder skitters by the pad ' + Math.min(5, S.practiceN || 0) + '/5',
       vault: 'Reach the vault signal',
       plate: 'Find heat plating · the Forge Gate, end of the Magma Canyon',
       cross: 'Cross the vent field to the vault',
-      guardian: 'Destroy the Foundry Titan · shoot its core when it vents',
-      core: 'Take the Ember Core',
+      guardian: T.G.obj,
+      core: 'Take ' + T.G.relicName,
       return: 'Return to the Wayfarer and lift off',
       trim: 'Get through the whiteout · find the Rime Spire across the sea',
       maze: 'Follow the lit lanes through the ice maze to the vault',
@@ -1468,10 +1495,10 @@ export function createSurface(hooks) {
     // guardian health: the core's heat, in three stages
     if (S.fight || T.titan.state === 'dying') {
       const bw2 = Math.min(W * 0.5, 520), bx2 = W / 2 - bw2 / 2, by2 = 134;
-      text(ctx, 'FOUNDRY TITAN · VAULT GUARDIAN', W / 2, by2 - 12, 13 * sc + 5, RED, 0.95, 'center', 700);
+      text(ctx, T.G.name + ' · VAULT GUARDIAN', W / 2, by2 - 12, 13 * sc + 5, RED, 0.95, 'center', 700);
       ctx.fillStyle = 'rgba(6,12,22,0.75)'; ctx.fillRect(bx2 - 3, by2 - 3, bw2 + 6, 16);
       ctx.fillStyle = 'rgba(255,77,109,0.22)'; ctx.fillRect(bx2, by2, bw2, 10);
-      ctx.fillStyle = 'rgba(255,120,60,0.95)'; ctx.fillRect(bx2, by2, bw2 * clamp(T.titan.hp / TITAN_HP, 0, 1), 10);
+      ctx.fillStyle = 'rgba(255,120,60,0.95)'; ctx.fillRect(bx2, by2, bw2 * clamp(T.titan.hp / T.G.hp, 0, 1), 10);
       ctx.fillStyle = 'rgba(6,12,22,0.9)'; ctx.fillRect(bx2 + bw2 / 3 - 1, by2, 2, 10); ctx.fillRect(bx2 + bw2 * 2 / 3 - 1, by2, 2, 10);
       if (S.fight && T.titan.open > 0.6) text(ctx, 'CORE EXPOSED · FIRE', W / 2, by2 + 26, 15 * sc + 6, GOLD, 0.7 + 0.3 * Math.sin(S.time * 12), 'center', 700);
     }
