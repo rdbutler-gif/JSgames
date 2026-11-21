@@ -40,6 +40,9 @@ Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop ex
 - **Per-world text and colours:** `GUARD` in surface.js (Kessa and Thalor) holds the guardian name and short name, the relic, WREN's wake / awake / wall / dead lines, the objective, the HP for the HUD bar, the wall colour and the relic colours. `makeEmberCore(colors)` draws either relic.
 - **After the kill:** 120 Wayshards, TAKE THE RIME COMPASS, then `relicSecured` shows memory 2 **TRUTH** (main.js `MEMORIES`): the keys hold the lines open, taking them starves the lines, and the mind that carries them home has to stay. WREN: "I think they meant me to finish it."
 - **Homeward:** `G.homeward` now also covers relic 2 (until briefing `r2`) and relic 3 (`r3`), so the objective sends you to Lantern for Ilsa after each relic.
+- **Owner fixes (2026-11-21):**
+  - "Creatures on Thalor walk below the ice": fauna gets a ground that stops at the sea ice (`walkGround` in surface.js `build`). Their debris uses the same ground.
+  - "The camera shouldn't go behind the ice walls": in any guardian fight (Kessa's too) the chase-camera boom is shortened until the camera is within `arenaR - 0.5` of the centre. The camera rises up to 3.5 m and its look point moves up to 9 m ahead along the view (`S.camKeep`), so a short boom looks over the rover at the fight.
 - **Tests:** a fight bot circles at r 24, and the test lands core hits while `open > 0.6`. Kessa's Titan passed the same flow after the shared-table change.
 
 ### How 6b works (Thalor, after the gate)

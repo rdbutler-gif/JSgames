@@ -551,7 +551,9 @@ export function createSurface(hooks) {
     };
     for (const m of [lance.glow, lance.core]) { m.visible = false; m.frustumCulled = false; root.add(m); }
     root.add(lance.light);
-    const fauna = def.fauna ? createFauna({ root, def, terrain, fx }) : noFauna();
+    // creatures (and the parts they shatter into) stand on the sea ice, not on the sea bed under it
+    const walkGround = def.hazard === 'ice' ? { ...terrain, heightAt: (x, z) => Math.max(terrain.heightAt(x, z), def.lava) } : terrain;
+    const fauna = def.fauna ? createFauna({ root, def, terrain: walkGround, fx }) : noFauna();
     const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire, G, arenaR, beacon };
     b.lights = createLightPool(root, 3); b.lights.collect(); // every point light above is virtual; 3 real ones serve them
     built.set(id, b);
@@ -1377,10 +1379,24 @@ export function createSurface(hooks) {
     const yaw = heading + cam.yaw;
     const dist = cam.dist + S.aimLift * 0.6 + clamp(Math.abs(rover.speed) * 0.08, 0, 2.5);
     v1.set(Math.sin(yaw) * Math.cos(cam.elev) * dist, Math.sin(cam.elev) * dist + 1.6, Math.cos(yaw) * Math.cos(cam.elev) * dist).add(rover.pos);
+    // in a guardian fight the camera stays inside the arena wall (behind the ice walls it can't see the fight):
+    // pull it in along the boom toward the rover until it is inside
+    if (S.fight) {
+      const lim = T.arenaR - 0.5, cx = d.vault.x, cz = d.vault.z; // just inside the (see-through) arena wall
+      let keep = 1;
+      for (let k = 0; k < 24 && Math.hypot(v1.x - cx, v1.z - cz) > lim; k++) {
+        v1.x = rover.pos.x + (v1.x - rover.pos.x) * 0.88; v1.z = rover.pos.z + (v1.z - rover.pos.z) * 0.88; keep *= 0.88;
+      }
+      v1.y += (1 - keep) * 3.5; // a little higher as the boom shortens
+      S.camKeep = keep;
+    }
     const gy = ground(v1.x, v1.z) + 1.4;
     if (v1.y < gy) v1.y = gy;
     cam.pos.lerp(v1, 1 - Math.exp(-8 * dt));
-    cam.look.lerp(v2.copy(rover.pos).add(v3.set(0, 1.4 + S.aimLift, 0)), 1 - Math.exp(-12 * dt));
+    // a shortened boom looks past the rover, along the view, so it sees the fight over the rover's roof
+    const ahead = S.fight ? (1 - (S.camKeep ?? 1)) * 9 : 0;
+    if (!S.fight) S.camKeep = 1;
+    cam.look.lerp(v2.copy(rover.pos).add(v3.set(-Math.sin(yaw) * ahead, 1.4 + S.aimLift, -Math.cos(yaw) * ahead)), 1 - Math.exp(-12 * dt));
     camera.position.copy(cam.pos);
     if (S.shake > 0) camera.position.add(v3.set(Math.random() - 0.5, Math.random() - 0.5, 0).multiplyScalar(S.shake * 0.3));
     camera.up.set(0, 1, 0);
