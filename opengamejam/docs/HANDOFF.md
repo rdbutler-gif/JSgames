@@ -14,19 +14,44 @@
 | 4c | Rover turret, Foundry Titan fight, Ember Core, WREN memory #1 | Done, owner played it through (Titan stays as is) |
 | 4d | Opening: title scene, menus, save, intro, Lantern undock, WREN tutorial, radio, cruise lore, spread planets, voices | Done. Owner approved 2026-11-20: voice levels, tutorial pace, voice casting, cruise distances, nebula sky, cockpit, surface effects, performance on the weak laptop |
 | 5 | Lantern hub: docking, Ilsa's briefings, Workshop, air clock, scrubber parts, saves on events | Built 2026-11-20; owner flew home and docked on the live site ("it worked"). Docking line repeated until docked: fixed (once per approach) |
-| 6a | Thalor: ring-storm gate (Rime Shielding, 300 Wayshards), the surface (snow shelves, slick sea ice, rings in the sky, snow), drive to the vault | **Built 2026-11-20, headless-tested, awaiting owner playtest** |
+| 6a | Thalor: ring-storm gate (Rime Shielding, 300 Wayshards), the surface (snow shelves, slick sea ice, rings in the sky, snow), drive to the vault | Done. Owner 2026-11-21: 300 is right ("required me to encounter two raider fights"), Thalor "looks great", ice could be more slippery (ICE_GRIP 0.2 -> 0.1) |
+| 6b | Thalor: Rime Spire + Compass Trim, the ice maze and its whiteout, Thalor creatures (rime crawlers, shardbacks) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest** |
 
 Then: 6 the other two planets, 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
 ## First thing next session
 
-0. **Ask the owner to play 6a (Thalor).** Owner request (2026-11-20): "begin creating Thalor and make it impossible without upgrading ship first, encouraging Raider battles to gain currency". Ask:
-   - Is 300 Wayshards the right price? While the nav is on Thalor, the objective line shows ◆ n / 300.
-   - How does the sea ice drive? Grip on the ice is `ICE_GRIP` (0.2) in surface.js. Measured: 27° slip at full lock, and braking from 15 m/s leaves 6 m/s after 1 s, against 1 m/s on snow.
-   - How do the look, the rings in the sky and the snow read?
-   - Next: 6b is the Compass Trim module and the ice maze. 6c is the Sentinel Prime guardian, the Rime Compass relic and WREN memory 2 (Truth).
+0. **Ask the owner to play 6b (Thalor).** Owner request (2026-11-21): "Continue with the next steps for the Thalor adventure. Thalor needs its own types of creatures also." Ask:
+   - Is the ice slippery enough now (`ICE_GRIP` 0.1)?
+   - Is the maze fun? Is it too long? The bot took 56 s at 9 m/s.
+   - Do the shardbacks feel fair? Charge 23 m/s, ram 11 and a knockback, then a 1.8 s stun. Two hits in a row took 22 hull in the bot test.
+   - Are there enough crawlers and shardbacks?
+   - Next: 6c, the Sentinel Prime guardian in the maze's centre, the Rime Compass relic and WREN memory 2 (Truth).
 
-### How 6a works (Thalor)
+### How 6b works (Thalor, after the gate)
+- **The flow:**
+  1. Land, and drive for the vault beacon.
+  2. At the maze (`maze.outer`, 82 m from the vault) a whiteout shoves the rover back, the same way Kessa's heat wall does. The HUD shows WHITEOUT · SENSORS BLIND, and the objective changes to `trim`.
+  3. The **Rime Spire** (`def.spire`, across the frozen sea, ~860 m from the vault) has the Compass Trim crate. Two shardbacks guard it.
+  4. COLLECT COMPASS TRIM sets `upgrades.compassTrim` (saved), shows the event card with a memory fragment, and lights the lanes. The objective becomes `maze`, and the compass shows MAZE ENTRY.
+  5. Follow the lanes to the centre (within 18 m of the vault). The objective becomes `scouted`. The guardian is 6c.
+- **The maze** (`def.maze` in terrain.js; built in surface.js `build`):
+  - Three rings of ice shards at 72, 56 and 40 m. Each ring has one gap (`gaps`), and each corridor has a radial wall (`blocks`), so there is exactly one way through, the long way round twice.
+  - The shards are one InstancedMesh, with `rocks.list` circle colliders tagged `wall`. They are solid to the rover. They're not shootable: bolts pass through.
+  - The lanes are an InstancedMesh of small cyan posts along the solution path (`maze.path`). A pooled lane light follows the nearest post.
+  - Thalor's vault plateau was widened to 86 m (`plateau`) so the maze is flat. Boulders are kept out of the maze and the spire.
+  - Fog thickens toward the maze: ×10 without the trim (a whiteout), ×2.2 with it.
+- **Creatures** (fauna.js, `def.fauna`: `'kessa'` or `'thalor'`):
+  - `KIND` entries now carry their own hit, bar, shard and anim settings, and `pred` replaces the old "is it a hound" checks.
+  - **Rime crawlers** (`makeCrawler`: a skitter body with a crystal crest) are harmless herds, with one herd by the pad. 2 hp, worth 1 Wayshard.
+  - **Shardbacks** (`makeShardback`, 3.2 m, ice plates, a crystal ram crest) live in packs from `THALOR_PACKS`: 14 in total, 2 of them at the spire.
+    - Their states run roam, then stalk (they face you and shiver for 1.3 s: the tell), then charge (23 m/s, barely homing), then stun (they skid and their glow flickers for 1.8 s: shoot them then).
+    - A hit does 11 damage and pushes the rover through `ctx.push`, which slides it on ice. 9 hp, worth 7 Wayshards.
+    - They can walk on the sea ice.
+  - Icy creatures shatter (`iceBurst` in gibs.js): shards and frost, with no fire or scorch.
+- **Tests:** `surface.debug` exposes `S`, `T` (with `T.maze`, `T.spire`, `T.fauna`) and `rover`. To press accept from a test, set `window.__bot = (i) => i.pressed.add('accept')` (it runs after the input poll).
+
+### How 6a works (Thalor: the gate and the surface)
 - **The gate:** `stormBlocks(p)` in main.js blocks landing on Thalor until `G.upgrades.rime` is set. That's the Workshop's RIME SHIELDING: one tier, 300 Wayshards.
   - The landing prompt reads RING STORM · NEEDS RIME SHIELDING. Accepting it has WREN give the price and what we hold.
   - On the first approach WREN says `thalor-storm-1` and `thalor-storm-2`: the Scrap Crown carry Wayshards. Ilsa says `hub-rime` when the shielding is bought.

@@ -115,18 +115,33 @@ export function createDeathFx({ root, terrain, fx }) {
   const fires = []; // short-lived burning spots where a body fell
 
   function burst(c) {
-    const big = c.kind === 'hound';
+    const big = !!(c.k && c.k.big);
     const cy = c.y + (big ? 1.1 : 0.4);
     v1.set(c.x, cy, c.z);
+    if (c.k && c.k.ice) { iceBurst(c, big, cy); return gibParts(c, big, true); }
     // fire: a white-hot core, a fireball, then sparks
     fx.emit(v1, 3, { raw: true, speed: 1, life: 0.14, size: big ? 7 : 4, colors: [[4, 2.6, 1.2]], drag: 6 });
     fx.emit(v1, big ? 30 : 14, { raw: true, speed: big ? 7 : 4.5, life: 0.5, size: big ? 2.6 : 1.6, colors: [[1.8, 0.6, 0.1], [1.6, 0.9, 0.25], [2.2, 0.5, 0.08]], drag: 3.2, dir: v2.set(0, big ? 2.5 : 1.5, 0) });
     fx.emit(v1, big ? 50 : 24, { raw: true, speed: big ? 18 : 12, life: 1.1, size: 0.6, colors: [[4, 2, 0.5], [3.5, 1.1, 0.2]], drag: 1.1, dir: v2.set(0, 4, 0) });
     // smoke: a dark ball that boils up after the flash
     smoke.emit(v1, big ? 22 : 10, { speed: big ? 4 : 2.5, spread: big ? 0.8 : 0.4, rise: 1.5, life: big ? 3.6 : 2.6, size: big ? 4.5 : 2.6, alpha: 0.75, colors: [[0.09, 0.075, 0.065], [0.16, 0.13, 0.11], [0.05, 0.045, 0.04]] });
+    flash.color.set('#ff8a3a');
     flashI = big ? 90 : 30; flash.position.set(c.x, cy + 0.8, c.z); flash.intensity = flashI;
     fires.push({ x: c.x, z: c.z, y: terrain.heightAt(c.x, c.z), t: big ? 2.4 : 1.3, big });
     scorch(c.x, c.z, big ? 2.4 : 1.2);
+    gibParts(c, big, false);
+  }
+
+  // Thalor's creatures shatter: a cold flash, a spray of ice shards and a puff of frost; no fire, no scorch
+  function iceBurst(c, big, cy) {
+    fx.emit(v1, 3, { raw: true, speed: 1, life: 0.14, size: big ? 6 : 3.5, colors: [[2.6, 3.4, 4]], drag: 6 });
+    fx.emit(v1, big ? 60 : 26, { raw: true, speed: big ? 14 : 9, life: 0.9, size: big ? 0.9 : 0.6, colors: [[1.6, 2.4, 3], [2.4, 2.8, 3.2], [1.1, 1.8, 2.4]], drag: 1.4, dir: v2.set(0, 3.5, 0) });
+    smoke.emit(v1, big ? 16 : 8, { speed: big ? 3 : 2, spread: big ? 0.8 : 0.4, rise: 0.5, life: big ? 2.2 : 1.6, size: big ? 3.6 : 2, alpha: 0.5, colors: [[0.82, 0.88, 0.93], [0.7, 0.78, 0.86]] });
+    flash.color.set('#9fe6ff');
+    flashI = big ? 60 : 20; flash.position.set(c.x, cy + 0.8, c.z); flash.intensity = flashI;
+  }
+
+  function gibParts(c, big, ice) {
 
     // parts: the creature's own meshes, biggest first, flung out from the body's centre
     c.g.updateMatrixWorld(true); root.updateMatrixWorld();
@@ -154,7 +169,7 @@ export function createDeathFx({ root, terrain, fx }) {
         g: piv, r: bs.radius * piv.scale.x,
         vel: new THREE.Vector3(v2.x + c.vx * 0.5, rand(big ? 5 : 3.5, big ? 11 : 7), v2.z + c.vz * 0.5),
         axis: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize(), spin: rand(5, 15),
-        t: 0, life: rand(3.2, 4.6), burn: Math.random() < 0.6 ? rand(0.7, 1.6) : 0, s0: piv.scale.x, rest: false,
+        t: 0, life: rand(3.2, 4.6), burn: !ice && Math.random() < 0.6 ? rand(0.7, 1.6) : 0, s0: piv.scale.x, rest: false, ice,
       });
     }
     while (gibs.length > MAX_GIBS) root.remove(gibs.shift().g);
@@ -172,7 +187,7 @@ export function createDeathFx({ root, terrain, fx }) {
         const gy = terrain.heightAt(p.x, p.z) + b.r * 0.5;
         if (p.y < gy) {
           p.y = gy;
-          if (b.vel.y < -1.5) { b.vel.y *= -0.32; b.vel.x *= 0.55; b.vel.z *= 0.55; b.spin *= 0.5; fx.emit(p, 2, { raw: true, speed: 2, life: 0.4, size: 0.9, colors: [[3, 1.2, 0.3]], drag: 3 }); }
+          if (b.vel.y < -1.5) { b.vel.y *= -0.32; b.vel.x *= 0.55; b.vel.z *= 0.55; b.spin *= 0.5; fx.emit(p, 2, { raw: true, speed: 2, life: 0.4, size: 0.9, colors: [b.ice ? [1.8, 2.4, 3] : [3, 1.2, 0.3]], drag: 3 }); }
           else { b.vel.set(0, 0, 0); b.rest = true; }
         }
       }

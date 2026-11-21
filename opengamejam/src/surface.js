@@ -39,7 +39,7 @@ const TURRET_POS = new THREE.Vector3(0, 0.6, 0.15); // seated on the generated c
 // The crosshair sits above screen centre so the rover never covers it; the aim ray goes through it.
 const AIM_NDC_Y = 0.2;
 const ARENA_R = 64;
-const ICE_GRIP = 0.2; // share of normal tyre grip on Thalor's sea ice
+const ICE_GRIP = 0.1; // share of normal tyre grip on Thalor's sea ice
 let shadowSize = 2048; // set by the graphics quality level
 // Special weapons: one is selected at a time (held on right mouse, Q or LB). Only the heat lance exists so far.
 // The lance burns whatever the beam touches, harder the longer it stays on one target, and overheats.
@@ -156,7 +156,8 @@ function makeRocks(terrain, def, count) {
     const h = terrain.heightAt(x, z);
     if (h < def.lava + 1.5) continue;
     if (Math.hypot(x - def.pad.x, z - def.pad.z) < def.pad.r * 1.5) continue;
-    if (Math.hypot(x - def.vault.x, z - def.vault.z) < 72) continue; // keep the guardian arena clear
+    if (Math.hypot(x - def.vault.x, z - def.vault.z) < (def.maze ? def.maze.rings[0] + 16 : 72)) continue; // keep the guardian arena (and Thalor's maze) clear
+    if (def.spire && Math.hypot(x - def.spire.x, z - def.spire.z) < 26) continue;
     if (onRoad(def, x, z, 7)) continue; // causeways and the canyon ridge stay drivable
     const big = Math.random() < 0.18;
     const r = big ? 2.2 + Math.random() * 3.8 : 0.25 + Math.random() * 0.45;
@@ -424,6 +425,69 @@ export function createSurface(hooks) {
       root.add(crate);
       forge = { gate, crate, x: F.x, z: F.z, y: gate.position.y };
     }
+    // Thalor's ice maze: ring walls of ice shards round the vault (solid to the rover), and the lit
+    // lanes through it, which only show once the Compass Trim is fitted
+    let maze = null;
+    if (def.maze) {
+      const M = def.maze, V = def.vault;
+      const shard = new THREE.CylinderGeometry(0.85, 1.35, 1, 6).translate(0, 0.5, 0);
+      const iceMat = new THREE.MeshStandardMaterial({ color: '#cfeefc', roughness: 0.1, metalness: 0, emissive: '#10303f', flatShading: true });
+      const spots = [];
+      const angIn = (a, c, half) => Math.abs(Math.atan2(Math.sin(a - c), Math.cos(a - c))) < half;
+      M.rings.forEach((R, i) => {
+        const n = Math.round((Math.PI * 2 * R) / 2.5), half = (M.gapW / 2) / R;
+        for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2; if (!angIn(a, M.gaps[i], half)) spots.push([V.x + Math.cos(a) * R, V.z + Math.sin(a) * R]); }
+      });
+      M.blocks.forEach((a, i) => { for (let r = M.rings[i + 1] + 1.5; r < M.rings[i] - 1; r += 2.5) spots.push([V.x + Math.cos(a) * r, V.z + Math.sin(a) * r]); });
+      const im = new THREE.InstancedMesh(shard, iceMat, spots.length);
+      let sd = 17; const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      const m4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), e = new THREE.Euler();
+      spots.forEach(([x, z], i) => {
+        const y = terrain.heightAt(x, z), h = 6 + rnd() * 6;
+        e.set((rnd() - 0.5) * 0.25, rnd() * 6.28, (rnd() - 0.5) * 0.25); qq.setFromEuler(e);
+        m4.compose(v1.set(x, y - 0.6, z), qq, v2.set(1 + rnd() * 0.4, h, 1 + rnd() * 0.4));
+        im.setMatrixAt(i, m4);
+        rocks.list.push({ x, z, y, r: 1.75, wall: true }); // solid, not shootable
+      });
+      im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere();
+      root.add(im);
+      // the lanes: a line of small lights along the one way through
+      const R0 = M.rings, path = [];
+      const arc = (r, a0, a1) => { const n = Math.ceil((Math.abs(a1 - a0) * r) / 5); for (let k = 0; k <= n; k++) { const a = a0 + (a1 - a0) * (k / n); path.push([V.x + Math.cos(a) * r, V.z + Math.sin(a) * r]); } };
+      const radial = (a, r0, r1) => { const n = Math.ceil(Math.abs(r1 - r0) / 5); for (let k = 0; k <= n; k++) { const r = r0 + (r1 - r0) * (k / n); path.push([V.x + Math.cos(a) * r, V.z + Math.sin(a) * r]); } };
+      const c1 = (R0[0] + R0[1]) / 2, c2 = (R0[1] + R0[2]) / 2;
+      radial(M.gaps[0], R0[0] + 12, c1);
+      arc(c1, M.gaps[0], M.gaps[0] - Math.PI);           // the long way round (the block is the other way)
+      radial(M.gaps[1], c1, c2);
+      arc(c2, M.gaps[1], M.gaps[1] - Math.PI);
+      radial(M.gaps[2], c2, 14);
+      const post = new THREE.CylinderGeometry(0.14, 0.2, 0.9, 6).translate(0, 0.45, 0);
+      const lanes = new THREE.InstancedMesh(post, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 2.6, 3.2) }), path.length);
+      path.forEach(([x, z], i) => { m4.makeTranslation(x, terrain.heightAt(x, z), z); lanes.setMatrixAt(i, m4); });
+      lanes.computeBoundingSphere(); lanes.visible = false; root.add(lanes);
+      const laneLight = new VLight('#8fe8ff', 0, 30, 1.6); root.add(laneLight);
+      maze = { lanes, path, laneLight, outer: R0[0] + 10, entry: path[0] };
+    }
+    // the Rime Spire: a Warden obelisk of ice and stone with the Compass Trim crate at its foot
+    let spire = null;
+    if (def.spire) {
+      const P = def.spire, y = terrain.heightAt(P.x, P.z);
+      const g = new THREE.Group(); g.position.set(P.x, y, P.z); root.add(g);
+      const stone = new THREE.MeshStandardMaterial({ color: '#8f9aa3', roughness: 0.7, metalness: 0.2 });
+      const iceM = new THREE.MeshStandardMaterial({ color: '#bfeaff', roughness: 0.08, emissive: '#1c5d78', flatShading: true });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(7, 8.5, 2, 6), stone); base.position.y = 0.6; g.add(base);
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.6, 22, 6).translate(0, 11, 0), iceM); col.position.set(0, 1.5, 4); g.add(col);
+      const tip = new THREE.Mesh(new THREE.OctahedronGeometry(2.2, 0).scale(1, 1.8, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.2, 2.8, 3.4) })); tip.position.set(0, 27, 4); g.add(tip);
+      const halo = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.2, 6, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.8, 2.2, 2.8) })); halo.position.set(0, 18, 4); halo.rotation.x = Math.PI / 2; g.add(halo);
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      rocks.list.push({ x: P.x, z: P.z + 4, y, r: 2.6, wall: true });
+      const crate = new THREE.Group(); crate.position.set(P.x, y + 3.2, P.z - 2); root.add(crate);
+      const fallback = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.5, 6), new THREE.MeshStandardMaterial({ color: '#d8e6ee', roughness: 0.5, metalness: 0.3, emissive: '#0a2a38' }));
+      crate.add(fallback);
+      onModel('crate', () => { const m = cloneModel('crate'); if (m) { crate.remove(fallback); crate.add(m); } });
+      const cl = new VLight('#8fe8ff', 25, 14, 1.6); cl.position.y = 1.5; crate.add(cl);
+      spire = { g, crate, halo, tip, x: P.x, z: P.z - 2, y: y + 3.2 };
+    }
     // the vault base is solid
     rocks.list.push({ x: def.vault.x, z: def.vault.z, y: terrain.vaultH, r: 10 });
     // guardian, its arena wall, and the relic
@@ -455,7 +519,7 @@ export function createSurface(hooks) {
     for (const m of [lance.glow, lance.core]) { m.visible = false; m.frustumCulled = false; root.add(m); }
     root.add(lance.light);
     const fauna = def.fauna ? createFauna({ root, def, terrain, fx }) : noFauna();
-    const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna };
+    const b = { lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire };
     b.lights = createLightPool(root, 3); b.lights.collect(); // every point light above is virtual; 3 real ones serve them
     built.set(id, b);
     return b;
@@ -506,9 +570,16 @@ export function createSurface(hooks) {
     applyPlating();
     S.practiceN = 0;
     if (planetId === 'thalor') {
-      // Thalor (step 6a): the drive to the vault; the way in (Compass Trim, the ice maze) is the next build step
+      // Thalor (6b): the vault sits inside an ice maze. Without the Compass Trim a whiteout drives us back;
+      // the trim is in the Rime Spire across the sea, and with it the maze's lanes light up.
+      const trim = !!upgrades.compassTrim;
+      if (!taken) S.obj = trim ? 'maze' : 'vault';
+      if (T.spire) T.spire.crate.visible = !trim;
+      if (T.maze) T.maze.lanes.visible = trim;
       hooks.say('Rover is down. Thalor. Snow shelves, and the sea is frozen solid between them.');
-      if (!taken) setTimeout(() => S && S.time < 12 && S.obj === 'vault' && hooks.say('The vault signal is that cold light column. The Wayfarer is on the pad when you want to lift off.'), 6000);
+      if (!taken) setTimeout(() => S && S.time < 12 && (S.obj === 'vault' || S.obj === 'maze') && hooks.say(trim
+        ? 'The Compass Trim is fitted. The maze lanes are lit. Follow them to the vault.'
+        : 'The vault signal is that cold light column. The Wayfarer is on the pad when you want to lift off.'), 6000);
       return;
     }
     hooks.say('Rover is down. Kessa is basalt and lava. Stay off the bright ground.');
@@ -682,8 +753,9 @@ export function createSurface(hooks) {
 
   function creatureKilled(c) {
     sfx.explode(false);
-    if (hooks.shards) hooks.shards(c.kind === 'hound' ? 4 : 1); // natives carry Wayshards
+    if (hooks.shards) hooks.shards(c.k.shards || 1); // natives carry Wayshards
     if (c.kind === 'hound') faunaSay('hound-kill', 'Hound down. They are only following the heat. So are we.');
+    else if (c.kind === 'shardback') faunaSay('shard-kill', 'Shardback down. Their plates grow from the ring-ice. They were here long before the Wardens.');
     else if (S.obj === 'practice') practiceKill();
   }
 
@@ -979,6 +1051,62 @@ export function createSurface(hooks) {
     });
   }
 
+  // ---------- Thalor: the Rime Spire, the Compass Trim and the ice maze ----------
+  function collectTrim() {
+    upgrades.compassTrim = true;
+    T.spire.crate.visible = false;
+    T.maze.lanes.visible = true;
+    setObj('maze');
+    sfx.victory();
+    T.fx.emit(T.spire.crate.position, 120, { speed: 14, life: 1.4, size: 2.2, colors: [[1.6, 2.6, 3.2], [2.6, 3, 3.4]], drag: 1.5 });
+    hooks.say('The trim is reading the ice already. There. The maze has lanes, and now I can see them.');
+    hooks.event && hooks.event({
+      kicker: 'ARMORY · THALOR', title: 'COMPASS TRIM',
+      text: 'A Warden navigation trim, fitted to the rover\'s mast. It reads the lanes the Wardens cut through the ice, and the whiteout in the maze no longer blinds it. WREN recovered a memory fragment: a voice saying "follow the cold". She knows the voice. She does not know whose it is.',
+    });
+  }
+  function thalorMissions(dt, P, toVault) {
+    const trim = !!upgrades.compassTrim, M = T.maze;
+    // the whiteout: without the trim the maze's storm shoves us back out, like Kessa's heat wall
+    S.whiteout = Math.max(0, (S.whiteout || 0) - dt);
+    if (M && toVault < M.outer && !trim && !relics[S.planet]) {
+      const nx = (P.x - T.def.vault.x) / toVault, nz = (P.z - T.def.vault.z) / toVault;
+      const inward = -(rover.vel.x * nx + rover.vel.z * nz);
+      if (inward > 0) { rover.vel.x += nx * inward * 1.6; rover.vel.z += nz * inward * 1.6; }
+      rover.vel.x += nx * 26 * dt; rover.vel.z += nz * 26 * dt;
+      S.whiteout = 0.5; S.shake = Math.max(S.shake, 0.25);
+      if (S.obj === 'vault') setObj('trim');
+      say1('whiteout', 'Whiteout! The storm in the maze is blinding my sensors and pushing us out. There is a Warden spire across the frozen sea. If anything can read this ice, it is there.');
+    }
+    if (M && toVault < M.outer + 30 && trim) say1('lanes', 'Lanes are lit. Stay on them, the maze only has one way through.');
+    // the spire's crate
+    if (!S.prompt && T.spire && !trim) {
+      const fd = Math.hypot(P.x - T.spire.x, P.z - T.spire.z);
+      if (fd < 9) S.prompt = { type: 'trim', label: 'COLLECT COMPASS TRIM' };
+      if (fd < 45) say1('spire', 'The Rime Spire. A Warden armory crate at its foot. Bring us close.');
+    }
+    if (T.spire && T.spire.crate.visible) {
+      T.spire.crate.rotation.y += dt * 0.8;
+      T.spire.crate.position.y = T.spire.y + Math.sin(S.time * 1.8) * 0.25;
+    }
+    if (T.spire) { T.spire.halo.rotation.z += dt * 0.4; T.spire.tip.rotation.y += dt * 0.6; }
+    // the centre: as far as this build goes (the guardian is 6c)
+    if (S.obj === 'maze' && toVault < 18) {
+      setObj('scouted');
+      sfx.victory();
+      hooks.say('We are through. The vault is right here, and something under the ice is waking up. Not today. Lift off when you are ready.');
+    }
+    // a lane light that follows the rover along the path so the lanes glow near us
+    if (M && M.lanes.visible) {
+      let bi = 0, bd = Infinity;
+      for (let i = 0; i < M.path.length; i += 2) { const q = M.path[i], dd = (q[0] - P.x) ** 2 + (q[1] - P.z) ** 2; if (dd < bd) { bd = dd; bi = i; } }
+      const q = M.path[bi];
+      M.laneLight.position.set(q[0], ground(q[0], q[1]) + 2, q[1]);
+      M.laneLight.intensity = bd < 900 ? 18 : 0;
+    }
+    return null;
+  }
+
   function missions(dt, inp) {
     const d = T.def;
     const P = rover.pos;
@@ -1019,14 +1147,7 @@ export function createSurface(hooks) {
     T.geyserLight.intensity = nearest && nd < 60 ? 30 : 0;
     if (nearest) T.geyserLight.position.set(nearest.x, nearest.y + 6, nearest.z);
 
-    // Thalor: reaching the vault is as far as this build goes
-    if (d.hazard === 'ice') {
-      if (S.obj === 'vault' && toVault < 45) {
-        setObj('scouted');
-        hooks.say('There it is. The vault is sealed under the rime, and the way in is a maze of ice. We will need something to read it. Next time.');
-      }
-      return null;
-    }
+    if (d.hazard === 'ice') return thalorMissions(dt, P, toVault);
 
     // the vent field: impassable heat without Forgeplate
     const inRing = toVault > 30 && toVault < 56;
@@ -1116,7 +1237,8 @@ export function createSurface(hooks) {
     if (T.titan.state !== 'dormant' || T.ember.g.visible || S.fight) updateFight(dt);
     {
       const fw = v1.set(0, 0, -1).applyQuaternion(rover.quat);
-      T.fauna.update(dt, S.time, { rover, heading: Math.atan2(-fw.x, -fw.z), quiet: S.fight, damage: (n) => { rover.hull -= n; sfx.playerHit(true); }, shake: (k) => { S.shake = Math.max(S.shake, k); }, say: faunaSay });
+      T.fauna.update(dt, S.time, { rover, heading: Math.atan2(-fw.x, -fw.z), quiet: S.fight, damage: (n) => { rover.hull -= n; sfx.playerHit(true); }, shake: (k) => { S.shake = Math.max(S.shake, k); }, say: faunaSay,
+        push: (x, z) => { rover.vel.x += x; rover.vel.z += z; rover.vel.y += 3; rover.ang.y += (Math.random() - 0.5) * 2.5; } }); // a shardback's ram
       // Workshop armour: every loss this frame, whatever caused it, is cut down
       if (rover.hull < S.prevHull && rover.hull > 0) rover.hull = S.prevHull - (S.prevHull - rover.hull) * eff(upgrades, 'armour', 'dmgK');
       // the hull mends slowly once nothing has hurt it for a while (never mid-fight)
@@ -1128,6 +1250,7 @@ export function createSurface(hooks) {
     if (inp.pressed.has('accept') || (S.prompt && S.prompt.type === 'right' && inp.pressed.has('zero'))) {
       if (S.prompt?.type === 'orbit') result = { type: 'orbit' };
       else if (S.prompt?.type === 'collect') collectForgeplate();
+      else if (S.prompt?.type === 'trim') collectTrim();
       else if (S.prompt?.type === 'vault') result = { type: 'vault' };
       else if (S.prompt?.type === 'core') takeCore();
       else if (S.prompt?.type === 'right') {
@@ -1149,6 +1272,13 @@ export function createSurface(hooks) {
       wh.spin.rotation.x = -rover.wheelSpin[w];
     });
     if (T.lava.material.uniforms) T.lava.material.uniforms.time.value = S.time; // the ice sheet has no clock
+    // Thalor's maze: the fog thickens toward the maze (a whiteout without the trim, a light haze with it)
+    if (T.maze && scene.fog) {
+      const tv = Math.hypot(rover.pos.x - d.vault.x, rover.pos.z - d.vault.z);
+      const k = clamp(1 - (tv - T.maze.outer) / 40, 0, 1);
+      const want = d.sky.fogDensity * (1 + k * (upgrades.compassTrim || relics[S.planet] ? 1.2 : 9));
+      scene.fog.density += (want - scene.fog.density) * Math.min(1, dt * 2);
+    }
     T.embers.update(dt, rover.pos, S.time);
     T.fx.update(dt); // sparks, fire and dust (was never stepped, so surface particles never showed)
     T.glyph.rotation.z += dt * 0.3;
@@ -1211,10 +1341,10 @@ export function createSurface(hooks) {
       if (!c.alive || !c.g.visible || c.hp >= c.k.hp) continue;
       const d = Math.hypot(c.x - hudCam.position.x, c.z - hudCam.position.z);
       if (d > 140) continue;
-      hb.set(c.x, c.y + (c.kind === 'hound' ? 2.35 : 1.0), c.z).project(hudCam);
+      hb.set(c.x, c.y + c.k.barY, c.z).project(hudCam);
       if (hb.z > 1 || Math.abs(hb.x) > 1.05 || Math.abs(hb.y) > 1.05) continue;
       const x = (hb.x + 1) / 2 * W, y = (1 - hb.y) / 2 * H;
-      const k = clamp(28 / Math.max(d, 1), 0.55, 1.4), bw = (c.kind === 'hound' ? 56 : 34) * k * (0.6 + sc * 0.4), bh = Math.max(3, 6 * k);
+      const k = clamp(28 / Math.max(d, 1), 0.55, 1.4), bw = c.k.barW * k * (0.6 + sc * 0.4), bh = Math.max(3, 6 * k);
       const f = clamp(c.hp / c.k.hp, 0, 1), a = clamp((140 - d) / 30, 0, 1);
       ctx.globalAlpha = a;
       ctx.fillStyle = 'rgba(6,12,22,0.75)'; ctx.fillRect(x - bw / 2 - 2, y - bh / 2 - 2, bw + 4, bh + 4);
@@ -1244,6 +1374,14 @@ export function createSurface(hooks) {
       mark(bear(T.forge.x, T.forge.z), '◆ FORGE GATE ' + Math.round(df) + ' M', AMBER, true);
       mark(bear(d.vault.x, d.vault.z), 'VAULT', '200,150,90', false);
     } else if (S.obj === 'practice' && T.fauna.meadow) mark(bear(T.fauna.meadow.x, T.fauna.meadow.z), '◆ SKITTERS', AMBER, true);
+    else if (S.obj === 'trim' && T.spire) {
+      mark(bear(T.spire.x, T.spire.z), '◆ RIME SPIRE ' + Math.round(Math.hypot(T.spire.x - rover.pos.x, T.spire.z - rover.pos.z)) + ' M', AMBER, true);
+      mark(bear(d.vault.x, d.vault.z), 'VAULT', '150,200,220', false);
+    } else if (S.obj === 'maze' && T.maze) {
+      const e = T.maze.entry, de = Math.hypot(e[0] - rover.pos.x, e[1] - rover.pos.z);
+      if (Math.hypot(rover.pos.x - d.vault.x, rover.pos.z - d.vault.z) > T.maze.outer + 4) mark(bear(e[0], e[1]), '◆ MAZE ENTRY ' + Math.round(de) + ' M', AMBER, true);
+      else mark(bear(d.vault.x, d.vault.z), '◆ VAULT ' + Math.round(dv) + ' M', AMBER, true);
+    }
     else if (S.obj === 'guardian') mark(bear(d.vault.x, d.vault.z), '◆ TITAN', RED, true);
     else if (S.obj === 'core') mark(bear(d.vault.x, d.vault.z), '◆ EMBER CORE ' + Math.round(dv) + ' M', GOLD, true);
     else if (S.obj !== 'return') mark(bear(d.vault.x, d.vault.z), '◆ VAULT ' + Math.round(dv) + ' M', AMBER, true);
@@ -1255,7 +1393,9 @@ export function createSurface(hooks) {
       guardian: 'Destroy the Foundry Titan · shoot its core when it vents',
       core: 'Take the Ember Core',
       return: 'Return to the Wayfarer and lift off',
-      scouted: 'Vault found · the way in is the next build step · lift off when ready',
+      trim: 'Get through the whiteout · find the Rime Spire across the sea',
+      maze: 'Follow the lit lanes through the ice maze to the vault',
+      scouted: 'Through the maze · the guardian is the next build step',
     };
     text(ctx, OBJ[S.obj] || '', W / 2, 90, 14 * sc + 5, '230,251,255', 0.9, 'center', 600);
     if (S.objFlash > 0) {
@@ -1265,6 +1405,7 @@ export function createSurface(hooks) {
       text(ctx, 'NEW OBJECTIVE', W / 2, H * 0.33 - 14, 14 * sc + 5, AMBER, a, 'center', 700);
       text(ctx, OBJ[S.obj] || '', W / 2, H * 0.33 + 14, 20 * sc + 8, '255,255,255', a, 'center', 700);
     }
+    if (S.whiteout > 0) text(ctx, 'WHITEOUT · SENSORS BLIND', W / 2, H * 0.25, 24 * sc + 10, '200,235,255', 0.6 + 0.4 * Math.sin(S.time * 10), 'center', 700);
     if (S.heatWall > 0) text(ctx, 'HEAT WALL · NEED HEAT PLATING', W / 2, H * 0.25, 24 * sc + 10, RED, 0.6 + 0.4 * Math.sin(S.time * 14), 'center', 700);
     const ds = Math.hypot(T.shipHolder.position.x - rover.pos.x, T.shipHolder.position.z - rover.pos.z);
     if (ds > 20) mark(bear(T.shipHolder.position.x, T.shipHolder.position.z), '▲ WAYFARER' + (S.obj === 'return' ? ' ' + Math.round(ds) + ' M' : ''), S.obj === 'return' ? GOLD : CYAN, true);

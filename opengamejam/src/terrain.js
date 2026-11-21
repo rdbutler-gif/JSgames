@@ -93,7 +93,7 @@ export const SURFACES = {
     sky: { top: '#1a0b0a', horizon: '#a8441c', fog: '#5a2614', fogDensity: 0.0019, sun: '#ffb070', sunDir: [0.55, 0.32, -0.45] },
     hazard: 'lava', // the low plane is molten: it burns and drags (surface.js)
     hemi: ['#ffb48a', '#3a120a'], rock: '#2e2622', accent: [3.5, 1.4, 0.3], weather: 'embers',
-    vents: true, titan: true, fauna: true, // the vault's vent field, the Foundry Titan, hounds and skitters
+    vents: true, titan: true, fauna: 'kessa', // the vault's vent field, the Foundry Titan, hounds and skitters
   },
   // Thalor: snow shelves stepping down to a frozen sea. The "lava" level is the sea ice: solid, flat,
   // and slick (the rover slides on it). The rings hang in the sky.
@@ -116,6 +116,13 @@ export const SURFACES = {
     colors: { low: '#7f9fb3', mid: '#d3dde4', high: '#f4f8fb', ash: '#aab9c4', cliff: '#3c4b58' },
     sky: { top: '#0a1a33', horizon: '#a9cde2', fog: '#b4cfdf', fogDensity: 0.0015, sun: '#f2f7ff', sunDir: [-0.5, 0.22, 0.6], rings: true },
     hemi: ['#cfe6ff', '#5a6f80'], rock: '#56687a', accent: [0.9, 2.6, 3.4], weather: 'snow',
+    fauna: 'thalor', // rime crawlers and shardbacks
+    // the Rime Spire: a Warden armory on the far side of the sea, holding the Compass Trim
+    spire: { x: 420, z: 380, r: 22 },
+    // the ice maze round the vault: three ring walls, one gap each, and a radial wall in each corridor
+    // so there is one way through. Angles in radians, measured like Math.atan2(z, x).
+    maze: { rings: [72, 56, 40], gaps: [2.4, 2.4 + Math.PI, 2.4], blocks: [2.4 + Math.PI / 2, 2.4 + Math.PI * 1.5], gapW: 9 },
+    plateau: 86,
   },
 };
 
@@ -156,7 +163,8 @@ export function createTerrain(def) {
       const dp = Math.hypot(x - def.pad.x, z - def.pad.z);
       h += (padH - h) * (1 - smooth(def.pad.r, def.pad.r * 3.2, dp));
       const dv = Math.hypot(x - def.vault.x, z - def.vault.z);
-      h += (vaultH - h) * (1 - smooth(62, 96, dv)); // flat arena for the guardian fight
+      const P = def.plateau || 62;
+      h += (vaultH - h) * (1 - smooth(P, P + 34, dv)); // flat ground round the vault: the guardian arena (and Thalor's maze)
       if (def.canyon) h = carveCanyon(def, x, z, h);
 
       // raise the rim so the world ends in cliffs, not a drop
