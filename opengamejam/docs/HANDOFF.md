@@ -39,6 +39,25 @@ Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop 
    - Does the TRUTH memory land?
    - Next: Vireo (step 6, the third world). The objective sends you home to Lantern for Ilsa's r2 briefing first.
 
+### Rover suspension (owner, 2026-11-21: "the rover gets bogged down easily, like the front end hits the ground and causes sudden stops and sudden direction changes")
+- **Causes found** (surface.js `physicsStep`):
+  1. The spring (15 per unit mass) barely held the rover's weight, so it bottomed out on any dip and hit a hard bump stop.
+  2. The wheels only felt the ground under their centres, so the body met a rise before the wheel climbed it.
+  3. The body's scrape friction was 3 × sliding speed per hull point: two points at 20 m/s braked at 120 m/s² and twisted the heading.
+- **Fixes:**
+  - A progressive spring: `spring` 17, plus `springProg` 120 × (x − 0.3)² over the last of the travel.
+  - Separate damping: bump 3.0, rebound 4.2.
+  - `tyreGround`: each tyre rests on the highest ground across its footprint (6 samples, lowered by the tyre's curve).
+  - Body scrapes slide: friction is capped at `HULL_MU` 0.35 × the contact force.
+  - The low hull points were raised from -0.35 to -0.28 to match the skirt.
+- **Measured** (tools: rough-ground bot with boulders and creatures removed; nose-first landings on the Kessa pad):
+  - Landing at 90 km/h nose down: 1 s later the rover does 44–67 km/h (it was 16–22).
+  - Bottom-outs: Kessa 1034 → 426, Thalor 710 → 355.
+  - Sudden stops: Kessa and Thalor 0 (were 1 and 2). Thalor scrapes 219 → 61.
+  - Unchanged: the ramp jumps (all land upright) and the ice spin (549° in 4 s at full lock, identical before and after).
+  - Kessa's average speed (about 33 km/h for the bot) is the terrain: 40–56° basalt faces. It isn't the suspension.
+- `rover.hullN`, `rover.bumpN` and `rover.hullAt` are test counters.
+
 ### How 7b works (Vireo after the gate, owner 2026-11-21: "Continue with that build")
 - **The flow:**
   1. Drive for the vault. At `def.veilWall` (r 62) a ring of veil pushes the rover back to whichever side it came from. The HUD shows VEIL WALL · NEED PHASE BLINK, and the objective becomes `blink`.

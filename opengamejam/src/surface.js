@@ -20,7 +20,9 @@ const CYAN = '110,242,255', AMBER = '255,179,90', RED = '255,77,109', GOLD = '25
 const R = {
   gravity: 14,
   wheelR: 0.48, rest: 0.62, travel: 0.42,
-  spring: 15, damp: 2.6,
+  // suspension (owner, 2026-11-21: "the front end hits the ground and causes sudden stops"): a progressive spring that
+  // stiffens over the last of its travel instead of slamming the bump stop, and damping near critical
+  spring: 17, springProg: 120, progStart: 0.3, dampBump: 3.0, dampRebound: 4.2,
   grip: 7.5, mu: 1.25,
   engine: 10.5, topSpeed: 25, reverseTop: 9, brake: 14, roll: 0.03,
   steerMax: 0.55, steerFast: 0.13, steerRate: 4,
@@ -32,7 +34,7 @@ const R = {
 const MOUNTS = [[-1.15, -0.25, -1.35], [1.15, -0.25, -1.35], [-1.15, -0.25, 1.35], [1.15, -0.25, 1.35]];
 const FRONT = [true, true, false, false];
 // chassis hull points that must stay above ground (keeps a flipped rover out of the rock)
-const HULL_PTS = [[-1.1, -0.35, -1.9], [1.1, -0.35, -1.9], [-1.1, -0.35, 1.9], [1.1, -0.35, 1.9], [-1, 0.9, -0.6], [1, 0.9, -0.6], [-1, 0.9, 0.9], [1, 0.9, 0.9]];
+const HULL_PTS = [[-1.1, -0.28, -1.9], [1.1, -0.28, -1.9], [-1.1, -0.28, 1.9], [1.1, -0.28, 1.9], [-1, 0.9, -0.6], [1, 0.9, -0.6], [-1, 0.9, 0.9], [1, 0.9, 0.9]];
 
 // where the generated body sits relative to the physics chassis (tuned so the arches clear the wheels)
 const ROVER_FIT = { offset: new THREE.Vector3(0, -0.15, 0.05) };
@@ -69,6 +71,7 @@ const NITRO = { dur: 2.5, cd: 8, thrust: 14, topK: 1.8, engineK: 1.5 };
 // Phase Blink (Vireo's armory): the rover steps `dist` metres ahead in an instant (through veil walls, across gaps),
 // keeps its speed plus a little `kick`, and recharges for `cd` seconds.
 const BLINK = { dist: 14, cd: 3.5, kick: 4 };
+const HULL_MU = 0.35; // body-on-rock sliding friction
 // on ice the tyres' forward and side grip are limited separately: spinning rear tyres still push
 // (ICE_DRIVE of normal traction) while their side grip collapses, which swings the tail out
 const ICE_DRIVE = 0.4;
@@ -1078,6 +1081,14 @@ export function createSurface(hooks) {
     return T.terrain.normalAt(x, z, out);
   }
   function pointVel(r, out) { return out.crossVectors(rover.ang, r).add(rover.vel); }
+  // the ground a tyre rests on: the highest point under its footprint, each sample lowered by the tyre's curve
+  const tyreDir = new THREE.Vector3();
+  const TYRE_SAMPLES = [-0.7, -0.35, 0, 0.35, 0.7, 0.95].map((k) => [k * R.wheelR, R.wheelR - Math.sqrt(Math.max(0, R.wheelR * R.wheelR - (k * R.wheelR) ** 2))]);
+  function tyreGround(x, z) {
+    let g = -Infinity;
+    for (const [d, drop] of TYRE_SAMPLES) g = Math.max(g, ground(x + tyreDir.x * d, z + tyreDir.z * d) - drop);
+    return g;
+  }
   function applyAt(F, r) { force.add(F); torque.add(v4.crossVectors(r, F)); }
 
   function physicsStep(h, inp) {
@@ -1099,26 +1110,29 @@ export function createSurface(hooks) {
       const m = MOUNTS[w];
       rel.set(m[0], m[1], m[2]).applyQuaternion(rover.quat);
       mountW.copy(rover.pos).add(rel);
-      // find where the wheel meets the ground along the suspension axis (-up)
+      // find where the wheel meets the ground along the suspension axis (-up). The tyre feels the ground across its
+      // footprint, not just under its centre, so it starts to climb a rise before the body runs into it.
+      tyreDir.set(fwd.x, 0, fwd.z); if (tyreDir.lengthSq() < 1e-4) tyreDir.set(0, 0, -1); tyreDir.normalize();
       let s = R.rest;
       for (let it = 0; it < 3; it++) {
         v1.copy(mountW).addScaledVector(up, -s);
-        const gap = v1.y - R.wheelR - ground(v1.x, v1.z);
+        const gap = v1.y - R.wheelR - tyreGround(v1.x, v1.z);
         s += gap / Math.max(0.3, up.y);
       }
       s = clamp(s, 0, R.rest + R.travel);
       rover.comp[w] = s;
-      const contact = s < R.rest + R.travel * 0.999 && (mountW.y - up.y * s - R.wheelR - ground(mountW.x - up.x * s, mountW.z - up.z * s)) < 0.08;
+      const contact = s < R.rest + R.travel * 0.999 && (mountW.y - up.y * s - R.wheelR - tyreGround(mountW.x - up.x * s, mountW.z - up.z * s)) < 0.08;
       rover.contact[w] = contact;
       if (!contact) { rover.comp[w] = R.rest + R.travel; continue; }
       grounded++;
       cp.copy(mountW).addScaledVector(up, -(s + R.wheelR));
       groundNormal(cp.x, cp.z, nrm);
       pointVel(v2.subVectors(cp, rover.pos), pv);
-      // spring + damper along the chassis up; bump stop when fully compressed
-      const x = R.rest - s;
-      let Fs = R.spring * x - R.damp * pv.dot(up);
-      if (s <= 0.001) Fs += 40 * Math.max(0, -pv.dot(up));
+      // spring + damper along the chassis up: progressive over the last of the travel, so it cushions instead of
+      // slamming; the bump stop is only for a really hard landing
+      const x = R.rest - s, vUp = pv.dot(up), xp = Math.max(0, x - R.progStart);
+      let Fs = R.spring * x + R.springProg * xp * xp - (vUp < 0 ? R.dampBump : R.dampRebound) * vUp;
+      if (s <= 0.001) { Fs += 40 * Math.max(0, -pv.dot(up)); rover.bumpN = (rover.bumpN || 0) + 1; } // bottomed out (counted for tests)
       Fs = Math.max(0, Fs);
       applyAt(v3.copy(up).multiplyScalar(Fs), rel);
 
@@ -1179,13 +1193,17 @@ export function createSurface(hooks) {
       const g = ground(v1.x, v1.z);
       const pen = g - v1.y;
       if (pen > 0) {
+        rover.hullN = (rover.hullN || 0) + 1; (rover.hullAt || (rover.hullAt = new Array(HULL_PTS.length).fill(0)))[HULL_PTS.indexOf(p)]++; // body scraping the ground (counted for tests)
         groundNormal(v1.x, v1.z, nrm);
         pointVel(rel, pv);
         const vn = pv.dot(nrm);
         const Fn = pen * 120 - Math.min(0, vn) * 10;
         v3.copy(nrm).multiplyScalar(Fn);
-        // scrape friction
-        v2.copy(pv).addScaledVector(nrm, -vn).multiplyScalar(-3);
+        // scrape friction: capped by how hard the body presses (Coulomb), so a scrape slides instead of stopping us dead
+        // (it was 3 x the sliding speed per point: two points at 20 m/s braked at 120 m/s^2 and yanked the heading)
+        v2.copy(pv).addScaledVector(nrm, -vn);
+        const vt = v2.length();
+        if (vt > 1e-4) v2.multiplyScalar(-Math.min(3, (HULL_MU * Math.max(0, Fn)) / vt));
         v3.add(v2);
         applyAt(v3, rel);
       }
