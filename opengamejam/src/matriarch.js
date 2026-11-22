@@ -171,7 +171,8 @@ export function createMatriarch({ root, def, terrain, fx }) {
     // her body only stops shots when she is solid enough to be there at all
     if (T.solid > 0.75) {
       heart.getWorldPosition(heartW);
-      if (T.open > 0.6) { const u = segSphere(a, b, heartW, 1.6); if (u >= 0 && u < best) { best = u; kind = 'core'; ref = null; hitP.copy(v3); } }
+      // the open heart wins over the robe round it (the robe's sphere used to swallow every shot at the heart)
+      if (T.open > 0.6) { const u = segSphere(a, b, heartW, 2.4); if (u >= 0) return { kind: 'core', p: hitP.copy(v3), ref: null }; }
       v1.copy(body.position).add(v2.set(0, 1.5, 0));
       { const u = segSphere(a, b, v1, 3.4); if (u >= 0 && u < best) { best = u; kind = 'armour'; ref = null; hitP.copy(v3); } }
     }
@@ -283,7 +284,7 @@ export function createMatriarch({ root, def, terrain, fx }) {
     // pose
     if (T.state !== 'rising') T.pos.y += (wantY + (T.state === 'fight' ? Math.sin(T.t * 1.1) * 0.6 : 0) - T.pos.y) * Math.min(1, dt * 2.2);
     body.position.copy(T.pos);
-    body.rotation.y = Math.atan2(-(R.pos.x - T.pos.x), -(R.pos.z - T.pos.z)) + Math.PI; // she faces the rover
+    body.rotation.y = Math.atan2(-(R.pos.x - T.pos.x), -(R.pos.z - T.pos.z)); // she faces the rover: her front (and heart) is -Z (owner, 2026-11-22: an extra half-turn hid the heart behind her)
     T.solid += (wantSolid - T.solid) * Math.min(1, dt * 3);
     setFade(T.solid);
     const exposed = T.state === 'dying' || (T.state === 'fight' && T.act === 'solid' && T.actT > 0.5 && T.actT < st.solid - 0.3);

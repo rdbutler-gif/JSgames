@@ -1,6 +1,6 @@
 # The Last Wayline — Session Handoff
 
-*Updated 2026-11-21 (end of session). Read this first, then `docs/GAMEPLAN.md` (the working plan).*
+*Updated 2026-11-22 (end of session). Read this first, then `docs/GAMEPLAN.md` (the working plan).*
 
 ## Where we are
 
@@ -16,30 +16,31 @@
 | 5 | Lantern hub: docking, Ilsa's briefings, Workshop, air clock, scrubber parts, saves on events | Built 2026-11-20; owner flew home and docked on the live site ("it worked"). Docking line repeated until docked: fixed (once per approach) |
 | 6a | Thalor: ring-storm gate (Rime Shielding, 300 Wayshards), the surface (snow shelves, slick sea ice, rings in the sky, snow), drive to the vault | Done. Owner 2026-11-21: 300 is right ("required me to encounter two raider fights"), Thalor "looks great", ice could be more slippery (ICE_GRIP 0.2 -> 0.1) |
 | 6b | Thalor: Rime Spire + Compass Trim, the ice maze and its whiteout, Thalor creatures (rime crawlers, shardbacks) | Done. Owner 2026-11-21: ice handling "perfect" (after nitro and rear-drive cookies); shardback damage and health "just right", wants more creatures (done); the maze is fine as an obstacle |
-| 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest.** Owner tested a first version and asked for fixes (all done, untested by owner): creatures stand on the sea ice, the fight camera stays inside the arena, the maze sinks after the kill, memories are voiced (no card) |
+| 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | Done. Owner's first-version fixes all made (creatures on the sea ice, camera inside the arena, maze sinks, voiced memories). The owner played on after that and raised no Sentinel issues |
 | — | Rover sound: ElevenLabs motor and tyre loops | Done. Owner 2026-11-21: "I have tested the new sounds of the rover and it is good" |
 | 7a | Vireo: veil-fog gate (Veil Sounder, 300 Wayshards), the surface (mesas over a violet fog sea, land bridges, floating rock, light gravity), haul-back from the veil, drive to the vault | Done. Owner 2026-11-21: "I landed on Vireo and drove around a bit. I like the low gravity with ramps." |
 | 7b | Vireo: the veil wall round the vault, the Veil Shrine and Phase Blink, the Hollowed and veil drifters, Warden launch ramps | Done. Owner 2026-11-21: "I love the look of the Vireo world. The ramps are fun" |
 | — | Rover suspension (progressive springs, tyre footprint, sliding body) | Done. Owner: "The handling is much better now. No complaints." |
-| 7c | Vireo: the Hollowed Matriarch, the Veil Lens, WREN memory 3 FATE (voiced) | **Built 2026-11-21, bot-tested headless, owner has not played it** |
+| 7c | Vireo: the Hollowed Matriarch, the Veil Lens, WREN memory 3 FATE (voiced) | Owner played it 2026-11-22: blink timing clear, shades and orbs good, no lag on the old laptop. **But the heart could not be hit.** Fixed (she faced away; the robe's hit sphere swallowed the heart) and pushed. **Owner has not re-tested the fix** |
 
 Then: 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
 ## First thing next session
 
-**Everything is committed and pushed** (last commit 81c40fa, live at gamesbyrusko.com/opengamejam/dist/). The owner tests on the live site, so push each finished build (see memory: wayline-deploy).
+**Everything is committed and pushed** (live at gamesbyrusko.com/opengamejam/dist/; see `git log` for the last commit). The owner tests on the live site, often on an old laptop. Push only when the owner says so; they say "push" at the end of each round (see memory: wayline-deploy).
 
-0. **The owner was about to test** (2026-11-21): the Sentinel Prime fight, the maze sinking afterwards, the voiced memories on Kessa and Thalor, and the new rover sound. Ask about each:
-   - **Rover sound:** the takes were picked by measurement, not by ear. Do the motor and the tyre crunch sound right? Re-rolling a take costs about 17 credits.
-   - **Voiced memories:** do the Warden voices (Katherine, Vaughn) fit? Is the memory easy to follow while driving? The banner shows 3.8 s after taking the relic.
-   - **Maze sinking:** is 5.5 s right?
-   - **Sentinel Prime:**
-   - Is the fight readable: the glowing floor band, then the sweep?
-   - Does nitro get you across in time?
-   - Is the frozen floor from stage 2 fun?
-   - Fight length and damage. With the bot standing in for good shooting, it was about 40 s. A bot that never dodges took 16–32 hull per cycle, mostly from spikes.
-   - Does the TRUTH memory land?
-   - Next: Vireo (step 6, the third world). The objective sends you home to Lantern for Ilsa's r2 briefing first.
+All three worlds now play from landing to relic. Steps 1–7c of the build are done.
+
+1. **Ask the owner first:** can the Hollowed Matriarch's heart be hit now? Does the fight length (about 50 s for a good shot) and its damage feel right? Does the FATE memory land, after whichever relic comes third?
+2. **Still open:** the owner once saw "the menu that appeared for the LANTERN shows the background upside down". It wasn't reproduced in three headless tests (WREN's docking flight, opening the hub directly, continuing a save made while docked). Ask for a screenshot if it happens again.
+3. **Next build step:** step 7 in GAMEPLAN §6 is ship upgrades against raider threat levels. Each upgrade counters one raider behaviour, and the relic powers work in both fights (Ember Core Overdrive, Veil Lens weak-point sight, Rime Compass Waylock).
+   - The Workshop (`src/workshop.js`, `src/hub.js`) already sells plating, capacitor, repeater, boost cell, rover armour, autocannon bore and lance heat sink, plus the two landing parts (Rime Shielding, Veil Sounder).
+   - Threat levels 4–5 (Hexers, Reavers, Vex Calloway) are not built yet (GAMEPLAN §3).
+   - Then step 8 (voices and music), step 9 (Final Gate and the Restart / Sever endings; FATE sets up the choice "at the Gate"), and step 10 (polish and jam submission).
+4. **How the owner likes to work:**
+   - Short rounds: build, bot-test headless, show screenshots, then the owner plays live and sends notes.
+   - Quote their words in the handoff. Generate voice and SFX freely and log the spend.
+   - Test guardians by firing through `hitTest`, not by calling `onBolt`. That shortcut hid the Matriarch heart bug.
 
 ### How 7c works (the Hollowed Matriarch, the Veil Lens, FATE; owner 2026-11-21: "It's time to continue with next steps")
 - **The flow:**
@@ -56,6 +57,10 @@ Then: 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and m
   - Stages by HP 60/40/20 (`STAGE`). Stage 2 sends two waves 3.8 s apart (longer than Blink's 3.5 s recharge, so both can be blinked) and two shades. Stage 3 also steps to a new spot after each solid phase.
   - The heat lance also burns orbs and shades.
   - Hits only count during the fight: a hit while she was dying used to restart her death.
+- **Owner playtest 2026-11-22:** "it is clear when to blink through the wave", and the shades and orbs are good, with no lag on the old laptop. But "I never saw the vulnerable spot", and they did no damage.
+  - Two bugs: she faced away from the rover (an extra half-turn in `body.rotation.y`), and the robe's 3.4 m hit sphere enclosed the heart, so it took every shot.
+  - Fixed: she faces the rover, and an open heart wins the hit test (radius 2.4).
+  - Checked with real shot lines from 8 angles: all 8 hit the heart. The old bot test called `onBolt` directly, which is why it missed this. Fight tests must fire through `hitTest`.
 - **Measured** (bot circles at r 28 and lands heart hits while it's open): a kill in about 52 s. Blinking through the waves left 55 hull; never blinking left 9.
 - **FATE** (memory 3, whichever relic comes third: main.js `MEMORIES[2]`, story.js `mem3-1..7`): WREN learns she *is* the restart. The Heart needs a mind to hold the lines, and the restart writes over it. The Wardens left her the choice, "at the Gate". It ends "Take us home to Ilsa. I need a little time to think."
   - The voices are WREN (Melz) and the Wardens (Katherine, Vaughn). This sets up the two endings, Restart or Sever, in step 9.
@@ -409,8 +414,10 @@ Owner's notes: "The ice is slippery enough, but we need to work on the way the r
 | `src/ship.js`, `cockpit.js`, `hud.js`, `world.js` | Phase I flight model, cockpit screens, canopy HUD, space scene |
 | `src/fighters.js`, `data.js` | Squadrons with threat levels (`SQUAD_ANCHORS`, `THREAT`), planet data |
 | `src/assault.js` | Phase II: waves by threat level, enemies, Warbreaker, dodge, particles (`makeParticles` is exported) |
-| `src/terrain.js` | Surface heightfields (`SURFACES.kessa`), canyon carve, graded causeways, `pathInfo`/`pathPoint` |
-| `src/surface.js` | Phase III: rover physics (`R` tuning), lava crust, camera, geysers, Forge Gate, vent field, missions, HUD |
+| `src/terrain.js` | Surface heightfields (`SURFACES.kessa`, `.thalor`, `.vireo`), canyon carve, graded causeways, Warden ramps (`RAMP`), `pathInfo`/`pathPoint` |
+| `src/surface.js` | Phase III: rover physics (`R` tuning, `tyreGround`, progressive suspension), lava, ice and veil, camera, geysers, Forge Gate, vent field, Rime Spire and maze, Veil Shrine, veil wall, Phase Blink, launch ramps, missions per world, HUD (`panel()` for fitted banners) |
+| `src/guardian.js`, `sentinel.js`, `matriarch.js` | The three vault guardians (Foundry Titan, Sentinel Prime, Hollowed Matriarch), all with one interface: wake / reset / update / hitTest / onBolt |
+| `src/fauna.js`, `gibs.js` | Creatures per world (skitters and hounds; crawlers and shardbacks; drifters and the Hollowed) and their deaths (fire, ice, veil) |
 | `src/models.js` | GLB loading and normalising (by length or height), `cloneModel`, `onModel` |
 | `src/input.js`, `audio.js`, `ui.js`, `settings.js` | Input (pad, mouse, keys), synth and sample audio, menus, saved settings |
 | `src/station.js` | Lantern Station, its Wayline beam and relays, station collision, dock pose |
@@ -424,13 +431,20 @@ Owner's notes: "The ice is slippery enough, but we need to work on the way the r
 
 - Models in `public/models/`: raider, player (the *Wayfarer*), rover, forgegate, crate. Concepts are in `assets-src/`.
 - Sky: `public/sky/nebula.jpg` (168 KB) is a fal FLUX dev 2048x1024 equirectangular nebula (`tools/gen-skybox.mjs`, dry run unless `--go`; raw + request record in `assets-src/sky-raw/`). `world.js` maps it with a tilt, cross-fades the wrap seam over 6% of the width, fades the poles, and falls back to the procedural sky until it loads. Owner has not seen it yet.
-- SFX in `public/sfx/`: laser, boom, boom-big, cannon, titan-roar (ElevenLabs); raw takes in `assets-src/sfx-raw/`.
-- Spend log: `tools/spend-log.md`. Meshy 105 credits used (about 1,015 left); ElevenLabs about 4,080 credits this month (SFX plus 80 voice lines; the account had about 30,700 of 40,000 monthly characters left on 2026-11-20); fal about $0.075 (one sky image). Keys: fal in `tools/.env` (git-ignored); Meshy and ElevenLabs are MCP servers.
+- SFX in `public/sfx/`: laser, boom, boom-big, cannon, titan-roar, and the rover-motor / rover-ground loops (ElevenLabs); raw takes in `assets-src/sfx-raw/`.
+- Title backdrop: `public/title/thalor.jpg`, a staged in-game capture (see "Title backdrop").
+- Spend log: `tools/spend-log.md`. Meshy 105 credits used (about 1,015 left). ElevenLabs about 6,860 credits this month (SFX plus about 120 voice lines). fal about $0.075 (one sky image). Keys: fal in `tools/.env` (git-ignored); Meshy and ElevenLabs are MCP servers.
+- Headless test scripts used this session lived in the scratchpad. The reusable patterns are in `tools/test/*.example.mjs`.
+  - Tests must wait about 9.5 s after Enter for the intro to finish.
+  - To pose a camera, set `G.state = 'frozen'` so the frame loop stops moving it.
 
 ## Known issues / loose ends
 
 - Commits go to JSgames main together with the built `dist/` (that is the deploy), and only when the owner asks.
 - Every world now has a surface; the Phase III placeholder card in main.js `updateEntry` is unused unless a planet lacks a `SURFACES` entry.
 - Mouse feel for Phase I flight has never been tested by the owner (they played on gamepad/touchpad).
+- The Controls screen (index.html) lists only flight controls. The rover's controls show as the in-game hint (it adds "V blink" once Phase Blink is fitted).
+- The Workshop upgrade is still named ABLATIVE PLATING. The owner asked for another word on the Forgeplate card only. Ask whether to rename the upgrade too.
+- The compass strip can overlap two marker labels (for example WAYFARER and the vault) when they point the same way.
 - The rover HUD's "THREAT"/raider systems do not appear on the surface (no raiders on planets yet).
 - `docs/GAMEPLAN.md` is the source of truth for the plan; keep it updated as decisions change.
