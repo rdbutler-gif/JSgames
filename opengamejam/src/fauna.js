@@ -20,7 +20,68 @@ const KIND = {
   // Thalor
   crawler: { hp: 2, r: 0.9, speed: 4.2, flee: 9.5, fleeR: 18, scale: 1, anim: 'skitter', ice: true, shards: 1, hitY: 0.5, barY: 1.25, barW: 36 },
   shardback: { hp: 9, r: 1.9, speed: 4.5, charge: 23, sight: 58, ram: 11, push: 15, scale: 1, anim: 'hound', pred: true, big: true, ice: true, torsoY: 1.0, shards: 7, hitY: 1.2, barY: 2.9, barW: 66 },
+  // Vireo
+  drifter: { hp: 1, r: 0.8, speed: 2.6, flee: 8, fleeR: 16, scale: 1, anim: 'skitter', veil: true, hover: 1.4, shards: 1, hitY: 1.6, barY: 2.4, barW: 34 },
+  hollowed: { hp: 7, r: 1.5, speed: 3.5, lunge: 20, sight: 55, claw: 9, push: 10, scale: 1, anim: 'wraith', pred: true, big: true, veil: true, hover: 1.1, shards: 6, hitY: 2.4, barY: 4.3, barW: 60 },
 };
+
+// Veil drifter (Vireo): a small floating bell of violet membrane with a lit core and trailing tendrils.
+// Harmless; it bobs a metre and a half off the rock and drifts away from the rover.
+function makeDrifter(mats) {
+  const g = new THREE.Group();
+  const body = new THREE.Group(); body.position.y = 0.3; g.add(body);
+  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), mats.membrane); bell.position.y = 1.3; body.add(bell);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), mats.glow); core.position.y = 1.25; body.add(core);
+  const legs = [];
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const pivot = new THREE.Group(); pivot.position.set(Math.cos(a) * 0.32, 1.1, Math.sin(a) * 0.32); body.add(pivot);
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.012, 0.9, 4).translate(0, -0.45, 0), mats.glowSoft); t.rotation.set(Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25); pivot.add(t);
+    legs.push({ pivot, phase: i * 1.6 });
+  }
+  const glow = new THREE.Group(); body.add(glow);
+  return { g, body, legs, glow };
+}
+
+// The Hollowed (Vireo): a hunched, hooded wraith about 2.6 m tall that floats over the rock. Its robe
+// frays into the fog, its face is an empty ring with two violet eyes, and its long arms end in hooks.
+// Each one has its own materials, so it can fade out alone (it cannot be hit while it is faded).
+function makeHollowed() {
+  const mk = (o) => new THREE.MeshStandardMaterial({ transparent: true, ...o });
+  const own = {
+    robe: mk({ color: '#2a2238', roughness: 0.9, flatShading: true, emissive: '#120a20' }),
+    rag: mk({ color: '#3b2f52', roughness: 0.95, flatShading: true, emissive: '#160c28', side: THREE.DoubleSide }),
+    bone: mk({ color: '#cfc4dc', roughness: 0.5, emissive: '#1a1426' }),
+    glow: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.8, 0.7, 3.2), transparent: true }),
+  };
+  const g = new THREE.Group();
+  const torso = new THREE.Group(); torso.position.y = 2.2; g.add(torso);
+  // robe: a long, ragged cone hanging from hunched shoulders
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.85, 2.2, 9, 3, true).translate(0, -0.6, 0), own.rag); torso.add(robe);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 8).scale(1.15, 0.95, 0.85), own.robe); chest.position.set(0, 0.55, -0.1); torso.add(chest);
+  for (let i = 0; i < 7; i++) { // tatters below the hem
+    const a = (i / 7) * Math.PI * 2;
+    const len = 0.4 + (i % 3) * 0.15;
+    const r = new THREE.Mesh(new THREE.ConeGeometry(0.16, len, 4).rotateX(Math.PI).translate(0, -len / 2, 0), own.rag);
+    r.position.set(Math.cos(a) * 0.74, -1.62, Math.sin(a) * 0.74); torso.add(r);
+  }
+  // head: a deep hood, and inside it an empty ring for a face with two eyes
+  const head = new THREE.Group(); head.position.set(0, 1.15, -0.35); torso.add(head);
+  head.add(new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.95, 8).rotateX(-0.35).translate(0, 0.1, 0.05), own.robe));
+  const face = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 14), own.bone); face.position.set(0, -0.05, -0.33); head.add(face);
+  const glow = new THREE.Group(); head.add(glow);
+  for (const s of [-1, 1]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 4), own.glow); eye.position.set(s * 0.09, -0.02, -0.34); glow.add(eye); }
+  // arms: long, thin, with hooked claws; they swing as it floats and reach forward to strike
+  const legs = [];
+  for (const s of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(s * 0.72, 0.75, -0.15); torso.add(pivot);
+    pivot.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 1.5, 6).translate(0, -0.75, 0), own.robe));
+    const hook = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.55, 5).rotateX(-1.1).translate(0, -1.6, -0.2), own.bone); pivot.add(hook);
+    legs.push({ pivot, phase: s > 0 ? 0 : Math.PI });
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return { g, torso, head, jaw: head, legs, glow, fade: Object.values(own) };
+}
 
 // Rime crawler (Thalor): a skitter-sized grazer under a ridge of ice crystals, cyan along its seams.
 function makeCrawler(mats) {
@@ -88,6 +149,7 @@ const N_WILD_PACKS = 10, N_EXTRA = FORGE_PACKS.reduce((a, p) => a + p.n, 0) + RI
 const SPAWN_MIN = 75, SPAWN_MAX = 150, DESPAWN = 230;
 // Thalor's shardback packs (sizes); placed like Kessa's wild packs, plus two guarding the Rime Spire (def.spire)
 const THALOR_PACKS = [2, 2, 2, 3, 2, 2, 3, 2, 2, 3, 2, 2, 2]; // first pack guards the spire
+const VIREO_PACKS = [2, 2, 2, 3, 2, 2, 3, 2, 2]; // first pack keeps the Veil Shrine
 const DRAW_R = 200, SHADOW_R = 70; // creatures are hidden past DRAW_R and cast shadows only inside SHADOW_R
 
 // Cinder skitter: a basalt-shelled beetle about a metre long, glowing only along its shell seams.
@@ -189,8 +251,12 @@ function makeHound(mats) {
 }
 
 export function createFauna({ root, def, terrain, fx }) {
-  const thalor = def.fauna === 'thalor';
-  const mats = thalor ? {
+  const thalor = def.fauna === 'thalor', vireo = def.fauna === 'vireo';
+  const mats = vireo ? {
+    membrane: new THREE.MeshStandardMaterial({ color: '#b89ce6', roughness: 0.3, transparent: true, opacity: 0.55, emissive: '#3a1a66', side: THREE.DoubleSide, depthWrite: false }),
+    glow: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.8, 2.8) }),
+    glowSoft: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.5, 1.6) }),
+  } : thalor ? {
     shell: new THREE.MeshStandardMaterial({ color: '#c9dbe6', roughness: 0.3, metalness: 0.1, flatShading: true, emissive: '#0a1a24' }),
     hide: new THREE.MeshStandardMaterial({ color: '#7d8f9c', roughness: 0.75, flatShading: true, emissive: '#06121a' }),
     plate: new THREE.MeshStandardMaterial({ color: '#4c5d6b', roughness: 0.6, metalness: 0.1, flatShading: true }),
@@ -211,7 +277,11 @@ export function createFauna({ root, def, terrain, fx }) {
     eye: new THREE.MeshBasicMaterial({ color: new THREE.Color(3.4, 2.2, 0.5) }),
   };
   const list = [];
-  if (thalor) {
+  if (vireo) {
+    // Vireo: veil drifter shoals (one by the pad) and Hollowed packs out on the mesas
+    for (let i = 0; i < N_SKITTER; i++) list.push({ kind: 'drifter', k: KIND.drifter, ...makeDrifter(mats) });
+    for (let i = 0; i < VIREO_PACKS.reduce((a, n) => a + n, 0); i++) list.push({ kind: 'hollowed', k: KIND.hollowed, ...makeHollowed() });
+  } else if (thalor) {
     // Thalor: rime crawler herds (one by the pad) and shardback packs out on the shelves and the sea ice
     for (let i = 0; i < N_SKITTER; i++) list.push({ kind: 'crawler', k: KIND.crawler, ...makeCrawler(mats) });
     for (let i = 0; i < THALOR_PACKS.reduce((a, n) => a + n, 0); i++) list.push({ kind: 'shardback', k: KIND.shardback, ...makeShardback(mats) });
@@ -221,7 +291,7 @@ export function createFauna({ root, def, terrain, fx }) {
   }
   // merge each creature's rigid parts (75 meshes per hound -> about 20); gibs keep the separate parts
   for (const c of list) {
-    const anchors = [...c.legs.map((L) => L.pivot), c.glow, ...(c.k.anim === 'hound' ? [c.torso, c.head, c.jaw] : [c.body])];
+    const anchors = [...c.legs.map((L) => L.pivot), c.glow, ...(c.k.anim === 'hound' ? [c.torso, c.head, c.jaw] : c.k.anim === 'wraith' ? [c.torso, c.head] : [c.body])];
     const baked = bakeStatic(c.g, anchors);
     c.gibParts = baked.parts; c.meshes = baked.meshes; c.shadow = true;
   }
@@ -271,7 +341,7 @@ export function createFauna({ root, def, terrain, fx }) {
   // hound packs along the causeways, on the road itself
   const hounds = list.filter((c) => c.k.pred);
   let hi = 0;
-  for (const cw of def.causeways || []) for (const p of PACKS) {
+  for (const cw of vireo ? [] : def.causeways || []) for (const p of PACKS) { // Kessa's hounds hold the causeways; Vireo's bridges stay clear
     const q = pathPoint(cw.pts, p.t);
     if (!q) continue;
     for (let i = 0; i < p.n && hi < hounds.length; i++) hounds[hi++].home = { x: q.x, z: q.z, r: 16, dx: q.dx, dz: q.dz };
@@ -287,9 +357,11 @@ export function createFauna({ root, def, terrain, fx }) {
     const L = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, ux = (a[0] - b[0]) / L, uz = (a[1] - b[1]) / L;
     for (const p of FORGE_PACKS) packHomes.push({ x: F.x - ux * p.back - uz * p.side, z: F.z - uz * p.back + ux * p.side, r: 9, n: p.n });
   }
-  // Thalor: two shardbacks guard the Rime Spire (the armory)
+  // Thalor: two shardbacks guard the Rime Spire (the armory); Vireo: two Hollowed keep the Veil Shrine
   if (thalor && def.spire) packHomes.push({ x: def.spire.x + 16, z: def.spire.z - 10, r: 10, n: THALOR_PACKS[0] });
-  const wildSizes = thalor ? THALOR_PACKS.slice(def.spire ? 1 : 0) : null;
+  if (vireo && def.shrine) packHomes.push({ x: def.shrine.x - 14, z: def.shrine.z - 12, r: 10, n: VIREO_PACKS[0] });
+  const armory = def.spire || def.shrine;
+  const wildSizes = thalor ? THALOR_PACKS.slice(def.spire ? 1 : 0) : vireo ? VIREO_PACKS.slice(def.shrine ? 1 : 0) : null;
   // wild packs: open, dry ground away from the pad, the vault, the canyon, and each other
   const taken = (x, z) => packHomes.some((h) => !h.ridge && Math.hypot(h.x - x, h.z - z) < 130) ||
     (def.causeways || []).some((c) => PACKS.some((p) => { const q = pathPoint(c.pts, p.t); return q && Math.hypot(q.x - x, q.z - z) < 110; }));
@@ -300,7 +372,7 @@ export function createFauna({ root, def, terrain, fx }) {
     if (taken(x, z) || terrain.heightAt(x, z) < def.lava + 2.5) continue;
     let ok = true;
     for (let k = 0; k < 8 && ok; k++) { const t = (k / 8) * 6.28; ok = canWalk(x + Math.cos(t) * 12, z + Math.sin(t) * 12, 'hound'); }
-    if (ok && def.spire && Math.hypot(x - def.spire.x, z - def.spire.z) < 90) ok = false;
+    if (ok && armory && Math.hypot(x - armory.x, z - armory.z) < 90) ok = false;
     if (!ok) continue;
     packHomes.push({ x, z, r: 14, n: wildSizes ? wildSizes[made] : 2 + (Math.random() < 0.5 ? 1 : 0) }); made++;
   }
@@ -366,7 +438,7 @@ export function createFauna({ root, def, terrain, fx }) {
     v2.subVectors(b, a); const L2 = v2.lengthSq() || 1;
     let best = 2, hit = null;
     for (const c of list) {
-      if (!c.alive) continue;
+      if (!c.alive || (c.fade && c.alpha < 0.5)) continue; // a faded Hollowed is not there to hit
       v1.set(c.x, c.y + c.k.hitY, c.z);
       if (Math.abs(v1.x - a.x) > 260 || Math.abs(v1.z - a.z) > 260) continue;
       const u = clamp(v3.subVectors(v1, a).dot(v2) / L2, 0, 1);
@@ -382,6 +454,7 @@ export function createFauna({ root, def, terrain, fx }) {
     c.hp -= n; c.flash = 0.12;
     if (c.kind === 'hound') { c.state = 'chase'; c.t = 0; } // shooting one wakes it
     else if (c.kind === 'shardback') { if (c.state === 'roam') { c.state = 'stalk'; c.t = 0; } }
+    else if (c.kind === 'hollowed') { if (c.state === 'roam') { c.state = 'rise'; c.t = 0; } }
     else { c.state = 'flee'; c.t = 0; }
     if (!quiet) fx.emit(hitP, 6, { speed: 5, life: 0.3, size: 1.1, colors: [[5, 2.2, 0.5]], drag: 4 });
     if (c.hp <= 0) { kill(c); return true; }
@@ -424,6 +497,39 @@ export function createFauna({ root, def, terrain, fx }) {
           if (c.home && fromHome > c.home.r) { wantYaw = Math.atan2(hx, hz); want = c.k.speed; c.wander = wantYaw; }
         }
         if (c.state === 'flee' && c.home && fromHome > c.home.r * 2.2) c.state = 'roam';
+      } else if (c.kind === 'hollowed') {
+        // roam (faint, drifting) -> rise (fades in facing us, eyes flare, ~1.1 s: the tell) -> lunge (fast, homing a little)
+        // -> fade (out of sight and untouchable, slipping sideways, ~2.2 s) -> rise again near us. Shoot it while it is solid.
+        if (c.state === 'roam' && dist < c.k.sight) { c.state = 'rise'; c.t = 0; ctx.say && ctx.say('hollow', 'Something in the fog... the Hollowed. They fade out between strikes. Shoot them when they are solid.'); }
+        if (c.state === 'roam') {
+          c.mood -= dt;
+          if (c.mood < 0) { c.mood = 2 + Math.random() * 3; c.wander += (Math.random() - 0.5) * 2.5; }
+          want = c.k.speed * 0.5; wantYaw = c.wander;
+          if (c.home && fromHome > c.home.r) { wantYaw = Math.atan2(hx, hz); c.wander = wantYaw; }
+        } else if (c.state === 'rise') {
+          want = c.t < 0.5 ? c.k.speed : 0; wantYaw = toward;
+          if (c.t > 1.1) { c.state = 'lunge'; c.t = 0; c.cdir = toward; c.hit = false; }
+          if (dist > c.k.sight * 1.6 || (c.home && fromHome > 130)) { c.state = 'fade'; c.t = 0; }
+        } else if (c.state === 'lunge') {
+          houndsHunting++;
+          let dd = toward - c.cdir; dd = Math.atan2(Math.sin(dd), Math.cos(dd));
+          c.cdir += clamp(dd, -0.9 * dt, 0.9 * dt);
+          want = c.k.lunge * Math.min(1, 0.4 + c.t * 2); wantYaw = c.cdir;
+          if (!c.hit && dist < c.k.r + 2.2 && Math.abs(R.y - c.y) < 4) {
+            c.hit = true;
+            ctx.damage(c.k.claw); ctx.shake(0.7);
+            if (ctx.push) ctx.push(Math.sin(c.cdir) * c.k.push, Math.cos(c.cdir) * c.k.push);
+            ctx.say && ctx.say('hollow-hit', 'It went straight through the hull plating. Watch for the eyes, then move.');
+          }
+          if (c.t > 1.6 || (c.hit && c.t > 0.25)) { c.state = 'fade'; c.t = 0; c.side = Math.random() < 0.5 ? -1 : 1; }
+        } else if (c.state === 'fade') {
+          want = c.k.speed * 1.4; wantYaw = toward + c.side * 1.9; // slip away sideways, out of sight
+          if (c.t > 2.2) { c.state = dist < c.k.sight ? 'rise' : 'roam'; c.t = 0; }
+        }
+        // how solid it is: faint while roaming, gone while fading, solid to strike
+        const solid = c.state === 'rise' ? Math.min(1, c.t / 0.6) : c.state === 'lunge' ? 1 : c.state === 'fade' ? Math.max(0, 1 - c.t / 0.5) : 0.22;
+        c.alpha = (c.alpha ?? 0.22) + (solid - (c.alpha ?? 0.22)) * Math.min(1, dt * 8);
+        for (const m of c.fade) m.opacity = c.alpha;
       } else if (c.kind === 'shardback') {
         // roam -> stalk (face us, head down, ~1.3 s: the tell) -> charge (straight, barely steering) -> stun (skids, ~1.8 s: shoot it now)
         if (c.state === 'roam' && dist < c.k.sight) { c.state = 'stalk'; c.t = 0; ctx.say && ctx.say('shard', 'Shardbacks. They charge in a straight line. Get out of the way, then shoot them while they recover.'); }
@@ -494,7 +600,7 @@ export function createFauna({ root, def, terrain, fx }) {
       c.y += (gy - c.y) * (1 - Math.exp(-14 * dt));
       // rammed by the rover
       const rs = Math.hypot(ctx.rover.vel.x, ctx.rover.vel.z);
-      if (dist < c.k.r + 1.7 && Math.abs(R.y - c.y) < 3) {
+      if (dist < c.k.r + 1.7 && Math.abs(R.y - c.y) < 3 && !(c.fade && c.alpha < 0.5)) { // a faded Hollowed is not there to ram
         if (rs > 9) { if (c.k.pred) { c.hp -= 2; c.flash = 0.12; ctx.shake(0.35); } else c.hp = 0; if (c.hp <= 0) { kill(c); ctx.onKill && ctx.onKill(c, 'ram'); continue; } }
         const nx2 = -dx / (dist || 1), nz2 = -dz / (dist || 1);
         c.x += nx2 * 0.6; c.z += nz2 * 0.6; c.vx += nx2 * 8; c.vz += nz2 * 8;
@@ -507,7 +613,15 @@ export function createFauna({ root, def, terrain, fx }) {
         if (c.k.anim === 'hound') L.pivot.rotation.x = Math.sin(c.gait + L.phase) * (c.kind === 'shardback' ? 0.45 : 0.7) * sw;
         else L.pivot.rotation.y = Math.sin(c.gait + L.phase) * 0.5 * sw;
       }
-      if (c.kind === 'shardback') {
+      if (c.kind === 'hollowed') {
+        c.torso.position.y = 2.2 + Math.sin(time * 1.6 + c.wander) * 0.18; // floats and bobs
+        for (const L of c.legs) L.pivot.rotation.y = 0;
+        c.torso.rotation.x = c.state === 'lunge' ? -0.35 : c.state === 'rise' ? -0.1 : 0.12; // leans into a strike
+        for (const L of c.legs) L.pivot.rotation.x = c.state === 'lunge' ? -1.3 : c.state === 'rise' ? -0.5 - Math.sin(time * 9) * 0.15 : Math.sin(time * 1.3 + L.phase) * 0.2;
+        c.glow.scale.setScalar(c.state === 'rise' ? 1.4 + Math.sin(time * 20) * 0.25 : 1); // the eyes flare: the tell
+      } else if (c.kind === 'drifter') {
+        c.body.position.y = 0.3 + Math.sin(time * 1.8 + c.wander * 3) * 0.25;
+      } else if (c.kind === 'shardback') {
         c.torso.position.y = c.k.torsoY + Math.abs(Math.sin(c.gait)) * 0.08 * sw;
         c.head.rotation.x = c.state === 'stalk' || c.state === 'charge' ? 0.35 : c.state === 'stun' ? -0.2 : 0; // crest down to charge
         c.jaw.rotation.x = c.state === 'stun' ? -0.25 : 0;
@@ -522,7 +636,7 @@ export function createFauna({ root, def, terrain, fx }) {
       }
       c.g.position.set(c.x, c.y, c.z);
       c.g.rotation.y = c.yaw + Math.PI; // models are built facing -Z
-      c.glow.scale.setScalar(c.flash > 0 ? 1.12 : 1);
+      if (c.kind !== 'hollowed') c.glow.scale.setScalar(c.flash > 0 ? 1.12 : 1);
       if (c.kind === 'shardback') c.glow.visible = c.state !== 'stun' || Math.floor(time * 10) % 2 === 0; // flickers while stunned
     }
     return houndsHunting;

@@ -27,7 +27,7 @@ let canvasEl = null;
 const KEY_ACTIONS = {
   Escape: 'pause', KeyP: 'pause', KeyF: 'accept', Enter: 'accept', KeyC: 'cruise', Tab: 'target',
   KeyX: 'zero', KeyR: 'recenter', ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
-  Backspace: 'back',
+  Backspace: 'back', KeyV: 'blink', // V: the rover's Phase Blink (Vireo)
 };
 // gamepad button index -> action
 const PAD_ACTIONS = { 0: 'accept', 1: 'back', 2: 'cruise', 3: 'zero', 4: 'target', 9: 'pause', 12: 'up', 13: 'down', 14: 'left', 15: 'right' };
@@ -158,6 +158,7 @@ export function pollInput(dt) {
       const down = bp(i);
       if (down) any = true;
       if (down && !padPrev[i] && PAD_ACTIONS[i]) input.pressed.add(PAD_ACTIONS[i]);
+      if (down && !padPrev[i] && i === 3) input.pressed.add('blink'); // Y also blinks on a surface (it is 'zero' in flight)
       padPrev[i] = down;
     }
     if (any) input.device = 'gamepad';

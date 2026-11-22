@@ -118,6 +118,7 @@ export function createDeathFx({ root, terrain, fx }) {
     const big = !!(c.k && c.k.big);
     const cy = c.y + (big ? 1.1 : 0.4);
     v1.set(c.x, cy, c.z);
+    if (c.k && c.k.veil) { veilBurst(c, big, cy); return gibParts(c, big, true); }
     if (c.k && c.k.ice) { iceBurst(c, big, cy); return gibParts(c, big, true); }
     // fire: a white-hot core, a fireball, then sparks
     fx.emit(v1, 3, { raw: true, speed: 1, life: 0.14, size: big ? 7 : 4, colors: [[4, 2.6, 1.2]], drag: 6 });
@@ -132,6 +133,12 @@ export function createDeathFx({ root, terrain, fx }) {
     gibParts(c, big, false);
   }
 
+  // Vireo's creatures come apart into the fog: a violet flash and a slow mist, no fire, no scorch
+  function veilBurst(c, big) {
+    fx.emit(v1, 3, { raw: true, speed: 1, life: 0.16, size: big ? 6 : 3.5, colors: [[2.6, 1.4, 4]], drag: 6 });
+    fx.emit(v1, big ? 40 : 18, { raw: true, speed: big ? 9 : 6, life: 1.0, size: big ? 0.8 : 0.55, colors: [[1.6, 0.8, 2.8], [2.2, 1.4, 3.2], [1.0, 0.5, 2.0]], drag: 1.6, dir: v2.set(0, 1.5, 0) });
+    smoke.emit(v1, big ? 18 : 8, { speed: big ? 2.5 : 1.6, spread: big ? 0.9 : 0.5, rise: 0.4, life: big ? 2.6 : 1.8, size: big ? 3.8 : 2.2, alpha: 0.45, colors: [[0.42, 0.3, 0.6], [0.32, 0.22, 0.48]] });
+  }
   // Thalor's creatures shatter: a cold flash, a spray of ice shards and a puff of frost; no fire, no scorch
   function iceBurst(c, big, cy) {
     fx.emit(v1, 3, { raw: true, speed: 1, life: 0.14, size: big ? 6 : 3.5, colors: [[2.6, 3.4, 4]], drag: 6 });

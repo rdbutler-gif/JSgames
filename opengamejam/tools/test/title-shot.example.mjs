@@ -1,5 +1,5 @@
 // Title backdrop capture (public/title/thalor.jpg). Taken with:
-//   ROUGH=0.1 BLOOM=0.22 CAM="38,-15,3,300,-15,6,42" ROVER="-14,-11,1.3" OUT=<png> node tools/test/cdp.mjs tools/test/title-shot.example.mjs 2560 1440
+//   ROUGH=0.1 BLOOM=0.22 SPOT="-240,-144,3.74" ROVER="-17,-15.1,1.3" CAM="43,-18.5,3,300,-18.5,6,42" OUT=<png> node tools/test/cdp.mjs tools/test/title-shot.example.mjs 2560 1440
 // then: ffmpeg -i <png> -vf "eq=contrast=1.06:saturation=1.08" -q:v 3 public/title/thalor.jpg   (set S below first)
 // Stage the Wayfarer and the rover on a Thalor shelf and shoot toward the low sun over the sea ice.
 // env CAM = "back,side,up,lookAhead,lookSide,lookUp,fov" (metres from the ship, along / right of the sun line)

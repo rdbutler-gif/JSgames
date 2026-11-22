@@ -105,6 +105,8 @@ export const LINES = {
   'frag-forge-2': ['wren', "I've fitted Forgeplate before. To a hull I can't picture, with Warden hands around me. I don't know how I know that."],
   'frag-trim-1': ['warden', 'Follow the cold. It always leads you home.'],
   'frag-trim-2': ['wren', "That voice. I know it, the way you know an old song. I don't know whose it is."],
+  'frag-blink-1': ['warden2', 'Step through, not around. The veil only stops what hesitates.'],
+  'frag-blink-2': ['wren', "I've heard that before. I think I was the one who said it back."],
   // ---- Vireo (step 7): the veil fog needs a Veil Sounder ----
   'vireo-fog-1': ['wren', "Vireo is under the veil. That fog swallows every return I send. I can't find the ground to put us down on."],
   'vireo-fog-2': ['wren', "Lantern's Workshop can fit a Veil Sounder. It's three hundred Wayshards. The Scrap Crown carry plenty."],

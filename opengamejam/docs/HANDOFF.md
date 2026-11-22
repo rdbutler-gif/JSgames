@@ -18,7 +18,8 @@
 | 6b | Thalor: Rime Spire + Compass Trim, the ice maze and its whiteout, Thalor creatures (rime crawlers, shardbacks) | Done. Owner 2026-11-21: ice handling "perfect" (after nitro and rear-drive cookies); shardback damage and health "just right", wants more creatures (done); the maze is fine as an obstacle |
 | 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest.** Owner tested a first version and asked for fixes (all done, untested by owner): creatures stand on the sea ice, the fight camera stays inside the arena, the maze sinks after the kill, memories are voiced (no card) |
 | — | Rover sound: ElevenLabs motor and tyre loops | Done. Owner 2026-11-21: "I have tested the new sounds of the rover and it is good" |
-| 7a | Vireo: veil-fog gate (Veil Sounder, 300 Wayshards), the surface (mesas over a violet fog sea, land bridges, floating rock, light gravity), haul-back from the veil, drive to the vault | **Built 2026-11-21, bot-tested headless, not committed or pushed, owner has not played it.** Owner said "Go" to: low gravity, a 300-shard gate |
+| 7a | Vireo: veil-fog gate (Veil Sounder, 300 Wayshards), the surface (mesas over a violet fog sea, land bridges, floating rock, light gravity), haul-back from the veil, drive to the vault | Done. Owner 2026-11-21: "I landed on Vireo and drove around a bit. I like the low gravity with ramps." |
+| 7b | Vireo: the veil wall round the vault, the Veil Shrine and Phase Blink, the Hollowed and veil drifters, Warden launch ramps | **Built 2026-11-21, bot-tested headless, owner has not played it** |
 
 Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
@@ -37,6 +38,38 @@ Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop 
    - Fight length and damage. With the bot standing in for good shooting, it was about 40 s. A bot that never dodges took 16–32 hull per cycle, mostly from spikes.
    - Does the TRUTH memory land?
    - Next: Vireo (step 6, the third world). The objective sends you home to Lantern for Ilsa's r2 briefing first.
+
+### How 7b works (Vireo after the gate, owner 2026-11-21: "Continue with that build")
+- **The flow:**
+  1. Drive for the vault. At `def.veilWall` (r 62) a ring of veil pushes the rover back to whichever side it came from. The HUD shows VEIL WALL · NEED PHASE BLINK, and the objective becomes `blink`.
+  2. The **Veil Shrine** (`def.shrine`, a mesa at (516, 302), about 1.2 km from the vault) is reached by the second land bridge, now rerouted to it. Two Hollowed guard it.
+  3. COLLECT PHASE BLINK sets `upgrades.phaseBlink` (saved). The objective becomes `veil`.
+     - The pickup card has no memory text. The fragment plays as voice 6 s into the drive: `frag-blink-1` (Warden, Vaughn) and `frag-blink-2` (WREN).
+  4. Blink through the wall. Inside it the objective is `scouted` ("Through the veil · the guardian is the next build step"). The guardian is 7c.
+- **Phase Blink** (`doBlink`, `BLINK` in surface.js):
+  - V on the keyboard, Y on a pad (input.js adds a `blink` action; Y is still `zero` in flight).
+  - The rover steps 14 m ahead along its heading, keeps its speed plus 4 m/s, and recharges for 3.5 s. It never blinks into a cliff face: the step shortens until the ground there can be landed on.
+  - A 0.35 s `blinkGrace` lets it pass the wall. It works in mid-air too, to cross a gap.
+  - There's a violet trail, `sfx.blink` (synth), and a PHASE BLINK bar above NITRO. The controls hint adds "V blink" once it's fitted.
+- **The veil wall:** an additive shader cylinder, 34 m tall, with rising violet streaks. It's visible until the relic is taken (7c will need to handle leaving).
+- **Creatures** (fauna.js, `def.fauna: 'vireo'`):
+  - **Veil drifters:** small floating jellies that flee. Harmless, 1 hp, 1 Wayshard. They use the skitter behaviour.
+  - **The Hollowed:** hooded wraiths about 3.4 m tall. 7 hp, 6 Wayshards, packs from `VIREO_PACKS` (20 in all, the first at the shrine).
+    - Their cycle runs roam (faint, alpha 0.22), then rise (fade in facing you, eyes flare, 1.1 s: the tell), then lunge (20 m/s, a little homing; 9 damage plus a shove), then fade (gone for 2.2 s, slipping sideways), then rise again.
+    - Each has its own materials so it fades alone. While faded (alpha < 0.5) it can't be hit, rammed or aim-assisted.
+    - They die in a violet burst (`veilBurst` in gibs.js: no fire, no scorch).
+- **Warden launch ramps** (`def.ramps`, `RAMP` in terrain.js, the launch in surface.js update):
+  - There are seven, found by a search for mesa edges facing a gap of 14–29 m to level or lower rock.
+  - Each one replaces the ground under it: a 24 m graded run-up, a 26 m curve rising 3 m, and nothing taller just past the lip.
+  - Lit rails up each side and a bar on the lip.
+  - Crossing the lip on the ground at more than 6 m/s throws the rover up (vy = 4 + 0.09 × speed). The coil holds it level in flight (`S.launched`; holding throttle would otherwise tuck the nose).
+  - Measured: about 58 km/h lands 24–35 m out on every ramp. With nitro, about 105 km/h lands 40–87 m out, all upright. Ramp 2 with nitro overshoots its far mesa into the veil (a haul-back).
+  - Why it works this way: a plain steep ramp bottomed the suspension at speed and stopped the rover dead, and a natural crest before ramp 0 threw the rover off before the ramp. Both are fixed.
+- **Other fixes this round:**
+  - Surface subtitles size their box to the whole speaker label. Ilsa's long "ILSA BRANDT · LANTERN DOCK" overflowed, and that was probably the box the owner saw on the drive back.
+  - After launching from Lantern, the "bay is open, I'll dock us" line and the DOCK AT LANTERN prompt are held back until you're 2 km out or 30 s have passed (`G.leaving`). The line re-arms past 8 km.
+  - The title image was retaken: the Wayfarer's nose points inward, with a clear gap between it and the rover.
+- **Owner report not reproduced:** "the menu that appeared for the LANTERN shows the background upside down". Three headless tests show the hub upright: WREN's docking flight, opening the hub directly, and continuing a save made while docked. Ask the owner for a screenshot and when it happens.
 
 ### Title backdrop (owner, 2026-11-21: "a screen shot of the wayfarer and the rover parked on Thalor with the sun glinting off the ice ... with room for the menu buttons")
 - **The image:** `public/title/thalor.jpg` (2542×1344, 130 KB) is a staged in-game capture. The Wayfarer and rover are parked on a Thalor shelf at (-240, -144), looking toward the low sun across the sea ice.

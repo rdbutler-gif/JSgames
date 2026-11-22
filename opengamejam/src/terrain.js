@@ -63,6 +63,10 @@ export function pathPoint(pts, t) {
   }
 }
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const clamp01 = (t) => Math.min(1, Math.max(0, t));
+// A Warden launch ramp: a gentle curve (rise * t^k, flat where it meets the ground), and a lit lip that throws the
+// rover up and out (surface.js). A steep ramp alone bottomed the suspension at speed and stopped the rover dead.
+export const RAMP = { len: 26, rise: 3, w: 9, k: 2, runup: 24 };
 
 // ---------- planet profiles ----------
 export const SURFACES = {
@@ -135,7 +139,15 @@ export const SURFACES = {
     hazard: 'veil', gravity: 8, gripK: 1.45, // floaty: long hangs off every crest; the grip is padded back up a little
     causeways: [
       { pts: [[-24, -22], [-120, -70], [-215, -170], [-300, -230], [-385, -335], [-448, -418]], half: 6.5, h: 9 },
-      { pts: [[28, 24], [150, 120], [260, 250], [340, 380]], half: 6.5, h: 9 }, // out to the far mesas (7b's armory)
+      { pts: [[28, 24], [150, 92], [280, 172], [400, 240], [494, 292]], half: 6.5, h: 9 }, // east to the Veil Shrine's mesa
+    ],
+    shrine: { x: 516, z: 302, r: 20 }, // the Warden armory holding Phase Blink
+    veilWall: 62, // a ring of veil round the vault: nothing gets through it without Phase Blink
+    // Warden ramps at mesa edges, each pointing across a chasm gap of 14-29 m to level or lower rock
+    // (found by a search; at Vireo's gravity a 90 km/h launch carries about 39 m). a = direction, radians like atan2(z, x).
+    ramps: [
+      { x: -112, z: 88, a: 1.96 }, { x: -200, z: -32, a: 4.32 }, { x: 144, z: -160, a: 0.39 },
+      { x: -264, z: -168, a: 0 }, { x: 296, z: -128, a: 0.39 }, { x: -176, z: -272, a: 1.57 }, { x: 88, z: 360, a: 1.57 },
     ],
     height(x, z) {
       const s = this.seed;
@@ -153,6 +165,7 @@ export const SURFACES = {
     sky: { top: '#0d0820', horizon: '#6d4a9a', fog: '#3e2860', fogDensity: 0.0024, sun: '#ead8ff', sunDir: [0.4, 0.28, 0.55] },
     hemi: ['#c8b0ff', '#24163a'], rock: '#3a3148', accent: [2.2, 1.0, 3.8], weather: 'motes',
     islands: true, // floating rock overhead
+    fauna: 'vireo', // veil drifters and the Hollowed
   },
 };
 
@@ -233,6 +246,28 @@ export function createTerrain(def) {
       const idx = j * n + i;
       // banks: never cut below the lava-proof line, never raise dry ground more than the road needs
       H[idx] = H[idx] + (rh - H[idx]) * w;
+    }
+  }
+
+  // Ramps: a straight incline ending at the lip, just short of the mesa edge, with soft banks either side.
+  // RAMP.len metres long, rising RAMP.rise from the ground at its foot (about 15 degrees).
+  for (const r of def.ramps || []) {
+    const dx = Math.cos(r.a), dz = Math.sin(r.a);
+    const sx = r.x - dx * (RAMP.len - 2), sz = r.z - dz * (RAMP.len - 2);
+    const h0 = gridH(sx, sz);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const x = -half + i * step, z = -half + j * step;
+      const u = (x - sx) * dx + (z - sz) * dz, v = Math.abs(-(x - sx) * dz + (z - sz) * dx);
+      if (u < -RAMP.runup || u > RAMP.len + 8 || v > RAMP.w / 2 + 3) continue;
+      const w = 1 - smooth(RAMP.w / 2, RAMP.w / 2 + 3, v);
+      const idx = j * n + i;
+      // the run-up: graded smoothly into the ramp's foot (a natural crest before ramp 0 threw the rover into the air,
+      // and it landed nose-first on the ramp)
+      if (u < 0) { H[idx] += (h0 - H[idx]) * w * smooth(-RAMP.runup, -RAMP.runup * 0.35, u); continue; }
+      if (u > RAMP.len) { const lip = h0 + RAMP.rise; if (H[idx] > lip) H[idx] += (lip - H[idx]) * w; continue; } // no lump past the lip
+      // the ramp replaces the ground under it (natural humps at a mesa edge bottomed the suspension at speed)
+      const rise = h0 + RAMP.rise * Math.pow(clamp01(u / RAMP.len), RAMP.k);
+      H[idx] += (rise - H[idx]) * w;
     }
   }
 

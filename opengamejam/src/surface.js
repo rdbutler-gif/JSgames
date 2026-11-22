@@ -1,7 +1,7 @@
 // Phase III: the rover on a planet surface. Raycast-vehicle physics on the shared heightfield,
 // a chase camera the player can orbit, the landing pad with the Wayfarer parked, and the vault beacon.
 import * as THREE from 'three';
-import { createTerrain, SURFACES, pathInfo, pathPoint } from './terrain.js';
+import { createTerrain, SURFACES, pathInfo, pathPoint, RAMP } from './terrain.js';
 import { makeParticles } from './assault.js';
 import { cloneModel, onModel, hasModel } from './models.js';
 import { settings } from './settings.js';
@@ -66,6 +66,9 @@ const ICE_FRONT = 0.14;
 // Nitro (owner, 2026-11-21): a short rocket push with a cooldown. It is a force on the chassis, not on the
 // tyres, so it works on ice too (and spins you if you are sideways).
 const NITRO = { dur: 2.5, cd: 8, thrust: 14, topK: 1.8, engineK: 1.5 };
+// Phase Blink (Vireo's armory): the rover steps `dist` metres ahead in an instant (through veil walls, across gaps),
+// keeps its speed plus a little `kick`, and recharges for `cd` seconds.
+const BLINK = { dist: 14, cd: 3.5, kick: 4 };
 // on ice the tyres' forward and side grip are limited separately: spinning rear tyres still push
 // (ICE_DRIVE of normal traction) while their side grip collapses, which swings the tail out
 const ICE_DRIVE = 0.4;
@@ -274,6 +277,11 @@ function makeRocks(terrain, def, count) {
     if (Math.hypot(x - def.pad.x, z - def.pad.z) < def.pad.r * 1.5) continue;
     if (Math.hypot(x - def.vault.x, z - def.vault.z) < (def.maze ? def.maze.rings[0] + 16 : 72)) continue; // keep the guardian arena (and Thalor's maze) clear
     if (def.spire && Math.hypot(x - def.spire.x, z - def.spire.z) < 26) continue;
+    if (def.shrine && Math.hypot(x - def.shrine.x, z - def.shrine.z) < 30) continue;
+    if ((def.ramps || []).some((r) => { // ramps and their 50 m run-ups stay clear of boulders
+      const dx = Math.cos(r.a), dz = Math.sin(r.a), u = (x - r.x) * dx + (z - r.z) * dz, v = Math.abs(-(x - r.x) * dz + (z - r.z) * dx);
+      return u > -55 && u < 6 && v < 12;
+    })) continue;
     if (onRoad(def, x, z, 7)) continue; // causeways and the canyon ridge stay drivable
     const big = Math.random() < 0.18;
     const r = big ? 2.2 + Math.random() * 3.8 : 0.25 + Math.random() * 0.45;
@@ -609,6 +617,65 @@ export function createSurface(hooks) {
       const cl = new VLight('#8fe8ff', 25, 14, 1.6); cl.position.y = 1.5; crate.add(cl);
       spire = { g, crate, halo, tip, x: P.x, z: P.z - 2, y: y + 3.2 };
     }
+    // Vireo: the Veil Shrine (the armory: a Warden arch with a crystal turning in it, and the Phase Blink crate)
+    let shrine = null;
+    if (def.shrine) {
+      const P = def.shrine, y = terrain.heightAt(P.x, P.z);
+      const g = new THREE.Group(); g.position.set(P.x, y, P.z); root.add(g);
+      const stone = new THREE.MeshStandardMaterial({ color: '#8a8198', roughness: 0.75, metalness: 0.2 });
+      const lit = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.8, 2.8) });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(8, 9.5, 1.6, 8), stone); base.position.y = 0.4; g.add(base);
+      for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(1.6, 12, 1.6).translate(0, 6, 0), stone); p.position.set(s * 6, 1, 4); g.add(p); }
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(6, 0.55, 8, 40, Math.PI), stone); arch.position.set(0, 13, 4); g.add(arch);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.16, 6, 48), lit); ring.position.set(0, 9, 4); g.add(ring);
+      const tip = new THREE.Mesh(new THREE.OctahedronGeometry(1.4, 0).scale(1, 1.7, 1), lit); tip.position.set(0, 9, 4); g.add(tip);
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      for (const s of [-1, 1]) rocks.list.push({ x: P.x + s * 6, z: P.z + 4, y, r: 1.3, wall: true });
+      const crate = new THREE.Group(); crate.position.set(P.x, y + 2.6, P.z - 3); root.add(crate);
+      const fallback = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.5, 6), new THREE.MeshStandardMaterial({ color: '#d8d0e6', roughness: 0.5, metalness: 0.3, emissive: '#2a1048' }));
+      crate.add(fallback);
+      onModel('crate', () => { const m = cloneModel('crate'); if (m) { crate.remove(fallback); crate.add(m); } });
+      const cl = new VLight('#c49cff', 25, 14, 1.6); cl.position.y = 1.5; crate.add(cl);
+      shrine = { g, crate, ring, tip, x: P.x, z: P.z - 3, y: y + 2.6 };
+    }
+    // Vireo: the veil wall round the vault, a shimmering ring of fog that pushes back anything that touches it
+    let veilWall = null;
+    if (def.veilWall) {
+      const m = new THREE.ShaderMaterial({
+        transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+        uniforms: { time: { value: 0 } },
+        vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+        fragmentShader: `uniform float time; varying vec2 vU;
+          float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+          float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
+          void main(){
+            float x = vU.x * 120.0, y = vU.y;
+            float streak = n(vec2(x * 1.3, y * 3.0 - time * 0.6)) * 0.6 + n(vec2(x * 4.0 + time * 0.3, y * 8.0 - time * 1.2)) * 0.4;
+            float a = smoothstep(0.35, 0.9, streak) * (1.0 - smoothstep(0.55, 1.0, y)) * smoothstep(0.0, 0.08, y);
+            a = a * 0.55 + 0.12 * (1.0 - y);
+            gl_FragColor = vec4(vec3(0.55, 0.3, 0.95) * a, 1.0);
+          }`,
+      });
+      veilWall = new THREE.Mesh(new THREE.CylinderGeometry(def.veilWall, def.veilWall, 34, 160, 1, true), m);
+      veilWall.position.set(def.vault.x, terrain.vaultH + 9, def.vault.z); veilWall.frustumCulled = false; root.add(veilWall);
+    }
+    // Vireo's Warden ramps: lit rails up each side and a bar along the lip, so they read from a distance
+    if (def.ramps) {
+      const rail = new THREE.MeshBasicMaterial({ color: new THREE.Color(...def.accent).multiplyScalar(0.6) });
+      for (const r of def.ramps) {
+        const dx = Math.cos(r.a), dz = Math.sin(r.a), yaw = Math.atan2(dx, dz);
+        const sx = r.x - dx * (RAMP.len - 2), sz = r.z - dz * (RAMP.len - 2);
+        const y0 = terrain.heightAt(sx, sz), y1 = terrain.heightAt(r.x - dx * 0.5, r.z - dz * 0.5);
+        const slope = Math.atan2(y1 - y0, RAMP.len - 1.5), L = Math.hypot(RAMP.len - 1.5, y1 - y0);
+        for (const s of [-1, 1]) {
+          const b = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, L), rail);
+          b.position.set((sx + r.x) / 2 + dz * s * (RAMP.w / 2), (y0 + y1) / 2 + 0.35, (sz + r.z) / 2 - dx * s * (RAMP.w / 2));
+          b.rotation.set(-slope, yaw, 0, 'YXZ'); root.add(b);
+        }
+        const lip = new THREE.Mesh(new THREE.BoxGeometry(RAMP.w, 0.2, 0.3), rail);
+        lip.position.set(r.x - dx * 0.5, y1 + 0.15, r.z - dz * 0.5); lip.rotation.y = yaw; root.add(lip);
+      }
+    }
     // the vault base is solid
     rocks.list.push({ x: def.vault.x, z: def.vault.z, y: terrain.vaultH, r: 10 });
     // guardian, its arena wall, and the relic
@@ -643,7 +710,7 @@ export function createSurface(hooks) {
     // creatures (and the parts they shatter into) stand on the sea ice, not on the sea bed under it
     const walkGround = def.hazard === 'ice' ? { ...terrain, heightAt: (x, z) => Math.max(terrain.heightAt(x, z), def.lava) } : terrain;
     const fauna = def.fauna ? createFauna({ root, def, terrain: walkGround, fx }) : noFauna();
-    const b = { islands, lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire, G, arenaR, beacon };
+    const b = { shrine, veilWall, islands, lance, def, root, terrain, sky, lava, rocks, embers, sun, lavaGlow, shipHolder, glyph, fx, geysers, geyserLight, ventRing, forge, titan, curtain, ember, bolts, fauna, maze, spire, G, arenaR, beacon };
     b.lights = createLightPool(root, 3); b.lights.collect(); // every point light above is virtual; 3 real ones serve them
     built.set(id, b);
     return b;
@@ -709,9 +776,15 @@ export function createSurface(hooks) {
       return;
     }
     if (planetId === 'vireo') {
-      // Vireo (7a): mesas over the veil, light gravity, land bridges to the vault. The way in is 7b.
+      // Vireo (7b): a veil wall rings the vault; Phase Blink, from the Veil Shrine to the east, gets through it
+      const blink = !!upgrades.phaseBlink;
+      if (!taken) S.obj = blink ? 'veil' : 'vault';
+      if (T.shrine) T.shrine.crate.visible = !blink;
+      if (T.veilWall) T.veilWall.visible = !taken;
       hooks.say('Rover is down. Vireo. Gravity is light here, so we will float off every crest. And that fog has no floor I can find. Stay on the rock.');
-      if (!taken) setTimeout(() => S && S.time < 14 && S.obj === 'vault' && hooks.say('The vault signal is the violet column, to the north-west. There are land bridges between the mesas.'), 7000);
+      if (!taken) setTimeout(() => S && S.time < 14 && (S.obj === 'vault' || S.obj === 'veil') && hooks.say(blink
+        ? 'Phase Blink is fitted. The vault is the violet column, north-west. Blink through the veil wall when we reach it.'
+        : 'The vault signal is the violet column, to the north-west. There are land bridges between the mesas.'), 7000);
       return;
     }
     hooks.say('Rover is down. Kessa is basalt and lava. Stay off the bright ground.');
@@ -779,12 +852,13 @@ export function createSurface(hooks) {
       let best = lim, bc = null;
       for (const c of T.fauna.list) {
         if (!c.alive) continue;
-        v1.set(c.x, c.y + (c.kind === 'hound' ? 1.1 : 0.45), c.z).sub(camera.position);
+        if (c.fade && c.alpha < 0.5) continue; // a faded Hollowed is not there to aim at
+        v1.set(c.x, c.y + c.k.hitY, c.z).sub(camera.position);
         const d = v1.length(); if (d > 140 || d < 4) continue;
         const ang = v1.divideScalar(d).angleTo(aim.dir);
         if (ang < best) { best = ang; bc = c; }
       }
-      if (bc) { aim.p.set(bc.x, bc.y + (bc.kind === 'hound' ? 1.1 : 0.45), bc.z); aim.lock = true; return; }
+      if (bc) { aim.p.set(bc.x, bc.y + bc.k.hitY, bc.z); aim.lock = true; return; }
     }
     const fh = T.fauna.hitTest(segA, segB), rh = rockHit(segA, segB);
     if (fh && (!rh || fh.u <= rh.u)) { aim.p.copy(fh.p); return; }
@@ -1125,7 +1199,12 @@ export function createSurface(hooks) {
       torque.addScaledVector(fwd, rollErr * k - rover.ang.dot(fwd) * R.keelDamp * (grounded > 0 ? 1 : 0.6));
     }
     // air control: tuck the nose and level the roll in a jump
-    if (grounded === 0) {
+    if (grounded === 0 && S.launched) {
+      // a launch-ramp flight: the coil holds the rover level (holding throttle would otherwise tuck the nose into a dive)
+      torque.addScaledVector(v1.crossVectors(up, UP), 7);
+      torque.x -= rover.ang.x * 3; torque.z -= rover.ang.z * 3;
+      torque.addScaledVector(UP, -inp.moveX * R.airTorque * 0.8);
+    } else if (grounded === 0) {
       torque.addScaledVector(right, -inp.drive * R.airTorque);
       torque.addScaledVector(UP, -inp.moveX * R.airTorque * 0.8); // steer = yaw in the air, never roll
     }
@@ -1314,8 +1393,38 @@ export function createSurface(hooks) {
       ? 'Into the veil! I have the tether on the rock. Hold on... got us. The hull felt that. Stay away from the edges.'
       : S.veilN % 2 ? 'Hauled us out again. Mind the edges.' : 'Got us. The veil is not a road.');
   }
+  function collectBlink() {
+    upgrades.phaseBlink = true;
+    T.shrine.crate.visible = false;
+    setObj('veil');
+    sfx.victory();
+    T.fx.emit(T.shrine.crate.position, 120, { speed: 14, life: 1.4, size: 2.2, colors: [[2, 1, 3.2], [2.8, 2, 3.4]], drag: 1.5 });
+    hooks.say('Phase Blink is fitted. Tap V, or Y on a pad, and we step straight through anything thin. Back to the vault.');
+    S.frag = { at: S.time + 6, lines: ['frag-blink-1', 'frag-blink-2'] }; // the memory fragment, voiced on the drive back
+    hooks.event && hooks.event({
+      kicker: 'ARMORY · VIREO', title: 'PHASE BLINK',
+      text: 'A Warden phase coil, fitted under the rover. Tap V (Y on a gamepad) and the rover steps fourteen metres ahead in an instant: through the veil wall, or across a gap in the rock in mid-air. It recharges in a few seconds.',
+    });
+  }
+  function doBlink() {
+    const f = v1.set(0, 0, -1).applyQuaternion(rover.quat); f.y = 0;
+    if (f.lengthSq() < 0.01) f.set(rover.vel.x, 0, rover.vel.z);
+    f.normalize();
+    // never into a cliff face: shorten the step until the ground there is no higher than we can land on
+    let D = BLINK.dist;
+    for (; D > 4; D -= 2) if (ground(rover.pos.x + f.x * D, rover.pos.z + f.z * D) < rover.pos.y + 2.5) break;
+    v2.copy(rover.pos);
+    rover.pos.x += f.x * D; rover.pos.z += f.z * D;
+    const g = ground(rover.pos.x, rover.pos.z);
+    if (rover.pos.y < g + 1.2) rover.pos.y = g + 1.2;
+    rover.vel.addScaledVector(f, BLINK.kick);
+    S.blinkCd = BLINK.cd; S.blinkGrace = 0.35; S.shake = Math.max(S.shake, 0.3);
+    for (let k = 0; k <= 10; k++) T.fx.emit(v3.lerpVectors(v2, rover.pos, k / 10), 4, { raw: true, speed: 1.5, life: 0.55, size: 1.2, colors: [[1.6, 0.8, 2.8], [2.4, 1.6, 3.4]], drag: 3 });
+    sfx.blink();
+    say1('blink-1', 'Blink! Fourteen metres in no time at all. It needs a few seconds to charge again.');
+  }
   function vireoMissions(dt, P, toVault) {
-    const d = T.def;
+    const d = T.def, blink = !!upgrades.phaseBlink;
     // the first long hang off a crest
     if (S.grounded === 0 && rover.pos.y - ground(P.x, P.z) > 2.5) S.airT = (S.airT || 0) + dt; else S.airT = 0;
     if (S.airT > 0.7) say1('float', 'Light gravity. We hang in the air off every crest. Land it straight.');
@@ -1323,9 +1432,35 @@ export function createSurface(hooks) {
       const ci = pathInfo(c.pts, P.x, P.z);
       if (ci.d < c.half && ci.t > 60 && T.terrain.heightAt(P.x + 14, P.z) < d.lava) say1('bridge', 'A land bridge. Warden work, I think. Keep it straight: the drop on either side goes into the veil.');
     }
-    if (S.obj === 'vault' && toVault < 45) {
-      setObj('scouted');
-      say1('vault-v', 'The vault. Its door is a curtain of the veil, and it pushes back. There is a way through somewhere on this rock.');
+    // the veil wall: touching it shoves us back to whichever side we came from, unless we blink through it
+    S.veilWallT = Math.max(0, (S.veilWallT || 0) - dt);
+    if (T.veilWall && T.veilWall.visible) {
+      const R = d.veilWall, band = 3.5;
+      if (Math.abs(toVault - R) < band && !(S.blinkGrace > 0)) {
+        const out = toVault > R ? 1 : -1, nx = (P.x - d.vault.x) / toVault * out, nz = (P.z - d.vault.z) / toVault * out;
+        const into = -(rover.vel.x * nx + rover.vel.z * nz);
+        if (into > 0) { rover.vel.x += nx * into * 1.6; rover.vel.z += nz * into * 1.6; }
+        rover.vel.x += nx * 24 * dt; rover.vel.z += nz * 24 * dt;
+        S.veilWallT = 0.5; S.shake = Math.max(S.shake, 0.3);
+        if (!blink) {
+          if (S.obj === 'vault') setObj('blink');
+          say1('veilwall', 'A veil wall! Nothing drives through that. There is a Warden shrine on the far mesa to the east, across the long bridge. If anything gets us past this, it is there.');
+        } else say1('veilwall-b', 'Now blink! Straight at the wall, and tap it.');
+      }
+      if (blink && toVault < R - band && S.obj === 'veil') {
+        setObj('scouted');
+        say1('through', 'We are through the veil. The vault is right ahead, and something in there knows we came.');
+      }
+    }
+    // the shrine's crate
+    if (!S.prompt && T.shrine && !blink) {
+      const fd = Math.hypot(P.x - T.shrine.x, P.z - T.shrine.z);
+      if (fd < 9) S.prompt = { type: 'blinkmod', label: 'COLLECT PHASE BLINK' };
+      if (fd < 50) say1('shrine', 'The Veil Shrine. A Warden armory crate under the arch. Bring us close.');
+    }
+    if (T.shrine) {
+      if (T.shrine.crate.visible) { T.shrine.crate.rotation.y += dt * 0.8; T.shrine.crate.position.y = T.shrine.y + Math.sin(S.time * 1.8) * 0.25; }
+      T.shrine.ring.rotation.y += dt * 0.5; T.shrine.tip.rotation.y -= dt * 0.9;
     }
     return null;
   }
@@ -1435,6 +1570,29 @@ export function createSurface(hooks) {
     for (let i = 0; i < steps; i++) grounded = physicsStep(h, inp);
     S.grounded = grounded;
     if (T.def.hazard === 'veil') veilStep(dt);
+    // Warden launch ramps: crossing the lit lip on the ground throws us up, harder the faster we hit it,
+    // and levels the rover for the flight (about 25 m at 55 km/h, about 50 m with nitro, at Vireo gravity)
+    S.launchCd = Math.max(0, (S.launchCd || 0) - dt);
+    if (S.launched) { S.launchT += dt; if (S.launchT > 0.4 && S.grounded >= 2) S.launched = false; } // down again
+    if (T.def.ramps && S.launchCd <= 0 && S.grounded >= 2) for (const r of T.def.ramps) {
+      const dx = Math.cos(r.a), dz = Math.sin(r.a);
+      const u = (rover.pos.x - r.x) * dx + (rover.pos.z - r.z) * dz, v = Math.abs(-(rover.pos.x - r.x) * dz + (rover.pos.z - r.z) * dx);
+      const vAlong = rover.vel.x * dx + rover.vel.z * dz;
+      if (u > -3 && u < 0.8 && v < RAMP.w / 2 + 0.5 && vAlong > 6) {
+        rover.vel.y = Math.max(rover.vel.y, 4 + vAlong * 0.09);
+        rover.ang.x = 0; rover.ang.z = 0; // keep the nose level in the air
+        S.launchCd = 1.2; S.shake = Math.max(S.shake, 0.35); S.launched = true; S.launchT = 0;
+        T.fx.emit(v1.set(r.x, rover.pos.y - 0.6, r.z), 30, { raw: true, speed: 6, life: 0.6, size: 1.3, colors: [[1.6, 0.8, 2.8], [2.4, 1.6, 3.4]], drag: 2.5, dir: v2.set(dx * 4, 5, dz * 4) });
+        sfx.blink();
+        say1('ramp', 'A Warden launch ramp! The faster we hit it, the further it throws us. With nitro, mind where we land.');
+        break;
+      }
+    }
+    // Phase Blink (once the shrine's coil is fitted): V or pad Y
+    S.blinkCd = Math.max(0, (S.blinkCd || 0) - dt); S.blinkGrace = Math.max(0, (S.blinkGrace || 0) - dt);
+    if (inp.pressed.has('blink') && upgrades.phaseBlink && !(S.prompt && S.prompt.type === 'right') && rover.pos.y > T.def.lava - 1) {
+      if (S.blinkCd > 0) sfx.denied(); else doBlink();
+    }
     // a memory fragment from an armory pickup, voiced a few seconds into the drive (S.time stops while a card is up)
     if (S.frag && S.time > S.frag.at) { hooks.lines && hooks.lines(S.frag.lines); S.frag = null; }
 
@@ -1486,6 +1644,7 @@ export function createSurface(hooks) {
       if (S.prompt?.type === 'orbit') result = { type: 'orbit' };
       else if (S.prompt?.type === 'collect') collectForgeplate();
       else if (S.prompt?.type === 'trim') collectTrim();
+      else if (S.prompt?.type === 'blinkmod') collectBlink();
       else if (S.prompt?.type === 'vault') result = { type: 'vault' };
       else if (S.prompt?.type === 'core') takeCore();
       else if (S.prompt?.type === 'right') {
@@ -1516,6 +1675,7 @@ export function createSurface(hooks) {
     }
     T.embers.update(dt, rover.pos, S.time);
     if (T.islands) T.islands.update(S.time);
+    if (T.veilWall) T.veilWall.material.uniforms.time.value = S.time;
     T.fx.update(dt); // sparks, fire and dust (was never stepped, so surface particles never showed)
     if (S.nitroT > 0) for (const sx of [-0.55, 0.55]) { // twin exhaust flames off the tail
       v2.set(sx, 0.25, 2.0).applyQuaternion(rover.quat).add(rover.pos);
@@ -1643,6 +1803,10 @@ export function createSurface(hooks) {
       mark(bear(T.forge.x, T.forge.z), '◆ FORGE GATE ' + Math.round(df) + ' M', AMBER, true);
       mark(bear(d.vault.x, d.vault.z), 'VAULT', '200,150,90', false);
     } else if (S.obj === 'practice' && T.fauna.meadow) mark(bear(T.fauna.meadow.x, T.fauna.meadow.z), '◆ SKITTERS', AMBER, true);
+    else if (S.obj === 'blink' && T.shrine) {
+      mark(bear(T.shrine.x, T.shrine.z), '◆ VEIL SHRINE ' + Math.round(Math.hypot(T.shrine.x - rover.pos.x, T.shrine.z - rover.pos.z)) + ' M', AMBER, true);
+      mark(bear(d.vault.x, d.vault.z), 'VAULT', '190,160,230', false);
+    }
     else if (S.obj === 'trim' && T.spire) {
       mark(bear(T.spire.x, T.spire.z), '◆ RIME SPIRE ' + Math.round(Math.hypot(T.spire.x - rover.pos.x, T.spire.z - rover.pos.z)) + ' M', AMBER, true);
       mark(bear(d.vault.x, d.vault.z), 'VAULT', '150,200,220', false);
@@ -1664,7 +1828,9 @@ export function createSurface(hooks) {
       return: 'Return to the Wayfarer and lift off',
       trim: 'Get through the whiteout · find the Rime Spire across the sea',
       maze: 'Follow the lit lanes through the ice maze to the vault',
-      scouted: S.planet === 'vireo' ? 'Vault found · the way through the veil is the next build step' : 'Through the maze · the guardian is the next build step',
+      scouted: S.planet === 'vireo' ? 'Through the veil · the guardian is the next build step' : 'Through the maze · the guardian is the next build step',
+      blink: 'Find a way through the veil wall · the Veil Shrine, east across the long bridge',
+      veil: 'Blink through the veil wall to the vault',
     };
     text(ctx, OBJ[S.obj] || '', W / 2, 90, 14 * sc + 5, '230,251,255', 0.9, 'center', 600);
     // a short card that fades by itself (the vault opening), then the NEW OBJECTIVE flash waits its turn
@@ -1685,6 +1851,7 @@ export function createSurface(hooks) {
         if (S.veilT > 0) text(ctx, 'IN THE VEIL · HAULING BACK', W / 2, H * 0.25, 24 * sc + 10, '205,170,255', 0.6 + 0.4 * Math.sin(S.time * 10), 'center', 700);
       }
     }
+    if (S.veilWallT > 0) text(ctx, upgrades.phaseBlink ? 'VEIL WALL · BLINK THROUGH IT' : 'VEIL WALL · NEED PHASE BLINK', W / 2, H * 0.25, 24 * sc + 10, '205,170,255', 0.6 + 0.4 * Math.sin(S.time * 10), 'center', 700);
     if (S.whiteout > 0) text(ctx, 'WHITEOUT · SENSORS BLIND', W / 2, H * 0.25, 24 * sc + 10, '200,235,255', 0.6 + 0.4 * Math.sin(S.time * 10), 'center', 700);
     if (S.heatWall > 0) text(ctx, 'HEAT WALL · NEED HEAT PLATING', W / 2, H * 0.25, 24 * sc + 10, RED, 0.6 + 0.4 * Math.sin(S.time * 14), 'center', 700);
     const ds = Math.hypot(T.shipHolder.position.x - rover.pos.x, T.shipHolder.position.z - rover.pos.z);
@@ -1745,6 +1912,14 @@ export function createSurface(hooks) {
       ctx.fillStyle = 'rgba(' + nc + ',0.95)'; ctx.fillRect(bx, ny, bw * clamp(nf, 0, 1), 6);
       text(ctx, 'NITRO' + (padL ? ' · B' : ' · SHIFT'), bx, ny - 12, 12, nc, 0.85, 'left');
       text(ctx, on ? 'BURNING' : ready ? 'READY' : 'CHARGING', bx + bw, ny - 12, 12, nc, ready ? 0.6 + 0.4 * Math.abs(Math.sin(S.time * 3)) : 0.85, 'right');
+      if (upgrades.phaseBlink) { // Phase Blink, above nitro
+        const ky = ny - 38, kr = (S.blinkCd || 0) <= 0, kf = kr ? 1 : 1 - S.blinkCd / BLINK.cd, kc = kr ? '200,160,255' : '140,120,170';
+        ctx.fillStyle = 'rgba(6,12,22,0.72)'; ctx.fillRect(bx - 4, ky - 4, bw + 8, 14);
+        ctx.fillStyle = 'rgba(' + kc + ',0.2)'; ctx.fillRect(bx, ky, bw, 6);
+        ctx.fillStyle = 'rgba(' + kc + ',0.95)'; ctx.fillRect(bx, ky, bw * clamp(kf, 0, 1), 6);
+        text(ctx, 'PHASE BLINK' + (padL ? ' · Y' : ' · V'), bx, ky - 12, 12, kc, 0.85, 'left');
+        text(ctx, kr ? 'READY' : 'CHARGING', bx + bw, ky - 12, 12, kc, kr ? 0.6 + 0.4 * Math.abs(Math.sin(S.time * 3)) : 0.85, 'right');
+      }
     }
     if (rover.lavaT > 0 && !(S.heatWall > 0)) text(ctx, 'HEAT CRITICAL', W / 2, H * 0.25, 26 * sc + 10, RED, 0.6 + 0.4 * Math.sin(S.time * 14), 'center', 700);
 
@@ -1753,9 +1928,14 @@ export function createSurface(hooks) {
     if (c && c.t < 7) {
       const shown = c.text.slice(0, Math.floor(c.t * 55));
       ctx.font = `500 ${15 * sc + 6}px ${FONT}`;
-      const w = Math.min(W * 0.8, ctx.measureText('WREN:  ' + c.text).width + 40);
+      // the box fits the speaker's whole label (Ilsa's is long), and the line shrinks if it would not fit
+      let fs = 15 * sc + 6;
+      const full = c.from + ':  ' + c.text, maxW = W * 0.9 - 40;
+      const tw = ctx.measureText(full).width;
+      if (tw > maxW) { fs *= maxW / tw; ctx.font = `500 ${fs}px ${FONT}`; }
+      const w = Math.min(W * 0.9, ctx.measureText(full).width + 40);
       ctx.fillStyle = 'rgba(4,8,16,0.72)'; ctx.fillRect(W / 2 - w / 2, H * 0.78 - 18, w, 36);
-      text(ctx, c.from + ':  ' + shown, W / 2, H * 0.78, 15 * sc + 6, '230,251,255', 1, 'center', 500);
+      text(ctx, c.from + ':  ' + shown, W / 2, H * 0.78, fs, '230,251,255', 1, 'center', 500);
     }
     // prompt
     if (S.prompt) {
@@ -1769,7 +1949,7 @@ export function createSurface(hooks) {
         ? (pad ? 'RB fire turret · RIGHT STICK aim · the crosshair locks on when close' : 'LEFT CLICK or E fire turret · MOUSE aim · the crosshair locks on when close')
         : S.hintMode === 'gun'
         ? (pad ? 'RB fire turret · LB heat lance · RIGHT STICK aim · keep driving' : 'LEFT CLICK or E turret · RIGHT CLICK or Q heat lance · MOUSE aim')
-        : (pad ? 'RT drive · LT brake/reverse · LEFT STICK steer · X handbrake · B nitro · RIGHT STICK camera · RB turret · LB lance' : 'W/S drive and brake · A/D steer · SPACE handbrake · SHIFT nitro · MOUSE camera · CLICK turret · RIGHT CLICK lance');
+        : (pad ? 'RT drive · LT brake/reverse · LEFT STICK steer · X handbrake · B nitro · RIGHT STICK camera · RB turret · LB lance' : 'W/S drive and brake · A/D steer · SPACE handbrake · SHIFT nitro · MOUSE camera · CLICK turret · RIGHT CLICK lance') + (upgrades.phaseBlink ? (pad ? ' · Y blink' : ' · V blink') : '');
       text(ctx, txt, W / 2, H * 0.6, 15 * sc + 5, CYAN, Math.min(1, S.hint) * 0.9);
     }
   }

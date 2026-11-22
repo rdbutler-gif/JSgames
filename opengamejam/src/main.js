@@ -580,7 +580,9 @@ function updatePrompts() {
     const L = station.local(ship.pos, tmpV);
     const d = bayMouth().distanceTo(ship.pos);
     if (d < 4500 && !G.dockHinted) { G.dockHinted = true; story.line('dock-approach'); } // once; re-armed when Lantern is picked on the nav again
-    if (d < 1500) {
+    if (d > 8000) G.dockHinted = false; // or once we have really left (not while flying out of the bay: owner, 2026-11-21)
+    if (d > 2000 || G.time - (G.leaveT || 0) > 30) G.leaving = false; // just launched: no docking prompt until we have been clear of the bay
+    if (d < 1500 && !G.leaving) {
       if (L.z < BAY_MOUTH_Z + 10) G.prompt = { type: 'dock', label: 'DOCK AT LANTERN' };
       else if (G.time - (G.dockHintT || -99) > 20) { G.dockHintT = G.time; say('The bay opens the other way. Swing round to the mouth.'); }
     }
@@ -696,6 +698,7 @@ function launchFromHub() {
     camera.fov = ship.fov; camera.updateProjectionMatrix();
     if (wantsMouse()) requestLock();
     story.clear(); story.line('hub-launch');
+    G.dockHinted = true; G.leaving = true; G.leaveT = G.time; // leaving: no "bay is open, I'll dock us" (or dock prompt) on the way out
     note('CLAMPS RELEASED · THROTTLE UP', '255,211,106');
     autosave(false);
   });

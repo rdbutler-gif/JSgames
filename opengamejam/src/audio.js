@@ -250,6 +250,7 @@ export const sfx = {
   buy() { blip(520, 0.06, 'triangle', 0.06); blip(780, 0.08, 'triangle', 0.06, 0.07); noise(0.2, 0.12, 2400, 600, 1.4); blip(1040, 0.16, 'triangle', 0.05, 0.16); },
   nitro() { noise(0.9, 0.35, 500, 2600, 1.6); blip(90, 0.8, 'sawtooth', 0.1, 0, 2.2); },
   denied() { blip(220, 0.12, 'square', 0.05); blip(180, 0.16, 'square', 0.05, 0.12); },
+  blink() { noise(0.28, 0.22, 3200, 400, 2); blip(1600, 0.22, 'sine', 0.06, 0, 0.15); blip(420, 0.3, 'triangle', 0.05, 0.05, 2.5); }, // Phase Blink: a snap and a falling shimmer
 };
 // test hook: current rover loop levels and pitch
 export function roverDebug() {
