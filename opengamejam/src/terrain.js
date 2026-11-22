@@ -166,6 +166,7 @@ export const SURFACES = {
     hemi: ['#c8b0ff', '#24163a'], rock: '#3a3148', accent: [2.2, 1.0, 3.8], weather: 'motes',
     islands: true, // floating rock overhead
     fauna: 'vireo', // veil drifters and the Hollowed
+    matriarch: true, arenaR: 50, // the Hollowed Matriarch fights inside the veil wall (r 62)
   },
 };
 

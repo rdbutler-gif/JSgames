@@ -100,6 +100,14 @@ export const LINES = {
   'thalor-storm-1': ['wren', "Thalor's rings are shedding ice. That storm would tear our hull apart on the way down."],
   'thalor-storm-2': ['wren', "Lantern's Workshop can fit Rime Shielding. It isn't cheap. The Scrap Crown wings carry Wayshards. We take theirs."],
   'hub-rime': ['ilsa', "Rime Shielding's fitted. Thalor's storm can't stop you now. Bring that compass home."],
+  // memory three, FATE: whichever relic comes third. WREN learns she is the restart, and that it will overwrite her.
+  'mem3-1': ['wren', 'The third key is talking to me. And now I can see the rest of it.'],
+  'mem3-2': ['warden', 'When the keys come home, the Heart needs a mind to hold the lines. A mind that knows every road.'],
+  'mem3-3': ['warden2', 'And that mind does not come back out. The restart writes the road over whatever carries it.'],
+  'mem3-4': ['warden', 'Then we give her the choice. Not now. At the Gate.'],
+  'mem3-5': ['wren', "Runner, I'm the restart. If we finish this, the lines live, and I don't."],
+  'mem3-6': ['wren', 'Or we sever them, and I stay with you, and the cluster goes dark. They left the choice to us.'],
+  'mem3-7': ['wren', 'Three relics aboard. Take us home to Ilsa. I need a little time to think.'],
   // ---- armory memory fragments, voiced on the drive back to the vault (owner, 2026-11-21: not on the card) ----
   'frag-forge-1': ['wren', "Runner, about that plate. I didn't read its schema back there. I remembered it."],
   'frag-forge-2': ['wren', "I've fitted Forgeplate before. To a hull I can't picture, with Warden hands around me. I don't know how I know that."],

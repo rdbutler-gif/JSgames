@@ -19,9 +19,11 @@
 | 6c | Thalor: Sentinel Prime guardian fight, the Rime Compass, WREN memory 2 (Truth) | **Built 2026-11-21, bot-tested headless, awaiting owner playtest.** Owner tested a first version and asked for fixes (all done, untested by owner): creatures stand on the sea ice, the fight camera stays inside the arena, the maze sinks after the kill, memories are voiced (no card) |
 | — | Rover sound: ElevenLabs motor and tyre loops | Done. Owner 2026-11-21: "I have tested the new sounds of the rover and it is good" |
 | 7a | Vireo: veil-fog gate (Veil Sounder, 300 Wayshards), the surface (mesas over a violet fog sea, land bridges, floating rock, light gravity), haul-back from the veil, drive to the vault | Done. Owner 2026-11-21: "I landed on Vireo and drove around a bit. I like the low gravity with ramps." |
-| 7b | Vireo: the veil wall round the vault, the Veil Shrine and Phase Blink, the Hollowed and veil drifters, Warden launch ramps | **Built 2026-11-21, bot-tested headless, owner has not played it** |
+| 7b | Vireo: the veil wall round the vault, the Veil Shrine and Phase Blink, the Hollowed and veil drifters, Warden launch ramps | Done. Owner 2026-11-21: "I love the look of the Vireo world. The ramps are fun" |
+| — | Rover suspension (progressive springs, tyre footprint, sliding body) | Done. Owner: "The handling is much better now. No complaints." |
+| 7c | Vireo: the Hollowed Matriarch, the Veil Lens, WREN memory 3 FATE (voiced) | **Built 2026-11-21, bot-tested headless, owner has not played it** |
 
-Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
+Then: 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
 
 ## First thing next session
 
@@ -38,6 +40,26 @@ Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop 
    - Fight length and damage. With the bot standing in for good shooting, it was about 40 s. A bot that never dodges took 16–32 hull per cycle, mostly from spikes.
    - Does the TRUTH memory land?
    - Next: Vireo (step 6, the third world). The objective sends you home to Lantern for Ilsa's r2 briefing first.
+
+### How 7c works (the Hollowed Matriarch, the Veil Lens, FATE; owner 2026-11-21: "It's time to continue with next steps")
+- **The flow:**
+  1. Through the veil wall, the objective is `door` (Open the vault). OPEN THE VAULT within 24 m shows the banner PHASE III · VIREO / THE VEIL TEARS (main.js `VAULT_TITLE`) and wakes her.
+  2. After the kill: 120 Wayshards, then TAKE THE VEIL LENS (within 14 m), then `relicSecured`.
+  3. The veil wall dissolves over 4 s (`S.veilFall`, the shader's `fade` uniform), so the way out is open. Landing again after the relic, the wall is gone.
+- **The fight** (`src/matriarch.js`, same interface as sentinel.js; `def.matriarch`, `arenaR` 50 inside the veil wall):
+  - She's a robed Hollowed about 11 m tall with her own materials, so she fades as a whole.
+  - The cycle:
+    - **veiled** (alpha 0.35): shots pass through her body. She drifts round the middle, throws homing veil orbs (9 damage, shootable) and sends shades (small Hollowed: glide, then flare for 0.7 s, then a 22 m/s lunge for 8 damage; 2 hp).
+    - **gather** (1.4 s): she rises, her eyes flare and a ring glows under her.
+    - **wave:** a ring of veil 3.2 m tall spreads at 13–17 m/s. It does 15 damage and a shove, unless you're mid-blink (`ctx.blinking`, Phase Blink grace now 0.5 s).
+    - **solid:** she sinks to 3.2 m, her robe parts and the heart opens. That's the only time she takes damage.
+  - Stages by HP 60/40/20 (`STAGE`). Stage 2 sends two waves 3.8 s apart (longer than Blink's 3.5 s recharge, so both can be blinked) and two shades. Stage 3 also steps to a new spot after each solid phase.
+  - The heat lance also burns orbs and shades.
+  - Hits only count during the fight: a hit while she was dying used to restart her death.
+- **Measured** (bot circles at r 28 and lands heart hits while it's open): a kill in about 52 s. Blinking through the waves left 55 hull; never blinking left 9.
+- **FATE** (memory 3, whichever relic comes third: main.js `MEMORIES[2]`, story.js `mem3-1..7`): WREN learns she *is* the restart. The Heart needs a mind to hold the lines, and the restart writes over it. The Wardens left her the choice, "at the Gate". It ends "Take us home to Ilsa. I need a little time to think."
+  - The voices are WREN (Melz) and the Wardens (Katherine, Vaughn). This sets up the two endings, Restart or Sever, in step 9.
+- **Not done:** the Veil Lens relic power (weak-point sight) and the other relic powers belong to step 7 (upgrades). Ilsa's `r3` briefing (all three relics) already exists.
 
 ### Rover suspension (owner, 2026-11-21: "the rover gets bogged down easily, like the front end hits the ground and causes sudden stops and sudden direction changes")
 - **Causes found** (surface.js `physicsStep`):
@@ -156,7 +178,7 @@ Then: 6 Vireo (the third world), 7 ship upgrades vs raider levels (the Workshop 
     - It shows a short banner (#memory: RELIC n OF 3 · name / WREN MEMORY n · TITLE) 3.8 s later, after the NEW OBJECTIVE flash, for 7 s.
     - It queues the memory as voiced lines (`MEMORIES[n].lines`): PURPOSE = `mem1-1..5`, TRUTH = `mem2-1..7` in story.js.
   - **The Warden voices** are new speakers `warden` (Katherine J7gii3pWdApH2b9t8Q3G) and `warden2` (Vaughn n0VJsPm60ki3xLLyCLFE). They play through the radio filter, like an old recording.
-  - FATE (memory 3) has no lines yet: it falls back to one WREN line.
+  - FATE (memory 3) is voiced since 7c (mem3-1..7).
 - **Tests:** a fight bot circles at r 24, and the test lands core hits while `open > 0.6`. Kessa's Titan passed the same flow after the shared-table change.
 
 ### Rover sound (owner, 2026-11-21: "create a distinct sound for the rover. Right now it borrows the same sound as the space ship")

@@ -72,7 +72,7 @@ const surface = createSurface({
 const MEMORIES = [
   { title: 'PURPOSE', lines: ['mem1-1', 'mem1-2', 'mem1-3', 'mem1-4', 'mem1-5'] },
   { title: 'TRUTH', lines: ['mem2-1', 'mem2-2', 'mem2-3', 'mem2-4', 'mem2-5', 'mem2-6', 'mem2-7'] },
-  { title: 'FATE', lines: [] }, // memory three is a later build step
+  { title: 'FATE', lines: ['mem3-1', 'mem3-2', 'mem3-3', 'mem3-4', 'mem3-5', 'mem3-6', 'mem3-7'] },
 ];
 const RELIC_NAMES = { kessa: 'THE EMBER CORE', vireo: 'THE VEIL LENS', thalor: 'THE RIME COMPASS' };
 let memoryT = null;
@@ -970,8 +970,9 @@ function step(dt) {
       if (r && r.type === 'vault') {
         // no card: a short title fades over the view and the fight starts at once (owner, 2026-11-21)
         sfx.engage();
-        const thalor = G.surfacePlanet && G.surfacePlanet.planet.data.id === 'thalor';
-        surface.banner(thalor ? 'PHASE III · THALOR' : 'PHASE III · KESSA', thalor ? 'THE VAULT WAKES' : 'THE VAULT OPENS', 3.2);
+        const pid = G.surfacePlanet ? G.surfacePlanet.planet.data.id : 'kessa';
+        const VAULT_TITLE = { kessa: 'THE VAULT OPENS', thalor: 'THE VAULT WAKES', vireo: 'THE VEIL TEARS' };
+        surface.banner('PHASE III · ' + pid.toUpperCase(), VAULT_TITLE[pid] || 'THE VAULT OPENS', 3.2);
         surface.wakeGuardian();
       }
       break;

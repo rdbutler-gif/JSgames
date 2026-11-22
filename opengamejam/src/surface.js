@@ -8,6 +8,7 @@ import { settings } from './settings.js';
 import { sfx, lanceHum, noise } from './audio.js';
 import { createTitan, TITAN_HP } from './guardian.js';
 import { createSentinel, SENTINEL_HP } from './sentinel.js';
+import { createMatriarch, MATRIARCH_HP } from './matriarch.js';
 import { createFauna } from './fauna.js';
 import { eff } from './workshop.js';
 import { VLight, createLightPool } from './lightpool.js';
@@ -62,6 +63,15 @@ const GUARD = {
     obj: 'Shatter Sentinel Prime · shoot the core when its shields fly out',
     colors: { core: [1.6, 3.2, 4], ring: [1.2, 2.6, 3.4], shell: '#20323e', em: '#0d3a4e', light: '#9fe6ff', burst: [[1.6, 2.6, 3.2], [2.6, 3, 3.4]] },
   },
+  vireo: {
+    name: 'HOLLOWED MATRIARCH', short: 'MATRIARCH', relic: 'VEIL LENS', relicName: 'the Veil Lens', hp: MATRIARCH_HP, curtain: [0.5, 0.25, 0.9], curtainK: 0.6,
+    wake: 'The veil over the vault is tearing open. Something huge is coming through. Hollowed, but old. Very old.',
+    awake: 'The Hollowed Matriarch. While she is veiled our shots go straight through her. Blink through her waves, and hit the light in her chest when she turns solid.',
+    wall: 'The veil has closed behind us. We finish this here.',
+    dead: 'She is gone. And there, where she hung: the Veil Lens. Bring us close.',
+    obj: 'Bring down the Hollowed Matriarch · blink through her waves, shoot her heart when she turns solid',
+    colors: { core: [2.4, 1.2, 4], ring: [1.6, 0.8, 3], shell: '#2a1a40', em: '#3a1060', light: '#c49cff', burst: [[2.4, 1.2, 4], [3, 2.4, 4]] },
+  },
 };
 const ICE_GRIP = 0.1; // share of normal tyre grip on Thalor's sea ice (rear tyres; the fronts keep a little more)
 const ICE_FRONT = 0.14;
@@ -70,7 +80,7 @@ const ICE_FRONT = 0.14;
 const NITRO = { dur: 2.5, cd: 8, thrust: 14, topK: 1.8, engineK: 1.5 };
 // Phase Blink (Vireo's armory): the rover steps `dist` metres ahead in an instant (through veil walls, across gaps),
 // keeps its speed plus a little `kick`, and recharges for `cd` seconds.
-const BLINK = { dist: 14, cd: 3.5, kick: 4 };
+const BLINK = { dist: 14, cd: 3.5, kick: 4, grace: 0.5 }; // grace: how long we pass through veil walls and waves
 const HULL_MU = 0.35; // body-on-rock sliding friction
 // on ice the tyres' forward and side grip are limited separately: spinning rear tyres still push
 // (ICE_DRIVE of normal traction) while their side grip collapses, which swings the tail out
@@ -646,9 +656,9 @@ export function createSurface(hooks) {
     if (def.veilWall) {
       const m = new THREE.ShaderMaterial({
         transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
-        uniforms: { time: { value: 0 } },
+        uniforms: { time: { value: 0 }, fade: { value: 1 } },
         vertexShader: 'varying vec2 vU; void main(){ vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-        fragmentShader: `uniform float time; varying vec2 vU;
+        fragmentShader: `uniform float time, fade; varying vec2 vU;
           float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
           float n(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(h(i),h(i+vec2(1,0)),f.x), mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x), f.y); }
           void main(){
@@ -656,7 +666,7 @@ export function createSurface(hooks) {
             float streak = n(vec2(x * 1.3, y * 3.0 - time * 0.6)) * 0.6 + n(vec2(x * 4.0 + time * 0.3, y * 8.0 - time * 1.2)) * 0.4;
             float a = smoothstep(0.35, 0.9, streak) * (1.0 - smoothstep(0.55, 1.0, y)) * smoothstep(0.0, 0.08, y);
             a = a * 0.55 + 0.12 * (1.0 - y);
-            gl_FragColor = vec4(vec3(0.55, 0.3, 0.95) * a, 1.0);
+            gl_FragColor = vec4(vec3(0.55, 0.3, 0.95) * a * fade, 1.0);
           }`,
       });
       veilWall = new THREE.Mesh(new THREE.CylinderGeometry(def.veilWall, def.veilWall, 34, 160, 1, true), m);
@@ -682,7 +692,7 @@ export function createSurface(hooks) {
     // the vault base is solid
     rocks.list.push({ x: def.vault.x, z: def.vault.z, y: terrain.vaultH, r: 10 });
     // guardian, its arena wall, and the relic
-    const titan = def.titan ? createTitan({ root, def, terrain, fx }) : def.sentinel ? createSentinel({ root, def, terrain, fx }) : noTitan();
+    const titan = def.titan ? createTitan({ root, def, terrain, fx }) : def.sentinel ? createSentinel({ root, def, terrain, fx }) : def.matriarch ? createMatriarch({ root, def, terrain, fx }) : noTitan();
     const G = GUARD[id] || GUARD.kessa, arenaR = def.arenaR || ARENA_R;
     // heat curtain: bright at the ground, fading out by head height, with flickering streaks
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
@@ -783,7 +793,7 @@ export function createSurface(hooks) {
       const blink = !!upgrades.phaseBlink;
       if (!taken) S.obj = blink ? 'veil' : 'vault';
       if (T.shrine) T.shrine.crate.visible = !blink;
-      if (T.veilWall) T.veilWall.visible = !taken;
+      if (T.veilWall) { T.veilWall.visible = !taken; T.veilWall.material.uniforms.fade.value = 1; }
       hooks.say('Rover is down. Vireo. Gravity is light here, so we will float off every crest. And that fog has no floor I can find. Stay on the rock.');
       if (!taken) setTimeout(() => S && S.time < 14 && (S.obj === 'vault' || S.obj === 'veil') && hooks.say(blink
         ? 'Phase Blink is fitted. The vault is the violet column, north-west. Blink through the veil wall when we reach it.'
@@ -832,6 +842,7 @@ export function createSurface(hooks) {
     shake: (k) => { S.shake = Math.max(S.shake || 0, k); },
     say: (line) => hooks.say(line),
     grounded: () => S.grounded > 0,
+    blinking: () => (S.blinkGrace || 0) > 0, // mid-blink: the Matriarch's waves pass through us
   };
 
   // Bolts fly from the muzzles toward the aim point; they test the Titan's shapes, then the ground.
@@ -997,7 +1008,7 @@ export function createSurface(hooks) {
     S.lanceT = tgt && tgt === S.lanceTgt ? S.lanceT + dt : 0;
     S.lanceTgt = tgt;
     const n = (L.dps[0] + (L.dps[1] - L.dps[0]) * clamp(S.lanceT / L.rampT, 0, 1)) * dt;
-    if (kind === 'titan') { if (hit.kind === 'core') { T.titan.onBolt(hit, titanCtx, n, true); S.hitMark = 0.1; } }
+    if (kind === 'titan') { if (hit.kind === 'core' || hit.kind === 'orb' || hit.kind === 'shade') { T.titan.onBolt(hit, titanCtx, n, true); S.hitMark = 0.1; } } // the lance also burns the Matriarch's orbs and shades
     else if (kind === 'fauna') { S.hitMark = 0.1; if (T.fauna.damage(tgt, n, true)) creatureKilled(tgt); }
     else if (kind === 'rock') {
       S.rockAcc += n; S.hitMark = 0.08;
@@ -1037,6 +1048,7 @@ export function createSurface(hooks) {
     if (ev === 'dead') {
       S.fight = false; T.curtain.visible = false;
       if (T.maze) { S.sinking = 0.001; noise(5.5, 0.5, 260, 40, 0.7); } // the maze goes down with its keeper
+      if (T.veilWall) { S.veilFall = 0.001; noise(4.5, 0.4, 1400, 200, 0.8); } // and Vireo's veil wall comes apart with its keeper
       T.ember.g.visible = true; T.ember.t = 0;
       setObj('core');
       sfx.victory();
@@ -1436,7 +1448,7 @@ export function createSurface(hooks) {
     const g = ground(rover.pos.x, rover.pos.z);
     if (rover.pos.y < g + 1.2) rover.pos.y = g + 1.2;
     rover.vel.addScaledVector(f, BLINK.kick);
-    S.blinkCd = BLINK.cd; S.blinkGrace = 0.35; S.shake = Math.max(S.shake, 0.3);
+    S.blinkCd = BLINK.cd; S.blinkGrace = BLINK.grace; S.shake = Math.max(S.shake, 0.3);
     for (let k = 0; k <= 10; k++) T.fx.emit(v3.lerpVectors(v2, rover.pos, k / 10), 4, { raw: true, speed: 1.5, life: 0.55, size: 1.2, colors: [[1.6, 0.8, 2.8], [2.4, 1.6, 3.4]], drag: 3 });
     sfx.blink();
     say1('blink-1', 'Blink! Fourteen metres in no time at all. It needs a few seconds to charge again.');
@@ -1466,10 +1478,23 @@ export function createSurface(hooks) {
         } else say1('veilwall-b', 'Now blink! Straight at the wall, and tap it.');
       }
       if (blink && toVault < R - band && S.obj === 'veil') {
-        setObj('scouted');
+        setObj('door');
         say1('through', 'We are through the veil. The vault is right ahead, and something in there knows we came.');
       }
     }
+    // after the Matriarch: the veil wall thins and comes apart over 4 s, so the way out is open
+    if (S.veilFall > 0 && T.veilWall) {
+      S.veilFall += dt / 4;
+      T.veilWall.material.uniforms.fade.value = Math.max(0, 1 - S.veilFall);
+      if (Math.random() < 0.6) { const a = Math.random() * 6.28; T.fx.emit(v1.set(d.vault.x + Math.cos(a) * d.veilWall, T.terrain.vaultH + 2 + Math.random() * 10, d.vault.z + Math.sin(a) * d.veilWall), 3, { speed: 2, life: 1.6, size: 2.4, colors: [[1, 0.5, 1.8], [0.6, 0.4, 1]], drag: 0.8, dir: v2.set(0, 2, 0) }); }
+      if (S.veilFall >= 1) { S.veilFall = 0; T.veilWall.visible = false; say1('veil-down', 'The veil wall went with her. The way back to the Wayfarer is open.'); }
+    }
+    // the vault: the door wakes the Matriarch (main shows the banner, then calls wakeGuardian); then the Veil Lens
+    if (!S.prompt && S.obj === 'door' && toVault < 24) {
+      S.prompt = { type: 'vault', label: 'OPEN THE VAULT' };
+      say1('door-v', 'The vault. The veil is thinnest right here. Ready when you are.');
+    }
+    if (!S.prompt && S.obj === 'core' && T.ember.g.visible && T.ember.t > 2 && toVault < 14) S.prompt = { type: 'core', label: 'TAKE THE ' + T.G.relic };
     // the shrine's crate
     if (!S.prompt && T.shrine && !blink) {
       const fd = Math.hypot(P.x - T.shrine.x, P.z - T.shrine.z);
@@ -1848,6 +1873,7 @@ export function createSurface(hooks) {
       maze: 'Follow the lit lanes through the ice maze to the vault',
       scouted: S.planet === 'vireo' ? 'Through the veil · the guardian is the next build step' : 'Through the maze · the guardian is the next build step',
       blink: 'Find a way through the veil wall · the Veil Shrine, east across the long bridge',
+      door: 'Open the vault',
       veil: 'Blink through the veil wall to the vault',
     };
     text(ctx, OBJ[S.obj] || '', W / 2, 90, 14 * sc + 5, '230,251,255', 0.9, 'center', 600);
