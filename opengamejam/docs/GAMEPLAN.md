@@ -5,7 +5,7 @@ This is the plan we build from. The owner's `gameplan.md` (the long production b
 and ideas**, and it is a loose suggestion: anything in it can change if the game needs it. When
 the two disagree, this file wins, and this file changes whenever the owner decides something new.
 
-*Last updated: 2026-11-20. Session handoff: `docs/HANDOFF.md`.*
+*Last updated: 2026-11-22. Session handoff: `docs/HANDOFF.md`.*
 
 ---
 
@@ -109,12 +109,22 @@ Each step ends playable, with the owner testing before the next.
 | 4d | **Opening** (owner, 2026-11-19): title scene, PLAY/CONTINUE/NEW GAME/SETTINGS, save, intro card, undock from Lantern, WREN's step-by-step flight tutorial, radio from Ilsa and Orrick, cruise lore beats, planets spread for ~45 s cruise trips, Lantern's line dies after relic 1. Voiced (WREN, Ilsa, Orrick) | **Done**, owner approved 2026-11-20 |
 | 5 | **Lantern Station** hub: dock back at Lantern, Ilsa briefing, Workshop (upgrades for Wayshards), the air clock on screen | **Built 2026-11-20**, awaiting owner playtest. Air clock at zero is not (yet) a game over: owner to decide |
 | 6 | The other two planets (reusing the Phase III systems with their own terrain, natives, gate and guardian) | Thalor 6a done (Rime Shielding 300, owner approved). 6b built 2026-11-21: Rime Spire, Compass Trim, ice maze with whiteout, Thalor creatures (rime crawlers, shardbacks). 6c built 2026-11-21: Sentinel Prime fight, Rime Compass, WREN memory Truth. Vireo 7a built 2026-11-21: Veil Sounder gate (300), mesas over the veil, land bridges, floating rock, light gravity (owner chose low gravity and 300). 7b built 2026-11-21: veil wall round the vault, Veil Shrine with Phase Blink, the Hollowed and veil drifters, Warden launch ramps (owner liked jumping in low gravity). 7c built 2026-11-21: Hollowed Matriarch (blink through her veil waves, shoot her heart when solid), Veil Lens, WREN memory 3 FATE voiced. All three worlds are now playable end to end |
-| 7 | Ship upgrades that counter raider levels; Hexers, Reavers, Vex encounters | |
+| 7 | Ship upgrades that counter raider levels; Hexers, Reavers, Vex encounters | Folded into the progression and balance work below (owner, 2026-11-22) |
 | 8 | Voices: WREN (three stages), Orrick, Ilsa, Vex; music per planet | Started in 4d: WREN = Melz, Ilsa = Cass, Orrick = Obsidian (ElevenLabs library voices) |
-| 9 | Final Gate run, *Last Light* boss, ending choice | |
-| 10 | Polish, performance, accessibility, trailer, jam submission | |
+| 9 | Final Gate run, *Last Light* boss, ending choice | **Next: the owner's first priority** (2026-11-22) |
+| 10 | Polish, performance, accessibility, trailer, jam submission | Jam entry **published** on OpenGame 2026-11-22 (https://opengame.io/g/f3sqhmgmbq); updates are allowed until entries close 18 Dec 2026, 11:59 pm PT |
 
 Order can change. Voices and music can start earlier where a step needs them.
+
+### Owner's priorities after the jam entry (2026-11-22)
+
+> "The first priority ... is to build the ending. Then I want to flesh out ideas for endgame continuance. Side quests on the planets. Experience levels and balanced progression of enemies and difficulties. The currency needs tuning and balancing as well."
+
+1. **The ending** (step 9).
+2. **Endgame continuance:** what the player can do after the ending. These are ideas to develop with the owner; nothing is decided yet.
+3. **Side quests on the planets.**
+4. **Experience levels and balanced progression** of enemies and difficulty. This takes in step 7's raider threat levels 4–5 and the counter-upgrades.
+5. **Currency tuning:** Wayshard income against Workshop and gate costs.
 
 ---
 

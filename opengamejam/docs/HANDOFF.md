@@ -1,6 +1,6 @@
 # The Last Wayline — Session Handoff
 
-*Updated 2026-11-22 (end of session). Read this first, then `docs/GAMEPLAN.md` (the working plan).*
+*Updated 2026-11-22 (evening, after the jam entry went live). Read this first, then `docs/GAMEPLAN.md` (the working plan).*
 
 ## Where we are
 
@@ -23,24 +23,51 @@
 | — | Rover suspension (progressive springs, tyre footprint, sliding body) | Done. Owner: "The handling is much better now. No complaints." |
 | 7c | Vireo: the Hollowed Matriarch, the Veil Lens, WREN memory 3 FATE (voiced) | Owner played it 2026-11-22: blink timing clear, shades and orbs good, no lag on the old laptop. **But the heart could not be hit.** Fixed (she faced away; the robe's hit sphere swallowed the heart) and pushed. **Owner has not re-tested the fix** |
 
-Then: 7 ship upgrades vs raider levels (the Workshop exists now), 8 voices and music, 9 Final Gate and endings, 10 polish and jam submission (see GAMEPLAN §6).
+| — | **Jam entry: published on OpenGame** (Game Jam #1) | Live 2026-11-22 at https://opengame.io/g/f3sqhmgmbq. See "OpenGame jam entry" below |
+
+**Owner's priority order from here (2026-11-22):** "The first priority ... is to build the ending. Then I want to flesh out ideas for endgame continuance. Side quests on the planets. Experience levels and balanced progression of enemies and difficulties. The currency needs tuning and balancing as well."
+1. **The ending** (GAMEPLAN step 9): the Final Gate run, the *Last Light* boss, WREN's choice (Restart / Sever).
+2. **Endgame continuance:** what the player does after the ending. Flesh out ideas with the owner first; don't build before they choose.
+3. **Side quests on the planets.**
+4. **Experience levels**, plus balanced progression of enemies and difficulty.
+5. **Currency (Wayshards) tuning and balance.**
+
+The older step 7 (ship upgrades vs raider levels, relic powers) and step 8 (music) are not cancelled. They fold into items 4 and 5, or wherever the ending needs them. Ask the owner if unsure.
 
 ## First thing next session
 
-**Everything is committed and pushed** (live at gamesbyrusko.com/opengamejam/dist/; see `git log` for the last commit). The owner tests on the live site, often on an old laptop. Push only when the owner says so; they say "push" at the end of each round (see memory: wayline-deploy).
+**The game code is committed and pushed** (live at gamesbyrusko.com/opengamejam/dist/; see `git log` for the last commit). The owner tests on the live site, often on an old laptop. Push only when the owner says so; they say "push" at the end of each round (see memory: wayline-deploy). Check `git status`: the end-of-session doc updates and a one-line `.gitignore` change (`.opengame/`, written by the OpenGame CLI) may still be uncommitted.
+
+The same build is also **the live OpenGame jam entry**. Every OpenGame redeploy goes live to jam players by itself once it passes review, so deploy there only when the owner asks (see "OpenGame jam entry").
 
 All three worlds now play from landing to relic. Steps 1–7c of the build are done.
 
-1. **Ask the owner first:** can the Hollowed Matriarch's heart be hit now? Does the fight length (about 50 s for a good shot) and its damage feel right? Does the FATE memory land, after whichever relic comes third?
+1. **Start on the ending** (owner's first priority; see the priority list above). Plan it with the owner in a short round first: the Final Gate approach, the *Last Light* boss, how WREN's choice is offered, and what each ending shows. Ask in the same round: can the Matriarch's heart be hit now (the fix was never re-tested)? Does the fight length feel right (about 50 s for a good shot)?
 2. **Still open:** the owner once saw "the menu that appeared for the LANTERN shows the background upside down". It wasn't reproduced in three headless tests (WREN's docking flight, opening the hub directly, continuing a save made while docked). Ask for a screenshot if it happens again.
-3. **Next build step:** step 7 in GAMEPLAN §6 is ship upgrades against raider threat levels. Each upgrade counters one raider behaviour, and the relic powers work in both fights (Ember Core Overdrive, Veil Lens weak-point sight, Rime Compass Waylock).
+3. **Background on the old step 7** (now under priorities 4–5): ship upgrades against raider threat levels. Each upgrade counters one raider behaviour, and the relic powers work in both fights (Ember Core Overdrive, Veil Lens weak-point sight, Rime Compass Waylock).
    - The Workshop (`src/workshop.js`, `src/hub.js`) already sells plating, capacitor, repeater, boost cell, rover armour, autocannon bore and lance heat sink, plus the two landing parts (Rime Shielding, Veil Sounder).
    - Threat levels 4–5 (Hexers, Reavers, Vex Calloway) are not built yet (GAMEPLAN §3).
-   - Then step 8 (voices and music), step 9 (Final Gate and the Restart / Sever endings; FATE sets up the choice "at the Gate"), and step 10 (polish and jam submission).
+   - FATE (memory 3) already sets up the choice "at the Gate", so the ending picks up from there.
 4. **How the owner likes to work:**
    - Short rounds: build, bot-test headless, show screenshots, then the owner plays live and sends notes.
    - Quote their words in the handoff. Generate voice and SFX freely and log the spend.
    - Test guardians by firing through `hitTest`, not by calling `onBolt`. That shortcut hid the Matriarch heart bug.
+
+### OpenGame jam entry (published 2026-11-22)
+- **Live:** https://opengame.io/g/f3sqhmgmbq, in Game Jam #1 (`global-ai-game-jam-2026`). Tracks: Action & adventure, plus the sponsor tracks ElevenLabs, fal and Meshy. The owner confirmed the details and pressed publish on the deploy page.
+  - Game id `81821b1a-12b2-4e06-8b57-5ba9999aff3c`, first release `4c8c977e-ce96-49b8-99f1-a8c95516870a`, submission SUB-2022.
+  - Published origin: `https://ayiy26pmj6pk.opengame.gg`.
+- **CLI:** `@opengamehq/cli` 0.13.7 is installed globally, signed in as @rusko. `opengame.json` sets the title, build `npm run build`, output `dist`, and keyboard/mouse/gamepad controls. `.opengame/` holds the CLI's deploy state; it is git-ignored and should be kept.
+- **Updating the entry:** run `opengame check . --build --json`, then `opengame deploy . --json`, then `opengame status --watch --json`.
+  - A passed review puts the update live by itself, keeping the same entry, tracks and details. A returned release leaves the live version in place.
+  - Ask the owner before every deploy. Test on gamesbyrusko.com first.
+  - Limits: 5 deploys per rolling 24 h; 1 of 2 jam entries is used.
+- **Deadline:** entries close **18 December 2026, 11:59 pm PT**. The version live at the close is frozen and judged. Leave time for the last review to pass.
+- **Rules checked 2026-11-22** (opengame.io/rules and /terms):
+  - The owner may also host the game on their own site ("You may sell it, publish it elsewhere, or put it on another platform without asking us"). The licence to OpenGame is non-exclusive.
+  - A prize winner must stay on OpenGame for one year.
+  - Judging weighs creativity, depth, fun, performance and visual fidelity equally.
+  - No ads, payments, sign-in or tracking.
 
 ### How 7c works (the Hollowed Matriarch, the Veil Lens, FATE; owner 2026-11-21: "It's time to continue with next steps")
 - **The flow:**
@@ -440,7 +467,7 @@ Owner's notes: "The ice is slippery enough, but we need to work on the way the r
 
 ## Known issues / loose ends
 
-- Commits go to JSgames main together with the built `dist/` (that is the deploy), and only when the owner asks.
+- Commits go to JSgames main together with the built `dist/` (that is the deploy to gamesbyrusko.com), and only when the owner asks. The OpenGame entry is a separate deploy (`opengame deploy`), also only when asked.
 - Every world now has a surface; the Phase III placeholder card in main.js `updateEntry` is unused unless a planet lacks a `SURFACES` entry.
 - Mouse feel for Phase I flight has never been tested by the owner (they played on gamepad/touchpad).
 - The Controls screen (index.html) lists only flight controls. The rover's controls show as the in-game hint (it adds "V blink" once Phase Blink is fitted).
