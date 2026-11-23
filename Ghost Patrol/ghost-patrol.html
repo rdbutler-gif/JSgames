@@ -24,44 +24,138 @@
     body { margin: 0; overflow: hidden; background: #000; font-family: var(--font-ui); }
     canvas { display: block; }
 
-    /* ---- HUD: icon pills ---- */
+    /* ---- HUD: AAA Haunted Gothic Telemetry ---- */
     #hud {
       position: absolute; top: 14px; left: 14px; z-index: 10;
-      display: flex; flex-direction: column; gap: 7px;
+      display: flex; flex-direction: column; gap: 8px;
       pointer-events: none; user-select: none;
     }
+    .hud-vitals {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, rgba(16,12,28,0.88), rgba(9,7,18,0.94));
+      border: 1px solid rgba(255, 107, 138, 0.34);
+      border-radius: 14px; padding: 7px 14px 7px 10px; width: fit-content;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.08);
+      backdrop-filter: blur(8px);
+    }
+    .hud-vitals-label {
+      font-family: var(--font-display); font-size: 10px; font-weight: 700;
+      letter-spacing: 1.8px; text-transform: uppercase; color: rgba(255,170,192,0.75);
+      margin-bottom: 2px;
+    }
+    #hearts {
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .heart-svg {
+      width: 26px; height: 26px; display: block;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    .heart-svg.full {
+      filter: drop-shadow(0 0 7px rgba(255, 78, 118, 0.65));
+    }
+    .heart-svg.empty {
+      opacity: 0.42;
+    }
+    .hud-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(126px, auto));
+      gap: 7px; width: fit-content;
+    }
     .pill {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: var(--panel); border-radius: 999px;
-      padding: 5px 14px 5px 8px; width: fit-content;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.5), inset 0 0 0 1.5px rgba(255,255,255,0.06);
+      display: inline-flex; align-items: center; gap: 10px;
+      background: linear-gradient(135deg, rgba(15,13,28,0.86), rgba(8,8,18,0.92));
+      border: 1px solid rgba(240, 196, 108, 0.20);
+      border-radius: 13px;
+      padding: 6px 13px 6px 7px;
+      box-shadow: 0 5px 16px rgba(0,0,0,0.52), inset 0 1px 0 rgba(255,255,255,0.06);
+      backdrop-filter: blur(8px);
       font-family: var(--font-ui); font-weight: 700; font-size: 16px;
-      color: #eef; line-height: 1;
+      color: #f0f2ff; line-height: 1;
+      font-variant-numeric: tabular-nums;
     }
     .pill .ic {
-      width: 26px; height: 26px; border-radius: 50%;
-      display: grid; place-items: center; font-size: 15px; flex: 0 0 auto;
+      width: 38px; height: 38px; border-radius: 10px;
+      display: grid; place-items: center; flex: 0 0 auto;
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.10), 0 3px 10px rgba(0,0,0,0.45);
     }
-    .pill.floor  .ic { background: rgba(127,233,255,0.18); color: var(--cyan); }
-    .pill.coins  .ic { background: rgba(255,207,92,0.18);  color: var(--gold); }
-    .pill.ammo   .ic { background: rgba(125,255,176,0.16); color: var(--mint); }
-    .pill.ghosts .ic { background: rgba(185,140,255,0.18); color: var(--violet); }
-    .pill.cursed .ic { background: rgba(255,207,92,0.14);  color: var(--gold); }
-    .pill.viewed .ic { background: rgba(127,233,255,0.16); color: var(--cyan); }
-    .pill.deaths .ic { background: rgba(255,107,138,0.16); color: var(--rose); }
-    .pill .val { font-weight: 800; }
-    .pill .sub { opacity: 0.55; font-weight: 600; font-size: 14px; }
-    .pill .wpn { color: var(--mint); font-weight: 700; font-size: 14px; margin-left: 2px; }
-    #hud .hearts { font-size: 18px; letter-spacing: 1px; }
-    #hearts .hf { color: var(--rose); text-shadow: 0 0 8px rgba(255,107,138,0.7); }
-    #hearts .he { color: rgba(255,255,255,0.22); }
+    .pill .ic svg {
+      width: 28px; height: 28px; display: block;
+    }
+    .pill-body {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .pill-lbl {
+      font-family: var(--font-display); font-size: 9.5px; font-weight: 700;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: rgba(210, 216, 244, 0.62);
+    }
+    .pill-num {
+      display: inline-flex; align-items: baseline; gap: 2px;
+    }
+    .pill.floor  { border-color: rgba(127,233,255,0.28); }
+    .pill.floor  .ic { background: radial-gradient(circle at 35% 30%, rgba(127,233,255,0.26), rgba(18,34,54,0.85)); }
+    .pill.coins  { border-color: rgba(255,207,92,0.32); }
+    .pill.coins  .ic { background: radial-gradient(circle at 35% 30%, rgba(255,207,92,0.28), rgba(48,34,14,0.85)); }
+    .pill.ghosts { border-color: rgba(185,140,255,0.30); }
+    .pill.ghosts .ic { background: radial-gradient(circle at 35% 30%, rgba(185,140,255,0.28), rgba(34,20,56,0.85)); }
+    .pill.cursed { border-color: rgba(244,195,94,0.34); }
+    .pill.cursed .ic { background: radial-gradient(circle at 35% 30%, rgba(255,198,84,0.28), rgba(46,28,16,0.85)); }
+    .pill.viewed { border-color: rgba(127,233,255,0.26); }
+    .pill.viewed .ic { background: radial-gradient(circle at 35% 30%, rgba(127,233,255,0.22), rgba(24,28,48,0.88)); }
+    .pill.deaths { border-color: rgba(255,107,138,0.36); }
+    .pill.deaths .ic { background: radial-gradient(circle at 35% 30%, rgba(255,107,138,0.28), rgba(52,16,28,0.88)); }
+    .pill .val { font-weight: 800; font-size: 18px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+    .pill .sub { opacity: 0.52; font-weight: 600; font-size: 13px; }
+
+    /* ---- Bottom-Right Weapon & Spectral Ammo Panel ---- */
+    #hudAmmo {
+      position: absolute; bottom: 16px; right: 16px; z-index: 10;
+      display: inline-flex; align-items: center; gap: 13px;
+      background: linear-gradient(135deg, rgba(14,18,32,0.90), rgba(8,10,20,0.95));
+      border: 1.5px solid rgba(125, 255, 176, 0.34);
+      border-radius: 16px; padding: 10px 18px 10px 12px;
+      box-shadow: 0 8px 26px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 22px rgba(125,255,176,0.10);
+      backdrop-filter: blur(8px);
+      pointer-events: none; user-select: none;
+      font-variant-numeric: tabular-nums;
+    }
+    #hudAmmo .ammo-ic {
+      width: 48px; height: 48px; border-radius: 12px;
+      background: radial-gradient(circle at 35% 30%, rgba(125,255,176,0.28), rgba(14,38,34,0.90));
+      box-shadow: inset 0 0 0 1px rgba(125,255,176,0.25), 0 4px 12px rgba(0,0,0,0.5);
+      display: grid; place-items: center; flex: 0 0 auto;
+    }
+    #hudAmmo .ammo-ic svg {
+      width: 36px; height: 36px; display: block;
+      filter: drop-shadow(0 0 8px rgba(125,255,176,0.45));
+    }
+    #hudAmmo .ammo-meta {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    #hudAmmo .wpn {
+      font-family: var(--font-display); font-weight: 700; font-size: 11px;
+      letter-spacing: 1.8px; text-transform: uppercase;
+      color: var(--mint); text-shadow: 0 0 10px rgba(125,255,176,0.45);
+    }
+    #hudAmmo .ammo-val {
+      font-family: var(--font-ui); font-weight: 800; font-size: 30px; line-height: 1;
+      color: #ffffff; text-shadow: 0 2px 10px rgba(125,255,176,0.25);
+    }
+    #hudAmmo.low-ammo {
+      border-color: rgba(255, 107, 138, 0.65);
+      box-shadow: 0 8px 26px rgba(0,0,0,0.62), 0 0 22px rgba(255,107,138,0.28);
+    }
+    #hudAmmo.low-ammo .ammo-val { color: var(--rose); }
 
     #hudHelp {
-      position: absolute; bottom: 12px; left: 14px; z-index: 10;
-      font-family: var(--font-ui); font-weight: 500; font-size: 12.5px;
-      color: rgba(220,225,255,0.55); line-height: 1.55; pointer-events: none;
-      background: rgba(10,10,20,0.5); padding: 8px 12px; border-radius: 12px;
-      max-width: 260px;
+      position: absolute; bottom: 14px; left: 14px; z-index: 10;
+      font-family: var(--font-ui); font-weight: 500; font-size: 12px;
+      color: rgba(220,225,255,0.62); line-height: 1.6; pointer-events: none;
+      background: linear-gradient(135deg, rgba(12,11,22,0.72), rgba(8,8,16,0.80));
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 8px 13px; border-radius: 12px;
+      backdrop-filter: blur(6px);
+      max-width: 280px;
     }
     #hudHelp b { color: var(--cyan); font-weight: 700; }
 
@@ -70,20 +164,31 @@
       position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
       z-index: 10; display: none; pointer-events: none; text-align: center;
       font-family: var(--font-display); font-weight: 700;
+      background: linear-gradient(180deg, rgba(20,12,34,0.88), rgba(10,7,20,0.92));
+      border: 1px solid rgba(185,140,255,0.38);
+      border-radius: 14px; padding: 9px 18px 11px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.65), 0 0 24px rgba(185,140,255,0.22);
+      backdrop-filter: blur(8px);
     }
     #bossbar .bosslabel {
-      color: var(--violet); font-size: 18px; letter-spacing: 2px;
-      text-shadow: 0 0 12px rgba(185,140,255,0.8), 0 2px 0 #3a1a5a;
-      margin-bottom: 5px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      color: #e4c7ff; font-size: 16px; letter-spacing: 2.5px;
+      text-shadow: 0 0 12px rgba(185,140,255,0.85), 0 2px 0 #2a1046;
+      margin-bottom: 7px;
+    }
+    #bossbar .bosslabel svg {
+      width: 26px; height: 26px; display: block;
+      filter: drop-shadow(0 0 8px rgba(255,207,92,0.65));
     }
     #bossbar .bosstrack {
-      width: 260px; height: 16px; border-radius: 999px; margin: 0 auto;
-      background: rgba(40,20,60,0.8); box-shadow: inset 0 0 0 2px rgba(185,140,255,0.5);
+      width: 300px; height: 14px; border-radius: 999px; margin: 0 auto;
+      background: rgba(34,14,54,0.9); box-shadow: inset 0 0 0 1.5px rgba(240,196,108,0.45);
       overflow: hidden;
     }
     #bossbar .bossfill {
       height: 100%; width: 100%; border-radius: 999px;
-      background: linear-gradient(90deg, #c96bff, #ff6b8a);
+      background: linear-gradient(90deg, #a855f7, #ec4899, #ff6b8a);
+      box-shadow: 0 0 14px rgba(236,72,153,0.65);
       transition: width 0.2s ease;
     }
 
@@ -91,36 +196,39 @@
     #message {
       position: absolute; bottom: 78px; left: 50%; transform: translateX(-50%);
       z-index: 10; display: none; pointer-events: none;
-      font-family: var(--font-display); font-weight: 600; font-size: 18px;
-      color: #fff; background: var(--panel); padding: 10px 22px; border-radius: 999px;
-      box-shadow: 0 4px 18px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(255,207,92,0.4);
+      font-family: var(--font-display); font-weight: 600; font-size: 17px;
+      color: #fff; background: rgba(14,12,26,0.92); padding: 10px 22px; border-radius: 999px;
+      box-shadow: 0 6px 22px rgba(0,0,0,0.65), inset 0 0 0 1.5px rgba(255,207,92,0.45);
       text-shadow: 0 1px 6px rgba(255,207,92,0.4);
+      backdrop-filter: blur(8px);
     }
 
-    /* ---- cleanse prompt ---- */
+    /* ---- interactive prompts ---- */
+    .prompt-svg {
+      width: 22px; height: 22px; vertical-align: -5px; margin-right: 7px; display: inline-block;
+    }
     #cleanse {
-      position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: 124px; left: 50%; transform: translateX(-50%);
       z-index: 10; display: none; pointer-events: none;
-      font-family: var(--font-display); font-weight: 600; font-size: 16px;
-      color: #1a1020; background: linear-gradient(180deg, #ffe08a, #ffcf5c);
+      font-family: var(--font-display); font-weight: 700; font-size: 15.5px;
+      color: #1a1020; background: linear-gradient(180deg, #ffe394, #f5be48);
       padding: 9px 20px; border-radius: 999px;
       box-shadow: 0 0 22px rgba(255,207,92,0.7), 0 4px 12px rgba(0,0,0,0.5);
       animation: cleansePulse 1.1s ease-in-out infinite;
     }
-    @keyframes cleansePulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } }
+    @keyframes cleansePulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.04); } }
 
-    /* ---- fountain prompt (walk up, then click to enter shop) ---- */
     #fountainPrompt {
-      position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: 124px; left: 50%; transform: translateX(-50%);
       z-index: 10; display: none; pointer-events: none;
-      font-family: var(--font-display); font-weight: 600; font-size: 16px;
-      color: #06202a; background: linear-gradient(180deg, #9be8ff, #44bbff);
+      font-family: var(--font-display); font-weight: 700; font-size: 15.5px;
+      color: #06202a; background: linear-gradient(180deg, #a8eeff, #44bbff);
       padding: 9px 20px; border-radius: 999px;
       box-shadow: 0 0 22px rgba(68,187,255,0.7), 0 4px 12px rgba(0,0,0,0.5);
       animation: cleansePulse 1.1s ease-in-out infinite;
     }
     #viewPrompt {
-      position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+      position: absolute; bottom: 124px; left: 50%; transform: translateX(-50%);
       z-index: 10; display: none; pointer-events: none;
       font-family: var(--font-display); font-weight: 600; font-size: 14.5px;
       color: #f4efe0; background: linear-gradient(180deg, rgba(24,20,42,0.92), rgba(11,10,22,0.96));
@@ -129,11 +237,17 @@
       box-shadow: 0 0 18px rgba(127,233,255,0.35), 0 4px 12px rgba(0,0,0,0.6);
     }
     .gp-save-summary {
-      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 13px;
       margin: 6px auto 4px; padding: 7px 16px; border-radius: 10px;
       background: linear-gradient(90deg, rgba(127,233,255,0.06), rgba(197,155,255,0.14), rgba(127,233,255,0.06));
       border: 1px solid rgba(127, 233, 255, 0.30);
       font-family: var(--font-ui); font-weight: 600; font-size: 12.5px; color: #dbe2ff;
+    }
+    .gp-save-summary span {
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .gp-save-summary svg {
+      width: 17px; height: 17px; display: block; flex: 0 0 auto;
     }
     .gp-save-summary b { color: var(--gold); }
     .gp-cta-row {
@@ -716,29 +830,172 @@
   </div>
   <div id="crosshair"></div>
   <div id="vignette"></div>
+  <!-- Bespoke Gothic HUD SVG Icon Sprite Sheet -->
+  <svg id="hud-icon-defs" xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-gold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fff0a8"/>
+        <stop offset="48%" stop-color="#f5c24c"/>
+        <stop offset="100%" stop-color="#a86d18"/>
+      </linearGradient>
+      <linearGradient id="g-cyan" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#d8fbff"/>
+        <stop offset="50%" stop-color="#5ce1ff"/>
+        <stop offset="100%" stop-color="#1c78a8"/>
+      </linearGradient>
+      <linearGradient id="g-mint" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#e2ffef"/>
+        <stop offset="50%" stop-color="#62f5a8"/>
+        <stop offset="100%" stop-color="#178c5a"/>
+      </linearGradient>
+      <linearGradient id="g-violet" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f2e6ff"/>
+        <stop offset="52%" stop-color="#b98cff"/>
+        <stop offset="100%" stop-color="#5d2fa8"/>
+      </linearGradient>
+      <linearGradient id="g-rose" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ffb8ca"/>
+        <stop offset="45%" stop-color="#ff4d7a"/>
+        <stop offset="100%" stop-color="#9e143a"/>
+      </linearGradient>
+      <linearGradient id="g-bone" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#fff8ee"/>
+        <stop offset="60%" stop-color="#d9cbb8"/>
+        <stop offset="100%" stop-color="#8b7a6b"/>
+      </linearGradient>
+
+      <!-- Floor: Gothic Arched Gallery Staircase -->
+      <symbol id="ico-floor" viewBox="0 0 32 32">
+        <path d="M6 28V14C6 7.5 11 4 16 3C21 4 26 7.5 26 14V28Z" fill="#132236" stroke="url(#g-cyan)" stroke-width="2"/>
+        <path d="M10 27V15C10 10.5 13 8 16 7.2C19 8 22 10.5 22 15V27Z" fill="rgba(92,225,255,0.16)"/>
+        <path d="M7 27H25V24H20V20.5H15V17H11V24H7Z" fill="url(#g-cyan)"/>
+        <circle cx="16" cy="11.5" r="2" fill="#fff"/>
+      </symbol>
+
+      <!-- Coins: Embossed Pirate-Skull Gold Doubloon -->
+      <symbol id="ico-coin" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="13.5" fill="url(#g-gold)" stroke="#6e4209" stroke-width="1.5"/>
+        <circle cx="16" cy="16" r="10.2" fill="none" stroke="#fff3be" stroke-width="1.1" stroke-dasharray="2.2 1.6" opacity="0.85"/>
+        <path d="M16 9.2C12.7 9.2 10.5 11.4 10.5 14.3C10.5 16.1 11.4 17.5 12.6 18.3V20.6C12.6 21.3 13.1 21.8 13.8 21.8H18.2C18.9 21.8 19.4 21.3 19.4 20.6V18.3C20.6 17.5 21.5 16.1 21.5 14.3C21.5 11.4 19.3 9.2 16 9.2Z" fill="#6b3e08"/>
+        <circle cx="13.8" cy="14.5" r="1.45" fill="#ffe694"/>
+        <circle cx="18.2" cy="14.5" r="1.45" fill="#ffe694"/>
+        <path d="M14.4 19.4V21.2M16 19.4V21.2M17.6 19.4V21.2" stroke="#ffe694" stroke-width="1.1" stroke-linecap="round"/>
+      </symbol>
+
+      <!-- Ammo: Spectral Energy Plasma Cartridge -->
+      <symbol id="ico-ammo" viewBox="0 0 32 32">
+        <rect x="9.5" y="4" width="13" height="4.2" rx="1.5" fill="url(#g-gold)" stroke="#5c3808" stroke-width="1"/>
+        <rect x="9.5" y="23.8" width="13" height="4.2" rx="1.5" fill="url(#g-gold)" stroke="#5c3808" stroke-width="1"/>
+        <rect x="10.5" y="8.2" width="11" height="15.6" rx="2" fill="#0d2a24" stroke="url(#g-mint)" stroke-width="1.6"/>
+        <rect x="13" y="10.2" width="6" height="11.6" rx="1.2" fill="url(#g-mint)"/>
+        <path d="M17.4 10.5L13.6 16.2H16.3L14.6 21.5L18.7 15.5H16L17.4 10.5Z" fill="#ffffff"/>
+        <path d="M6 12H8.5M6 16H8.5M6 20H8.5M23.5 12H26M23.5 16H26M23.5 20H26" stroke="#62f5a8" stroke-width="1.4" stroke-linecap="round" opacity="0.75"/>
+      </symbol>
+
+      <!-- Ghosts: Spectral Hooded Wraith -->
+      <symbol id="ico-ghost" viewBox="0 0 32 32">
+        <path d="M16 3.5C10.2 3.5 6.5 8 6.5 14.2V26.8C6.5 27.6 7.5 28 8.1 27.4L11.2 24.4L14 27.4C14.6 28 15.5 28 16.1 27.4L18.8 24.4L21.9 27.4C22.5 28 23.5 27.6 23.5 26.8V14.2C23.5 8 19.8 3.5 16 3.5Z" fill="url(#g-violet)" stroke="#2c1252" stroke-width="1.4"/>
+        <path d="M11 13.5C11 10.2 13.2 8 16 8C18.8 8 21 10.2 21 13.5C21 16.3 18.8 18.2 16 18.2C13.2 18.2 11 16.3 11 13.5Z" fill="#210d3d"/>
+        <ellipse cx="13.8" cy="13.6" rx="1.5" ry="2" fill="#7fe9ff"/>
+        <ellipse cx="18.2" cy="13.6" rx="1.5" ry="2" fill="#7fe9ff"/>
+        <path d="M14.2 16.5Q16 17.6 17.8 16.5" fill="none" stroke="#c59bff" stroke-width="1.2" stroke-linecap="round"/>
+      </symbol>
+
+      <!-- Cursed Paintings: Ornate Gilded Baroque Frame with Cleansing Seal -->
+      <symbol id="ico-cursed" viewBox="0 0 32 32">
+        <rect x="4" y="4" width="24" height="24" rx="3" fill="url(#g-gold)" stroke="#683d08" stroke-width="1.4"/>
+        <rect x="8" y="8" width="16" height="16" rx="1.2" fill="#231238" stroke="#fff0a8" stroke-width="1"/>
+        <path d="M16 10.5L17.6 14.4L21.5 16L17.6 17.6L16 21.5L14.4 17.6L10.5 16L14.4 14.4Z" fill="url(#g-gold)"/>
+        <circle cx="16" cy="16" r="1.8" fill="#ffffff"/>
+        <circle cx="6.2" cy="6.2" r="1.2" fill="#fff5cc"/>
+        <circle cx="25.8" cy="6.2" r="1.2" fill="#fff5cc"/>
+        <circle cx="6.2" cy="25.8" r="1.2" fill="#fff5cc"/>
+        <circle cx="25.8" cy="25.8" r="1.2" fill="#fff5cc"/>
+      </symbol>
+
+      <!-- Portraits Viewed: Gallery Portrait Frame with Curator Eye -->
+      <symbol id="ico-art" viewBox="0 0 32 32">
+        <rect x="5" y="3.5" width="22" height="25" rx="2.5" fill="#172038" stroke="url(#g-gold)" stroke-width="2.2"/>
+        <circle cx="16" cy="12.2" r="3.4" fill="url(#g-cyan)"/>
+        <path d="M10.2 22.8C10.8 18.8 13.1 17 16 17C18.9 17 21.2 18.8 21.8 22.8Z" fill="url(#g-cyan)" opacity="0.88"/>
+        <path d="M22.5 6.5L23.3 8.4L25.2 9.2L23.3 10L22.5 11.9L21.7 10L19.8 9.2L21.7 8.4Z" fill="#fff2a6"/>
+      </symbol>
+
+      <!-- Deaths: Gothic Crimson Reaper Skull Crest -->
+      <symbol id="ico-death" viewBox="0 0 32 32">
+        <path d="M16 4C10.5 4 6.8 8 6.8 13.4C6.8 16.7 8.4 19.3 10.6 20.8V24.6C10.6 25.8 11.5 26.8 12.7 26.8H19.3C20.5 26.8 21.4 25.8 21.4 24.6V20.8C23.6 19.3 25.2 16.7 25.2 13.4C25.2 8 21.5 4 16 4Z" fill="url(#g-bone)" stroke="#5c1428" stroke-width="1.5"/>
+        <ellipse cx="12.6" cy="14" rx="2.3" ry="2.6" fill="#2c0814"/>
+        <ellipse cx="19.4" cy="14" rx="2.3" ry="2.6" fill="#2c0814"/>
+        <circle cx="12.6" cy="14" r="1" fill="#ff4d7a"/>
+        <circle cx="19.4" cy="14" r="1" fill="#ff4d7a"/>
+        <path d="M16 16.8L14.8 19.4H17.2Z" fill="#2c0814"/>
+        <path d="M13 22.6V26.2M16 22.6V26.2M19 22.6V26.2" stroke="#5c1428" stroke-width="1.4" stroke-linecap="round"/>
+      </symbol>
+
+      <!-- Heart Full: Sculpted Faceted Ruby-Glass Heart -->
+      <symbol id="ico-heart-full" viewBox="0 0 32 32">
+        <path d="M16 28.2C16 28.2 4.2 20.6 4.2 11.6C4.2 7.3 7.5 4.2 11.4 4.2C13.7 4.2 15.2 5.4 16 6.8C16.8 5.4 18.3 4.2 20.6 4.2C24.5 4.2 27.8 7.3 27.8 11.6C27.8 20.6 16 28.2 16 28.2Z" fill="url(#g-rose)" stroke="#ffd0dc" stroke-width="1.3"/>
+        <path d="M9.6 8.2C7.8 9.2 7.1 11.4 7.7 13.4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.72"/>
+      </symbol>
+
+      <!-- Heart Empty: Etched Obsidian Socket -->
+      <symbol id="ico-heart-empty" viewBox="0 0 32 32">
+        <path d="M16 28.2C16 28.2 4.2 20.6 4.2 11.6C4.2 7.3 7.5 4.2 11.4 4.2C13.7 4.2 15.2 5.4 16 6.8C16.8 5.4 18.3 4.2 20.6 4.2C24.5 4.2 27.8 7.3 27.8 11.6C27.8 20.6 16 28.2 16 28.2Z" fill="rgba(22,16,32,0.75)" stroke="rgba(255,150,175,0.42)" stroke-width="1.5"/>
+      </symbol>
+
+      <!-- Ghost King Crown -->
+      <symbol id="ico-crown" viewBox="0 0 32 32">
+        <path d="M4.5 23.5L6.5 10.5L12 15.5L16 7L20 15.5L25.5 10.5L27.5 23.5Z" fill="url(#g-gold)" stroke="#5c3506" stroke-width="1.4" stroke-linejoin="round"/>
+        <rect x="5" y="23" width="22" height="4" rx="1.5" fill="url(#g-gold)" stroke="#5c3506" stroke-width="1.2"/>
+        <circle cx="16" cy="18" r="2.2" fill="#c96bff" stroke="#fff" stroke-width="0.8"/>
+        <circle cx="16" cy="6.2" r="1.5" fill="#fff4b8"/>
+        <circle cx="6.2" cy="9.6" r="1.3" fill="#fff4b8"/>
+        <circle cx="25.8" cy="9.6" r="1.3" fill="#fff4b8"/>
+      </symbol>
+
+      <!-- Mystic Fountain Chalice -->
+      <symbol id="ico-fountain" viewBox="0 0 32 32">
+        <path d="M16 4C16 4 11.5 9.2 11.5 12.2C11.5 14.7 13.5 16.5 16 16.5C18.5 16.5 20.5 14.7 20.5 12.2C20.5 9.2 16 4 16 4Z" fill="url(#g-cyan)"/>
+        <path d="M6.5 18.5H25.5C24.8 22.2 21.4 24.4 18 24.8V27H22V29H10V27H14V24.8C10.6 24.4 7.2 22.2 6.5 18.5Z" fill="url(#g-gold)" stroke="#5e3a0a" stroke-width="1.2"/>
+      </symbol>
+    </defs>
+  </svg>
   <div id="bossbar">
-    <div class="bosslabel">&#128081; THE GHOST KING</div>
+    <div class="bosslabel"><svg><use href="#ico-crown"/></svg><span>THE GHOST KING</span><svg><use href="#ico-crown"/></svg></div>
     <div class="bosstrack"><div class="bossfill" id="bossfill"></div></div>
   </div>
   <div id="hud">
-    <div class="pill floor"><span class="ic">&#9673;</span><span class="val" id="floor">1</span><span class="sub">/&nbsp;<span id="floorMax">3</span></span></div>
-    <div class="pill coins"><span class="ic">&#9679;</span><span class="val" id="coins">0</span><span class="sub">/&nbsp;<span id="coinTotal">0</span></span></div>
-    <div class="pill ammo"><span class="ic">&#10022;</span><span class="val" id="ammo">20</span><span class="wpn" id="weapon">Pistol</span></div>
-    <div class="pill ghosts"><span class="ic">&#9760;</span><span class="val" id="ghostsBusted">0</span><span class="sub">/&nbsp;<span id="ghostTotal">0</span></span></div>
-    <div class="pill cursed"><span class="ic">&#9640;</span><span class="val" id="cursed">0</span><span class="sub">/&nbsp;<span id="cursedTotal">0</span></span></div>
-    <div class="pill viewed"><span class="ic">&#128444;</span><span class="val" id="viewed">0</span><span class="sub">/&nbsp;<span id="viewedTotal">100</span></span></div>
-    <div class="pill deaths" id="deathsPill" style="display:none"><span class="ic">&#128128;</span><span class="val" id="deathsVal">0</span></div>
-    <div class="pill hearts"><span class="ic" style="background:rgba(255,107,138,0.18);color:var(--rose)">&#9829;</span><span id="hearts"></span></div>
+    <div class="hud-vitals">
+      <div>
+        <div class="hud-vitals-label">Vitality</div>
+        <div id="hearts"></div>
+      </div>
+    </div>
+    <div class="hud-grid">
+      <div class="pill floor"><span class="ic"><svg><use href="#ico-floor"/></svg></span><div class="pill-body"><span class="pill-lbl">Floor</span><span class="pill-num"><span class="val" id="floor">1</span><span class="sub">/&nbsp;<span id="floorMax">3</span></span></span></div></div>
+      <div class="pill coins"><span class="ic"><svg><use href="#ico-coin"/></svg></span><div class="pill-body"><span class="pill-lbl">Gold</span><span class="pill-num"><span class="val" id="coins">0</span><span class="sub">/&nbsp;<span id="coinTotal">0</span></span></span></div></div>
+      <div class="pill ghosts"><span class="ic"><svg><use href="#ico-ghost"/></svg></span><div class="pill-body"><span class="pill-lbl">Wraiths</span><span class="pill-num"><span class="val" id="ghostsBusted">0</span><span class="sub">/&nbsp;<span id="ghostTotal">0</span></span></span></div></div>
+      <div class="pill cursed"><span class="ic"><svg><use href="#ico-cursed"/></svg></span><div class="pill-body"><span class="pill-lbl">Cursed</span><span class="pill-num"><span class="val" id="cursed">0</span><span class="sub">/&nbsp;<span id="cursedTotal">0</span></span></span></div></div>
+      <div class="pill viewed"><span class="ic"><svg><use href="#ico-art"/></svg></span><div class="pill-body"><span class="pill-lbl">Portraits</span><span class="pill-num"><span class="val" id="viewed">0</span><span class="sub">/&nbsp;<span id="viewedTotal">100</span></span></span></div></div>
+      <div class="pill deaths" id="deathsPill" style="display:none"><span class="ic"><svg><use href="#ico-death"/></svg></span><div class="pill-body"><span class="pill-lbl">Deaths</span><span class="pill-num"><span class="val" id="deathsVal">0</span></span></div></div>
+    </div>
+  </div>
+  <div id="hudAmmo">
+    <span class="ammo-ic"><svg><use href="#ico-ammo"/></svg></span>
+    <div class="ammo-meta">
+      <span class="wpn" id="weapon">Pistol</span>
+      <span class="ammo-val" id="ammo">20</span>
+    </div>
   </div>
   <div id="hudHelp">
     <b>WASD</b> move &bull; <b>Arrows / Mouse</b> look<br>
-    <b>Shift</b> sprint &bull; <b>Space</b> dash &bull; <b>L-click</b> fire<br>
-    <b>R-click</b> cleanse / shop &bull; <b>R</b> new gallery
+    <b>Shift</b> sprint &bull; <b>Space</b> dash &bull; <b>L-click</b> fire / view art<br>
+    <b>R-click</b> cleanse / shop / view &bull; <b>Esc</b> pause
   </div>
   <div id="message"></div>
-  <div id="cleanse">&#9880; Right-click to cleanse the cursed painting</div>
-  <div id="fountainPrompt">&#9880; Right-click to enter the Fountain</div>
-  <div id="viewPrompt">&#128444; Click or Right-click to admire painting</div>
+  <div id="cleanse"><svg class="prompt-svg"><use href="#ico-cursed"/></svg>Right-click to cleanse the cursed painting</div>
+  <div id="fountainPrompt"><svg class="prompt-svg"><use href="#ico-fountain"/></svg>Right-click to enter the Fountain</div>
+  <div id="viewPrompt"><svg class="prompt-svg"><use href="#ico-art"/></svg>Click or Right-click to admire painting</div>
   <div id="shop">
     <div id="shopInner"></div>
   </div>
@@ -3925,9 +4182,13 @@
       }
       document.getElementById('floor').textContent = floorIndexOf(player.y) + 1;
       document.getElementById('floorMax').textContent = FLOORS;
+      const ammoBox = document.getElementById('hudAmmo');
+      if (ammoBox) ammoBox.classList.toggle('low-ammo', ammo <= 5);
+      const fullH = Math.max(0, health);
+      const emptyH = Math.max(0, maxHealth - fullH);
       document.getElementById('hearts').innerHTML =
-        '<span class="hf">' + '\u2665'.repeat(Math.max(0, health)) + '</span>' +
-        '<span class="he">' + '\u2665'.repeat(Math.max(0, maxHealth - health)) + '</span>';
+        '<svg class="heart-svg full"><use href="#ico-heart-full"/></svg>'.repeat(fullH) +
+        '<svg class="heart-svg empty"><use href="#ico-heart-empty"/></svg>'.repeat(emptyH);
     }
 
     function showMessage(text) {
@@ -3977,7 +4238,7 @@
           '<div class="panel">' +
           gothicCornersHTML() +
           '<div class="gp-big lose">Fallen in the Gallery</div>' +
-          `<div class="gp-save-summary"><span>&#128128; Deaths: <b>${deaths}</b></span><span>&#128444; Viewed: <b>${viewedArtIds.size}/${WALL_ART_FILES.length}</b></span><span>&#128123; Ghosts: <b>${ghostsBusted}/${ghostTotal}</b></span><span>&#9679; Coins: <b>${coinCount}</b></span></div>` +
+          `<div class="gp-save-summary"><span><svg><use href="#ico-death"/></svg> Deaths <b>${deaths}</b></span><span><svg><use href="#ico-art"/></svg> Viewed <b>${viewedArtIds.size}/${WALL_ART_FILES.length}</b></span><span><svg><use href="#ico-ghost"/></svg> Wraiths <b>${ghostsBusted}/${ghostTotal}</b></span><span><svg><use href="#ico-coin"/></svg> Gold <b>${coinCount}</b></span></div>` +
           '<div style="margin-top:8px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">&#9733; Top Runs</div>' +
           highScoreTableHTML(0) +
           '<div class="menu-row">' +
@@ -4464,7 +4725,7 @@
         if (active && !nearFountain && !showCleanse && !shopOpen) {
           const aimed = findAimedPainting(4.6);
           if (aimed && !viewedArtIds.has(aimed.artIndex)) {
-            viewPromptEl.innerHTML = '&#128444; Click portrait #' + (aimed.artIndex + 1) + ' to admire (' + viewedArtIds.size + '/' + WALL_ART_FILES.length + ')';
+            viewPromptEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-art"/></svg>Click portrait #' + (aimed.artIndex + 1) + ' to admire (' + viewedArtIds.size + '/' + WALL_ART_FILES.length + ')';
             viewPromptEl.style.display = 'block';
           } else {
             viewPromptEl.style.display = 'none';
@@ -4668,12 +4929,12 @@
           const vCount = Array.isArray(sv.viewedArtIds) ? sv.viewedArtIds.length : 0;
           const fl = (sv.lastFloorIdx ?? 0) + 1;
           return '<div class="gp-save-summary">' +
-            `<span>&#9673; Floor <b>${fl}/${FLOORS}</b></span>` +
-            `<span>&#9679; Coins <b>${sv.coinCount || 0}</b></span>` +
-            `<span>&#128123; Ghosts <b>${sv.ghostsBusted || 0}/${sv.ghostTotal || 24}</b></span>` +
-            `<span>&#128444; Viewed <b>${vCount}/${WALL_ART_FILES.length}</b></span>` +
-            `<span>&#9640; Cleansed <b>${sv.cursedFramed || 0}/${sv.cursedTotal || 3}</b></span>` +
-            `<span>&#128128; Deaths <b>${sv.deaths || 0}</b></span>` +
+            `<span><svg><use href="#ico-floor"/></svg> Floor <b>${fl}/${FLOORS}</b></span>` +
+            `<span><svg><use href="#ico-coin"/></svg> Gold <b>${sv.coinCount || 0}</b></span>` +
+            `<span><svg><use href="#ico-ghost"/></svg> Wraiths <b>${sv.ghostsBusted || 0}/${sv.ghostTotal || 24}</b></span>` +
+            `<span><svg><use href="#ico-art"/></svg> Viewed <b>${vCount}/${WALL_ART_FILES.length}</b></span>` +
+            `<span><svg><use href="#ico-cursed"/></svg> Cleansed <b>${sv.cursedFramed || 0}/${sv.cursedTotal || 3}</b></span>` +
+            `<span><svg><use href="#ico-death"/></svg> Deaths <b>${sv.deaths || 0}</b></span>` +
             '</div>';
         })() +
         '<div>' + topScoreHTML() + '</div>' +
