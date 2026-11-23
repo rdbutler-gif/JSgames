@@ -2357,27 +2357,28 @@
       // 5. Open Under-Stair Gothic Support Columns & Vaulted Arch (at North high end, leaving walkway open!)
       for (const s of [-1, 1]) {
         const colX = c.x + s * 1.04;
-        // Column pair supporting the top of the staircase at z = slopeTop + 0.1
-        addBox(colX, slopeTop + 0.1, 0.24, 0.24, yBase + SHRINK, yTop - 0.15, marbleMat, true);
+        // Column pair supporting the top of the staircase at z = slopeTop + 0.1 (non-colliding so climbers never snag at the top)
+        addBox(colX, slopeTop + 0.1, 0.24, 0.24, yBase + SHRINK, yTop - 0.15, marbleMat, false);
         addBox(colX, slopeTop + 0.1, 0.32, 0.32, yBase + SHRINK, yBase + 0.32, ARCH_BRASS_MAT, false);
         addBox(colX, slopeTop + 0.1, 0.32, 0.32, yTop - 0.42, yTop - 0.15, ARCH_BRASS_MAT, false);
       }
       // Decorative gothic arch header under the high end of the stairs (at yBase + 2.45, well above player head 1.7m)
       addBox(c.x, slopeTop + 0.1, 2.1, 0.18, yBase + 2.55, yBase + 2.75, ARCH_BRONZE_MAT, false);
 
-      // Lower-half side guardrail colliders (prevents walking sideways through the low steps while leaving North under-stair arch open)
+      // Lower-half side guardrail colliders (set just outside the stair treads so climbers have full width while blocking sideways walk-in)
       for (const s of [-1, 1]) {
         colliders.push({
-          minX: c.x + s * 1.12 - 0.12, maxX: c.x + s * 1.12 + 0.12,
+          minX: c.x + s * 1.24 - 0.10, maxX: c.x + s * 1.24 + 0.10,
           minY: yBase, maxY: yBase + 2.6,
           minZ: c.z - 0.25, maxZ: zBottom + 0.25
         });
       }
-      // Low step front-underneath blocker so player can only enter the low steps from the South front entrance, not from underneath looking South
+      // Low-profile under-stair blocker (blocks ground-floor players at yBase from walking South into the low steps,
+      // while staying well below climbers' feet at yBase + 1.9m+ on the staircase!)
       colliders.push({
         minX: c.x - 1.05, maxX: c.x + 1.05,
-        minY: yBase, maxY: yBase + 1.85,
-        minZ: c.z - 0.25, maxZ: c.z + 0.05
+        minY: yBase, maxY: yBase + 0.90,
+        minZ: c.z - 0.25, maxZ: c.z - 0.10
       });
 
       // 6. Upper-Floor 3-Sided Mezzanine Safety Balustrade (West, East, and South edges of the stairwell hole)
@@ -2394,9 +2395,10 @@
           addBalusterSpindle(mx, yTop + 0.12, z, mezH - 0.19);
         }
         addNewelPost(mx, yTop, mezMaxZ, 1.08, ARCH_GLOW_DN_MAT);
-        // Upper-floor physical guardrail collider along West & East edges of hole
+        // Upper-floor physical guardrail collider along West & East edges of hole (slightly outward so top exit is wide open)
+        const mcx = c.x + s * 1.26;
         colliders.push({
-          minX: mx - 0.12, maxX: mx + 0.12,
+          minX: mcx - 0.10, maxX: mcx + 0.10,
           minY: yTop - 0.1, maxY: yTop + 1.3,
           minZ: mezMinZ, maxZ: mezMaxZ + 0.08
         });
@@ -2455,11 +2457,12 @@
           batchGeo(new THREE.CylinderGeometry(0.145, 0.145, 0.08, 10), ARCH_BRASS_MAT, colX, ry, colZ, 0, 0, 0, true);
         }
         addBox(colX, colZ, 0.32, 0.32, yTop - 0.35, yTop - 0.12, ARCH_BRASS_MAT, false);
-        // Physical collider for the side support columns (leaves 3.0m open walkways all around and clear North/South entry)
+        // Physical collider for the side support columns (offset slightly outward for smooth North/South ladder entry)
+        const colCX = c.x + s * 0.88;
         colliders.push({
-          minX: colX - 0.15, maxX: colX + 0.15,
+          minX: colCX - 0.08, maxX: colCX + 0.08,
           minY: yBase, maxY: yTop,
-          minZ: colZ - 0.15, maxZ: colZ + 0.15
+          minZ: colZ - 0.10, maxZ: colZ + 0.10
         });
       }
 
@@ -2521,9 +2524,10 @@
         }
         addNewelPost(mx, yTop, c.z - 0.72, 1.08, ARCH_GLOW_DN_MAT);
         addNewelPost(mx, yTop, c.z + 0.72, 1.08, ARCH_GLOW_DN_MAT);
-        // Upper-floor East & West guardrail colliders (leaves both North and South hatch exits open!)
+        // Upper-floor East & West guardrail colliders (generous center channel so North/South ladder dismount never snags)
+        const mcx = c.x + s * 0.88;
         colliders.push({
-          minX: mx - 0.14, maxX: mx + 0.14,
+          minX: mcx - 0.08, maxX: mcx + 0.08,
           minY: yTop - 0.1, maxY: yTop + 1.3,
           minZ: c.z - 0.76, maxZ: c.z + 0.76
         });
