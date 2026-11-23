@@ -368,8 +368,11 @@
     // TEXTURE CONFIG (requires serving over HTTP: Live Server / GH Pages)
     // ==================================================================
     const TEXTURES = {
-      wall:  null,                  // tiled base for ALL walls (null = procedural stone)
-      floor: 'textures/floor.jpg'   // tiled across floors
+      wall:    'textures/wall.jpg',      // fal.ai dark gothic ashlar stone
+      floor:   'textures/floor.jpg',     // tiled across floors
+      ceiling: 'textures/ceiling.jpg',   // fal.ai dark coffered gallery ceiling
+      carpet:  'textures/carpet.jpg',    // fal.ai royal crimson & gold damask runner
+      marble:  'textures/marble.jpg'     // fal.ai Nero Marquina black & gold veined marble
     };
     // Wall art deck: shuffled once per dungeon, dealt one per solid wall so
     // nothing repeats until the deck runs out; the last few walls redeal
@@ -393,11 +396,11 @@
     const RADIUS = 0.45;
     const SPEED = 0.12;
     const SPRINT = 0.19;
-    const CLIMB_SPEED = 0.07;
-    const STEP = 0.5;
+    const CLIMB_SPEED = 0.088;
+    const STEP = 0.55;
     const HALF = (GRID * ROOM) / 2;
     const SHRINK = 0.02;
-    const S_RUN = 3.8;
+    const S_RUN = 3.6;
 
     // Ghost tuning
     const GHOSTS_PER_FLOOR = 8;
@@ -471,7 +474,15 @@
 
     // ---------- State ----------
     let scene, camera, renderer, headlamp;
-    let wallTexture, floorTexture;
+    let wallTexture, floorTexture, ceilingTexture, carpetTexture, marbleTexture, stoneBumpTex;
+    let weaponGroup = null, weaponMuzzleLight = null, weaponCoreMat = null, weaponBarrel = null, weaponTriBarrels = null;
+    let weaponRecoil = 0, walkBob = 0, screenShake = 0;
+    let fxParticles = [], torches = [];
+    let KING_GLB = null, FOUNTAIN_GLB = null, PATROL_GLB = null, STAIR_STATUE_GLB = null, LADDER_CROWN_GLB = null;
+    let stairStatueSlots = [], ladderCrownSlots = [];
+    let transitionRoomSet = new Set();
+    let transitionRoomInfo = new Map();
+    let stairStepAccum = 0, ladderStepAccum = 0;
     let artPool = [];
     let artMats = [];
     let artDecals = [];
@@ -542,6 +553,7 @@
     // startup. playSample fires a one-shot; returns true on success so callers
     // can fall back to the synth blip if the buffer isn't ready yet.
     let coinBuffer = null, gunBuffer = null;
+    let sfxBuffers = {};
     function playSample(buf, vol) {
       if (!actx || !buf) return false;
       const src = actx.createBufferSource();
@@ -577,13 +589,23 @@
     function loadSamples() {
       if (!actx) return;
       try {
-        // decodeAudioData is async; buffer becomes available a moment later.
         actx.decodeAudioData(b64ToArrayBuffer(COIN_OGG_B64),
           (buf) => { coinBuffer = buf; },
           (err) => { console.warn('coin sfx decode failed', err); });
         actx.decodeAudioData(b64ToArrayBuffer(GUN_OGG_B64),
           (buf) => { gunBuffer = buf; },
           (err) => { console.warn('gun sfx decode failed', err); });
+        fetch('textures/sfx.json')
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data) return;
+            Object.keys(data).forEach(k => {
+              actx.decodeAudioData(b64ToArrayBuffer(data[k]),
+                (buf) => { sfxBuffers[k] = buf; },
+                () => {});
+            });
+          })
+          .catch(() => {});
       } catch (e) { console.warn('coin sfx load failed', e); }
     }
     // Lazily create the AudioContext on first user gesture, and decode samples
@@ -593,22 +615,25 @@
       if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
       if (!samplesRequested) { samplesRequested = true; loadSamples(); }
     }
-    const sndCoin  = () => playSample(coinBuffer, 0.5) || sfx(988, 0.09, 'sine', 0.10, 350);
-    const sndShoot = () => playGun(gunBuffer, 0.35) || sfx(320, 0.07, 'square', 0.07, -180);
-    const sndHit   = () => sfx(150, 0.12, 'sawtooth', 0.12, -60);
-    const sndBust  = () => sfx(540, 0.30, 'triangle', 0.12, -420);
-    const sndHurt  = () => sfx(90, 0.25, 'sawtooth', 0.16, -40);
-    const sndHeart = () => sfx(660, 0.15, 'sine', 0.12, 220);
-    const sndBoss  = () => sfx(55, 0.8, 'sawtooth', 0.2, -15);
-    const sndOrb   = () => sfx(200, 0.15, 'triangle', 0.1, -120);
-    const sndWin   = () => { sfx(523, 0.15, 'square', 0.1); setTimeout(() => sfx(659, 0.15, 'square', 0.1), 150); setTimeout(() => sfx(784, 0.3, 'square', 0.12), 300); };
-    const sndAmmo  = () => sfx(440, 0.1, 'square', 0.1, 160);
-    const sndBuy   = () => { sfx(600, 0.1, 'square', 0.1, 200); setTimeout(() => sfx(900, 0.12, 'square', 0.1), 90); };
-    const sndDeny  = () => sfx(160, 0.18, 'sawtooth', 0.1, -40);
-    const sndDry   = () => sfx(120, 0.05, 'square', 0.08);
-    const sndBerserk = () => { sfx(60, 0.5, 'sawtooth', 0.2, -20); setTimeout(() => sfx(45, 0.6, 'sawtooth', 0.22, -15), 200); };
-    const sndDash  = () => sfx(300, 0.12, 'sine', 0.1, 220);
-    const sndFrame = () => { sfx(660, 0.1, 'triangle', 0.12, 120); setTimeout(() => sfx(880, 0.1, 'triangle', 0.12, 120), 90); setTimeout(() => sfx(1180, 0.22, 'sine', 0.13, 200), 180); };
+    const sndCoin    = () => playSample(coinBuffer, 0.5) || sfx(988, 0.09, 'sine', 0.10, 350);
+    const sndShoot   = () => playGun(gunBuffer, 0.35) || sfx(320, 0.07, 'square', 0.07, -180);
+    const sndHit     = () => playSample(sfxBuffers.hit, 0.48) || sfx(150, 0.12, 'sawtooth', 0.12, -60);
+    const sndBust    = () => playSample(sfxBuffers.bust, 0.62) || sfx(540, 0.30, 'triangle', 0.12, -420);
+    const sndHurt    = () => playSample(sfxBuffers.hurt, 0.65) || sfx(90, 0.25, 'sawtooth', 0.16, -40);
+    const sndHeart   = () => playSample(sfxBuffers.heart, 0.55) || sfx(660, 0.15, 'sine', 0.12, 220);
+    const sndBoss    = () => { if (!playSample(sfxBuffers.boss_awaken, 0.85)) sfx(55, 0.8, 'sawtooth', 0.2, -15); };
+    const sndPhase   = () => { if (!playSample(sfxBuffers.boss_phase, 0.8)) sfx(70, 0.4, 'sawtooth', 0.15, -30); };
+    const sndOrb     = () => playSample(sfxBuffers.orb, 0.55) || sfx(200, 0.15, 'triangle', 0.1, -120);
+    const sndWin     = () => { playSample(sfxBuffers.cleanse, 0.7); sfx(523, 0.15, 'square', 0.1); setTimeout(() => sfx(659, 0.15, 'square', 0.1), 150); setTimeout(() => sfx(784, 0.3, 'square', 0.12), 300); };
+    const sndAmmo    = () => playSample(sfxBuffers.ammo, 0.55) || sfx(440, 0.1, 'square', 0.1, 160);
+    const sndBuy     = () => playSample(sfxBuffers.buy, 0.6) || (sfx(600, 0.1, 'square', 0.1, 200), setTimeout(() => sfx(900, 0.12, 'square', 0.1), 90));
+    const sndDeny    = () => sfx(160, 0.18, 'sawtooth', 0.1, -40);
+    const sndDry     = () => sfx(120, 0.05, 'square', 0.08);
+    const sndBerserk = () => { if (!playSample(sfxBuffers.boss_berserk, 0.88)) { sfx(60, 0.5, 'sawtooth', 0.2, -20); setTimeout(() => sfx(45, 0.6, 'sawtooth', 0.22, -15), 200); } };
+    const sndDash    = () => playSample(sfxBuffers.dash, 0.55) || sfx(300, 0.12, 'sine', 0.1, 220);
+    const sndFrame   = () => playSample(sfxBuffers.cleanse, 0.7) || (sfx(660, 0.1, 'triangle', 0.12, 120), setTimeout(() => sfx(880, 0.1, 'triangle', 0.12, 120), 90), setTimeout(() => sfx(1180, 0.22, 'sine', 0.13, 200), 180));
+    const sndStepStair  = () => playSample(sfxBuffers.step_stair, 0.36) || sfx(140, 0.04, 'triangle', 0.05, -30);
+    const sndStepLadder = () => playSample(sfxBuffers.step_ladder, 0.42) || sfx(520, 0.04, 'sine', 0.06, 120);
 
     // ---------- Maze generation ----------
     function generateMaze(n) {
@@ -679,6 +704,144 @@
       return c;
     }
 
+    function makeCeilingCanvas() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#14141c';
+      ctx.fillRect(0, 0, 256, 256);
+      for (let y = 0; y < 256; y += 64) {
+        for (let x = 0; x < 256; x += 64) {
+          ctx.strokeStyle = '#2d2838';
+          ctx.lineWidth = 4;
+          ctx.strokeRect(x + 4, y + 4, 56, 56);
+          ctx.fillStyle = '#1c1b26';
+          ctx.fillRect(x + 10, y + 10, 44, 44);
+        }
+      }
+      return c;
+    }
+
+    function makeCarpetCanvas() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#5e111a';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#d4a64a';
+      ctx.lineWidth = 6;
+      for (let y = 32; y < 256; y += 64) {
+        for (let x = 32; x < 256; x += 64) {
+          ctx.strokeRect(x - 16, y - 16, 32, 32);
+        }
+      }
+      return c;
+    }
+
+    function makeMarbleCanvas() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#16161d';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#9c7a3c';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 18; i++) {
+        ctx.beginPath();
+        ctx.moveTo(Math.random() * 256, Math.random() * 256);
+        ctx.lineTo(Math.random() * 256, Math.random() * 256);
+        ctx.stroke();
+      }
+      return c;
+    }
+
+    function makeStoneBumpCanvas() {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      const img = ctx.createImageData(256, 256);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = 110 + ((Math.sin(i * 0.37) * 43758.5453) % 1) * 45;
+        d[i] = d[i + 1] = d[i + 2] = v;
+        d[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      return c;
+    }
+
+    // ---------- Minimal Binary GLB Loader (zero external dependencies) ----------
+    function loadGlbModel(url, onReady) {
+      fetch(url).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+      }).then(buf => {
+        const dv = new DataView(buf);
+        if (dv.getUint32(0, true) !== 0x46546C67) throw new Error('Not a GLB');
+        const jsonLen = dv.getUint32(12, true);
+        const jsonStr = new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen));
+        const gltf = JSON.parse(jsonStr);
+        const binOffset = 20 + jsonLen + 8;
+
+        function readAccessor(idx) {
+          const acc = gltf.accessors[idx];
+          const bv = gltf.bufferViews[acc.bufferView];
+          const byteOffset = binOffset + (bv.byteOffset || 0) + (acc.byteOffset || 0);
+          const count = acc.count;
+          const comps = acc.type === 'VEC3' ? 3 : acc.type === 'VEC2' ? 2 : acc.type === 'VEC4' ? 4 : 1;
+          const stride = bv.byteStride || 0;
+          if (acc.componentType === 5126) {
+            if (!stride || stride === comps * 4) {
+              return new Float32Array(buf.slice(byteOffset, byteOffset + count * comps * 4));
+            }
+            const out = new Float32Array(count * comps);
+            for (let i = 0; i < count; i++) {
+              for (let c = 0; c < comps; c++) {
+                out[i * comps + c] = dv.getFloat32(byteOffset + i * stride + c * 4, true);
+              }
+            }
+            return out;
+          }
+          if (acc.componentType === 5125) return new Uint32Array(buf.slice(byteOffset, byteOffset + count * comps * 4));
+          if (acc.componentType === 5123) return new Uint16Array(buf.slice(byteOffset, byteOffset + count * comps * 2));
+          return null;
+        }
+
+        const prim = gltf.meshes[0].primitives[0];
+        const geo = new THREE.BufferGeometry();
+        if (prim.attributes.POSITION !== undefined) {
+          geo.setAttribute('position', new THREE.BufferAttribute(readAccessor(prim.attributes.POSITION), 3));
+        }
+        if (prim.attributes.TEXCOORD_0 !== undefined) {
+          geo.setAttribute('uv', new THREE.BufferAttribute(readAccessor(prim.attributes.TEXCOORD_0), 2));
+        }
+        if (prim.indices !== undefined) {
+          geo.setIndex(new THREE.BufferAttribute(readAccessor(prim.indices), 1));
+        }
+        if (prim.attributes.NORMAL !== undefined) {
+          geo.setAttribute('normal', new THREE.BufferAttribute(readAccessor(prim.attributes.NORMAL), 3));
+        } else {
+          geo.computeVertexNormals();
+        }
+        geo.computeBoundingBox();
+        geo.computeBoundingSphere();
+
+        let tex = null;
+        if (gltf.images && gltf.images.length > 0) {
+          const imgDef = gltf.images[0];
+          const bv = gltf.bufferViews[imgDef.bufferView];
+          const imgBytes = new Uint8Array(buf, binOffset + (bv.byteOffset || 0), bv.byteLength);
+          const blob = new Blob([imgBytes], { type: imgDef.mimeType || 'image/jpeg' });
+          const blobUrl = URL.createObjectURL(blob);
+          tex = new THREE.TextureLoader().load(blobUrl);
+          tex.flipY = false;
+          tex.colorSpace = THREE.SRGBColorSpace || undefined;
+          sharedTexSet.add(tex);
+        }
+        onReady({ geo, tex });
+      }).catch(err => console.warn('GLB load fallback for', url, err));
+    }
+
     // ---------- Texture loading ----------
     function loadTexture(url, fallbackCanvasFn) {
       let tex;
@@ -746,13 +909,23 @@
           (t) => {
             entry.aspect = t.image.width / t.image.height;
             const sx = artScaleX(entry.aspect);
-            for (const m of artDecals) if (m.userData.artIndex === i) m.scale.x = sx;
+            for (const m of artDecals) {
+              if (m.userData.artIndex === i) {
+                m.scale.x = sx;
+                if (m.userData.frameBack) m.userData.frameBack.scale.x = sx;
+              }
+            }
             bumpArtLoad();
           },
           undefined,
           () => {
             entry.failed = true;
-            for (const m of artDecals) if (m.userData.artIndex === i) m.visible = false;
+            for (const m of artDecals) {
+              if (m.userData.artIndex === i) {
+                m.visible = false;
+                if (m.userData.frameBack) m.userData.frameBack.visible = false;
+              }
+            }
             bumpArtLoad();
           }
         );
@@ -790,32 +963,46 @@
 
     function getArtMat(i) {
       if (!artMats[i]) {
-        artMats[i] = new THREE.MeshLambertMaterial({
-          map: artPool[i].tex, transparent: true, alphaTest: 0.05
+        artMats[i] = new THREE.MeshStandardMaterial({
+          map: artPool[i].tex, transparent: true, alphaTest: 0.05,
+          roughness: 0.48, metalness: 0.06
         });
       }
       return artMats[i];
     }
 
+    const FRAME_MAT = new THREE.MeshStandardMaterial({
+      color: 0x3d2b18, roughness: 0.42, metalness: 0.68
+    });
+
     function addWallArt(cx, cz, axis, floor) {
       const idx = drawArt();
       if (idx < 0 || artPool[idx].failed) return;
       const cy = floor * LEVEL_H + LEVEL_H / 2;
-      const off = WALL_T / 2 + 0.02;
+      const off = WALL_T / 2 + 0.032;
+      const frameOff = WALL_T / 2 + 0.014;
       const sx = artScaleX(artPool[idx].aspect);
       const mat = getArtMat(idx);
       for (const s of [1, -1]) {
+        const frameBack = new THREE.Mesh(new THREE.BoxGeometry(ART_H + 0.22, ART_H + 0.22, 0.024), FRAME_MAT);
         const m = new THREE.Mesh(new THREE.PlaneGeometry(ART_H, ART_H), mat);
         if (axis === 'x') {
           m.position.set(cx, cy, cz + s * off);
           m.rotation.y = s === 1 ? 0 : Math.PI;
+          frameBack.position.set(cx, cy, cz + s * frameOff);
+          frameBack.rotation.y = m.rotation.y;
         } else {
           m.position.set(cx + s * off, cy, cz);
           m.rotation.y = s === 1 ? Math.PI / 2 : -Math.PI / 2;
+          frameBack.position.set(cx + s * frameOff, cy, cz);
+          frameBack.rotation.y = m.rotation.y;
         }
         m.scale.x = sx;
+        frameBack.scale.x = sx;
         m.userData.artIndex = idx;
         m.userData.floor = floor;
+        m.userData.frameBack = frameBack;
+        worldGroup.add(frameBack);
         worldGroup.add(m);
         artDecals.push(m);
       }
@@ -888,142 +1075,681 @@
       }
     }
 
+    // ---------- Geometry Batcher (merges all static architecture into 1 draw call per material) ----------
+    let archBuckets = new Map();
+    function resetArchBatcher() {
+      archBuckets = new Map();
+    }
+    function batchGeo(geom, mat, x, y, z, rx = 0, ry = 0, rz = 0, disposeSrc = false) {
+      const g = geom.clone();
+      if (rx || ry || rz) {
+        const m4 = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'));
+        g.applyMatrix4(m4);
+      }
+      g.translate(x, y, z);
+      let list = archBuckets.get(mat);
+      if (!list) { list = []; archBuckets.set(mat, list); }
+      list.push(g);
+      if (disposeSrc) geom.dispose();
+    }
+    function flushArchBatcher() {
+      for (const [mat, list] of archBuckets.entries()) {
+        if (!list.length) continue;
+        let totalVerts = 0, totalIdx = 0;
+        for (const g of list) {
+          totalVerts += g.attributes.position.count;
+          totalIdx += g.index ? g.index.count : g.attributes.position.count;
+        }
+        const pos = new Float32Array(totalVerts * 3);
+        const norm = new Float32Array(totalVerts * 3);
+        const uv = new Float32Array(totalVerts * 2);
+        const idx = new Uint32Array(totalIdx);
+        let vOff = 0, iOff = 0;
+        for (const g of list) {
+          pos.set(g.attributes.position.array, vOff * 3);
+          if (g.attributes.normal) norm.set(g.attributes.normal.array, vOff * 3);
+          if (g.attributes.uv) uv.set(g.attributes.uv.array, vOff * 2);
+          const vCount = g.attributes.position.count;
+          if (g.index) {
+            const iArr = g.index.array;
+            for (let k = 0; k < iArr.length; k++) idx[iOff + k] = iArr[k] + vOff;
+            iOff += iArr.length;
+          } else {
+            for (let k = 0; k < vCount; k++) idx[iOff + k] = vOff + k;
+            iOff += vCount;
+          }
+          vOff += vCount;
+          g.dispose();
+        }
+        const merged = new THREE.BufferGeometry();
+        merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        merged.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
+        merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+        merged.setIndex(new THREE.BufferAttribute(idx, 1));
+        merged.computeBoundingSphere();
+        worldGroup.add(new THREE.Mesh(merged, mat));
+      }
+      archBuckets.clear();
+    }
+
     // ---------- Generic box ----------
     function addBox(cx, cz, sx, sz, y0, y1, mat, solid) {
       const geom = new THREE.BoxGeometry(sx, y1 - y0, sz);
       if (mat.map) scaleBoxUV(geom, sx, y1 - y0, sz);
-      const mesh = new THREE.Mesh(geom, mat);
-      mesh.position.set(cx, (y0 + y1) / 2, cz);
-      worldGroup.add(mesh);
+      batchGeo(geom, mat, cx, (y0 + y1) / 2, cz, 0, 0, 0, true);
       if (solid) colliders.push({
         minX: cx - sx / 2, maxX: cx + sx / 2,
         minY: y0, maxY: y1,
         minZ: cz - sz / 2, maxZ: cz + sz / 2
       });
-      return mesh;
     }
 
-    // ---------- Walls ----------
-    function buildWall(floor, cx, cz, axis, hasDoor, mat) {
+    // ---------- Shared Architectural PBR Materials ----------
+    const ARCH_BRASS_MAT = new THREE.MeshStandardMaterial({
+      color: 0xd4a448, roughness: 0.28, metalness: 0.88
+    });
+    const ARCH_IRON_MAT = new THREE.MeshStandardMaterial({
+      color: 0x1e222d, roughness: 0.42, metalness: 0.82
+    });
+    const ARCH_BRONZE_MAT = new THREE.MeshStandardMaterial({
+      color: 0x4a3822, roughness: 0.38, metalness: 0.72
+    });
+    const ARCH_GLOW_UP_MAT = new THREE.MeshBasicMaterial({ color: 0x33ffaa });
+    const ARCH_GLOW_DN_MAT = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+
+    let ARCH_MARBLE_MAT = null, ARCH_CARPET_MAT = null, ARCH_FLOOR_MAT = null, ARCH_CEIL_MAT = null;
+    function getMarbleMat() {
+      if (!ARCH_MARBLE_MAT) {
+        ARCH_MARBLE_MAT = new THREE.MeshStandardMaterial({
+          map: marbleTexture, bumpMap: stoneBumpTex, bumpScale: 0.015,
+          color: 0xd8d4cc, roughness: 0.24, metalness: 0.22
+        });
+      }
+      return ARCH_MARBLE_MAT;
+    }
+    function getCarpetMat() {
+      if (!ARCH_CARPET_MAT) {
+        ARCH_CARPET_MAT = new THREE.MeshStandardMaterial({
+          map: carpetTexture, bumpMap: stoneBumpTex, bumpScale: 0.02,
+          color: 0xffffff, roughness: 0.78, metalness: 0.08
+        });
+      }
+      return ARCH_CARPET_MAT;
+    }
+    function getFloorMat() {
+      if (!ARCH_FLOOR_MAT) {
+        ARCH_FLOOR_MAT = new THREE.MeshStandardMaterial({
+          map: floorTexture, bumpMap: stoneBumpTex, bumpScale: 0.025,
+          roughness: 0.62, metalness: 0.12, side: THREE.FrontSide
+        });
+      }
+      return ARCH_FLOOR_MAT;
+    }
+    function getCeilMat() {
+      if (!ARCH_CEIL_MAT) {
+        ARCH_CEIL_MAT = new THREE.MeshStandardMaterial({
+          map: ceilingTexture, bumpMap: stoneBumpTex, bumpScale: 0.035,
+          roughness: 0.78, metalness: 0.18, side: THREE.FrontSide
+        });
+      }
+      return ARCH_CEIL_MAT;
+    }
+
+    // ---------- Walls with Baseboard Plinths, Crown Moldings & Gothic Doorway Architraves ----------
+    function buildWall(floor, cx, cz, axis, hasDoor, mat, doorKind) {
       const y0 = floor * LEVEL_H + SHRINK;
       const y1 = (floor + 1) * LEVEL_H - SHRINK;
       const segLen = ROOM - WALL_T;
+      const plinthH = 0.22;
+      const crownH = 0.16;
+      const trimT = WALL_T + 0.07;
+      const marbleMat = getMarbleMat();
+
       if (!hasDoor) {
-        if (axis === 'x') addBox(cx, cz, segLen, WALL_T, y0, y1, mat, true);
-        else              addBox(cx, cz, WALL_T, segLen, y0, y1, mat, true);
+        if (axis === 'x') {
+          addBox(cx, cz, segLen, WALL_T, y0, y1, mat, true);
+          addBox(cx, cz, segLen, trimT, y0, y0 + plinthH, marbleMat, false);
+          addBox(cx, cz, segLen, trimT, y1 - crownH, y1, ARCH_BRONZE_MAT, false);
+        } else {
+          addBox(cx, cz, WALL_T, segLen, y0, y1, mat, true);
+          addBox(cx, cz, trimT, segLen, y0, y0 + plinthH, marbleMat, false);
+          addBox(cx, cz, trimT, segLen, y1 - crownH, y1, ARCH_BRONZE_MAT, false);
+        }
         addWallArt(cx, cz, axis, floor);
         return;
       }
-      const sideLen = (segLen - DOOR_W) / 2;
-      const sideOff = DOOR_W / 2 + sideLen / 2;
-      const lintelY0 = floor * LEVEL_H + DOOR_H;
+
+      // Grand transition rooms (staircase / ladder atriums) get wider, taller monumental archways
+      const isGrand = !!doorKind;
+      const dW = isGrand ? 2.95 : DOOR_W;
+      const dH = isGrand ? 3.55 : DOOR_H;
+      const sideLen = (segLen - dW) / 2;
+      const sideOff = dW / 2 + sideLen / 2;
+      const lintelY0 = floor * LEVEL_H + dH;
+      const jambW = isGrand ? 0.22 : 0.14;
+      const jambT = WALL_T + (isGrand ? 0.16 : 0.09);
+
       if (axis === 'x') {
         addBox(cx - sideOff, cz, sideLen, WALL_T, y0, y1, mat, true);
         addBox(cx + sideOff, cz, sideLen, WALL_T, y0, y1, mat, true);
-        addBox(cx, cz, DOOR_W, WALL_T, lintelY0, y1, mat, false);
+        addBox(cx, cz, dW, WALL_T, lintelY0, y1, mat, false);
+        // Baseboard plinths & crown moldings on both flanking wall segments
+        addBox(cx - sideOff, cz, sideLen, trimT, y0, y0 + plinthH, marbleMat, false);
+        addBox(cx + sideOff, cz, sideLen, trimT, y0, y0 + plinthH, marbleMat, false);
+        addBox(cx - sideOff, cz, sideLen, trimT, y1 - crownH, y1, ARCH_BRONZE_MAT, false);
+        addBox(cx + sideOff, cz, sideLen, trimT, y1 - crownH, y1, ARCH_BRONZE_MAT, false);
+        // Doorway jamb pilasters & lintel architrave
+        for (const s of [-1, 1]) {
+          addBox(cx + s * (dW / 2 - jambW / 2 + 0.04), cz, jambW, jambT, y0, lintelY0 + 0.08, marbleMat, false);
+          if (isGrand) {
+            addBox(cx + s * (dW / 2 - jambW / 2 + 0.04), cz, jambW + 0.08, jambT + 0.06, y0, y0 + 0.35, ARCH_BRASS_MAT, false);
+            addBox(cx + s * (dW / 2 - jambW / 2 + 0.04), cz, jambW + 0.08, jambT + 0.06, lintelY0 - 0.18, lintelY0 + 0.08, ARCH_BRASS_MAT, false);
+          }
+        }
+        addBox(cx, cz, dW + 0.28, jambT, lintelY0 - 0.06, lintelY0 + 0.14, isGrand ? ARCH_BRASS_MAT : ARCH_BRONZE_MAT, false);
+        if (isGrand) {
+          const badgeMat = doorKind.includes('up') ? ARCH_GLOW_UP_MAT : ARCH_GLOW_DN_MAT;
+          addBox(cx, cz, 0.42, jambT + 0.08, lintelY0 - 0.12, lintelY0 + 0.24, ARCH_BRONZE_MAT, false);
+          addBox(cx, cz, 0.24, jambT + 0.12, lintelY0 - 0.04, lintelY0 + 0.16, badgeMat, false);
+        }
       } else {
         addBox(cx, cz - sideOff, WALL_T, sideLen, y0, y1, mat, true);
         addBox(cx, cz + sideOff, WALL_T, sideLen, y0, y1, mat, true);
-        addBox(cx, cz, WALL_T, DOOR_W, lintelY0, y1, mat, false);
+        addBox(cx, cz, WALL_T, dW, lintelY0, y1, mat, false);
+        // Baseboard plinths & crown moldings
+        addBox(cx, cz - sideOff, trimT, sideLen, y0, y0 + plinthH, marbleMat, false);
+        addBox(cx, cz + sideOff, trimT, sideLen, y0, y0 + plinthH, marbleMat, false);
+        addBox(cx, cz - sideOff, trimT, sideLen, y1 - crownH, y1, ARCH_BRONZE_MAT, false);
+        addBox(cx, cz + sideOff, trimT, sideLen, y1 - crownH, y1, ARCH_BRONZE_MAT, false);
+        // Doorway jamb pilasters & lintel architrave
+        for (const s of [-1, 1]) {
+          addBox(cx, cz + s * (dW / 2 - jambW / 2 + 0.04), jambT, jambW, y0, lintelY0 + 0.08, marbleMat, false);
+          if (isGrand) {
+            addBox(cx, cz + s * (dW / 2 - jambW / 2 + 0.04), jambT + 0.06, jambW + 0.08, y0, y0 + 0.35, ARCH_BRASS_MAT, false);
+            addBox(cx, cz + s * (dW / 2 - jambW / 2 + 0.04), jambT + 0.06, jambW + 0.08, lintelY0 - 0.18, lintelY0 + 0.08, ARCH_BRASS_MAT, false);
+          }
+        }
+        addBox(cx, cz, jambT, dW + 0.28, lintelY0 - 0.06, lintelY0 + 0.14, isGrand ? ARCH_BRASS_MAT : ARCH_BRONZE_MAT, false);
+        if (isGrand) {
+          const badgeMat = doorKind.includes('up') ? ARCH_GLOW_UP_MAT : ARCH_GLOW_DN_MAT;
+          addBox(cx, cz, jambT + 0.08, 0.42, lintelY0 - 0.12, lintelY0 + 0.24, ARCH_BRONZE_MAT, false);
+          addBox(cx, cz, jambT + 0.12, 0.24, lintelY0 - 0.04, lintelY0 + 0.16, badgeMat, false);
+        }
       }
     }
 
     function buildPosts(floor, mat) {
       const y0 = floor * LEVEL_H + SHRINK;
       const y1 = (floor + 1) * LEVEL_H - SHRINK;
+      const marbleMat = getMarbleMat();
       for (let i = 0; i <= GRID; i++) {
         for (let j = 0; j <= GRID; j++) {
-          addBox(-HALF + i * ROOM, -HALF + j * ROOM, WALL_T, WALL_T, y0, y1, mat, true);
+          const px = -HALF + i * ROOM, pz = -HALF + j * ROOM;
+          addBox(px, pz, WALL_T, WALL_T, y0, y1, mat, true);
+          addBox(px, pz, WALL_T + 0.10, WALL_T + 0.10, y0, y0 + 0.26, marbleMat, false);
+          addBox(px, pz, WALL_T + 0.10, WALL_T + 0.10, y1 - 0.20, y1, ARCH_BRONZE_MAT, false);
         }
       }
     }
 
-    // ---------- Slabs ----------
-    function buildSlab(y, hole, dark) {
+    // ---------- Slabs (Dual-surfaced Floor + Coffered Ceiling + 3D Carved Hole Coaming) ----------
+    function buildSlab(y, hole, isTopRoof) {
       const rects = hole ? [
         [-HALF, HALF, -HALF, hole.minZ],
         [-HALF, HALF, hole.maxZ, HALF],
         [-HALF, hole.minX, hole.minZ, hole.maxZ],
         [hole.maxX, HALF, hole.minZ, hole.maxZ]
       ] : [[-HALF, HALF, -HALF, HALF]];
+
+      const floorMat = getFloorMat();
+      const ceilMat = getCeilMat();
+
       for (const [x0, x1, z0, z1] of rects) {
         const w = x1 - x0, h = z1 - z0;
         if (w <= 0.01 || h <= 0.01) continue;
-        let mat;
-        const geom = new THREE.PlaneGeometry(w, h);
-        if (dark) {
-          mat = new THREE.MeshLambertMaterial({ color: 0x1c1c22, side: THREE.DoubleSide });
+
+        if (!isTopRoof) {
+          // Top floor surface (facing up)
+          const fGeom = new THREE.PlaneGeometry(w, h);
+          scalePlaneUV(fGeom, w, h);
+          const fm = new THREE.Mesh(fGeom, floorMat);
+          fm.rotation.x = -Math.PI / 2;
+          fm.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+          worldGroup.add(fm);
+
+          // Underside coffered ceiling for the floor below (when y > 0)
+          if (y > 0.1) {
+            const cGeom = new THREE.PlaneGeometry(w, h);
+            scalePlaneUV(cGeom, w, h);
+            const cm = new THREE.Mesh(cGeom, ceilMat);
+            cm.rotation.x = Math.PI / 2;
+            cm.position.set((x0 + x1) / 2, y - 0.14, (z0 + z1) / 2);
+            worldGroup.add(cm);
+          }
         } else {
-          mat = new THREE.MeshLambertMaterial({ map: floorTexture, side: THREE.DoubleSide });
-          scalePlaneUV(geom, w, h);
+          // Topmost roof ceiling surface (facing down)
+          const cGeom = new THREE.PlaneGeometry(w, h);
+          scalePlaneUV(cGeom, w, h);
+          const cm = new THREE.Mesh(cGeom, ceilMat);
+          cm.rotation.x = Math.PI / 2;
+          cm.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+          worldGroup.add(cm);
         }
-        const m = new THREE.Mesh(geom, mat);
-        m.rotation.x = -Math.PI / 2;
-        m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
-        worldGroup.add(m);
+      }
+
+      // 3D Carved Marble & Brass Slab Coaming Frame around stairwell/ladder openings
+      if (hole && !isTopRoof) {
+        const marbleMat = getMarbleMat();
+        const hw = hole.maxX - hole.minX;
+        const hd = hole.maxZ - hole.minZ;
+        const hcx = (hole.minX + hole.maxX) / 2;
+        const hcz = (hole.minZ + hole.maxZ) / 2;
+        const bT = 0.12;
+        // 4 side cheeks of the floor opening spanning slab thickness [y - 0.18, y + 0.03]
+        addBox(hcx, hole.minZ - bT / 2, hw + bT * 2, bT, y - 0.18, y + 0.03, marbleMat, false);
+        addBox(hcx, hole.maxZ + bT / 2, hw + bT * 2, bT, y - 0.18, y + 0.03, marbleMat, false);
+        addBox(hole.minX - bT / 2, hcz, bT, hd, y - 0.18, y + 0.03, marbleMat, false);
+        addBox(hole.maxX + bT / 2, hcz, bT, hd, y - 0.18, y + 0.03, marbleMat, false);
+        // Beveled brass lip trim at top and bottom of coaming
+        addBox(hcx, hole.minZ - bT / 2, hw + bT * 2 + 0.04, bT + 0.04, y + 0.01, y + 0.045, ARCH_BRASS_MAT, false);
+        addBox(hcx, hole.maxZ + bT / 2, hw + bT * 2 + 0.04, bT + 0.04, y + 0.01, y + 0.045, ARCH_BRASS_MAT, false);
+        addBox(hole.minX - bT / 2, hcz, bT + 0.04, hd + 0.04, y + 0.01, y + 0.045, ARCH_BRASS_MAT, false);
+        addBox(hole.maxX + bT / 2, hcz, bT + 0.04, hd + 0.04, y + 0.01, y + 0.045, ARCH_BRASS_MAT, false);
       }
     }
 
-    // ---------- Stairs ----------
+    // Populate AI-generated 3D Gargoyle Newel Post Guardian Statues at the foot of each Grand Staircase
+    function populateStairStatueSlot(slotGroup) {
+      while (slotGroup.children.length) slotGroup.remove(slotGroup.children[0]);
+      if (STAIR_STATUE_GLB) {
+        const mat = new THREE.MeshStandardMaterial({
+          map: STAIR_STATUE_GLB.tex,
+          emissiveMap: STAIR_STATUE_GLB.tex,
+          emissive: 0xffbb44,
+          emissiveIntensity: 0.38,
+          roughness: 0.36,
+          metalness: 0.48
+        });
+        const mesh = new THREE.Mesh(STAIR_STATUE_GLB.geo, mat);
+        mesh.scale.setScalar(1.38);
+        mesh.position.y = 0.69;
+        slotGroup.add(mesh);
+      } else {
+        const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.24, 0.95, 8), ARCH_BRONZE_MAT);
+        ped.position.y = 0.48;
+        slotGroup.add(ped);
+        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), ARCH_GLOW_UP_MAT);
+        orb.position.y = 1.05;
+        slotGroup.add(orb);
+      }
+    }
+
+    // Populate AI-generated 3D Victorian Clockwork Winch & Alchemical Beacon Crown above each Observatory Ladder
+    function populateLadderCrownSlot(slotGroup) {
+      while (slotGroup.children.length) slotGroup.remove(slotGroup.children[0]);
+      if (LADDER_CROWN_GLB) {
+        const mat = new THREE.MeshStandardMaterial({
+          map: LADDER_CROWN_GLB.tex,
+          emissiveMap: LADDER_CROWN_GLB.tex,
+          emissive: 0x22ffaa,
+          emissiveIntensity: 0.48,
+          roughness: 0.36,
+          metalness: 0.62
+        });
+        const mesh = new THREE.Mesh(LADDER_CROWN_GLB.geo, mat);
+        mesh.scale.setScalar(1.22);
+        mesh.rotation.y = -Math.PI / 2;
+        mesh.position.y = 0.60;
+        slotGroup.add(mesh);
+      } else {
+        const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, 8, 16), ARCH_BRASS_MAT);
+        wheel.position.y = 0.45;
+        slotGroup.add(wheel);
+        const core = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.42, 12), ARCH_GLOW_UP_MAT);
+        core.position.y = 0.45;
+        slotGroup.add(core);
+      }
+    }
+
+    // Helper: Build a turned wrought-iron & brass baluster spindle at (x, yBottom, z) with given height
+    const BAL_COLLAR_GEO = new THREE.CylinderGeometry(0.042, 0.042, 0.06, 8);
+    const BAL_BASE_GEO = new THREE.BoxGeometry(0.075, 0.05, 0.075);
+    const NEWEL_ORB_GEO = new THREE.SphereGeometry(0.11, 10, 10);
+    const NEWEL_RING_GEO = new THREE.TorusGeometry(0.13, 0.016, 8, 16);
+    function addBalusterSpindle(x, yBottom, z, h) {
+      batchGeo(new THREE.CylinderGeometry(0.022, 0.026, h, 8), ARCH_IRON_MAT, x, yBottom + h / 2, z, 0, 0, 0, true);
+      batchGeo(BAL_COLLAR_GEO, ARCH_BRASS_MAT, x, yBottom + h * 0.55, z);
+      batchGeo(BAL_BASE_GEO, ARCH_BRASS_MAT, x, yBottom + 0.025, z);
+    }
+
+    // Helper: Build an ornate Gothic Newel Post at (x, yBottom, z) with height h and glowing crystal finial
+    function addNewelPost(x, yBottom, z, h, glowMat) {
+      const marbleMat = getMarbleMat();
+      addBox(x, z, 0.24, 0.24, yBottom, yBottom + 0.24, marbleMat, false);
+      addBox(x, z, 0.17, 0.17, yBottom + 0.24, yBottom + h - 0.14, ARCH_IRON_MAT, false);
+      addBox(x, z, 0.22, 0.22, yBottom + h - 0.14, yBottom + h, ARCH_BRASS_MAT, false);
+      batchGeo(NEWEL_ORB_GEO, glowMat, x, yBottom + h + 0.11, z);
+      batchGeo(NEWEL_RING_GEO, ARCH_BRASS_MAT, x, yBottom + h + 0.02, z, Math.PI / 2, 0, 0);
+    }
+
+    // ---------- Grand Palace Staircase & Open Vaulted Atrium ----------
     function buildStairs(floor, gx, gy, wallMat) {
       const c = roomCenter(gx, gy);
       const yBase = floor * LEVEL_H;
-      const zBottom = c.z + S_RUN / 2;
-      const slopeTop = c.z - S_RUN / 2;
-      ramps.push({ minX: c.x - 1.45, maxX: c.x + 1.45, slopeTop, footTop: slopeTop - 0.25, zBottom, yBase });
-      holes[floor + 1] = { minX: c.x - 1.45, maxX: c.x + 1.45, minZ: slopeTop - 0.1, maxZ: c.z - 0.05 };
+      const yTop = (floor + 1) * LEVEL_H;
+      const zBottom = c.z + S_RUN / 2;     // c.z + 1.80 (South foot of stairs)
+      const slopeTop = c.z - S_RUN / 2;    // c.z - 1.80 (North top landing)
+      const stairW = 2.28;                 // total tread width
+      const halfW = stairW / 2;            // 1.14
 
-      const stepMat = new THREE.MeshLambertMaterial({ color: 0x6b6b73 });
-      const nSteps = 12;
+      // Generous, smooth ramp bounds with bottom/top apron transition zones
+      ramps.push({
+        minX: c.x - 1.16, maxX: c.x + 1.16,
+        slopeTop, footTop: slopeTop - 0.42,
+        zBottom: zBottom + 0.18, yBase
+      });
+      // Upper floor stairwell opening leaves wide 2.65m East/West galleries, 2.55m South gallery, and 2.0m North landing
+      const holeMinZ = slopeTop - 0.05;
+      const holeMaxZ = c.z + 1.25;
+      holes[floor + 1] = {
+        minX: c.x - 1.15, maxX: c.x + 1.15,
+        minZ: holeMinZ, maxZ: holeMaxZ
+      };
+
+      const marbleMat = getMarbleMat();
+      const carpetMat = getCarpetMat();
+
+      // 1. Lower South Approach Carpet Plaza & Upper North Landing Carpet Runner
+      addBox(c.x, zBottom + 0.85, 1.56, 1.65, yBase + SHRINK, yBase + SHRINK + 0.018, carpetMat, false);
+      addBox(c.x - 0.80, zBottom + 0.85, 0.04, 1.65, yBase + SHRINK, yBase + SHRINK + 0.024, ARCH_BRASS_MAT, false);
+      addBox(c.x + 0.80, zBottom + 0.85, 0.04, 1.65, yBase + SHRINK, yBase + SHRINK + 0.024, ARCH_BRASS_MAT, false);
+
+      addBox(c.x, slopeTop - 0.88, 1.56, 1.65, yTop + SHRINK, yTop + SHRINK + 0.018, carpetMat, false);
+      addBox(c.x - 0.80, slopeTop - 0.88, 0.04, 1.65, yTop + SHRINK, yTop + SHRINK + 0.024, ARCH_BRASS_MAT, false);
+      addBox(c.x + 0.80, slopeTop - 0.88, 0.04, 1.65, yTop + SHRINK, yTop + SHRINK + 0.024, ARCH_BRASS_MAT, false);
+
+      // Glowing directional chevron runes on the lower entrance and upper exit
+      const chevGeo = new THREE.BoxGeometry(0.38, 0.015, 0.06);
+      for (let k = 0; k < 2; k++) {
+        const czLow = zBottom + 0.45 + k * 0.42;
+        batchGeo(chevGeo, ARCH_GLOW_UP_MAT, c.x - 0.14, yBase + SHRINK + 0.024, czLow, 0, 0.45, 0);
+        batchGeo(chevGeo, ARCH_GLOW_UP_MAT, c.x + 0.14, yBase + SHRINK + 0.024, czLow, 0, -0.45, 0);
+      }
+      chevGeo.dispose();
+
+      // 2. Twin Sloped Wrought-Iron & Bronze Carriage Stringer Beams + Central Spine
+      const stairAngle = Math.atan2(LEVEL_H, S_RUN);
+      const stringerLen = Math.hypot(S_RUN, LEVEL_H) + 0.15;
+      const midY = yBase + LEVEL_H / 2 - 0.14;
+      const midZ = (zBottom + slopeTop) / 2;
+      for (const s of [-1, 1]) {
+        batchGeo(new THREE.BoxGeometry(0.14, 0.26, stringerLen), ARCH_IRON_MAT, c.x + s * 1.04, midY, midZ, stairAngle, 0, 0, true);
+        batchGeo(new THREE.BoxGeometry(0.16, 0.045, stringerLen), ARCH_BRASS_MAT, c.x + s * 1.04, midY + 0.12, midZ, stairAngle, 0, 0, true);
+      }
+      batchGeo(new THREE.BoxGeometry(0.18, 0.22, stringerLen), ARCH_IRON_MAT, c.x, midY - 0.05, midZ, stairAngle, 0, 0, true);
+
+      // 3. 16 Sculpted Floating Nero-Marquina Marble Treads, Bullnose Nosings, Royal Carpet Runner & Brass Stair Rods
+      const nSteps = 16;
+      const stepRun = S_RUN / nSteps;      // 0.225m
+      const stepRise = LEVEL_H / nSteps;   // 0.28125m
+      const treadThick = 0.065;
+      const runnerW = 1.24;
+      const rodGeo = new THREE.CylinderGeometry(0.016, 0.016, runnerW + 0.16, 8);
+      const finialGeo = new THREE.SphereGeometry(0.032, 8, 8);
+
       for (let i = 0; i < nSteps; i++) {
-        const z = zBottom - (i + 0.5) * (S_RUN / nSteps);
-        const topY = ((i + 1) / nSteps) * LEVEL_H;
-        addBox(c.x, z, 2.7, S_RUN / nSteps, yBase + SHRINK, yBase + topY, stepMat, false);
+        const zCenter = zBottom - (i + 0.5) * stepRun;
+        const zFront = zBottom - i * stepRun;
+        const stepTopY = yBase + (i + 1) * stepRise;
+        const stepBotY = yBase + i * stepRise;
+
+        // Polished marble tread slab with front overhang
+        addBox(c.x, zCenter + 0.015, stairW, stepRun + 0.05, stepTopY - treadThick, stepTopY, marbleMat, false);
+        // Gleaming brass bullnose front strip
+        addBox(c.x, zFront + 0.02, stairW + 0.02, 0.025, stepTopY - 0.035, stepTopY + 0.004, ARCH_BRASS_MAT, false);
+        // Sculpted riser plate (only spans between stepBotY and stepTopY, leaving under-stair vault open!)
+        addBox(c.x, zFront, stairW - 0.12, 0.04, stepBotY, stepTopY - treadThick, ARCH_IRON_MAT, false);
+
+        // Royal crimson & gold carpet runner on tread + riser
+        addBox(c.x, zCenter + 0.018, runnerW, stepRun + 0.052, stepTopY + 0.001, stepTopY + 0.018, carpetMat, false);
+        addBox(c.x, zFront + 0.022, runnerW, 0.018, stepBotY + 0.01, stepTopY + 0.005, carpetMat, false);
+
+        // Brass stair rod with spherical finials at the base of the riser
+        batchGeo(rodGeo, ARCH_BRASS_MAT, c.x, stepBotY + 0.028, zFront + 0.034, 0, 0, Math.PI / 2);
+        for (const s of [-1, 1]) {
+          batchGeo(finialGeo, ARCH_BRASS_MAT, c.x + s * (runnerW / 2 + 0.08), stepBotY + 0.028, zFront + 0.034);
+        }
+
+        // Turned wrought-iron & brass baluster spindles along both sides of the staircase
+        const balH = 0.96;
+        for (const s of [-1, 1]) {
+          addBalusterSpindle(c.x + s * 1.12, stepTopY, zCenter, balH);
+        }
+      }
+      rodGeo.dispose();
+      finialGeo.dispose();
+
+      // 4. Sloped Polished Brass & Ebony Handrails + AI 3D Gargoyle Newel Post Guardians
+      const railH = 0.98;
+      for (const s of [-1, 1]) {
+        const railX = c.x + s * 1.12;
+        // Sloped handrail bar
+        batchGeo(new THREE.BoxGeometry(0.09, 0.075, stringerLen + 0.1), ARCH_BRASS_MAT, railX, yBase + LEVEL_H / 2 + railH, midZ, stairAngle, 0, 0, true);
+
+        // Grand Bottom Newel Plinth + AI 3D Gargoyle Guardian Statue (whose sculpted pedestal forms the newel post)
+        const botNewelZ = zBottom + 0.14;
+        addBox(railX, botNewelZ, 0.44, 0.44, yBase + SHRINK, yBase + 0.28, marbleMat, false);
+        addBox(railX, botNewelZ, 0.38, 0.38, yBase + 0.28, yBase + 0.36, ARCH_BRASS_MAT, false);
+        const statueSlot = new THREE.Group();
+        statueSlot.position.set(railX, yBase + 0.36, botNewelZ);
+        worldGroup.add(statueSlot);
+        stairStatueSlots.push(statueSlot);
+        populateStairStatueSlot(statueSlot);
+
+        // Top Landing Newel Post
+        addNewelPost(railX, yTop, slopeTop - 0.08, 1.08, ARCH_GLOW_DN_MAT);
       }
 
-      const y0 = yBase + SHRINK;
-      const y1 = yBase + LEVEL_H - 0.05;
-      const endZ = slopeTop - 0.4;
-      const shaftLen = zBottom - (endZ - 0.1);
-      addBox(c.x - 1.55, (zBottom + endZ - 0.1) / 2, 0.2, shaftLen, y0, y1, wallMat, true);
-      addBox(c.x + 1.55, (zBottom + endZ - 0.1) / 2, 0.2, shaftLen, y0, y1, wallMat, true);
-      // end wall: full-height MESH, collider capped at 3.4 so a climber near
-      // the ramp top passes over it (it only blocks ground-level entry)
-      addBox(c.x, endZ, 2.9, 0.2, y0, y1, wallMat, false);
+      // 5. Open Under-Stair Gothic Support Columns & Vaulted Arch (at North high end, leaving walkway open!)
+      for (const s of [-1, 1]) {
+        const colX = c.x + s * 1.04;
+        // Column pair supporting the top of the staircase at z = slopeTop + 0.1
+        addBox(colX, slopeTop + 0.1, 0.24, 0.24, yBase + SHRINK, yTop - 0.15, marbleMat, true);
+        addBox(colX, slopeTop + 0.1, 0.32, 0.32, yBase + SHRINK, yBase + 0.32, ARCH_BRASS_MAT, false);
+        addBox(colX, slopeTop + 0.1, 0.32, 0.32, yTop - 0.42, yTop - 0.15, ARCH_BRASS_MAT, false);
+      }
+      // Decorative gothic arch header under the high end of the stairs (at yBase + 2.45, well above player head 1.7m)
+      addBox(c.x, slopeTop + 0.1, 2.1, 0.18, yBase + 2.55, yBase + 2.75, ARCH_BRONZE_MAT, false);
+
+      // Lower-half side guardrail colliders (prevents walking sideways through the low steps while leaving North under-stair arch open)
+      for (const s of [-1, 1]) {
+        colliders.push({
+          minX: c.x + s * 1.12 - 0.12, maxX: c.x + s * 1.12 + 0.12,
+          minY: yBase, maxY: yBase + 2.6,
+          minZ: c.z - 0.25, maxZ: zBottom + 0.25
+        });
+      }
+      // Low step front-underneath blocker so player can only enter the low steps from the South front entrance, not from underneath looking South
       colliders.push({
-        minX: c.x - 1.45, maxX: c.x + 1.45,
-        minY: y0, maxY: yBase + 3.4,
-        minZ: endZ - 0.1, maxZ: endZ + 0.1
+        minX: c.x - 1.05, maxX: c.x + 1.05,
+        minY: yBase, maxY: yBase + 1.85,
+        minZ: c.z - 0.25, maxZ: c.z + 0.05
       });
 
-      const lo = new THREE.PointLight(0x44ff88, 0.9, 7);
-      lo.position.set(c.x, yBase + 2.5, zBottom + 0.5);
+      // 6. Upper-Floor 3-Sided Mezzanine Safety Balustrade (West, East, and South edges of the stairwell hole)
+      const mezH = 1.02;
+      const mezMinZ = holeMinZ;
+      const mezMaxZ = holeMaxZ + 0.05;
+      const mezLenZ = mezMaxZ - mezMinZ;
+      for (const s of [-1, 1]) {
+        const mx = c.x + s * 1.18;
+        // Curb & top brass handrail along East and West sides of upper opening
+        addBox(mx, (mezMinZ + mezMaxZ) / 2, 0.12, mezLenZ, yTop, yTop + 0.12, marbleMat, false);
+        addBox(mx, (mezMinZ + mezMaxZ) / 2, 0.09, mezLenZ, yTop + mezH - 0.07, yTop + mezH, ARCH_BRASS_MAT, false);
+        for (let z = mezMinZ + 0.32; z < mezMaxZ - 0.2; z += 0.36) {
+          addBalusterSpindle(mx, yTop + 0.12, z, mezH - 0.19);
+        }
+        addNewelPost(mx, yTop, mezMaxZ, 1.08, ARCH_GLOW_DN_MAT);
+        // Upper-floor physical guardrail collider along West & East edges of hole
+        colliders.push({
+          minX: mx - 0.12, maxX: mx + 0.12,
+          minY: yTop - 0.1, maxY: yTop + 1.3,
+          minZ: mezMinZ, maxZ: mezMaxZ + 0.08
+        });
+      }
+      // South back-edge balustrade on upper floor (prevents walking into the stairwell pit from the South on floor+1!)
+      addBox(c.x, mezMaxZ, 2.36, 0.12, yTop, yTop + 0.12, marbleMat, false);
+      addBox(c.x, mezMaxZ, 2.36, 0.09, yTop + mezH - 0.07, yTop + mezH, ARCH_BRASS_MAT, false);
+      for (let x = c.x - 0.90; x <= c.x + 0.90; x += 0.36) {
+        addBalusterSpindle(x, yTop + 0.12, mezMaxZ, mezH - 0.19);
+      }
+      // Upper-floor-only collider on South edge of hole (minY = yTop - 0.15 so climbers at the bottom of the stairs pass right under it!)
+      colliders.push({
+        minX: c.x - 1.22, maxX: c.x + 1.22,
+        minY: yTop - 0.15, maxY: yTop + 1.3,
+        minZ: mezMaxZ - 0.12, maxZ: mezMaxZ + 0.12
+      });
+
+      // Warm & emerald atmospheric lighting
+      const lo = new THREE.PointLight(0x33ffaa, 1.15, 9);
+      lo.position.set(c.x, yBase + 2.4, zBottom + 0.6);
       worldGroup.add(lo);
-      const hi = new THREE.PointLight(0xff8844, 0.9, 7);
-      hi.position.set(c.x, yBase + LEVEL_H + 2.5, slopeTop);
+      const hi = new THREE.PointLight(0xffaa44, 1.15, 9);
+      hi.position.set(c.x, yTop + 2.4, slopeTop - 0.4);
       worldGroup.add(hi);
     }
 
-    // ---------- Ladders ----------
+    // ---------- Gothic Observatory Ladder Tower & Rotunda ----------
     function buildLadder(floor, gx, gy) {
       const c = roomCenter(gx, gy);
       const yBase = floor * LEVEL_H;
-      holes[floor + 1] = { minX: c.x - 0.65, maxX: c.x + 0.65, minZ: c.z - 0.65, maxZ: c.z + 0.65 };
+      const yTop = (floor + 1) * LEVEL_H;
+      holes[floor + 1] = { minX: c.x - 0.66, maxX: c.x + 0.66, minZ: c.z - 0.66, maxZ: c.z + 0.66 };
       ladders.push({ x: c.x, z: c.z, yBase });
 
-      const mat = new THREE.MeshLambertMaterial({ color: 0x8a6a3a });
-      for (const s of [-1, 1]) {
-        addBox(c.x + s * 0.3, c.z - 0.5, 0.09, 0.09, yBase + SHRINK, yBase + LEVEL_H + 0.9, mat, false);
-      }
-      for (let y = yBase + 0.4; y < yBase + LEVEL_H + 0.5; y += 0.45) {
-        addBox(c.x, c.z - 0.5, 0.68, 0.06, y, y + 0.06, mat, false);
+      const marbleMat = getMarbleMat();
+      const carpetMat = getCarpetMat();
+
+      // 1. Raised Octagonal Marble & Brass Pedestal Base + Glowing Alchemical Compass Ring
+      batchGeo(new THREE.CylinderGeometry(0.88, 1.02, 0.09, 8), marbleMat, c.x, yBase + 0.045, c.z, 0, 0, 0, true);
+      batchGeo(new THREE.CylinderGeometry(0.92, 0.95, 0.04, 8), ARCH_BRASS_MAT, c.x, yBase + 0.09, c.z, 0, 0, 0, true);
+      batchGeo(new THREE.TorusGeometry(0.56, 0.024, 8, 24), ARCH_GLOW_UP_MAT, c.x, yBase + 0.105, c.z, Math.PI / 2, 0, 0, true);
+
+      // North & South Royal Carpet Runners leading to the Ladder Pedestal on both lower and upper floors
+      for (const sz of [-1, 1]) {
+        addBox(c.x, c.z + sz * 1.65, 1.24, 1.55, yBase + SHRINK, yBase + SHRINK + 0.018, carpetMat, false);
+        addBox(c.x, c.z + sz * 1.65, 1.24, 1.55, yTop + SHRINK, yTop + SHRINK + 0.018, carpetMat, false);
       }
 
-      const lo = new THREE.PointLight(0x44ff88, 0.9, 7);
-      lo.position.set(c.x, yBase + 2.5, c.z + 1.2);
+      // 2. Twin Floor-to-Ceiling Fluted Wrought-Iron & Marble Support Columns (East & West flanks of the shaft)
+      for (const s of [-1, 1]) {
+        const colX = c.x + s * 0.74;
+        const colZ = c.z - 0.22;
+        addBox(colX, colZ, 0.30, 0.30, yBase + SHRINK, yBase + 0.45, marbleMat, false);
+        batchGeo(new THREE.CylinderGeometry(0.11, 0.12, LEVEL_H - 0.2, 10), ARCH_IRON_MAT, colX, yBase + LEVEL_H / 2, colZ, 0, 0, 0, true);
+        for (let ry = yBase + 1.0; ry < yTop - 0.3; ry += 1.1) {
+          batchGeo(new THREE.CylinderGeometry(0.145, 0.145, 0.08, 10), ARCH_BRASS_MAT, colX, ry, colZ, 0, 0, 0, true);
+        }
+        addBox(colX, colZ, 0.32, 0.32, yTop - 0.35, yTop - 0.12, ARCH_BRASS_MAT, false);
+        // Physical collider for the side support columns (leaves 3.0m open walkways all around and clear North/South entry)
+        colliders.push({
+          minX: colX - 0.15, maxX: colX + 0.15,
+          minY: yBase, maxY: yTop,
+          minZ: colZ - 0.15, maxZ: colZ + 0.15
+        });
+      }
+
+      // 3. Precision Wrought-Iron Tubular Stiles & Burnished Brass Anti-Slip Cylindrical Rungs
+      const ladZ = c.z - 0.40;
+      const stileX = 0.36;
+      const stileH = LEVEL_H + 1.05;
+      for (const s of [-1, 1]) {
+        batchGeo(new THREE.CylinderGeometry(0.042, 0.042, stileH, 12), ARCH_IRON_MAT, c.x + s * stileX, yBase + stileH / 2, ladZ, 0, 0, 0, true);
+        // Riveted brass struts anchoring the ladder stiles to the side support columns
+        for (let by = yBase + 0.85; by < yTop; by += 1.15) {
+          addBox(c.x + s * 0.55, ladZ + 0.09, 0.38, 0.05, by - 0.03, by + 0.03, ARCH_BRASS_MAT, false);
+        }
+        // Swan-neck curved brass dismount grab-loops at the top of the ladder on floor+1
+        batchGeo(new THREE.TorusGeometry(0.22, 0.036, 10, 18, Math.PI), ARCH_BRASS_MAT, c.x + s * stileX, yTop + 1.02, ladZ - 0.22, 0, Math.PI / 2, 0, true);
+        batchGeo(new THREE.CylinderGeometry(0.034, 0.038, 1.02, 10), ARCH_BRASS_MAT, c.x + s * stileX, yTop + 0.51, ladZ - 0.44, 0, 0, 0, true);
+      }
+
+      const rungGeo = new THREE.CylinderGeometry(0.026, 0.026, stileX * 2 + 0.04, 12);
+      const gripGeo = new THREE.CylinderGeometry(0.033, 0.033, 0.26, 10);
+      const capGeo = new THREE.CylinderGeometry(0.048, 0.048, 0.05, 10);
+      for (let y = yBase + 0.34; y < yTop + 0.15; y += 0.34) {
+        batchGeo(rungGeo, ARCH_BRASS_MAT, c.x, y, ladZ, 0, 0, Math.PI / 2);
+        batchGeo(gripGeo, ARCH_GLOW_UP_MAT, c.x, y, ladZ, 0, 0, Math.PI / 2);
+        for (const s of [-1, 1]) {
+          batchGeo(capGeo, ARCH_BRASS_MAT, c.x + s * stileX, y, ladZ, 0, 0, Math.PI / 2);
+        }
+      }
+      rungGeo.dispose();
+      gripGeo.dispose();
+      capGeo.dispose();
+
+      // 4. Curved Wrought-Iron Observatory Safety Climb Cage (from yBase + 2.05 to yTop - 0.25)
+      const cageRadius = 0.50;
+      const cageCenterZ = c.z + 0.04;
+      const hoopGeo = new THREE.TorusGeometry(cageRadius, 0.022, 8, 20, Math.PI * 1.15);
+      for (let hy = yBase + 2.05; hy <= yTop - 0.25; hy += 0.52) {
+        batchGeo(hoopGeo, ARCH_IRON_MAT, c.x, hy, cageCenterZ, Math.PI / 2, 0, -0.075 * Math.PI);
+      }
+      hoopGeo.dispose();
+      const cageH = (yTop - 0.25) - (yBase + 2.05);
+      const ribGeo = new THREE.CylinderGeometry(0.018, 0.018, cageH, 8);
+      for (let a = 0.18; a <= 0.82; a += 0.32) {
+        const ang = a * Math.PI;
+        const rx = c.x + Math.cos(ang) * cageRadius;
+        const rz = cageCenterZ + Math.sin(ang) * cageRadius;
+        batchGeo(ribGeo, ARCH_BRASS_MAT, rx, yBase + 2.05 + cageH / 2, rz);
+      }
+      ribGeo.dispose();
+
+      // 5. Upper-Floor East & West Mezzanine Balustrades + High Arch supporting AI 3D Clockwork Winch Beacon (ladder_crown.glb)
+      const mezH = 1.02;
+      for (const s of [-1, 1]) {
+        const mx = c.x + s * 0.74;
+        addBox(mx, c.z, 0.12, 1.48, yTop, yTop + 0.12, marbleMat, false);
+        addBox(mx, c.z, 0.09, 1.48, yTop + mezH - 0.07, yTop + mezH, ARCH_BRASS_MAT, false);
+        for (let z = c.z - 0.45; z <= c.z + 0.45; z += 0.30) {
+          addBalusterSpindle(mx, yTop + 0.12, z, mezH - 0.19);
+        }
+        addNewelPost(mx, yTop, c.z - 0.72, 1.08, ARCH_GLOW_DN_MAT);
+        addNewelPost(mx, yTop, c.z + 0.72, 1.08, ARCH_GLOW_DN_MAT);
+        // Upper-floor East & West guardrail colliders (leaves both North and South hatch exits open!)
+        colliders.push({
+          minX: mx - 0.14, maxX: mx + 0.14,
+          minY: yTop - 0.1, maxY: yTop + 1.3,
+          minZ: c.z - 0.76, maxZ: c.z + 0.76
+        });
+
+        // Iron arch columns rising to yTop + 1.98 on the North side of the hatch to frame the Clockwork Winch Shrine
+        batchGeo(new THREE.CylinderGeometry(0.055, 0.065, 0.96, 8), ARCH_IRON_MAT, mx, yTop + 1.08 + 0.48, c.z - 0.72, 0, 0, 0, true);
+      }
+      // Upper floor Clockwork Winch Arch Beam at yTop + 1.98 (on North side of hatch, clearly visible at eye level!)
+      addBox(c.x, c.z - 0.72, 1.68, 0.24, yTop + 1.92, yTop + 2.04, ARCH_BRONZE_MAT, false);
+      addBox(c.x, c.z - 0.72, 1.74, 0.28, yTop + 2.02, yTop + 2.08, ARCH_BRASS_MAT, false);
+      const crownSlotHi = new THREE.Group();
+      crownSlotHi.position.set(c.x, yTop + 2.08, c.z - 0.72);
+      worldGroup.add(crownSlotHi);
+      ladderCrownSlots.push(crownSlotHi);
+      populateLadderCrownSlot(crownSlotHi);
+
+      // Lower floor Clockwork Winch Arch Pediment crowning the front entrance of the safety cage at yBase + 2.95
+      addBox(c.x, c.z + 0.46, 0.96, 0.24, yBase + 2.86, yBase + 2.96, ARCH_BRONZE_MAT, false);
+      addBox(c.x, c.z + 0.46, 1.02, 0.28, yBase + 2.94, yBase + 3.00, ARCH_BRASS_MAT, false);
+      const crownSlotLo = new THREE.Group();
+      crownSlotLo.position.set(c.x, yBase + 3.00, c.z + 0.46);
+      worldGroup.add(crownSlotLo);
+      ladderCrownSlots.push(crownSlotLo);
+      populateLadderCrownSlot(crownSlotLo);
+
+      const lo = new THREE.PointLight(0x33ffaa, 1.15, 9);
+      lo.position.set(c.x, yBase + 2.4, c.z + 1.1);
       worldGroup.add(lo);
-      const hi = new THREE.PointLight(0xff8844, 0.9, 7);
-      hi.position.set(c.x, yBase + LEVEL_H + 2.5, c.z);
+      const hi = new THREE.PointLight(0xffaa44, 1.15, 9);
+      hi.position.set(c.x, yTop + 2.4, c.z);
       worldGroup.add(hi);
     }
 
@@ -1270,29 +1996,53 @@
     }
 
     // ---------- Fountains (shop anchors, one per floor) ----------
+    function populateFountainGroup(fObj) {
+      const { group, yBase } = fObj;
+      while (group.children.length) group.remove(group.children[0]);
+      if (FOUNTAIN_GLB) {
+        const mat = new THREE.MeshStandardMaterial({
+          map: FOUNTAIN_GLB.tex,
+          emissiveMap: FOUNTAIN_GLB.tex,
+          emissive: 0x2288aa,
+          emissiveIntensity: 0.35,
+          roughness: 0.48,
+          metalness: 0.22
+        });
+        const mesh = new THREE.Mesh(FOUNTAIN_GLB.geo, mat);
+        mesh.scale.setScalar(2.5);
+        mesh.position.y = 1.02;
+        group.add(mesh);
+      } else {
+        const stone = new THREE.MeshStandardMaterial({ color: 0x4a5a6a, roughness: 0.7, metalness: 0.25 });
+        const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.25, 0.55, 24), stone);
+        basin.position.y = 0.28;
+        group.add(basin);
+        const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.4, 1.1, 16), stone);
+        ped.position.y = 0.85;
+        group.add(ped);
+      }
+      const waterMat = new THREE.MeshStandardMaterial({
+        color: 0x44eeff, emissive: 0x11aaee, emissiveIntensity: 1.25,
+        roughness: 0.12, metalness: 0.1, transparent: true, opacity: 0.85
+      });
+      const water = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.06, 24), waterMat);
+      water.position.y = 0.24;
+      group.add(water);
+      fObj.water = water;
+    }
+
     function addFountain(floor, gx, gy) {
       const c = roomCenter(gx, gy);
-      const yBase = floor * LEVEL_H + SHRINK;   // lift off the slab: no coplanar bottom face
-      const stone = new THREE.MeshStandardMaterial({ color: 0x4a5a6a, roughness: 0.8, metalness: 0.2 });
-      // basin
-      const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.2, 0.5, 20), stone);
-      basin.position.set(c.x, yBase + 0.25, c.z);
-      worldGroup.add(basin);
-      // pedestal
-      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.8, 12), stone);
-      ped.position.set(c.x, yBase + 0.7, c.z);
-      worldGroup.add(ped);
-      // glowing water
-      const water = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.9, 0.9, 0.1, 20),
-        new THREE.MeshStandardMaterial({ color: 0x33bbff, emissive: 0x2299dd, emissiveIntensity: 0.8, transparent: true, opacity: 0.8 })
-      );
-      water.position.set(c.x, yBase + 0.52, c.z);
-      worldGroup.add(water);
-      const glow = new THREE.PointLight(0x44bbff, 1.1, 9);
-      glow.position.set(c.x, yBase + 1.4, c.z);
+      const yBase = floor * LEVEL_H + SHRINK;
+      const group = new THREE.Group();
+      group.position.set(c.x, yBase, c.z);
+      worldGroup.add(group);
+      const glow = new THREE.PointLight(0x44ccff, 1.45, 11);
+      glow.position.set(c.x, yBase + 1.8, c.z);
       worldGroup.add(glow);
-      fountains.push({ x: c.x, z: c.z, floor });
+      const fObj = { x: c.x, z: c.z, yBase, floor, group, glow, water: null };
+      populateFountainGroup(fObj);
+      fountains.push(fObj);
     }
 
     // ---------- Ghosts ----------
@@ -1398,11 +2148,31 @@
       ctx.closePath();
     }
 
-    // Builds a wraith instance. bodyColor/emissive tint the robe so the same
-    // model serves both the pale patrol ghosts and the purple King. Returns the
-    // group plus material handles (for hit-flash + death-fade).
-    function makeGhostMesh(bodyColor, emissive, eyeColor, opacity) {
+    // Builds a wraith or Ghost King instance using our Trellis 3D textured GLBs
+    // (or falls back to the embedded wraith until async GLB fetch completes).
+    function makeGhostMesh(bodyColor, emissive, eyeColor, opacity, isBoss) {
       const group = new THREE.Group();
+      const glb = isBoss ? (KING_GLB || PATROL_GLB) : PATROL_GLB;
+
+      if (glb) {
+        const bodyMat = new THREE.MeshStandardMaterial({
+          map: glb.tex,
+          emissiveMap: glb.tex,
+          color: 0xffffff,
+          emissive: isBoss ? 0xaa66ff : 0x55ddff,
+          emissiveIntensity: isBoss ? 0.42 : 0.45,
+          transparent: true,
+          opacity: isBoss ? 0.96 : 0.9,
+          roughness: 0.48,
+          metalness: isBoss ? 0.25 : 0.1,
+          side: THREE.DoubleSide
+        });
+        const wraith = new THREE.Mesh(glb.geo, bodyMat);
+        wraith.scale.setScalar(isBoss ? 1.24 : 1.72);
+        wraith.position.y = isBoss ? -0.22 : -0.05;
+        group.add(wraith);
+        return { group, mats: [bodyMat], wraith };
+      }
 
       if (GHOST_READY) {
         const bodyMat = new THREE.MeshStandardMaterial({
@@ -1419,7 +2189,7 @@
         return { group, mats: [bodyMat], wraith };
       }
 
-      // ---- procedural fallback (only if the model failed to decode) ----
+      // ---- procedural fallback ----
       const bodyMat = new THREE.MeshLambertMaterial({
         color: bodyColor, transparent: true, opacity, emissive
       });
@@ -1460,6 +2230,7 @@
       if (now <= invulnUntil || gameOver) return;
       health--;
       invulnUntil = now + 1500;
+      screenShake = 0.28;
       sndHurt();
       flashVignette();
       updateHUD();
@@ -1533,18 +2304,19 @@
       g.hp -= (dmg || 1);
       shotsHit++;
       sndHit();
+      spawnBurst(g.group.position.x, g.group.position.y, g.group.position.z, 0x7fe9ff, 10, 0.14);
       g.mats.forEach(m => { m.emissive.setHex(0xff4444); });
-      setTimeout(() => g.mats.forEach(m => m.emissive.setHex(0x223344)), 120);
-      // Show/refresh the floating health bar. Full health shows nothing; any
-      // damage reveals it so the player sees the hit landed even without a kill.
+      setTimeout(() => g.mats.forEach(m => m.emissive.setHex(PATROL_GLB ? 0x55ddff : 0x223344)), 120);
       if (g.bar && g.hp > 0 && g.hp < g.maxHp) {
         drawHealthBar(g.bar, g.hp / g.maxHp);
         g.bar.sprite.visible = true;
       }
       if (g.hp <= 0) {
         g.dead = true;
-        if (g.bar) g.bar.sprite.visible = false;   // hide bar once busted
+        if (g.bar) g.bar.sprite.visible = false;
         ghostsBusted++;
+        screenShake = 0.12;
+        spawnBurst(g.group.position.x, g.group.position.y, g.group.position.z, 0x9fffff, 26, 0.22);
         sndBust();
         if (Math.random() < HEART_DROP_CHANCE) addHeart(g.floor, g.x, g.z);
         updateHUD();
@@ -1555,7 +2327,6 @@
     // ---------- Boss: the Ghost King ----------
     function spawnBoss() {
       const pf = floorIndexOf(player.y);
-      // spawn in the room farthest from the player on their floor
       let best = null, bestDist = -1;
       for (let gx = 0; gx < GRID; gx++) {
         for (let gy = 0; gy < GRID; gy++) {
@@ -1564,15 +2335,26 @@
           if (d > bestDist) { bestDist = d; best = c; }
         }
       }
-      const parts = makeGhostMesh(0xc9a0e8, 0x551166, 0xff2222, 0.78);
+      const parts = makeGhostMesh(0xc9a0e8, 0x551166, 0xff2222, 0.92, true);
       const { group, mats } = parts;
       group.scale.setScalar(1.7);
-      const crown = new THREE.Mesh(
-        new THREE.ConeGeometry(0.3, 0.4, 8),
-        new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0x885500, metalness: 0.8, roughness: 0.3 })
-      );
-      crown.position.y = 1.0;
+      // Orbiting royal soul-shards + dynamic boss aura light
+      const crown = new THREE.Group();
+      const shardGeo = new THREE.OctahedronGeometry(0.11, 0);
+      const shardMat = new THREE.MeshStandardMaterial({
+        color: 0xffd700, emissive: 0xcc66ff, emissiveIntensity: 0.9, metalness: 0.85, roughness: 0.2
+      });
+      for (let k = 0; k < 5; k++) {
+        const s = new THREE.Mesh(shardGeo, shardMat);
+        const a = (k / 5) * Math.PI * 2;
+        s.position.set(Math.cos(a) * 0.72, 0.15, Math.sin(a) * 0.72);
+        crown.add(s);
+      }
+      crown.position.y = 0.55;
       group.add(crown);
+      const bossLight = new THREE.PointLight(0xbb44ff, 1.8, 10);
+      bossLight.position.set(0, 0.5, 0);
+      group.add(bossLight);
       group.position.set(best.x, pf * LEVEL_H + 1.8, best.z);
       worldGroup.add(group);
 
@@ -1584,6 +2366,7 @@
         phaseTimer: 0, shootTimer: 120,
         dead: false, fade: 1
       };
+      screenShake = 0.25;
       sndBoss();
       showMessage('The GHOST KING awakens...');
       updateBossBar();
@@ -1601,11 +2384,14 @@
       boss.hp -= (dmg || 1);
       shotsHit++;
       sndHit();
+      spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, 0xd488ff, 14, 0.18);
       boss.mats.forEach(m => { m.emissive.setHex(0xff4444); });
-      setTimeout(() => { if (boss) boss.mats.forEach(m => m.emissive.setHex(0x551166)); }, 120);
+      setTimeout(() => { if (boss) boss.mats.forEach(m => m.emissive.setHex(KING_GLB ? 0xaa66ff : 0x551166)); }, 120);
       updateBossBar();
       if (boss.hp <= 0) {
         boss.dead = true;
+        screenShake = 0.4;
+        spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, 0xffd700, 42, 0.28);
         sndBust();
         doVictory();
       }
@@ -1616,9 +2402,14 @@
       const dx = player.x - bx, dy = (player.y + 1.2) - by, dz = player.z - bz;
       const len = Math.hypot(dx, dy, dz);
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 10, 10),
-        new THREE.MeshBasicMaterial({ color: 0xcc55ff })
+        new THREE.SphereGeometry(0.24, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xdd66ff })
       );
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(0.38, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0x9922ff, transparent: true, opacity: 0.35 })
+      );
+      mesh.add(halo);
       mesh.position.set(bx, by, bz);
       worldGroup.add(mesh);
       bossOrbs.push({
@@ -1643,8 +2434,6 @@
       boss.t += 0.04 * dt;
       const pf = floorIndexOf(player.y);
 
-      // Berserk: no ammo AND no ammo boxes left on the King's floor means the
-      // player can't win the fight -> the King smells blood and runs them down.
       if (!berserk && ammo <= 0) {
         const boxesLeft = ammoBoxes.some(b => !b.collected);
         if (!boxesLeft) {
@@ -1656,14 +2445,13 @@
       }
       const bspeed = berserk ? BOSS_BERSERK_SPEED : BOSS_SPEED;
 
-      // the King phases through floors to follow you after a short delay
       if (boss.floor !== pf) {
         boss.phaseTimer += dt;
         if (boss.phaseTimer > (berserk ? 60 : 150)) {
           boss.floor = pf;
           boss.phaseTimer = 0;
           showMessage('The Ghost King phases through the floor!');
-          sfx(70, 0.4, 'sawtooth', 0.15, -30);
+          sndPhase();
         }
       } else {
         boss.phaseTimer = 0;
@@ -1676,7 +2464,6 @@
         }
         if (dist < 1.4 && now > invulnUntil && !gameOver) {
           damagePlayer(now);
-          // instant recoil on contact (a one-shot displacement, not per-frame)
           boss.x -= (dx / dist) * 3;
           boss.z -= (dz / dist) * 3;
         }
@@ -1688,8 +2475,7 @@
       }
       boss.group.position.set(boss.x, boss.floor * LEVEL_H + 1.8 + Math.sin(boss.t) * 0.25, boss.z);
 
-      // King flourish: crown bob/spin only
-      if (boss.crown) { boss.crown.position.y = 1.0 + Math.sin(boss.t * 1.6) * 0.05; boss.crown.rotation.y += 0.02 * dt; }
+      if (boss.crown) { boss.crown.position.y = 0.55 + Math.sin(boss.t * 1.6) * 0.08; boss.crown.rotation.y += 0.035 * dt; }
     }
 
     function updateBossOrbs(now, dt) {
@@ -1799,6 +2585,7 @@
         case 'ammo5':  ammoDropBonus = Math.max(ammoDropBonus, 5); break;
       }
       sndBuy();
+      refreshWeaponViewmodel();
       updateHUD();
       renderShop();
     }
@@ -1810,7 +2597,6 @@
         if (c.framed || c.floor !== pf) continue;
         const d = Math.hypot(player.x - c.x, player.z - c.z);
         if (d > 3) continue;
-        // must be roughly facing the painting
         const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
         const tx = c.x - player.x, tz = c.z - player.z;
         const tl = Math.hypot(tx, tz) || 1;
@@ -1819,11 +2605,11 @@
         cursedFramed++;
         const bounty = CURSED_BOUNTY[c.floor];
         coinCount += bounty;
-        // settle to a calm framed state: no more pulse
         c.frame.material.opacity = 0.85;
-        c.frame.material.color.setHex(0x8a5a2a);   // ominous amber -> tame wood frame
+        c.frame.material.color.setHex(0x8a5a2a);
         c.glow.color.setHex(0x66ffaa);
         c.glow.intensity = 0.5;
+        spawnBurst(c.x + c.nx * 0.2, c.y, c.z + c.nz * 0.2, 0xffcf5c, 28, 0.18);
         document.getElementById('cleanse').style.display = 'none';
         sndFrame();
         showMessage('Painting cleansed! +' + bounty + ' coins');
@@ -1839,16 +2625,147 @@
       return 'Pistol';
     }
 
+    // ---------- First-Person Spectral Blaster Viewmodel ----------
+    function buildWeaponViewmodel() {
+      if (weaponGroup) camera.remove(weaponGroup);
+      weaponGroup = new THREE.Group();
+      const darkMetal = new THREE.MeshStandardMaterial({ color: 0x222634, roughness: 0.35, metalness: 0.85 });
+      const brassMat  = new THREE.MeshStandardMaterial({ color: 0xc89b3c, roughness: 0.3,  metalness: 0.88 });
+      weaponCoreMat   = new THREE.MeshStandardMaterial({
+        color: 0x66ffcc, emissive: 0x33ddaa, emissiveIntensity: 1.4, roughness: 0.2, metalness: 0.1
+      });
+
+      // Receiver body
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.42), darkMetal);
+      body.position.set(0, 0, -0.1);
+      weaponGroup.add(body);
+
+      // Glowing plasma chamber rails
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.26, 12), weaponCoreMat);
+      core.rotation.x = Math.PI / 2;
+      core.position.set(0, 0.055, -0.12);
+      weaponGroup.add(core);
+
+      // Main barrel (lengthens when rifle upgrade is owned)
+      weaponBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.028, 0.36, 12), darkMetal);
+      weaponBarrel.rotation.x = Math.PI / 2;
+      weaponBarrel.position.set(0, 0.025, -0.36);
+      weaponGroup.add(weaponBarrel);
+
+      // Muzzle emitter ring
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.008, 8, 16), brassMat);
+      ring.position.set(0, 0.025, -0.52);
+      weaponGroup.add(ring);
+
+      // Tri-barrel side emitters (visible when spread upgrade is owned)
+      weaponTriBarrels = new THREE.Group();
+      for (const s of [-1, 1]) {
+        const sb = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.018, 0.25, 10), brassMat);
+        sb.rotation.x = Math.PI / 2;
+        sb.position.set(s * 0.055, 0.02, -0.34);
+        weaponTriBarrels.add(sb);
+      }
+      weaponTriBarrels.visible = false;
+      weaponGroup.add(weaponTriBarrels);
+
+      weaponMuzzleLight = new THREE.PointLight(0x66ffcc, 0, 5);
+      weaponMuzzleLight.position.set(0, 0.04, -0.6);
+      weaponGroup.add(weaponMuzzleLight);
+
+      weaponGroup.position.set(0.28, -0.24, -0.42);
+      camera.add(weaponGroup);
+      refreshWeaponViewmodel();
+    }
+
+    function refreshWeaponViewmodel() {
+      if (!weaponCoreMat) return;
+      const col = hasPierce ? 0xff66ff : (hasRifle ? 0xffcc44 : 0x66ffcc);
+      weaponCoreMat.color.setHex(col);
+      weaponCoreMat.emissive.setHex(col);
+      if (weaponMuzzleLight) weaponMuzzleLight.color.setHex(col);
+      if (weaponBarrel) weaponBarrel.scale.y = hasRifle ? 1.38 : 1.0;
+      if (weaponTriBarrels) weaponTriBarrels.visible = !!hasSpread;
+    }
+
+    // ---------- 3D Particle System ----------
+    const PARTICLE_GEO = new THREE.SphereGeometry(0.045, 6, 6);
+    function spawnBurst(x, y, z, color, count, speed) {
+      if (!worldGroup) return;
+      for (let i = 0; i < count; i++) {
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
+        const m = new THREE.Mesh(PARTICLE_GEO, mat);
+        m.position.set(x, y, z);
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const spd = (0.35 + Math.random() * 0.75) * (speed || 0.14);
+        worldGroup.add(m);
+        fxParticles.push({
+          mesh: m,
+          vx: Math.sin(phi) * Math.cos(theta) * spd,
+          vy: Math.cos(phi) * spd + 0.025,
+          vz: Math.sin(phi) * Math.sin(theta) * spd,
+          life: 1.0,
+          decay: 0.028 + Math.random() * 0.025
+        });
+      }
+    }
+
+    function updateParticles(dt) {
+      for (let i = fxParticles.length - 1; i >= 0; i--) {
+        const p = fxParticles[i];
+        p.mesh.position.x += p.vx * dt;
+        p.mesh.position.y += p.vy * dt;
+        p.mesh.position.z += p.vz * dt;
+        p.vy -= 0.0025 * dt;
+        p.life -= p.decay * dt;
+        if (p.life <= 0) {
+          worldGroup.remove(p.mesh);
+          p.mesh.material.dispose();
+          fxParticles.splice(i, 1);
+        } else {
+          p.mesh.material.opacity = p.life;
+          p.mesh.scale.setScalar(Math.max(0.1, p.life));
+        }
+      }
+    }
+
+    // ---------- Gothic Chandelier Lantern Sconces ----------
+    const SCONCE_IRON_MAT = new THREE.MeshStandardMaterial({ color: 0x1e2029, roughness: 0.5, metalness: 0.8 });
+    const SCONCE_FLAME_MAT = new THREE.MeshBasicMaterial({ color: 0xffbb55 });
+    function addTorchSconce(floor, x, z) {
+      const yTop = (floor + 1) * LEVEL_H - SHRINK;
+      const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.15, 8), SCONCE_IRON_MAT);
+      chain.position.set(x, yTop - 0.57, z);
+      worldGroup.add(chain);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.035, 8, 16), SCONCE_IRON_MAT);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(x, yTop - 1.15, z);
+      worldGroup.add(ring);
+      const flame = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), SCONCE_FLAME_MAT);
+      flame.position.set(x, yTop - 1.15, z);
+      worldGroup.add(flame);
+      const light = new THREE.PointLight(0xff9944, 0.95, 10);
+      light.position.set(x, yTop - 1.25, z);
+      worldGroup.add(light);
+      torches.push({ light, flame, baseY: yTop - 1.15, phase: Math.random() * Math.PI * 2 });
+    }
+
     // ---------- Shooting ----------
     function spawnProjectile(dir) {
+      const col = hasPierce ? 0xff66ff : (hasRifle ? 0xffcc44 : 0x66ffcc);
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.09, 8, 8),
-        new THREE.MeshBasicMaterial({ color: hasPierce ? 0xff66ff : (hasRifle ? 0xffcc44 : 0x66ffcc) })
+        new THREE.SphereGeometry(0.085, 10, 10),
+        new THREE.MeshBasicMaterial({ color: col })
       );
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16, 8, 8),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.32 })
+      );
+      mesh.add(halo);
       mesh.position.copy(camera.position);
       worldGroup.add(mesh);
       projectiles.push({
-        mesh, vx: dir.x * 0.7, vy: dir.y * 0.7, vz: dir.z * 0.7,
+        mesh, col, vx: dir.x * 0.7, vy: dir.y * 0.7, vz: dir.z * 0.7,
         life: 90, dmg: hasRifle ? 2 : 1,
         pierce: hasPierce, hit: hasPierce ? new Set() : null
       });
@@ -1858,16 +2775,17 @@
       if (!active || gameOver) return;
       if (fireCooldown > 0) return;
       if (ammo <= 0) { sndDry(); fireCooldown = 10; return; }
-      ammo--;                          // one press = one bullet even with spread
+      ammo--;
       shotsFired++;
       fireCooldown = hasAuto ? AUTO_COOLDOWN : PISTOL_COOLDOWN;
+      weaponRecoil = 1.0;
+      if (weaponMuzzleLight) weaponMuzzleLight.intensity = 2.4;
       sndShoot();
       updateHUD();
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
       spawnProjectile(dir);
       if (hasSpread) {
-        // two extra bullets at +/- SPREAD_ANGLE around the vertical axis
         for (const sign of [1, -1]) {
           const a = sign * SPREAD_ANGLE;
           const cos = Math.cos(a), sin = Math.sin(a);
@@ -1894,7 +2812,11 @@
           const px = p.mesh.position.x, py = p.mesh.position.y, pz = p.mesh.position.z;
           for (const b of colliders) {
             if (px > b.minX && px < b.maxX && py > b.minY && py < b.maxY &&
-                pz > b.minZ && pz < b.maxZ) { dead = true; break; }
+                pz > b.minZ && pz < b.maxZ) {
+              dead = true;
+              spawnBurst(px, py, pz, p.col || 0x66ffcc, 6, 0.09);
+              break;
+            }
           }
           if (py < 0 || py > FLOORS * LEVEL_H) dead = true;
         }
@@ -1903,7 +2825,6 @@
             if (g.dead) continue;
             if (p.mesh.position.distanceTo(g.group.position) < 0.85) {
               if (p.pierce) {
-                // pass through, but damage each ghost only once
                 if (!p.hit.has(g)) { p.hit.add(g); hitGhost(g, p.dmg); }
               } else {
                 hitGhost(g, p.dmg);
@@ -1915,9 +2836,8 @@
         }
         if (!dead && boss && !boss.dead) {
           if (p.mesh.position.distanceTo(boss.group.position) < 1.3) {
-            // boss is massive; a pierce round still only tags him once, then stops
             if (!p.pierce || !p.hit.has(boss)) { if (p.pierce) p.hit.add(boss); hitBoss(p.dmg); }
-            dead = true;   // boss body stops the round regardless
+            dead = true;
           }
         }
         if (dead) {
@@ -1938,21 +2858,44 @@
       if (worldGroup) {
         scene.remove(worldGroup);
         worldGroup.traverse(o => {
-          if (o.geometry && o.geometry !== GHOST_GEO && o.geometry !== COIN_GEO && o.geometry !== HEART_GEO && o.geometry !== AMMO_GEO) o.geometry.dispose();
+          const isSharedGeo = o.geometry === GHOST_GEO || o.geometry === COIN_GEO ||
+            o.geometry === HEART_GEO || o.geometry === AMMO_GEO || o.geometry === PARTICLE_GEO ||
+            o.geometry === BAL_COLLAR_GEO || o.geometry === BAL_BASE_GEO ||
+            o.geometry === NEWEL_ORB_GEO || o.geometry === NEWEL_RING_GEO ||
+            (PATROL_GLB && o.geometry === PATROL_GLB.geo) ||
+            (KING_GLB && o.geometry === KING_GLB.geo) ||
+            (FOUNTAIN_GLB && o.geometry === FOUNTAIN_GLB.geo) ||
+            (STAIR_STATUE_GLB && o.geometry === STAIR_STATUE_GLB.geo) ||
+            (LADDER_CROWN_GLB && o.geometry === LADDER_CROWN_GLB.geo);
+          if (o.geometry && !isSharedGeo) o.geometry.dispose();
           if (o.material && o.material.map && !sharedTexSet.has(o.material.map)) {
             o.material.map.dispose();
           }
-          if (o.material) o.material.dispose();
+          const isSharedMat = o.material === FRAME_MAT || o.material === SCONCE_IRON_MAT ||
+            o.material === SCONCE_FLAME_MAT || o.material === ARCH_BRASS_MAT ||
+            o.material === ARCH_IRON_MAT || o.material === ARCH_BRONZE_MAT ||
+            o.material === ARCH_GLOW_UP_MAT || o.material === ARCH_GLOW_DN_MAT ||
+            o.material === ARCH_MARBLE_MAT || o.material === ARCH_CARPET_MAT ||
+            o.material === ARCH_FLOOR_MAT || o.material === ARCH_CEIL_MAT;
+          if (o.material && !isSharedMat) {
+            o.material.dispose();
+          }
         });
       }
+      stairStatueSlots = [];
+      ladderCrownSlots = [];
+      transitionRoomSet = new Set();
+      transitionRoomInfo = new Map();
       worldGroup = new THREE.Group();
       scene.add(worldGroup);
+      resetArchBatcher();
 
       colliders = [];
       holes = new Array(FLOORS).fill(null);
       ramps = [];
       ladders = [];
       coins = []; ghosts = []; projectiles = []; hearts = []; bossOrbs = []; ammoBoxes = []; fountains = [];
+      fxParticles = []; torches = [];
       boss = null;
       coinCount = 0; coinTotal = 0; ghostsBusted = 0; ghostTotal = 0;
       health = 3; maxHealth = 3; invulnUntil = 0; gameOver = false; won = false;
@@ -1961,11 +2904,15 @@
       hasPierce = false; hasSpread = false; hasDash = false;
       fireCooldown = 0; dashCooldown = 0; dashFrames = 0; berserk = false; shopOpen = false;
       cursedPaintings = []; cursedFramed = 0; cursedTotal = 0;
+      refreshWeaponViewmodel();
       document.getElementById('shop').style.display = 'none';
       shotsFired = 0; shotsHit = 0; startTime = performance.now();
       document.getElementById('bossbar').style.display = 'none';
 
-      const wallMat = new THREE.MeshLambertMaterial({ map: wallTexture });
+      const wallMat = new THREE.MeshStandardMaterial({
+        map: wallTexture, bumpMap: stoneBumpTex, bumpScale: 0.04,
+        roughness: 0.76, metalness: 0.14
+      });
       artDecals = [];
       artMats = [];
       shuffleArtDeck();
@@ -1977,6 +2924,8 @@
       //    own connection shared that room the two shafts would overlap and you
       //    get lost inside the block.
       const connections = [];
+      const firstKind = Math.random() < 0.5 ? 'stairs' : 'ladder';
+      const secondKind = firstKind === 'stairs' ? 'ladder' : 'stairs';
       for (let f = 0; f < FLOORS - 1; f++) {
         let gx, gy, guard = 0;
         do {
@@ -1987,12 +2936,17 @@
           (gx === 0 && gy === 0) ||                       // not the spawn room
           (f > 0 && gx === connections[f - 1].gx && gy === connections[f - 1].gy) // not stacked
         ));
-        connections.push({ floor: f, gx, gy, kind: Math.random() < 0.5 ? 'stairs' : 'ladder' });
+        const kind = f === 0 ? firstKind : (f === 1 ? secondKind : (Math.random() < 0.5 ? 'stairs' : 'ladder'));
+        connections.push({ floor: f, gx, gy, kind });
       }
       const reserved = new Set(['0,0,0']);
       for (const s of connections) {
         reserved.add(`${s.floor},${s.gx},${s.gy}`);
         reserved.add(`${s.floor + 1},${s.gx},${s.gy}`);
+        transitionRoomSet.add(`${s.floor},${s.gx},${s.gy}`);
+        transitionRoomSet.add(`${s.floor + 1},${s.gx},${s.gy}`);
+        transitionRoomInfo.set(`${s.floor},${s.gx},${s.gy}`, `${s.kind}-up`);
+        transitionRoomInfo.set(`${s.floor + 1},${s.gx},${s.gy}`, `${s.kind}-down`);
       }
 
       // one fountain room per floor (kept clear of ghosts/coins, distinct from
@@ -2032,8 +2986,14 @@
         for (let gx = 0; gx < GRID; gx++) {
           for (let gy = 0; gy < GRID; gy++) {
             const c = roomCenter(gx, gy);
-            if (gx < GRID - 1) buildWall(floor, c.x + ROOM / 2, c.z, 'z', maze[gx][gy].E, wallMat);
-            if (gy < GRID - 1) buildWall(floor, c.x, c.z + ROOM / 2, 'x', maze[gx][gy].S, wallMat);
+            if (gx < GRID - 1) {
+              const doorKind = transitionRoomInfo.get(`${floor},${gx},${gy}`) || transitionRoomInfo.get(`${floor},${gx + 1},${gy}`) || null;
+              buildWall(floor, c.x + ROOM / 2, c.z, 'z', maze[gx][gy].E, wallMat, doorKind);
+            }
+            if (gy < GRID - 1) {
+              const doorKind = transitionRoomInfo.get(`${floor},${gx},${gy}`) || transitionRoomInfo.get(`${floor},${gx},${gy + 1}`) || null;
+              buildWall(floor, c.x, c.z + ROOM / 2, 'x', maze[gx][gy].S, wallMat, doorKind);
+            }
           }
         }
 
@@ -2048,10 +3008,8 @@
               for (let k = 0; k < n; k++)
                 addCoin(floor, c.x + (Math.random() * 5 - 2.5), c.z + (Math.random() * 5 - 2.5));
             }
-            if (Math.random() < 0.3) {
-              const torch = new THREE.PointLight(0xff9944, 0.7, 8);
-              torch.position.set(c.x, floor * LEVEL_H + 3, c.z);
-              worldGroup.add(torch);
+            if (Math.random() < 0.35) {
+              addTorchSconce(floor, c.x, c.z);
             }
           }
         }
@@ -2085,6 +3043,7 @@
         }
       }
 
+      flushArchBatcher();
       designateCursedPaintings();
 
       const spawn = roomCenter(0, 0);
@@ -2507,8 +3466,8 @@
       if (active) {
         let lad = null;
         for (const l of ladders) {
-          if (Math.hypot(player.x - l.x, player.z - l.z) < 0.95 &&
-              player.y > l.yBase - 0.1 && player.y < l.yBase + LEVEL_H + 0.1) { lad = l; break; }
+          if (Math.abs(player.x - l.x) < 0.62 && Math.abs(player.z - l.z) < 0.64 &&
+              player.y > l.yBase - 0.1 && player.y < l.yBase + LEVEL_H + 0.15) { lad = l; break; }
         }
 
         let dx = 0, dz = 0;
@@ -2536,16 +3495,43 @@
         let climbing = false;
         if (lad) {
           const topY = lad.yBase + LEVEL_H;
-          if (keys['w'] && player.y < topY - 0.001) {
+          const atTop = player.y >= topY - 0.18;
+          const wantDescendFromTop = atTop && (keys['s'] || (keys['w'] && pitch < -0.18));
+          const wantAscend = keys['w'] && !wantDescendFromTop && player.y < topY - 0.001;
+          const wantDescend = (keys['s'] || wantDescendFromTop) && player.y > lad.yBase + 0.001;
+
+          if (wantAscend) {
             player.y = Math.min(topY, player.y + CLIMB_SPEED * dt);
+            // Gently center X in the climb cage so the player never snags the coaming
+            player.x += (lad.x - player.x) * Math.min(1, 0.16 * dt);
             climbing = true;
-          } else if (keys['s'] && player.y > computeGround(player.x, player.z, player.y) + 0.001) {
+            ladderStepAccum += CLIMB_SPEED * dt;
+            if (ladderStepAccum >= 0.45) { ladderStepAccum = 0; sndStepLadder(); }
+            // Auto-dismount onto the upper landing when reaching the top
+            if (player.y >= topY - 0.004) {
+              player.y = topY;
+              const exitSign = (-cos < 0) ? -1 : 1;
+              player.z = lad.z + exitSign * 0.86;
+              climbing = false;
+            }
+          } else if (wantDescend) {
             player.y = Math.max(lad.yBase, player.y - CLIMB_SPEED * dt);
+            player.x += (lad.x - player.x) * Math.min(1, 0.16 * dt);
             climbing = true;
+            ladderStepAccum += CLIMB_SPEED * dt;
+            if (ladderStepAccum >= 0.45) { ladderStepAccum = 0; sndStepLadder(); }
+            // Auto-dismount onto the lower landing when reaching the bottom
+            if (player.y <= lad.yBase + 0.004) {
+              player.y = lad.yBase;
+              const exitSign = (keys['s'] ? cos : -cos) < 0 ? -1 : 1;
+              player.z = lad.z + exitSign * 0.86;
+              climbing = false;
+            }
           }
           vy = 0;
         }
 
+        const prevY = player.y;
         if (dashFrames > 0) {
           movePlayer(dashVX * DASH_SPEED * dt, dashVZ * DASH_SPEED * dt);
           dashFrames -= dt;
@@ -2563,6 +3549,15 @@
             player.y = ground;
             vy = 0;
           }
+          // Play marble-and-carpet stair step audio when ascending or descending a staircase ramp
+          const dyStair = Math.abs(player.y - prevY);
+          if (dyStair > 0.002 && dyStair < 0.25 && len > 0) {
+            stairStepAccum += dyStair;
+            if (stairStepAccum >= 0.36) {
+              stairStepAccum = 0;
+              sndStepStair();
+            }
+          }
         }
 
         const fi = floorIndexOf(player.y);
@@ -2573,12 +3568,40 @@
         }
       }
 
-      camera.position.set(player.x, player.y + EYE, player.z);
+      let shakeX = 0, shakeY = 0;
+      if (screenShake > 0.001) {
+        shakeX = (Math.random() - 0.5) * screenShake;
+        shakeY = (Math.random() - 0.5) * screenShake;
+        screenShake = Math.max(0, screenShake - 0.022 * dt);
+      }
+      camera.position.set(player.x + shakeX, player.y + EYE + shakeY, player.z);
       camera.rotation.order = 'YXZ';
       camera.rotation.y = yaw;
       camera.rotation.x = pitch;
       headlamp.position.copy(camera.position);
-      headlamp.intensity = (now < invulnUntil && Math.floor(now / 100) % 2 === 0) ? 0.4 : 1.0;
+      headlamp.intensity = (now < invulnUntil && Math.floor(now / 100) % 2 === 0) ? 0.4 : 1.05;
+
+      if (weaponGroup) {
+        const moving = active && (keys['w'] || keys['s'] || keys['a'] || keys['d']);
+        if (moving) walkBob += (keys['shift'] ? 0.18 : 0.12) * dt;
+        weaponRecoil = Math.max(0, weaponRecoil - 0.12 * dt);
+        if (weaponMuzzleLight && weaponMuzzleLight.intensity > 0) {
+          weaponMuzzleLight.intensity = Math.max(0, weaponMuzzleLight.intensity - 0.45 * dt);
+        }
+        weaponGroup.position.set(
+          0.28 + Math.sin(walkBob * 0.5) * 0.012,
+          -0.24 + Math.abs(Math.cos(walkBob)) * 0.014 - weaponRecoil * 0.02,
+          -0.42 + weaponRecoil * 0.075
+        );
+        weaponGroup.rotation.x = weaponRecoil * 0.16;
+      }
+
+      for (const t of torches) {
+        t.phase += 0.09 * dt;
+        const flick = Math.sin(t.phase) * 0.12 + Math.sin(t.phase * 2.3) * 0.08;
+        t.light.intensity = 0.92 + flick;
+        t.flame.position.y = t.baseY + flick * 0.12;
+      }
 
       const pf = floorIndexOf(player.y);
       for (const c of coins) {
@@ -2681,11 +3704,24 @@
       if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt);
       if (active && hasAuto && (mouseHeld || padShootHeld) && fireCooldown <= 0) shoot();
 
+      for (const f of fountains) {
+        if (f.water) {
+          f.water.rotation.y += 0.015 * dt;
+          f.water.position.y = 0.24 + Math.sin(now * 0.003 + f.floor) * 0.018;
+        }
+        if (active && f.floor === pf && Math.random() < 0.14 * dt) {
+          const ang = Math.random() * Math.PI * 2;
+          const rad = Math.random() * 0.75;
+          spawnBurst(f.x + Math.cos(ang) * rad, f.yBase + 0.65, f.z + Math.sin(ang) * rad, 0x55eeff, 1, 0.04);
+        }
+      }
+
       if (active) {
         updateGhosts(now, dt);
         updateBoss(now, dt);
         updateBossOrbs(now, dt);
         updateProjectiles(dt);
+        updateParticles(dt);
       }
       renderer.render(scene, camera);
     }
@@ -2900,20 +3936,80 @@
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
       document.body.appendChild(renderer.domElement);
 
       wallTexture = loadTexture(TEXTURES.wall, makeWallCanvas);
       floorTexture = loadTexture(TEXTURES.floor, makeFloorCanvas);
-      sharedTexSet.add(wallTexture).add(floorTexture);
+      ceilingTexture = loadTexture(TEXTURES.ceiling, makeCeilingCanvas);
+      carpetTexture = loadTexture(TEXTURES.carpet, makeCarpetCanvas);
+      marbleTexture = loadTexture(TEXTURES.marble, makeMarbleCanvas);
+      stoneBumpTex = new THREE.CanvasTexture(makeStoneBumpCanvas());
+      stoneBumpTex.wrapS = stoneBumpTex.wrapT = THREE.RepeatWrapping;
+      sharedTexSet.add(wallTexture).add(floorTexture).add(ceilingTexture).add(carpetTexture).add(marbleTexture).add(stoneBumpTex);
       buildGhostGeo();
       buildCoinGeo();
       buildHeartGeo();
       buildAmmoGeo();
+      loadSamples();
+
+      // Load our AI-generated 3D textured GLB models (Patrol Ghost, Ghost King, Fountain)
+      loadGlbModel('textures/fountain.glb', (glb) => {
+        FOUNTAIN_GLB = glb;
+        for (const f of fountains) populateFountainGroup(f);
+      });
+      loadGlbModel('textures/stair_statue.glb', (glb) => {
+        STAIR_STATUE_GLB = glb;
+        for (const s of stairStatueSlots) populateStairStatueSlot(s);
+      });
+      loadGlbModel('textures/ladder_crown.glb', (glb) => {
+        LADDER_CROWN_GLB = glb;
+        for (const s of ladderCrownSlots) populateLadderCrownSlot(s);
+      });
+      loadGlbModel('textures/patrolghost.glb', (glb) => {
+        PATROL_GLB = glb;
+        for (const g of ghosts) {
+          if (g.wraith) {
+            g.wraith.geometry = glb.geo;
+            g.wraith.scale.setScalar(1.72);
+            g.wraith.position.y = -0.05;
+            g.mats.forEach(m => {
+              m.map = glb.tex;
+              m.emissiveMap = glb.tex;
+              m.color.setHex(0xffffff);
+              m.emissive.setHex(0x55ddff);
+              m.emissiveIntensity = 0.45;
+              m.opacity = 0.9;
+              m.needsUpdate = true;
+            });
+          }
+        }
+      });
+      loadGlbModel('textures/ghostking.glb', (glb) => {
+        KING_GLB = glb;
+        if (boss && boss.wraith) {
+          boss.wraith.geometry = glb.geo;
+          boss.wraith.scale.setScalar(1.24);
+          boss.wraith.position.y = -0.22;
+          boss.mats.forEach(m => {
+            m.map = glb.tex;
+            m.emissiveMap = glb.tex;
+            m.color.setHex(0xffffff);
+            m.emissive.setHex(0xaa66ff);
+            m.emissiveIntensity = 0.42;
+            m.opacity = 0.96;
+            m.needsUpdate = true;
+          });
+        }
+      });
       loadArtPool();
 
-      scene.add(new THREE.AmbientLight(0x556677, 0.45));
-      headlamp = new THREE.PointLight(0xffeecc, 1.0, 16);
+      scene.add(new THREE.AmbientLight(0x667788, 0.55));
+      headlamp = new THREE.PointLight(0xffeecc, 1.05, 18);
       scene.add(headlamp);
+      scene.add(camera);
+      buildWeaponViewmodel();
 
       buildDungeon();
       setupControls();
