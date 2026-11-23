@@ -147,6 +147,69 @@
     }
     #hudAmmo.low-ammo .ammo-val { color: var(--rose); }
 
+    /* ---- Top-Right Gothic Minimap ("Curator's Blueprint") ---- */
+    #minimapWrap {
+      position: absolute; top: 14px; right: 14px; z-index: 10;
+      display: flex; flex-direction: column; gap: 6px;
+      background: linear-gradient(145deg, rgba(16,13,30,0.92), rgba(8,7,18,0.96));
+      border: 1.5px solid rgba(240, 196, 108, 0.36);
+      border-radius: 15px; padding: 9px 11px 9px;
+      box-shadow: 0 8px 26px rgba(0,0,0,0.68), inset 0 1px 0 rgba(255,255,255,0.08), 0 0 22px rgba(240,196,108,0.08);
+      backdrop-filter: blur(8px);
+      pointer-events: none; user-select: none;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    #minimapWrap.expanded {
+      padding: 12px 14px 11px;
+      border-color: rgba(127, 233, 255, 0.52);
+      box-shadow: 0 12px 38px rgba(0,0,0,0.82), 0 0 28px rgba(127,233,255,0.18);
+    }
+    .mm-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 0 2px;
+    }
+    .mm-title {
+      font-family: var(--font-display); font-weight: 700; font-size: 10.5px;
+      letter-spacing: 1.7px; text-transform: uppercase; color: var(--gold);
+      text-shadow: 0 0 8px rgba(240,196,108,0.35);
+    }
+    .mm-sub {
+      font-family: var(--font-ui); font-weight: 700; font-size: 10.5px;
+      color: var(--cyan); font-variant-numeric: tabular-nums;
+    }
+    .mm-frame {
+      position: relative;
+      border-radius: 10px;
+      border: 1px solid rgba(240, 196, 108, 0.28);
+      background: #090814;
+      box-shadow: inset 0 0 18px rgba(0,0,0,0.85);
+      overflow: hidden;
+      width: 186px; height: 186px;
+      transition: width 0.2s ease, height 0.2s ease;
+    }
+    #minimapWrap.expanded .mm-frame {
+      width: 296px; height: 296px;
+    }
+    #minimapCanvas {
+      width: 100%; height: 100%; display: block;
+    }
+    .mm-legend {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: 4px 9px; max-width: 186px;
+      font-family: var(--font-ui); font-size: 9.5px; font-weight: 600;
+      color: rgba(215, 222, 248, 0.72);
+      transition: max-width 0.2s ease;
+    }
+    #minimapWrap.expanded .mm-legend {
+      max-width: 296px; font-size: 10.5px;
+    }
+    .mm-leg {
+      display: inline-flex; align-items: center; gap: 3.5px;
+    }
+    .mm-dot {
+      width: 7px; height: 7px; border-radius: 2px; display: inline-block;
+    }
+
     #hudHelp {
       position: absolute; bottom: 14px; left: 14px; z-index: 10;
       font-family: var(--font-ui); font-weight: 500; font-size: 12px;
@@ -155,7 +218,7 @@
       border: 1px solid rgba(255,255,255,0.08);
       padding: 8px 13px; border-radius: 12px;
       backdrop-filter: blur(6px);
-      max-width: 280px;
+      max-width: 325px;
     }
     #hudHelp b { color: var(--cyan); font-weight: 700; }
 
@@ -278,6 +341,120 @@
     .setting-row.gp-pad-focus-row {
       border-color: var(--cyan) !important;
       box-shadow: 0 0 18px rgba(127, 233, 255, 0.35), inset 0 0 0 1px rgba(127, 233, 255, 0.4) !important;
+    }
+
+    /* ---- Phase 2: Interactive Art Gallery Catalog & Lightbox ---- */
+    .panel.gallery-panel {
+      max-width: 820px; width: 92vw; padding: 18px 24px 16px;
+    }
+    .gal-header-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      margin: 6px 0 8px; padding: 8px 14px; border-radius: 11px;
+      background: linear-gradient(90deg, rgba(127,233,255,0.08), rgba(240,196,108,0.13), rgba(127,233,255,0.08));
+      border: 1px solid rgba(240, 196, 108, 0.32);
+      font-family: var(--font-ui); font-size: 12.5px; color: #e6ebff;
+    }
+    .gal-prog-wrap {
+      flex: 1; display: flex; flex-direction: column; gap: 4px; text-align: left;
+    }
+    .gal-prog-track {
+      width: 100%; height: 8px; border-radius: 999px;
+      background: rgba(12, 10, 24, 0.85);
+      box-shadow: inset 0 0 0 1px rgba(240, 196, 108, 0.35);
+      overflow: hidden;
+    }
+    .gal-prog-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #5ce1ff, #f5c24c);
+      box-shadow: 0 0 10px rgba(92, 225, 255, 0.6);
+      transition: width 0.25s ease;
+    }
+    .gal-bounty-badge {
+      font-family: var(--font-display); font-size: 11.5px; font-weight: 700;
+      color: var(--gold); background: rgba(240, 196, 108, 0.12);
+      border: 1px solid rgba(240, 196, 108, 0.38);
+      padding: 5px 11px; border-radius: 8px; white-space: nowrap;
+    }
+    .gal-wings {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin: 4px 0 6px; flex-wrap: wrap;
+    }
+    .gal-wing-tab {
+      background: rgba(18, 15, 34, 0.85);
+      border: 1px solid rgba(197, 155, 255, 0.28);
+      color: rgba(220, 226, 255, 0.78);
+      font-family: var(--font-display); font-weight: 700; font-size: 11px;
+      letter-spacing: 0.8px; padding: 5px 12px; border-radius: 999px;
+      cursor: pointer; transition: all 0.14s ease;
+    }
+    .gal-wing-tab:hover {
+      border-color: var(--cyan); color: #fff;
+    }
+    .gal-wing-tab.active {
+      background: linear-gradient(180deg, rgba(92,225,255,0.24), rgba(32,74,112,0.55));
+      border-color: var(--cyan); color: #fff;
+      box-shadow: 0 0 12px rgba(92, 225, 255, 0.35);
+    }
+    .gal-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      gap: 9px; margin: 10px 0 12px;
+    }
+    .gal-card {
+      position: relative; height: 96px; border-radius: 10px;
+      background: linear-gradient(145deg, rgba(20,17,36,0.92), rgba(10,9,20,0.96));
+      border: 1.5px solid rgba(255,255,255,0.10);
+      overflow: hidden; padding: 0; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+      font-family: var(--font-ui); color: #cfd6f6;
+    }
+    .gal-card.unlocked {
+      border-color: rgba(240, 196, 108, 0.58);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,240,180,0.2);
+    }
+    .gal-card.unlocked:hover {
+      transform: translateY(-2px);
+      border-color: var(--cyan);
+      box-shadow: 0 6px 18px rgba(127,233,255,0.35);
+    }
+    .gal-card.locked {
+      cursor: default; opacity: 0.72;
+      border-color: rgba(185, 140, 255, 0.18);
+    }
+    .gal-card img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .gal-card-num {
+      position: absolute; bottom: 4px; right: 5px;
+      background: rgba(8, 7, 18, 0.86);
+      border: 1px solid rgba(240, 196, 108, 0.45);
+      color: var(--gold); font-size: 10px; font-weight: 800;
+      padding: 1.5px 6px; border-radius: 5px;
+    }
+    .gal-card.locked .gal-card-num {
+      border-color: rgba(185,140,255,0.25); color: rgba(200,190,230,0.55);
+    }
+    .gal-lock-ic {
+      font-size: 18px; color: rgba(185, 140, 255, 0.35); margin-bottom: 2px;
+    }
+    .gal-zoom-box {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      margin: 6px 0 12px;
+    }
+    .gal-zoom-frame {
+      padding: 10px; border-radius: 14px;
+      background: linear-gradient(135deg, #4b3213, #c6963e 48%, #3c260d);
+      box-shadow: 0 10px 34px rgba(0,0,0,0.8), 0 0 26px rgba(240,196,108,0.28), inset 0 0 0 2px #fff1b8;
+      max-width: 92%; max-height: 430px; display: flex; align-items: center; justify-content: center;
+    }
+    .gal-zoom-frame img {
+      max-width: 640px; max-height: 405px; width: auto; height: auto;
+      border-radius: 6px; display: block; background: #fff;
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,0.5);
+    }
+    .gal-zoom-meta {
+      font-family: var(--font-display); font-size: 14px; color: var(--gold);
+      letter-spacing: 0.8px;
     }
 
     /* ---- Haunted Key Art & Ambient Particle Backdrop ---- */
@@ -999,10 +1176,26 @@
       <span class="ammo-val" id="ammo">20</span>
     </div>
   </div>
+  <div id="minimapWrap">
+    <div class="mm-head">
+      <span class="mm-title" id="minimapTitle">Floor I &bull; Blueprint</span>
+      <span class="mm-sub" id="minimapRooms">1/25</span>
+    </div>
+    <div class="mm-frame">
+      <canvas id="minimapCanvas" width="380" height="380"></canvas>
+    </div>
+    <div class="mm-legend">
+      <span class="mm-leg"><span class="mm-dot" style="background:#62f5a8;border-radius:50%"></span>Stairs/Lad</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#44ddff;transform:rotate(45deg)"></span>Fountain</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#ffcf5c;box-shadow:0 0 5px #ff4d7a"></span>Cursed</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#5ce1ff;width:9px;height:4px"></span>Unviewed Art</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#c59bff;border-radius:50%"></span>Wraith</span>
+    </div>
+  </div>
   <div id="hudHelp">
     <b>WASD</b> move &bull; <b>Arrows / Mouse</b> look<br>
     <b>Shift</b> sprint &bull; <b>Space</b> dash &bull; <b>L-click</b> fire / view art<br>
-    <b>R-click</b> cleanse / shop / view &bull; <b>Esc</b> pause
+    <b>R-click</b> cleanse / shop / view &bull; <b>M</b> map &bull; <b>Esc</b> pause
   </div>
   <div id="message"></div>
   <div id="cleanse"><svg class="prompt-svg"><use href="#ico-cursed"/></svg>Right-click to cleanse the cursed painting</div>
@@ -1140,6 +1333,9 @@
     let stairStatueSlots = [], ladderCrownSlots = [];
     let transitionRoomSet = new Set();
     let transitionRoomInfo = new Map();
+    let floorMazes = [];
+    let visitedRooms = new Set();
+    let minimapExpanded = false;
     let stairStepAccum = 0, ladderStepAccum = 0;
     let artPool = [];
     let artMats = [];
@@ -1174,6 +1370,18 @@
     let shotsFired = 0, shotsHit = 0, startTime = 0, savedElapsedMs = 0;
     let deaths = 0, victories = 0;
     let viewedArtIds = new Set();
+    let claimedBounties = new Set();
+    let galleryReturnTo = 'title';
+    let galleryPage = 0;
+    let galleryZoomIdx = null;
+    const GALLERY_PER_PAGE = 20;
+    const CURATOR_MILESTONES = [
+      { count: 10,  coins: 15,  ammo: 0,  hp: 0, title: "Curator's Bounty (10/100): +15 Gold!" },
+      { count: 25,  coins: 25,  ammo: 10, hp: 0, title: "Curator's Bounty (25/100): +25 Gold & +10 Ammo!" },
+      { count: 50,  coins: 40,  ammo: 0,  hp: 1, title: "Master Curator (50/100): +40 Gold & +1 Max Heart!" },
+      { count: 75,  coins: 60,  ammo: 15, hp: 0, title: "Grand Curator (75/100): +60 Gold & +15 Ammo!" },
+      { count: 100, coins: 100, ammo: 0,  hp: 1, title: "Complete Exhibition (100/100): +100 Gold & +1 Max Heart!" }
+    ];
     let dungeonSeed = 0;
     let autoSaveTimer = 0;
     let nearUnviewedArt = null;
@@ -1425,6 +1633,8 @@
           cursedFramed, cursedTotal,
           deaths, victories,
           viewedArtIds: Array.from(viewedArtIds),
+          claimedBounties: Array.from(claimedBounties),
+          visitedRooms: Array.from(visitedRooms),
           shotsFired, shotsHit,
           elapsedMs: Math.round(getTotalElapsedMs()),
           collectedCoins, collectedAmmo, deadGhosts, ghostStates, cleansedCursed, activeHearts,
@@ -3439,15 +3649,34 @@
         document.getElementById('cleanse').style.display = 'none';
         sndFrame();
         // Cleansing a cursed painting also counts it as viewed!
+        let bountyMsg = null;
         if (c.mesh && c.mesh.userData && typeof c.mesh.userData.artIndex === 'number') {
+          const wasNew = !viewedArtIds.has(c.mesh.userData.artIndex);
           viewedArtIds.add(c.mesh.userData.artIndex);
+          if (wasNew) bountyMsg = checkCuratorBounty();
         }
-        showMessage('Painting cleansed! +' + bounty + ' coins');
+        showMessage(bountyMsg ? ('Painting cleansed! +' + bounty + ' coins • ' + bountyMsg) : ('Painting cleansed! +' + bounty + ' coins'));
         updateHUD();
         saveGame();
         return true;
       }
       return false;
+    }
+
+    function checkCuratorBounty() {
+      const total = viewedArtIds.size;
+      let triggeredMsg = null;
+      for (const m of CURATOR_MILESTONES) {
+        if (total >= m.count && !claimedBounties.has(m.count)) {
+          claimedBounties.add(m.count);
+          coinCount += m.coins;
+          if (m.ammo > 0) ammo += m.ammo;
+          if (m.hp > 0) { maxHealth += m.hp; health = Math.min(maxHealth, health + m.hp); }
+          sndBuy();
+          triggeredMsg = m.title;
+        }
+      }
+      return triggeredMsg;
     }
 
     function findAimedPainting(maxDist = 5.2) {
@@ -3471,8 +3700,9 @@
       if (!already) {
         viewedArtIds.add(hit.artIndex);
         spawnBurst(hit.point.x, hit.point.y, hit.point.z, 0x7fe9ff, 14, 0.10);
-        if (settings.sfxVol > 0.01) sfx(740, 0.11, 'sine', 0.09, 180);
-        showMessage('Portrait #' + (hit.artIndex + 1) + ' admired! (' + viewedArtIds.size + ' / ' + WALL_ART_FILES.length + ' viewed)');
+        const bountyMsg = checkCuratorBounty();
+        if (!bountyMsg && settings.sfxVol > 0.01) sfx(740, 0.11, 'sine', 0.09, 180);
+        showMessage(bountyMsg || ('Portrait #' + (hit.artIndex + 1) + ' admired! (' + viewedArtIds.size + ' / ' + WALL_ART_FILES.length + ' viewed)'));
         updateHUD();
         saveGame();
       } else {
@@ -3753,6 +3983,8 @@
       ladderCrownSlots = [];
       transitionRoomSet = new Set();
       transitionRoomInfo = new Map();
+      floorMazes = [];
+      visitedRooms = new Set(savedState && Array.isArray(savedState.visitedRooms) ? savedState.visitedRooms : []);
       worldGroup = new THREE.Group();
       scene.add(worldGroup);
       resetArchBatcher();
@@ -3840,6 +4072,7 @@
 
       for (let floor = 0; floor < FLOORS; floor++) {
         const maze = generateMaze(GRID);
+        floorMazes[floor] = maze;
         buildPosts(floor, wallMat);
 
         for (let i = 0; i < GRID; i++) {
@@ -3943,6 +4176,7 @@
         deaths = savedState.deaths || 0;
         victories = savedState.victories || 0;
         viewedArtIds = new Set(Array.isArray(savedState.viewedArtIds) ? savedState.viewedArtIds : []);
+        claimedBounties = new Set(Array.isArray(savedState.claimedBounties) ? savedState.claimedBounties : []);
         shotsFired = savedState.shotsFired || 0;
         shotsHit = savedState.shotsHit || 0;
         savedElapsedMs = savedState.elapsedMs || 0;
@@ -4016,7 +4250,9 @@
         refreshWeaponViewmodel();
       }
       startTime = performance.now();
+      markPlayerRoomVisited();
       updateHUD();
+      drawMinimap(performance.now());
     }
 
     // ---------- Collision ----------
@@ -4051,9 +4287,51 @@
         // explicit button actions
         if (act === 'settings')     { showSettingsScreen(menuState || 'title'); return; }
         if (act === 'settingsback') { if (settingsReturnTo === 'pause') showPauseScreen(); else showTitleScreen(); return; }
+        if (act === 'gallery')      { showGalleryScreen(menuState || 'title'); return; }
+        if (act === 'galprev')      { galleryPage = (galleryPage + 4) % 5; renderGalleryScreen('[data-act="galprev"]'); return; }
+        if (act === 'galnext')      { galleryPage = (galleryPage + 1) % 5; renderGalleryScreen('[data-act="galnext"]'); return; }
+        if (act === 'galwing') {
+          const wEl = e.target.closest('[data-wing]');
+          const wIdx = wEl ? parseInt(wEl.getAttribute('data-wing'), 10) : 0;
+          if (!isNaN(wIdx) && wIdx >= 0 && wIdx < 5) {
+            galleryPage = wIdx;
+            renderGalleryScreen(`[data-wing="${wIdx}"]`);
+          }
+          return;
+        }
+        if (act === 'galback')      { if (galleryReturnTo === 'pause') showPauseScreen(); else showTitleScreen(); return; }
+        if (act === 'galzoom') {
+          const btnEl = e.target.closest('[data-art-idx]');
+          const idx = btnEl ? parseInt(btnEl.getAttribute('data-art-idx'), 10) : -1;
+          if (idx >= 0 && viewedArtIds.has(idx)) {
+            galleryZoomIdx = idx;
+            renderGalleryScreen('[data-act="galzoomnext"]');
+          } else {
+            sndDeny();
+          }
+          return;
+        }
+        if (act === 'galzoomclose') {
+          const prevIdx = galleryZoomIdx;
+          galleryZoomIdx = null;
+          if (typeof prevIdx === 'number') galleryPage = Math.floor(prevIdx / GALLERY_PER_PAGE);
+          renderGalleryScreen(typeof prevIdx === 'number' ? `[data-art-idx="${prevIdx}"]` : null);
+          return;
+        }
+        if (act === 'galzoomprev' || act === 'galzoomnext') {
+          const unlocked = Array.from(viewedArtIds).sort((a, b) => a - b);
+          if (unlocked.length) {
+            const curPos = unlocked.indexOf(galleryZoomIdx);
+            const step = act === 'galzoomnext' ? 1 : -1;
+            const nextPos = ((curPos >= 0 ? curPos : 0) + step + unlocked.length) % unlocked.length;
+            galleryZoomIdx = unlocked[nextPos];
+            renderGalleryScreen(`[data-act="${act}"]`);
+          }
+          return;
+        }
         if (act === 'help')         { showHelpScreen(); return; }
-        if (act === 'helpnext')     { helpPage = Math.min(helpPage + 1, HELP_PAGES - 1); renderHelp(); return; }
-        if (act === 'helpprev')     { helpPage = Math.max(helpPage - 1, 0); renderHelp(); return; }
+        if (act === 'helpnext')     { helpPage = Math.min(helpPage + 1, HELP_PAGES - 1); renderHelp(helpPage < HELP_PAGES - 1 ? '[data-act="helpnext"]' : '[data-act="tomenu"]'); return; }
+        if (act === 'helpprev')     { helpPage = Math.max(helpPage - 1, 0); renderHelp(helpPage > 0 ? '[data-act="helpprev"]' : '[data-act="helpnext"]'); return; }
         if (act === 'tomenu')       { showTitleScreen(); return; }
         if (act === 'continue') {
           const saved = readSavedGame();
@@ -4090,6 +4368,7 @@
 
         // background clicks depend on which screen we're on
         if (menuState === 'settings') return;      // settings modal: interactive controls only
+        if (menuState === 'gallery') return;       // gallery catalog modal: buttons only
         if (menuState === 'confirm') return;       // confirm dialog: buttons only
         if (menuState === 'pause') return;         // pause menu: buttons only
         if (menuState === 'help') return;          // only buttons act on help
@@ -4165,8 +4444,25 @@
           if (!isNaN(n) && n >= 1) buyItem(n - 1);
           return;
         }
+        // Art Catalog keyboard shortcuts (Left/Right arrows, A/D, PageUp/PageDown, Esc/Backspace)
+        if (!active && menuState === 'gallery') {
+          const ov = document.getElementById('overlay');
+          if (galleryZoomIdx !== null) {
+            if (k === 'arrowleft' || k === 'a' || k === 'pageup') { ov?.querySelector('[data-act="galzoomprev"]')?.click(); e.preventDefault(); return; }
+            if (k === 'arrowright' || k === 'd' || k === 'pagedown') { ov?.querySelector('[data-act="galzoomnext"]')?.click(); e.preventDefault(); return; }
+            if (k === 'escape' || k === 'backspace') { ov?.querySelector('[data-act="galzoomclose"]')?.click(); e.preventDefault(); return; }
+          } else {
+            if (k === 'arrowleft' || k === 'a' || k === 'pageup' || k === '[') { ov?.querySelector('[data-act="galprev"]')?.click(); e.preventDefault(); return; }
+            if (k === 'arrowright' || k === 'd' || k === 'pagedown' || k === ']') { ov?.querySelector('[data-act="galnext"]')?.click(); e.preventDefault(); return; }
+            if (k === 'escape' || k === 'backspace') { ov?.querySelector('[data-act="galback"]')?.click(); e.preventDefault(); return; }
+          }
+        }
         keys[shadow[k] || k] = true;
         if (k === ' ' || k.startsWith('arrow')) e.preventDefault();   // dash & camera look keys shouldn't scroll the page
+        if (k === 'm' && active && !gameOver) {
+          toggleMinimapExpand();
+          return;
+        }
         if (k === 'r' && active && !gameOver) {
           buildDungeon();
           saveGame();
@@ -4233,7 +4529,7 @@
       // restore full health, and preserve deaths, upgrades, coins, ghosts killed, paintings viewed & cleansed
       const spawn = roomCenter(0, 0);
       player.x = spawn.x; player.y = 0; player.z = spawn.z;
-      yaw = 0; pitch = 0; lastFloorIdx = 0;
+      yaw = -2.356; pitch = 0; lastFloorIdx = 0;
       health = maxHealth;
       if (ammo < 8) ammo = 8;
       for (const g of ghosts) {
@@ -4411,9 +4707,16 @@
       return target;
     }
 
-    function syncUiFocus(resetIndex = true) {
+    function syncUiFocus(resetIndex = true, preferSelector = null) {
       const items = getUiSelectables();
       if (!items.length) return null;
+      if (preferSelector) {
+        const prefIdx = items.findIndex(el => el.matches(preferSelector));
+        if (prefIdx >= 0) {
+          uiFocusIndex = prefIdx;
+          return applyUiFocusEl(items, uiFocusIndex);
+        }
+      }
       if (resetIndex) uiFocusIndex = 0;
       else if (uiFocusIndex >= items.length) uiFocusIndex = items.length - 1;
       return applyUiFocusEl(items, uiFocusIndex);
@@ -4505,6 +4808,14 @@
         const backBtn = ov.querySelector('[data-act="settingsback"]');
         if (backBtn) { backBtn.click(); return true; }
       }
+      if (menuState === 'gallery') {
+        if (galleryZoomIdx !== null) {
+          const closeBtn = ov.querySelector('[data-act="galzoomclose"]');
+          if (closeBtn) { closeBtn.click(); return true; }
+        }
+        const backBtn = ov.querySelector('[data-act="galback"]');
+        if (backBtn) { backBtn.click(); return true; }
+      }
       if (menuState === 'help') {
         showTitleScreen();
         return true;
@@ -4576,13 +4887,31 @@
           return;
         }
 
-        // ----- UI / Menu / Shop mode: D-pad navigates, A (0) selects, B (1) goes back -----
+        // ----- UI / Menu / Shop mode: D-pad navigates, A (0) selects, B (1) goes back, LB/RB (4/5) flip pages -----
         if (isUiOpen()) {
           if (!document.querySelector('.gp-pad-focus')) syncUiFocus(false);
           if (btn(12) && !prevPadButtons[12]) moveUiFocus('up');
           if (btn(13) && !prevPadButtons[13]) moveUiFocus('down');
           if (btn(14) && !prevPadButtons[14]) moveUiFocus('left');
           if (btn(15) && !prevPadButtons[15]) moveUiFocus('right');
+          if (btn(4)  && !prevPadButtons[4]) {
+            const ov = document.getElementById('overlay');
+            if (menuState === 'gallery') {
+              const b = ov?.querySelector(galleryZoomIdx !== null ? '[data-act="galzoomprev"]' : '[data-act="galprev"]');
+              if (b) b.click();
+            } else if (menuState === 'help') {
+              ov?.querySelector('[data-act="helpprev"]')?.click();
+            }
+          }
+          if (btn(5)  && !prevPadButtons[5]) {
+            const ov = document.getElementById('overlay');
+            if (menuState === 'gallery') {
+              const b = ov?.querySelector(galleryZoomIdx !== null ? '[data-act="galzoomnext"]' : '[data-act="galnext"]');
+              if (b) b.click();
+            } else if (menuState === 'help') {
+              ov?.querySelector('[data-act="helpnext"]')?.click();
+            }
+          }
           if (btn(0)  && !prevPadButtons[0])  triggerUiSelect();
           if (btn(1)  && !prevPadButtons[1])  triggerUiBack();
           if (btn(9)  && !prevPadButtons[9]) {
@@ -4594,6 +4923,11 @@
           padShootHeld = false; padDash = false;
           keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
           return;
+        }
+
+        // View / Select (button 8) during gameplay -> toggle expanded blueprint minimap
+        if (btn(8) && !prevPadButtons[8] && active && !gameOver) {
+          toggleMinimapExpand();
         }
 
         // Start / Options (button 9) during gameplay -> open Pause Screen
@@ -4781,6 +5115,9 @@
         }
 
         const fi = floorIndexOf(player.y);
+        if (markPlayerRoomVisited()) {
+          saveGame();
+        }
         if (fi !== lastFloorIdx) {
           lastFloorIdx = fi;
           showMessage('Floor ' + (fi + 1));
@@ -4964,7 +5301,364 @@
         updateParticles(dt);
       }
       renderer.render(scene, camera);
+      drawMinimap(now);
       updateUiFxCanvas(dt);
+    }
+
+    // ---------- Phase 1: Gothic Minimap ("Curator's Blueprint") with Fog-of-War & Icons ----------
+    const ROMAN_FLOORS = ['I', 'II', 'III'];
+    function roomCoordsOf(x, z) {
+      const gx = Math.max(0, Math.min(GRID - 1, Math.floor((x + HALF) / ROOM)));
+      const gy = Math.max(0, Math.min(GRID - 1, Math.floor((z + HALF) / ROOM)));
+      return { gx, gy };
+    }
+
+    function markPlayerRoomVisited() {
+      if (!player) return false;
+      const pf = floorIndexOf(player.y);
+      const { gx, gy } = roomCoordsOf(player.x, player.z);
+      const key = `${pf},${gx},${gy}`;
+      if (!visitedRooms.has(key)) {
+        visitedRooms.add(key);
+        return true;
+      }
+      return false;
+    }
+
+    function toggleMinimapExpand() {
+      minimapExpanded = !minimapExpanded;
+      const wrap = document.getElementById('minimapWrap');
+      if (wrap) wrap.classList.toggle('expanded', minimapExpanded);
+      if (settings.sfxVol > 0.01) sfx(minimapExpanded ? 640 : 480, 0.04, 'sine', 0.06, 40);
+    }
+
+    function isRoomGlimpsed(floor, gx, gy) {
+      const maze = floorMazes[floor];
+      if (!maze) return false;
+      if (gx > 0 && visitedRooms.has(`${floor},${gx - 1},${gy}`) && maze[gx - 1][gy].E) return true;
+      if (gx < GRID - 1 && visitedRooms.has(`${floor},${gx + 1},${gy}`) && maze[gx][gy].E) return true;
+      if (gy > 0 && visitedRooms.has(`${floor},${gx},${gy - 1}`) && maze[gx][gy - 1].S) return true;
+      if (gy < GRID - 1 && visitedRooms.has(`${floor},${gx},${gy + 1}`) && maze[gx][gy].S) return true;
+      return false;
+    }
+
+    function drawMinimap(now = 0) {
+      const canvas = document.getElementById('minimapCanvas');
+      if (!canvas || !floorMazes.length) return;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      const pad = 18;
+      const mapSize = W - pad * 2;
+      const cell = mapSize / GRID;
+      const pf = floorIndexOf(player.y);
+      const maze = floorMazes[pf];
+      if (!maze) return;
+
+      const worldToMapX = (wx) => pad + ((wx + HALF) / (GRID * ROOM)) * mapSize;
+      const worldToMapY = (wz) => pad + ((wz + HALF) / (GRID * ROOM)) * mapSize;
+
+      // Update header text
+      let floorVisitedCount = 0;
+      for (let gx = 0; gx < GRID; gx++) {
+        for (let gy = 0; gy < GRID; gy++) {
+          if (visitedRooms.has(`${pf},${gx},${gy}`)) floorVisitedCount++;
+        }
+      }
+      const titleEl = document.getElementById('minimapTitle');
+      const roomsEl = document.getElementById('minimapRooms');
+      if (titleEl) titleEl.innerHTML = `Floor ${ROMAN_FLOORS[pf] || (pf + 1)} &bull; Blueprint`;
+      if (roomsEl) roomsEl.textContent = `${floorVisitedCount}/${GRID * GRID} Rooms`;
+
+      // 1. Dark Obsidian Blueprint Background
+      ctx.clearRect(0, 0, W, H);
+      const bgGrad = ctx.createRadialGradient(W / 2, H / 2, 20, W / 2, H / 2, W * 0.72);
+      bgGrad.addColorStop(0, '#120f24');
+      bgGrad.addColorStop(1, '#070610');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Faint arcane blueprint grid lines across fog
+      ctx.strokeStyle = 'rgba(127, 233, 255, 0.04)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= GRID * 2; i++) {
+        const p = pad + (i / (GRID * 2)) * mapSize;
+        ctx.beginPath(); ctx.moveTo(p, pad); ctx.lineTo(p, pad + mapSize); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pad, p); ctx.lineTo(pad + mapSize, p); ctx.stroke();
+      }
+
+      const pRoom = roomCoordsOf(player.x, player.z);
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.006);
+
+      // 2. Render Rooms (Visited vs Glimpsed vs Fog-of-War)
+      for (let gx = 0; gx < GRID; gx++) {
+        for (let gy = 0; gy < GRID; gy++) {
+          const rx = pad + gx * cell;
+          const ry = pad + gy * cell;
+          const key = `${pf},${gx},${gy}`;
+          const visited = visitedRooms.has(key);
+          const glimpsed = !visited && isRoomGlimpsed(pf, gx, gy);
+
+          if (visited) {
+            const isCurrent = (gx === pRoom.gx && gy === pRoom.gy);
+            ctx.fillStyle = isCurrent ? 'rgba(34, 48, 82, 0.92)' : 'rgba(22, 19, 42, 0.92)';
+            ctx.fillRect(rx + 1, ry + 1, cell - 2, cell - 2);
+
+            // Subtle inner marble floor border
+            ctx.strokeStyle = isCurrent ? 'rgba(127, 233, 255, 0.28)' : 'rgba(240, 196, 108, 0.09)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(rx + 4, ry + 4, cell - 8, cell - 8);
+          } else if (glimpsed) {
+            ctx.fillStyle = 'rgba(20, 17, 36, 0.48)';
+            ctx.fillRect(rx + 2, ry + 2, cell - 4, cell - 4);
+            ctx.strokeStyle = 'rgba(197, 155, 255, 0.16)';
+            ctx.setLineDash([3, 3]);
+            ctx.strokeRect(rx + 3, ry + 3, cell - 6, cell - 6);
+            ctx.setLineDash([]);
+            // Question mark glyph in glimpsed room
+            ctx.fillStyle = 'rgba(197, 155, 255, 0.38)';
+            ctx.font = '700 15px Cinzel, serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('?', rx + cell / 2, ry + cell / 2);
+          }
+        }
+      }
+
+      // 3. Render Walls & Open Doorways for Visited Rooms
+      const doorRatio = 0.36;
+      const segRatio = (1 - doorRatio) / 2;
+
+      function drawWallSeg(x1, y1, x2, y2, hasDoor) {
+        ctx.beginPath();
+        if (!hasDoor) {
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+        } else {
+          const dx = x2 - x1, dy = y2 - y1;
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x1 + dx * segRatio, y1 + dy * segRatio);
+          ctx.moveTo(x2 - dx * segRatio, y2 - dy * segRatio);
+          ctx.lineTo(x2, y2);
+        }
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = '#d6b265';
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = 'square';
+
+      for (let gx = 0; gx < GRID; gx++) {
+        for (let gy = 0; gy < GRID; gy++) {
+          if (!visitedRooms.has(`${pf},${gx},${gy}`)) continue;
+          const rx = pad + gx * cell;
+          const ry = pad + gy * cell;
+          const openN = gy > 0 && maze[gx][gy - 1].S;
+          const openS = gy < GRID - 1 && maze[gx][gy].S;
+          const openW = gx > 0 && maze[gx - 1][gy].E;
+          const openE = gx < GRID - 1 && maze[gx][gy].E;
+
+          drawWallSeg(rx, ry, rx + cell, ry, openN);
+          drawWallSeg(rx, ry + cell, rx + cell, ry + cell, openS);
+          drawWallSeg(rx, ry, rx, ry + cell, openW);
+          drawWallSeg(rx + cell, ry, rx + cell, ry + cell, openE);
+        }
+      }
+
+      // 4. Wall Portraits (Unviewed vs Viewed) in Visited Rooms
+      for (const m of artDecals) {
+        if (!m.visible || m.userData.floor !== pf || m.userData.artIndex === undefined) continue;
+        const rc = roomCoordsOf(m.position.x, m.position.z);
+        if (!visitedRooms.has(`${pf},${rc.gx},${rc.gy}`)) continue;
+        const mx = worldToMapX(m.position.x);
+        const my = worldToMapY(m.position.z);
+        const isViewed = viewedArtIds.has(m.userData.artIndex);
+        const horiz = Math.abs(Math.cos(m.rotation.y)) > 0.5;
+        const wLen = isViewed ? 7 : 9;
+        const wThk = isViewed ? 2.2 : 3.2;
+        ctx.fillStyle = isViewed ? 'rgba(92, 225, 255, 0.26)' : '#5ce1ff';
+        if (horiz) ctx.fillRect(mx - wLen / 2, my - wThk / 2, wLen, wThk);
+        else ctx.fillRect(mx - wThk / 2, my - wLen / 2, wThk, wLen);
+      }
+
+      // 5. Staircases & Ladders (Transition Atriums)
+      for (let gx = 0; gx < GRID; gx++) {
+        for (let gy = 0; gy < GRID; gy++) {
+          const key = `${pf},${gx},${gy}`;
+          const info = transitionRoomInfo.get(key);
+          if (!info) continue;
+          const vis = visitedRooms.has(key);
+          const glimp = !vis && isRoomGlimpsed(pf, gx, gy);
+          if (!vis && !glimp) continue;
+
+          const cx = pad + (gx + 0.5) * cell;
+          const cy = pad + (gy + 0.5) * cell;
+          const isUp = info.endsWith('-up');
+          const isStairs = info.startsWith('stairs');
+          const col = isUp ? '#62f5a8' : '#ffae44';
+
+          ctx.save();
+          ctx.globalAlpha = vis ? 1 : 0.55;
+          // Badge circle
+          ctx.fillStyle = 'rgba(10, 12, 24, 0.9)';
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.strokeStyle = col;
+          ctx.fillStyle = col;
+          ctx.lineWidth = 2;
+          if (isStairs) {
+            // Step icon
+            ctx.beginPath();
+            ctx.moveTo(cx - 7, cy + 5);
+            ctx.lineTo(cx - 2, cy + 5);
+            ctx.lineTo(cx - 2, cy + 1);
+            ctx.lineTo(cx + 3, cy + 1);
+            ctx.lineTo(cx + 3, cy - 3);
+            ctx.lineTo(cx + 7, cy - 3);
+            ctx.stroke();
+          } else {
+            // Ladder rails & rungs
+            ctx.beginPath();
+            ctx.moveTo(cx - 4.5, cy - 6); ctx.lineTo(cx - 4.5, cy + 6);
+            ctx.moveTo(cx + 4.5, cy - 6); ctx.lineTo(cx + 4.5, cy + 6);
+            ctx.moveTo(cx - 4.5, cy - 2.5); ctx.lineTo(cx + 4.5, cy - 2.5);
+            ctx.moveTo(cx - 4.5, cy + 2.5); ctx.lineTo(cx + 4.5, cy + 2.5);
+            ctx.stroke();
+          }
+          // Up/Down triangle arrow at top/bottom of emblem
+          ctx.font = '800 9px Plus Jakarta Sans, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(isUp ? '▲' : '▼', cx, cy - 9.5);
+          ctx.restore();
+        }
+      }
+
+      // 6. Mystic Fountain Shop Icon
+      for (const f of fountains) {
+        if (f.floor !== pf) continue;
+        const rc = roomCoordsOf(f.x, f.z);
+        const key = `${pf},${rc.gx},${rc.gy}`;
+        if (!visitedRooms.has(key) && !isRoomGlimpsed(pf, rc.gx, rc.gy)) continue;
+        const fx = worldToMapX(f.x);
+        const fy = worldToMapY(f.z);
+        ctx.save();
+        ctx.translate(fx, fy);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = '#44ddff';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6;
+        ctx.fillRect(-7.5, -7.5, 15, 15);
+        ctx.strokeRect(-7.5, -7.5, 15, 15);
+        ctx.fillStyle = '#092434';
+        ctx.fillRect(-3, -3, 6, 6);
+        ctx.restore();
+      }
+
+      // 7. Cursed Painting Icon
+      for (const c of cursedPaintings) {
+        if (c.floor !== pf) continue;
+        const rc = roomCoordsOf(c.x, c.z);
+        if (!visitedRooms.has(`${pf},${rc.gx},${rc.gy}`)) continue;
+        const cx = worldToMapX(c.x);
+        const cy = worldToMapY(c.z);
+        ctx.save();
+        if (!c.framed) {
+          const r = 6.5 + pulse * 2.5;
+          ctx.fillStyle = 'rgba(255, 77, 122, 0.35)';
+          ctx.beginPath(); ctx.arc(cx, cy, r + 3, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffcf5c';
+          ctx.strokeStyle = '#ff4d7a';
+          ctx.lineWidth = 2;
+          ctx.fillRect(cx - 5.5, cy - 5.5, 11, 11);
+          ctx.strokeRect(cx - 5.5, cy - 5.5, 11, 11);
+        } else {
+          ctx.fillStyle = '#62f5a8';
+          ctx.strokeStyle = '#123824';
+          ctx.lineWidth = 1.5;
+          ctx.fillRect(cx - 4.5, cy - 4.5, 9, 9);
+          ctx.strokeRect(cx - 4.5, cy - 4.5, 9, 9);
+        }
+        ctx.restore();
+      }
+
+      // 8. Live Wraith Blips (shown in visited rooms or within GHOST_AWARE motion radar)
+      for (const g of ghosts) {
+        if (g.dead || g.floor !== pf) continue;
+        const rc = roomCoordsOf(g.x, g.z);
+        const dist = Math.hypot(g.x - player.x, g.z - player.z);
+        if (!visitedRooms.has(`${pf},${rc.gx},${rc.gy}`) && dist > GHOST_AWARE) continue;
+        const gx = worldToMapX(g.x);
+        const gy = worldToMapY(g.z);
+        ctx.save();
+        ctx.fillStyle = 'rgba(197, 155, 255, 0.28)';
+        ctx.beginPath(); ctx.arc(gx, gy, 7.5 + pulse * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#c59bff';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(gx, gy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+
+      // 9. Ghost King Boss Beacon
+      if (boss && !boss.dead) {
+        const bx = worldToMapX(boss.x);
+        const by = worldToMapY(boss.z);
+        const sameFloor = boss.floor === pf;
+        ctx.save();
+        ctx.globalAlpha = sameFloor ? 1 : 0.65;
+        ctx.fillStyle = 'rgba(255, 77, 122, 0.35)';
+        ctx.beginPath(); ctx.arc(bx, by, 11 + pulse * 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff4d7a';
+        ctx.strokeStyle = '#ffd86b';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(bx, by, 7.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.font = '800 9px Plus Jakarta Sans, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(sameFloor ? '♛' : (boss.floor > pf ? '▲' : '▼'), bx, by + 0.5);
+        ctx.restore();
+      }
+
+      // 10. Player Position & Directional Vision Cone
+      const px = worldToMapX(player.x);
+      const py = worldToMapY(player.z);
+      // Forward vector in world (X, Z) is (-sin(yaw), -cos(yaw))
+      const mapAngle = Math.atan2(-Math.cos(yaw), -Math.sin(yaw));
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(mapAngle);
+
+      // Spectral cyan vision cone
+      const coneGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 38);
+      coneGrad.addColorStop(0, 'rgba(127, 233, 255, 0.42)');
+      coneGrad.addColorStop(1, 'rgba(127, 233, 255, 0.0)');
+      ctx.fillStyle = coneGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 38, -0.45, 0.45);
+      ctx.closePath();
+      ctx.fill();
+
+      // Crisp directional arrowhead chevron
+      ctx.fillStyle = '#7fe9ff';
+      ctx.strokeStyle = '#091326';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(8.5, 0);
+      ctx.lineTo(-6, -5.5);
+      ctx.lineTo(-3.2, 0);
+      ctx.lineTo(-6, 5.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
     }
 
     // ---------- Haunted 2D Spectral Mist & Soul-Ember UI Particle System ----------
@@ -5154,11 +5848,107 @@
             '</div>';
         })() +
         '<div class="menu-row">' +
+        `<button class="minipill" data-act="gallery"><svg style="width:15px;height:15px;vertical-align:-3px;margin-right:5px"><use href="#ico-art"/></svg>Art Catalog (${viewedArtIds.size}/${WALL_ART_FILES.length})</button>` +
         '<button class="minipill" data-act="settings">&#9881; Settings</button>' +
         '<button class="minipill" data-act="help">&#128220; Field Guide</button>' +
         '</div>' +
         '</div>';
       syncUiFocus(true);
+    }
+
+    function showGalleryScreen(returnTo) {
+      galleryReturnTo = returnTo === 'pause' ? 'pause' : 'title';
+      menuState = 'gallery';
+      galleryZoomIdx = null;
+      const overlay = document.getElementById('overlay');
+      if (galleryReturnTo === 'pause') overlay.classList.add('in-pause');
+      else overlay.classList.remove('in-pause');
+      overlay.style.display = 'flex';
+      renderGalleryScreen();
+    }
+
+    function renderGalleryScreen(preferSelector = null) {
+      const overlay = document.getElementById('overlay');
+      const total = WALL_ART_FILES.length;
+      const unlockedCount = viewedArtIds.size;
+      const pct = Math.round((unlockedCount / total) * 100);
+      const nextMilestone = CURATOR_MILESTONES.find(m => unlockedCount < m.count);
+      const bountyText = nextMilestone
+        ? `Next Bounty at ${nextMilestone.count}/100: +${nextMilestone.coins} Gold${nextMilestone.ammo ? ' +' + nextMilestone.ammo + ' Ammo' : ''}${nextMilestone.hp ? ' +1 Max Heart' : ''}`
+        : 'All Curator Bounties Claimed! (100/100)';
+
+      if (galleryZoomIdx !== null) {
+        const numStr = String(galleryZoomIdx + 1).padStart(2, '0');
+        const imgUrl = WALL_ART_FILES[galleryZoomIdx];
+        overlay.innerHTML =
+          '<div class="panel gallery-panel">' +
+          gothicCornersHTML() +
+          '<div class="gp-eyebrow">&#10022; D. Butler Original Artwork Inspection &#10022;</div>' +
+          `<div class="gp-big" style="color:var(--gold);font-size:26px;margin-bottom:4px">Portrait #${numStr}</div>` +
+          '<div class="gal-zoom-box">' +
+            `<div class="gal-zoom-frame"><img src="${imgUrl}" alt="Portrait #${numStr} by D. Butler"></div>` +
+            `<div class="gal-zoom-meta">Hand-Drawn Original #${numStr} of ${total} &bull; Artist: D. Butler</div>` +
+          '</div>' +
+          '<div class="menu-row">' +
+            '<button class="minipill" data-act="galzoomprev">&#8592; Prev Unlocked (LB / &larr;)</button>' +
+            '<button class="gp-cta" style="margin-top:0;padding:9px 26px;font-size:14px" data-act="galzoomclose">&#10005; Back to Catalog (B)</button>' +
+            '<button class="minipill" data-act="galzoomnext">Next Unlocked (RB / &rarr;) &#8594;</button>' +
+          '</div>' +
+          '</div>';
+        syncUiFocus(true, preferSelector || '[data-act="galzoomnext"]');
+        return;
+      }
+
+      const startIdx = galleryPage * GALLERY_PER_PAGE;
+      const endIdx = Math.min(total, startIdx + GALLERY_PER_PAGE);
+      let wingTabsHTML = '';
+      for (let w = 0; w < 5; w++) {
+        const wStart = w * GALLERY_PER_PAGE + 1;
+        const wEnd = Math.min(total, (w + 1) * GALLERY_PER_PAGE);
+        wingTabsHTML += `<button type="button" class="gal-wing-tab${w === galleryPage ? ' active' : ''}" data-act="galwing" data-wing="${w}">Wing ${w + 1} (${wStart}&ndash;${wEnd})</button>`;
+      }
+
+      let cardsHTML = '';
+      for (let i = startIdx; i < endIdx; i++) {
+        const numStr = String(i + 1).padStart(2, '0');
+        const isUnlocked = viewedArtIds.has(i);
+        if (isUnlocked) {
+          cardsHTML +=
+            `<button type="button" class="gal-card unlocked" data-act="galzoom" data-art-idx="${i}" title="Inspect Portrait #${numStr} by D. Butler">` +
+            `<img src="${WALL_ART_FILES[i]}" alt="Portrait #${numStr}" loading="lazy">` +
+            `<span class="gal-card-num">#${numStr}</span>` +
+            '</button>';
+        } else {
+          cardsHTML +=
+            `<button type="button" class="gal-card locked" data-act="galzoom" data-art-idx="${i}" title="Unviewed — Admire in the Gallery to Unlock">` +
+            '<div class="gal-lock-ic">&#128274;</div>' +
+            '<div style="font-size:10px;opacity:0.55">Unviewed</div>' +
+            `<span class="gal-card-num">#${numStr}</span>` +
+            '</button>';
+        }
+      }
+
+      overlay.innerHTML =
+        '<div class="panel gallery-panel">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow">&#10022; Curator&rsquo;s Archive &bull; Original Works by D. Butler &#10022;</div>' +
+        '<div class="gp-big" style="color:var(--cyan);font-size:28px;margin-bottom:4px">Haunted Art Catalog</div>' +
+        '<div class="gal-header-bar">' +
+          '<div class="gal-prog-wrap">' +
+            `<div style="display:flex;justify-content:space-between;gap:10px;font-weight:700;white-space:nowrap"><span>Portraits Admired: <b style="color:var(--cyan)">${unlockedCount}/${total}</b> (${pct}%)</span><span style="color:rgba(215,222,250,0.68)">Wing ${galleryPage + 1}/5 (#${startIdx + 1}&ndash;#${endIdx})</span></div>` +
+            `<div class="gal-prog-track"><div class="gal-prog-fill" style="width:${pct}%"></div></div>` +
+          '</div>' +
+          `<div class="gal-bounty-badge">&#9733; ${bountyText}</div>` +
+        '</div>' +
+        `<div class="gal-wings">${wingTabsHTML}</div>` +
+        `<div class="gal-grid">${cardsHTML}</div>` +
+        '<div class="menu-row">' +
+          '<button class="minipill" data-act="galprev">&#8592; Prev Wing (LB / &larr;)</button>' +
+          '<button class="gp-cta" style="margin-top:0;padding:9px 26px;font-size:14px" data-act="galback">&#10003; Back (B)</button>' +
+          '<button class="minipill" data-act="galnext">Next Wing (RB / &rarr;) &#8594;</button>' +
+        '</div>' +
+        '</div>';
+      syncUiFocus(true, preferSelector || '[data-act="galnext"]');
     }
 
     function showSettingsScreen(returnTo) {
@@ -5275,7 +6065,8 @@
         '<div class="menu-row" style="margin-top:20px;flex-wrap:wrap">' +
         '<button class="gp-cta" style="margin-top:0;padding:10px 28px;font-size:15px" data-act="resume">&#9654; Resume Patrol</button>' +
         '</div>' +
-        '<div class="menu-row" style="margin-top:12px">' +
+        '<div class="menu-row" style="margin-top:12px;flex-wrap:wrap">' +
+        `<button class="minipill" data-act="gallery"><svg style="width:15px;height:15px;vertical-align:-3px;margin-right:5px"><use href="#ico-art"/></svg>Art Catalog (${viewedArtIds.size}/${WALL_ART_FILES.length})</button>` +
         '<button class="minipill" data-act="settings">&#9881; Settings</button>' +
         '<button class="minipill danger" data-act="quitrun">&#9832; Main Menu</button>' +
         '</div>' +
@@ -5289,7 +6080,7 @@
       renderHelp();
     }
 
-    function renderHelp() {
+    function renderHelp(preferSelector = null) {
       const overlay = document.getElementById('overlay');
       overlay.style.display = 'flex';
       let body;
@@ -5359,7 +6150,7 @@
         (helpPage < HELP_PAGES - 1 ? '<button class="minipill" data-act="helpnext">Next &#8594;</button>' : '<button class="minipill" data-act="tomenu">Main Menu</button>') +
         '</div>' +
         '</div>';
-      syncUiFocus(true);
+      syncUiFocus(true, preferSelector || (helpPage < HELP_PAGES - 1 ? '[data-act="helpnext"]' : '[data-act="tomenu"]'));
     }
 
     // ---------- Confirm dialog ----------
@@ -5401,6 +6192,8 @@
       deaths = 0;
       victories = 0;
       viewedArtIds = new Set();
+      claimedBounties = new Set();
+      visitedRooms = new Set();
       savedElapsedMs = 0;
       ensureAudio();
       buildDungeon();
