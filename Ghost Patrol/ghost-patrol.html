@@ -267,6 +267,18 @@
       opacity: 0.38; cursor: not-allowed; filter: grayscale(0.6); transform: none !important;
       box-shadow: none !important;
     }
+    /* ---- Controller UI D-Pad Focus Ring ---- */
+    .gp-pad-focus {
+      outline: 2.5px solid var(--cyan) !important;
+      outline-offset: 2px !important;
+      box-shadow: 0 0 20px rgba(127, 233, 255, 0.78), 0 0 0 4px rgba(127, 233, 255, 0.20) !important;
+      transform: translateY(-1px) scale(1.02);
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .setting-row.gp-pad-focus-row {
+      border-color: var(--cyan) !important;
+      box-shadow: 0 0 18px rgba(127, 233, 255, 0.35), inset 0 0 0 1px rgba(127, 233, 255, 0.4) !important;
+    }
 
     /* ---- Haunted Key Art & Ambient Particle Backdrop ---- */
     #uiFxCanvas {
@@ -3361,7 +3373,7 @@
       const f = shopFountain;
       const price = FLOOR_PRICE[f.floor];
       let html = `<h2>&#9880; Fountain &mdash; Floor ${f.floor + 1}</h2>`;
-      html += `<div class="sub">Click an item or tap its number &bull; ESC to leave</div>`;
+      html += `<div class="sub">D-Pad + A or Click to buy &bull; B / ESC to leave</div>`;
       html += `<div class="wallet"><span class="coinic">&#9679;</span> ${coinCount}</div>`;
       shopItems.forEach((item, i) => {
         const owned = isOwned(item.id);
@@ -3370,13 +3382,14 @@
         const right = owned ? '<span class="cost">OWNED</span>' : `<span class="cost">&#9679; ${price}</span>`;
         html += `<div class="${cls}" data-slot="${i}"><span><span class="key">${i + 1}</span>${item.name}</span>${right}</div>`;
       });
-      html += `<button class="leave" data-leave="1">Leave (ESC)</button>`;
+      html += `<button class="leave" data-leave="1">Leave (B / ESC)</button>`;
       const inner = document.getElementById('shopInner');
       inner.innerHTML = html;
       inner.querySelectorAll('.item').forEach(el => {
         el.addEventListener('click', () => buyItem(parseInt(el.getAttribute('data-slot'), 10)));
       });
       inner.querySelector('.leave').addEventListener('click', () => closeShop());
+      syncUiFocus(false);
     }
 
     function buyItem(slot) {
@@ -4270,6 +4283,7 @@
           '<button class="minipill" data-act="menu">&#9832; Main Menu</button>' +
           '</div>' +
           '</div>';
+        syncUiFocus(true);
       }, 2600);
     }
 
@@ -4360,6 +4374,154 @@
       const overlay = document.getElementById('overlay');
       overlay.innerHTML = victoryHTML;
       pendingRun = null;
+      syncUiFocus(true);
+    }
+
+    // ---------- Controller UI Focus & D-Pad Navigation ----------
+    let uiFocusIndex = 0;
+    let prevRTButton = false;
+
+    function isUiOpen() {
+      if (shopOpen) return true;
+      const ov = document.getElementById('overlay');
+      return !!(ov && ov.style.display !== 'none' && !active && !outro && !enteringInitials && menuState !== null);
+    }
+
+    function getUiSelectables() {
+      if (shopOpen) {
+        const inner = document.getElementById('shopInner');
+        if (!inner) return [];
+        return Array.from(inner.querySelectorAll('.item[data-slot], .leave[data-leave]'));
+      }
+      const ov = document.getElementById('overlay');
+      if (!ov || ov.style.display === 'none') return [];
+      return Array.from(ov.querySelectorAll('button:not([disabled]), input[type="range"]:not([disabled]), [data-act]:not([disabled])'))
+        .filter(el => el.offsetParent !== null || el.getBoundingClientRect().width > 0);
+    }
+
+    function applyUiFocusEl(items, idx) {
+      document.querySelectorAll('.gp-pad-focus').forEach(el => el.classList.remove('gp-pad-focus'));
+      document.querySelectorAll('.gp-pad-focus-row').forEach(el => el.classList.remove('gp-pad-focus-row'));
+      if (!items.length) return null;
+      uiFocusIndex = ((idx % items.length) + items.length) % items.length;
+      const target = items[uiFocusIndex];
+      target.classList.add('gp-pad-focus');
+      const row = target.closest('.setting-row');
+      if (row) row.classList.add('gp-pad-focus-row');
+      return target;
+    }
+
+    function syncUiFocus(resetIndex = true) {
+      const items = getUiSelectables();
+      if (!items.length) return null;
+      if (resetIndex) uiFocusIndex = 0;
+      else if (uiFocusIndex >= items.length) uiFocusIndex = items.length - 1;
+      return applyUiFocusEl(items, uiFocusIndex);
+    }
+
+    function moveUiFocus(dir) {
+      const items = getUiSelectables();
+      if (!items.length) return null;
+      let curIdx = items.findIndex(el => el.classList.contains('gp-pad-focus'));
+      if (curIdx < 0) curIdx = 0;
+      const cur = items[curIdx];
+
+      // Range slider value adjustment with D-pad Left / Right
+      if (cur && cur.tagName === 'INPUT' && cur.type === 'range' && (dir === 'left' || dir === 'right')) {
+        const step = 5;
+        const curVal = parseInt(cur.value, 10) || 0;
+        const nextVal = Math.max(0, Math.min(100, curVal + (dir === 'right' ? step : -step)));
+        cur.value = String(nextVal);
+        cur.dispatchEvent(new Event('input', { bubbles: true }));
+        cur.dispatchEvent(new Event('change', { bubbles: true }));
+        return cur;
+      }
+
+      if (items.length === 1) return applyUiFocusEl(items, 0);
+
+      const rects = items.map(el => {
+        const r = el.getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+      });
+      const c0 = rects[curIdx];
+      let bestIdx = -1;
+      let bestScore = Infinity;
+
+      if (dir === 'left' || dir === 'right') {
+        for (let i = 0; i < items.length; i++) {
+          if (i === curIdx) continue;
+          const dx = rects[i].cx - c0.cx;
+          const dy = Math.abs(rects[i].cy - c0.cy);
+          if (dy < 30 && ((dir === 'right' && dx > 4) || (dir === 'left' && dx < -4))) {
+            const score = Math.abs(dx) + dy * 2;
+            if (score < bestScore) { bestScore = score; bestIdx = i; }
+          }
+        }
+        if (bestIdx < 0) {
+          bestIdx = (curIdx + (dir === 'right' ? 1 : -1) + items.length) % items.length;
+        }
+      } else {
+        for (let i = 0; i < items.length; i++) {
+          if (i === curIdx) continue;
+          const dy = rects[i].cy - c0.cy;
+          const dx = Math.abs(rects[i].cx - c0.cx);
+          if ((dir === 'down' && dy > 20) || (dir === 'up' && dy < -20)) {
+            const score = Math.abs(dy) * 3 + dx;
+            if (score < bestScore) { bestScore = score; bestIdx = i; }
+          }
+        }
+        if (bestIdx < 0) {
+          bestIdx = (curIdx + (dir === 'down' ? 1 : -1) + items.length) % items.length;
+        }
+      }
+
+      if (settings.sfxVol > 0.01) sfx(560, 0.025, 'sine', 0.04, 30);
+      return applyUiFocusEl(items, bestIdx);
+    }
+
+    function triggerUiSelect() {
+      const items = getUiSelectables();
+      if (!items.length) return false;
+      let curIdx = items.findIndex(el => el.classList.contains('gp-pad-focus'));
+      if (curIdx < 0) curIdx = 0;
+      const cur = items[curIdx];
+      if (!cur) return false;
+      ensureAudio();
+      if (cur.tagName === 'INPUT' && cur.type === 'range') {
+        // Pressing A on a slider advances to the next setting control
+        moveUiFocus('down');
+        return true;
+      }
+      cur.click();
+      return true;
+    }
+
+    function triggerUiBack() {
+      ensureAudio();
+      if (shopOpen) { closeShop(); return true; }
+      const ov = document.getElementById('overlay');
+      if (!ov || ov.style.display === 'none') return false;
+      if (menuState === 'settings') {
+        const backBtn = ov.querySelector('[data-act="settingsback"]');
+        if (backBtn) { backBtn.click(); return true; }
+      }
+      if (menuState === 'help') {
+        showTitleScreen();
+        return true;
+      }
+      if (menuState === 'confirm') {
+        const noBtn = ov.querySelector('[data-act="confirmno"]');
+        if (noBtn) { noBtn.click(); return true; }
+      }
+      if (menuState === 'pause') {
+        const resBtn = ov.querySelector('[data-act="resume"]');
+        if (resBtn) { resBtn.click(); return true; }
+      }
+      if (menuState === 'result') {
+        const menuBtn = ov.querySelector('[data-act="menu"]');
+        if (menuBtn) { menuBtn.click(); return true; }
+      }
+      return false;
     }
 
     // ---------- Main loop ----------
@@ -4377,21 +4539,68 @@
       if (!gp) { padShootHeld = false; padDash = false; }
 
       if (gp) {
-        // ----- Shop mode: 4 items on the 4 face buttons; L1/R1 or Options leaves -----
-        if (shopOpen) {
-          const btn = (i) => gp.buttons[i] && gp.buttons[i].pressed;
-          // face button -> item slot mapping (PS layout):
-          //  cross(0)->1, circle(1)->2, square(2)->3, triangle(3)->4
-          const faceToSlot = { 0: 0, 1: 1, 2: 2, 3: 3 };
-          for (let i = 0; i < 16; i++) {
-            const pressed = btn(i);
-            if (pressed && !prevPadButtons[i]) {
-              if (i in faceToSlot) buyItem(faceToSlot[i]);
-              else if (i === 9 || i === 4 || i === 5) closeShop();  // Options / L1 / R1 leaves
+        const btn = (i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5));
+        const rtPressed = !!(gp.buttons[7] && (gp.buttons[7].pressed || gp.buttons[7].value > 0.35));
+
+        // Initials entry: D-pad up/down cycles letter, A (0) locks/confirms, B (1) backspaces, Y (3) confirms
+        if (enteringInitials) {
+          const up = btn(12), down = btn(13), aBtn = btn(0), bBtn = btn(1), yBtn = btn(3);
+          if ((up && !prevPadButtons[12]) || (down && !prevPadButtons[13])) {
+            const pos = Math.min(initials.length, 2);
+            let code = (initials.charCodeAt(pos) || 64);
+            if (initials.length <= pos) {
+              code = up ? 65 : 90;
+              initials = (initials.slice(0, pos) + String.fromCharCode(code));
+            } else {
+              code = up ? (code === 90 ? 65 : code + 1) : (code === 65 ? 90 : code - 1);
+              initials = (initials.slice(0, pos) + String.fromCharCode(code)).slice(0, 3);
             }
-            prevPadButtons[i] = pressed;
+            renderInitialsScreen();
           }
+          if (aBtn && !prevPadButtons[0]) {
+            if (initials.length < 3) {
+              initials = initials.padEnd(initials.length + 1, 'A');
+              renderInitialsScreen();
+            } else {
+              commitInitials();
+            }
+          }
+          if (bBtn && !prevPadButtons[1] && initials.length > 0) {
+            initials = initials.slice(0, -1);
+            renderInitialsScreen();
+          }
+          if (yBtn && !prevPadButtons[3] && initials.length === 3) commitInitials();
+          for (let i = 0; i < 16; i++) prevPadButtons[i] = btn(i);
+          prevXButton = aBtn; prevRTButton = rtPressed;
           keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
+          return;
+        }
+
+        // ----- UI / Menu / Shop mode: D-pad navigates, A (0) selects, B (1) goes back -----
+        if (isUiOpen()) {
+          if (!document.querySelector('.gp-pad-focus')) syncUiFocus(false);
+          if (btn(12) && !prevPadButtons[12]) moveUiFocus('up');
+          if (btn(13) && !prevPadButtons[13]) moveUiFocus('down');
+          if (btn(14) && !prevPadButtons[14]) moveUiFocus('left');
+          if (btn(15) && !prevPadButtons[15]) moveUiFocus('right');
+          if (btn(0)  && !prevPadButtons[0])  triggerUiSelect();
+          if (btn(1)  && !prevPadButtons[1])  triggerUiBack();
+          if (btn(9)  && !prevPadButtons[9]) {
+            if (shopOpen) closeShop();
+            else if (menuState === 'pause') triggerUiBack();
+          }
+          for (let i = 0; i < 16; i++) prevPadButtons[i] = btn(i);
+          prevXButton = btn(0); prevRTButton = rtPressed;
+          padShootHeld = false; padDash = false;
+          keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
+          return;
+        }
+
+        // Start / Options (button 9) during gameplay -> open Pause Screen
+        if (btn(9) && !prevPadButtons[9] && active && !gameOver) {
+          if (document.pointerLockElement) document.exitPointerLock();
+          showPauseScreen();
+          for (let i = 0; i < 16; i++) prevPadButtons[i] = btn(i);
           return;
         }
 
@@ -4412,65 +4621,37 @@
 
         // Sprint on left-stick click (button 10) or left bumper (button 4),
         // OR'd with keyboard shift (tracked via shadow key)
-        const padSprint = (gp.buttons[10] && gp.buttons[10].pressed) || (gp.buttons[4] && gp.buttons[4].pressed);
+        const padSprint = btn(10) || btn(4);
         keys['shift'] = !!keys['_kshift'] || padSprint;
 
-        // Dash on right bumper (R1 / button 5)
-        padDash = gp.buttons[5] && gp.buttons[5].pressed;
+        // Dash on right bumper (R1 / RB / button 5)
+        padDash = btn(5);
 
-        // Square (button 2) -> frame a cursed painting or admire a portrait (edge-detected)
-        const sqNow = gp.buttons[2] && gp.buttons[2].pressed;
-        if (sqNow && !prevPadButtons[2] && document.pointerLockElement) {
+        // X / Square (button 2) -> enter fountain shop, frame a cursed painting, or admire a portrait
+        const sqNow = btn(2);
+        if (sqNow && !prevPadButtons[2] && active && !gameOver) {
           if (nearFountain) openShop(nearFountain);
           else if (!tryFrameCursed()) tryViewPainting(false);
         }
-        prevPadButtons[2] = sqNow;
 
-        // Initials entry: D-pad up/down cycles the next letter, X locks it in,
-        // Y confirms (only when all 3 are entered) -- mirrors keyboard.
-        if (enteringInitials) {
-          const up = gp.buttons[12] && gp.buttons[12].pressed;
-          const down = gp.buttons[13] && gp.buttons[13].pressed;
-          const xBtn = gp.buttons[0] && gp.buttons[0].pressed;
-          const triBtn = gp.buttons[3] && gp.buttons[3].pressed;
-          if ((up && !prevPadButtons[12]) || (down && !prevPadButtons[13])) {
-            const pos = Math.min(initials.length, 2);
-            let code = (initials.charCodeAt(pos) || 64);   // 64 so first up-press lands on A
-            if (initials.length <= pos) {
-              code = up ? 65 : 90;   // seed a fresh slot at A or Z
-              initials = (initials.slice(0, pos) + String.fromCharCode(code));
-            } else {
-              code = up ? (code === 90 ? 65 : code + 1) : (code === 65 ? 90 : code - 1);
-              initials = (initials.slice(0, pos) + String.fromCharCode(code)).slice(0, 3);
-            }
-            renderInitialsScreen();
+        // RT (Right Trigger / button 7) -> fire spectral blaster (or admire unviewed portrait if aiming right at one with no enemy close)
+        padShootHeld = rtPressed && active && !gameOver;
+        if (rtPressed && !prevRTButton && active && !gameOver && !outro) {
+          const pHit = findAimedPainting(4.6);
+          let justViewedOnly = false;
+          if (pHit && !viewedArtIds.has(pHit.artIndex)) {
+            const pf = floorIndexOf(player.y);
+            const enemyClose = ghosts.some(g => !g.dead && g.floor === pf && Math.hypot(g.x - player.x, g.z - player.z) < pHit.dist + 1.0)
+              || (boss && !boss.dead && boss.floor === pf && Math.hypot(boss.x - player.x, boss.z - player.z) < pHit.dist + 1.2);
+            tryViewPainting(true);
+            if (!enemyClose) justViewedOnly = true;
           }
-          if (xBtn && !prevXButton && initials.length < 3) {
-            // lock current letter and open the next slot (defaults to A)
-            if (initials.length === Math.min(initials.length, 2)) initials = initials.padEnd(initials.length + 1, 'A');
-            renderInitialsScreen();
-          }
-          if (triBtn && !prevPadButtons[3] && initials.length === 3) commitInitials();
-          prevPadButtons[12] = up; prevPadButtons[13] = down; prevPadButtons[3] = triBtn; prevXButton = xBtn;
-          keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
-          return;
+          if (!justViewedOnly) shoot();
         }
 
-        // A (button 0) -> shoot / start / restart. Held for autofire.
-        const xNow = gp.buttons[0] && gp.buttons[0].pressed;
-        padShootHeld = xNow && document.pointerLockElement && !gameOver;
-        if (xNow && !prevXButton) {
-          if (outro) {
-            // non-interactive pause after win/lose; swallow the press
-          } else if (document.pointerLockElement && !gameOver) {
-            shoot();
-          } else {
-            ensureAudio();
-            if (gameOver && !enteringInitials) buildDungeon();
-            else if (!gameOver) safePointerLock();
-          }
-        }
-        prevXButton = xNow;
+        for (let i = 0; i < 16; i++) prevPadButtons[i] = btn(i);
+        prevXButton = btn(0);
+        prevRTButton = rtPressed;
       }
 
       keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
@@ -4977,6 +5158,7 @@
         '<button class="minipill" data-act="help">&#128220; Field Guide</button>' +
         '</div>' +
         '</div>';
+      syncUiFocus(true);
     }
 
     function showSettingsScreen(returnTo) {
@@ -5063,6 +5245,7 @@
         saveSettings();
         if (settings.sfxVol > 0.01) sfx(settings.invertY ? 520 : 420, 0.06, 'sine', 0.08, 60);
       });
+      syncUiFocus(true);
     }
 
     function quitToMenu() {
@@ -5097,6 +5280,7 @@
         '<button class="minipill danger" data-act="quitrun">&#9832; Main Menu</button>' +
         '</div>' +
         '</div>';
+      syncUiFocus(true);
     }
 
     function showHelpScreen() {
@@ -5146,11 +5330,12 @@
           '<div><div class="help-sub">Controller</div>' +
           '<div class="help-k"><b>L stick</b> move</div>' +
           '<div class="help-k"><b>R stick</b> look (Y invert in Settings)</div>' +
-          '<div class="help-k"><b>L1</b> sprint</div>' +
-          '<div class="help-k"><b>R1</b> dash roll</div>' +
-          '<div class="help-k"><b>A</b> shoot / confirm</div>' +
-          '<div class="help-k"><b>Square</b> cleanse art / enter fountain</div>' +
-          '<div class="help-k">Fountain: face buttons buy</div></div>' +
+          '<div class="help-k"><b>LB / L3</b> sprint</div>' +
+          '<div class="help-k"><b>RB</b> dash roll</div>' +
+          '<div class="help-k"><b>RT</b> shoot / admire portrait</div>' +
+          '<div class="help-k"><b>X / Square</b> cleanse / shop / view art</div>' +
+          '<div class="help-k"><b>D-Pad</b> navigate menus &amp; shop</div>' +
+          '<div class="help-k"><b>A / B</b> select / back</div></div>' +
           '</div>';
       } else {
         body =
@@ -5174,6 +5359,7 @@
         (helpPage < HELP_PAGES - 1 ? '<button class="minipill" data-act="helpnext">Next &#8594;</button>' : '<button class="minipill" data-act="tomenu">Main Menu</button>') +
         '</div>' +
         '</div>';
+      syncUiFocus(true);
     }
 
     // ---------- Confirm dialog ----------
@@ -5197,9 +5383,13 @@
         '<button class="minipill danger" data-act="confirmyes">&#9760; Yes, Start New Game</button>' +
         '</div>' +
         '</div>';
+      syncUiFocus(true);
     }
 
     function safePointerLock() {
+      active = !gameOver;
+      const ov = document.getElementById('overlay');
+      if (ov) ov.style.display = 'none';
       try {
         const p = renderer && renderer.domElement && renderer.domElement.requestPointerLock();
         if (p && typeof p.catch === 'function') p.catch(() => {});
