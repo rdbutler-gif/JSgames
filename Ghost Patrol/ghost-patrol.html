@@ -3024,6 +3024,7 @@
       worldGroup.add(group);
       ghosts.push({
         group, mats, floor, x, z,
+        spawnX: x, spawnZ: z,
         wraith: parts.wraith,
         hp: GHOST_HP, maxHp: GHOST_HP, bar,
         dir: Math.random() * Math.PI * 2,
@@ -3172,6 +3173,7 @@
         group, mats,
         crown, wraith: parts.wraith,
         x: best.x, z: best.z, floor: pf,
+        spawnX: best.x, spawnZ: best.z, spawnFloor: pf,
         hp: BOSS_HP, t: 0,
         phaseTimer: 0, shootTimer: 120,
         dead: false, fade: 1
@@ -3961,6 +3963,7 @@
             const g = ghosts[gs.i];
             if (g && !g.dead) {
               g.x = gs.x; g.z = gs.z; g.hp = gs.hp;
+              g.group.position.set(g.x, g.floor * LEVEL_H + 1.6, g.z);
               if (g.bar && g.hp > 0 && g.hp < g.maxHp) {
                 drawHealthBar(g.bar, g.hp / g.maxHp);
                 g.bar.sprite.visible = true;
@@ -4213,11 +4216,28 @@
       gameOver = true;
       outro = true;
       deaths++;
-      // Prepare respawn state in save: restore full health & safe Floor 1 spawn while preserving deaths, upgrades, coins, ghosts killed, paintings viewed & cleansed
+      // Prepare respawn state in save: return player and all live wraiths/boss to their original spawn points,
+      // restore full health, and preserve deaths, upgrades, coins, ghosts killed, paintings viewed & cleansed
       const spawn = roomCenter(0, 0);
-      player.x = spawn.x; player.y = 0; player.z = spawn.z; lastFloorIdx = 0;
+      player.x = spawn.x; player.y = 0; player.z = spawn.z;
+      yaw = 0; pitch = 0; lastFloorIdx = 0;
       health = maxHealth;
       if (ammo < 8) ammo = 8;
+      for (const g of ghosts) {
+        if (g.dead) continue;
+        g.x = g.spawnX;
+        g.z = g.spawnZ;
+        g.kbx = 0; g.kbz = 0; g.kbTime = 0;
+        g.group.position.set(g.x, g.floor * LEVEL_H + 1.6, g.z);
+      }
+      if (boss && !boss.dead) {
+        boss.x = boss.spawnX;
+        boss.z = boss.spawnZ;
+        boss.floor = boss.spawnFloor;
+        boss.group.position.set(boss.x, boss.floor * LEVEL_H + 1.8, boss.z);
+      }
+      for (const o of bossOrbs) worldGroup.remove(o.mesh);
+      bossOrbs = [];
       saveGame();
       updateHUD();
 
