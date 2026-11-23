@@ -569,6 +569,80 @@
       font-size: 12.5px; color: #9ea6c8; font-style: italic; line-height: 1.45;
     }
     #loading .load-lore b { color: var(--cyan); font-style: normal; }
+
+    /* ---- Haunted Gothic Settings Modal ---- */
+    .settings-panel { max-width: 500px !important; text-align: left; }
+    .settings-list { display: flex; flex-direction: column; gap: 14px; margin: 16px 0 20px; }
+    .setting-row {
+      background: linear-gradient(180deg, rgba(22, 20, 38, 0.78), rgba(11, 10, 22, 0.88));
+      border: 1px solid rgba(240, 196, 108, 0.24);
+      border-radius: 12px; padding: 13px 16px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    .setting-top {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .setting-lbl {
+      font-family: var(--font-display); font-weight: 700; font-size: 14px;
+      letter-spacing: 0.8px; color: var(--gold);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .setting-val {
+      font-family: var(--font-display); font-weight: 700; font-size: 13.5px;
+      color: var(--cyan); min-width: 44px; text-align: right;
+    }
+    .setting-sub {
+      font-size: 11.5px; color: #9ea6c8; margin-top: 5px; line-height: 1.4;
+    }
+    .gp-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 8px; border-radius: 999px; outline: none; cursor: pointer;
+      background: linear-gradient(90deg, rgba(127, 233, 255, 0.28), rgba(197, 155, 255, 0.28));
+      border: 1px solid rgba(240, 196, 108, 0.35);
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+    }
+    .gp-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 20px; height: 20px; border-radius: 50%; cursor: pointer;
+      background: radial-gradient(circle at 35% 35%, #ffffff 0%, #7fe9ff 55%, #2c8aa8 100%);
+      border: 2px solid var(--gold);
+      box-shadow: 0 0 12px rgba(127, 233, 255, 0.8);
+      transition: transform 0.1s ease;
+    }
+    .gp-slider::-webkit-slider-thumb:hover { transform: scale(1.12); }
+    .gp-slider::-moz-range-thumb {
+      width: 20px; height: 20px; border-radius: 50%; cursor: pointer;
+      background: radial-gradient(circle at 35% 35%, #ffffff 0%, #7fe9ff 55%, #2c8aa8 100%);
+      border: 2px solid var(--gold);
+      box-shadow: 0 0 12px rgba(127, 233, 255, 0.8);
+    }
+    .setting-toggle-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    }
+    .gp-toggle {
+      position: relative; width: 54px; height: 28px; flex: 0 0 54px;
+      border-radius: 999px; cursor: pointer; border: 1px solid rgba(240, 196, 108, 0.45);
+      background: rgba(12, 11, 24, 0.95); padding: 0;
+      box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8);
+      transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .gp-toggle::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: linear-gradient(180deg, #b8c0de, #7b83a4);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+      transition: transform 0.2s cubic-bezier(0.3, 0.9, 0.4, 1), background 0.2s ease;
+    }
+    .gp-toggle.on {
+      background: linear-gradient(90deg, rgba(75, 35, 132, 0.85), rgba(50, 168, 204, 0.85));
+      border-color: var(--cyan);
+      box-shadow: 0 0 14px rgba(127, 233, 255, 0.45), inset 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+    .gp-toggle.on::after {
+      transform: translateX(26px);
+      background: radial-gradient(circle at 35% 35%, #ffffff 0%, #7fe9ff 70%);
+    }
   </style>
 </head>
 <body>
@@ -619,9 +693,9 @@
     <div class="pill hearts"><span class="ic" style="background:rgba(255,107,138,0.18);color:var(--rose)">&#9829;</span><span id="hearts"></span></div>
   </div>
   <div id="hudHelp">
-    <b>WASD</b> move &bull; <b>Shift</b> sprint &bull; <b>Space</b> dash<br>
-    <b>L-click</b> shoot &bull; <b>R-click</b> cleanse / fountain<br>
-    <b>W</b> up stairs/ladders &bull; <b>R</b> new gallery
+    <b>WASD</b> move &bull; <b>Arrows / Mouse</b> look<br>
+    <b>Shift</b> sprint &bull; <b>Space</b> dash &bull; <b>L-click</b> fire<br>
+    <b>R-click</b> cleanse / shop &bull; <b>R</b> new gallery
   </div>
   <div id="message"></div>
   <div id="cleanse">&#9880; Right-click to cleanse the cursed painting</div>
@@ -806,18 +880,78 @@
     let prevPadButtons = [];    // edge detection for shop face buttons
     const STICK_DEADZONE = 0.18;
     const PAD_LOOK_SPEED = 0.045;
+    const KEY_LOOK_SPEED = 0.036;
     function dz(v) { return Math.abs(v) < STICK_DEADZONE ? 0 : v; }
 
-    // ---------- Audio ----------
+    // ---------- Settings (persisted in localStorage) ----------
+    const SETTINGS_KEY = 'ghostPatrolSettings';
+    let settings = { musicVol: 0.42, sfxVol: 0.85, invertY: false };
+    let settingsReturnTo = 'title';
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.musicVol === 'number') settings.musicVol = Math.max(0, Math.min(1, parsed.musicVol));
+          if (typeof parsed.sfxVol === 'number') settings.sfxVol = Math.max(0, Math.min(1, parsed.sfxVol));
+          if (typeof parsed.invertY === 'boolean') settings.invertY = parsed.invertY;
+        }
+      } catch (e) {}
+    }
+    function saveSettings() {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+    }
+
+    // ---------- Audio & Haunted BGM ----------
+    let sfxMasterGain = null;
+    let bgmAudio = null;
+    let bgmUnlocked = false;
+    function initBgm() {
+      if (bgmAudio) return;
+      bgmAudio = new Audio('textures/bgm.mp3');
+      bgmAudio.loop = true;
+      bgmAudio.preload = 'auto';
+      bgmAudio.volume = settings.musicVol;
+    }
+    function applyAudioSettings() {
+      if (sfxMasterGain) {
+        sfxMasterGain.gain.value = settings.sfxVol;
+      }
+      if (bgmAudio) {
+        bgmAudio.volume = settings.musicVol;
+        if (settings.musicVol <= 0.001) {
+          if (!bgmAudio.paused) bgmAudio.pause();
+        } else if (bgmUnlocked && bgmAudio.paused) {
+          bgmAudio.play().catch(() => {});
+        }
+      }
+    }
+    function unlockBgm() {
+      initBgm();
+      bgmUnlocked = true;
+      bgmAudio.volume = settings.musicVol;
+      if (settings.musicVol > 0.001 && bgmAudio.paused) {
+        bgmAudio.play().catch(() => {});
+      }
+    }
+    function getSfxDest() {
+      if (!actx) return null;
+      if (!sfxMasterGain) {
+        sfxMasterGain = actx.createGain();
+        sfxMasterGain.gain.value = settings.sfxVol;
+        sfxMasterGain.connect(actx.destination);
+      }
+      return sfxMasterGain;
+    }
     function sfx(freq, dur = 0.08, type = 'square', vol = 0.12, slide = 0) {
-      if (!actx) return;
+      if (!actx || settings.sfxVol <= 0.001) return;
       const o = actx.createOscillator(), g = actx.createGain();
       o.type = type;
       o.frequency.setValueAtTime(freq, actx.currentTime);
       if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), actx.currentTime + dur);
       g.gain.setValueAtTime(vol, actx.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
-      o.connect(g).connect(actx.destination);
+      o.connect(g).connect(getSfxDest());
       o.start();
       o.stop(actx.currentTime + dur);
     }
@@ -831,12 +965,12 @@
     let coinBuffer = null, gunBuffer = null;
     let sfxBuffers = {};
     function playSample(buf, vol) {
-      if (!actx || !buf) return false;
+      if (!actx || !buf || settings.sfxVol <= 0.001) return false;
       const src = actx.createBufferSource();
       const g = actx.createGain();
       g.gain.value = (vol == null ? 1 : vol);
       src.buffer = buf;
-      src.connect(g).connect(actx.destination);
+      src.connect(g).connect(getSfxDest());
       src.start();
       return true;
     }
@@ -844,13 +978,13 @@
     // starting a new one so fast autofire doesn't stack into a muddy drone.
     let gunVoice = null;
     function playGun(buf, vol) {
-      if (!actx || !buf) return false;
+      if (!actx || !buf || settings.sfxVol <= 0.001) return false;
       if (gunVoice) { try { gunVoice.stop(); } catch (e) {} gunVoice = null; }
       const src = actx.createBufferSource();
       const g = actx.createGain();
       g.gain.value = (vol == null ? 1 : vol);
       src.buffer = buf;
-      src.connect(g).connect(actx.destination);
+      src.connect(g).connect(getSfxDest());
       src.onended = () => { if (gunVoice === src) gunVoice = null; };
       src.start();
       gunVoice = src;
@@ -889,7 +1023,10 @@
     let samplesRequested = false;
     function ensureAudio() {
       if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume().catch(() => {});
+      getSfxDest();
       if (!samplesRequested) { samplesRequested = true; loadSamples(); }
+      unlockBgm();
     }
     const sndCoin    = () => playSample(coinBuffer, 0.5) || sfx(988, 0.09, 'sine', 0.10, 350);
     const sndShoot   = () => playGun(gunBuffer, 0.35) || sfx(320, 0.07, 'square', 0.07, -180);
@@ -3374,23 +3511,26 @@
         ensureAudio();
 
         // explicit button actions
-        if (act === 'help')     { showHelpScreen(); return; }
-        if (act === 'helpnext') { helpPage = Math.min(helpPage + 1, HELP_PAGES - 1); renderHelp(); return; }
-        if (act === 'helpprev') { helpPage = Math.max(helpPage - 1, 0); renderHelp(); return; }
-        if (act === 'tomenu')   { showTitleScreen(); return; }
-        if (act === 'new')      { showConfirm('This will erase all previous scores. Are you sure?', startNewGame, showTitleScreen); return; }
-        if (act === 'again')    { buildDungeon(); menuState = null; renderer.domElement.requestPointerLock(); return; }
-        if (act === 'menu')     { showTitleScreen(); return; }
+        if (act === 'settings')     { showSettingsScreen(menuState || 'title'); return; }
+        if (act === 'settingsback') { if (settingsReturnTo === 'pause') showPauseScreen(); else showTitleScreen(); return; }
+        if (act === 'help')         { showHelpScreen(); return; }
+        if (act === 'helpnext')     { helpPage = Math.min(helpPage + 1, HELP_PAGES - 1); renderHelp(); return; }
+        if (act === 'helpprev')     { helpPage = Math.max(helpPage - 1, 0); renderHelp(); return; }
+        if (act === 'tomenu')       { showTitleScreen(); return; }
+        if (act === 'new')          { showConfirm('This will erase all previous scores. Are you sure?', startNewGame, showTitleScreen); return; }
+        if (act === 'again')        { buildDungeon(); menuState = null; renderer.domElement.requestPointerLock(); return; }
+        if (act === 'menu')         { showTitleScreen(); return; }
         // pause-menu: quit the current run to the title (confirmed)
-        if (act === 'resume')   { menuState = null; renderer.domElement.requestPointerLock(); return; }
-        if (act === 'quitrun')  { showConfirm('This will end progress for this run. Are you sure?', quitToMenu, showPauseScreen); return; }
+        if (act === 'resume')       { menuState = null; renderer.domElement.requestPointerLock(); return; }
+        if (act === 'quitrun')      { showConfirm('This will end progress for this run. Are you sure?', quitToMenu, showPauseScreen); return; }
         // confirm dialog
-        if (act === 'confirmyes') { const f = confirmYes; confirmYes = confirmNo = null; if (f) f(); return; }
-        if (act === 'confirmno')  { const f = confirmNo;  confirmYes = confirmNo = null; if (f) f(); return; }
+        if (act === 'confirmyes')   { const f = confirmYes; confirmYes = confirmNo = null; if (f) f(); return; }
+        if (act === 'confirmno')    { const f = confirmNo;  confirmYes = confirmNo = null; if (f) f(); return; }
 
         // background clicks depend on which screen we're on
+        if (menuState === 'settings') return;      // settings modal: interactive controls only
         if (menuState === 'confirm') return;       // confirm dialog: buttons only
-        if (menuState === 'pause') return;          // pause menu: buttons only
+        if (menuState === 'pause') return;         // pause menu: buttons only
         if (menuState === 'help') return;          // only buttons act on help
         if (menuState === 'result') return;        // result screen: buttons only
         // title or pause -> enter / resume the gallery
@@ -3417,7 +3557,7 @@
       document.addEventListener('mousemove', (e) => {
         if (!document.pointerLockElement) return;
         yaw -= e.movementX * 0.0025;
-        pitch -= e.movementY * 0.0025;
+        pitch += (settings.invertY ? 1 : -1) * e.movementY * 0.0025;
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
       });
       document.addEventListener('mousedown', (e) => {
@@ -3458,7 +3598,7 @@
           return;
         }
         keys[shadow[k] || k] = true;
-        if (k === ' ') e.preventDefault();   // dash key shouldn't scroll the page
+        if (k === ' ' || k.startsWith('arrow')) e.preventDefault();   // dash & camera look keys shouldn't scroll the page
         if (k === 'r' && !gameOver) {
           buildDungeon();
           showMessage('New gallery generated');
@@ -3662,11 +3802,11 @@
         a = a || lx < -0.01;
         d = d || lx >  0.01;
 
-        // Right stick -> look. Y inverted (pull down to look up), per preference.
+        // Right stick -> look (respects Y-axis invert toggle in Settings)
         const rx = dz(gp.axes[2] || 0);
         const ry = dz(gp.axes[3] || 0);
         yaw -= rx * PAD_LOOK_SPEED * dt;
-        pitch += ry * PAD_LOOK_SPEED * dt;   // inverted Y
+        pitch += (settings.invertY ? 1 : -1) * ry * PAD_LOOK_SPEED * dt;
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
 
         // Sprint on left-stick click (button 10) or left bumper (button 4),
@@ -3754,6 +3894,14 @@
       pollGamepad(dt);
 
       if (active) {
+        // Arrow keys pan (Left/Right) and tilt (Up/Down) the camera
+        const yLookSign = settings.invertY ? -1 : 1;
+        if (keys['arrowleft'])  yaw += KEY_LOOK_SPEED * dt;
+        if (keys['arrowright']) yaw -= KEY_LOOK_SPEED * dt;
+        if (keys['arrowup'])    pitch += yLookSign * KEY_LOOK_SPEED * dt;
+        if (keys['arrowdown'])  pitch -= yLookSign * KEY_LOOK_SPEED * dt;
+        pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
+
         let lad = null;
         for (const l of ladders) {
           if (Math.abs(player.x - l.x) < 0.62 && Math.abs(player.z - l.z) < 0.64 &&
@@ -4171,7 +4319,8 @@
         '<div class="gp-pillar"><div class="gp-pillar-h">&#128081; III. The Ghost King</div><p class="gp-pillar-p">Bust all <b>24 patrol wraiths</b> to awaken their royal master, who hunts you across floors.</p></div>' +
         '</div>' +
         '<div class="gp-keystrip">' +
-        '<span><kbd class="gp-kbd">WASD</kbd> Move / Climb</span>' +
+        '<span><kbd class="gp-kbd">WASD</kbd> Move</span>' +
+        '<span><kbd class="gp-kbd">&larr;&uarr;&darr;&rarr;</kbd> Look</span>' +
         '<span><kbd class="gp-kbd">SHIFT</kbd> Sprint</span>' +
         '<span><kbd class="gp-kbd">SPACE</kbd> Dash</span>' +
         '<span><kbd class="gp-kbd">L-CLICK</kbd> Fire</span>' +
@@ -4180,10 +4329,97 @@
         '<div>' + topScoreHTML() + '</div>' +
         '<div><button class="gp-cta" data-act="play">&#9876; Enter the Gallery</button></div>' +
         '<div class="menu-row">' +
+        '<button class="minipill" data-act="settings">&#9881; Settings</button>' +
         '<button class="minipill" data-act="help">&#128220; Field Guide</button>' +
         '<button class="minipill danger" data-act="new">&#9760; Reset Records</button>' +
         '</div>' +
         '</div>';
+    }
+
+    function showSettingsScreen(returnTo) {
+      settingsReturnTo = returnTo === 'pause' ? 'pause' : 'title';
+      menuState = 'settings';
+      const overlay = document.getElementById('overlay');
+      if (settingsReturnTo === 'pause') overlay.classList.add('in-pause');
+      else overlay.classList.remove('in-pause');
+      overlay.style.display = 'flex';
+      const mPct = Math.round(settings.musicVol * 100);
+      const sPct = Math.round(settings.sfxVol * 100);
+      overlay.innerHTML =
+        '<div class="panel settings-panel">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow" style="text-align:center">&#10022; Gallery Sanctuary Preferences &#10022;</div>' +
+        '<div class="gp-big" style="color:var(--cyan);text-align:center;font-size:32px;margin-bottom:4px">Settings</div>' +
+        '<div class="gp-divider">&#9670;</div>' +
+        '<div class="settings-list">' +
+        '<div class="setting-row">' +
+          '<div class="setting-top">' +
+            '<label class="setting-lbl" for="setMusicVol">&#127925; Haunted Music Volume</label>' +
+            '<span class="setting-val" id="setMusicVal">' + mPct + '%</span>' +
+          '</div>' +
+          '<input class="gp-slider" id="setMusicVol" type="range" min="0" max="100" step="1" value="' + mPct + '">' +
+          '<div class="setting-sub">Atmospheric gothic gallery soundtrack loop.</div>' +
+        '</div>' +
+        '<div class="setting-row">' +
+          '<div class="setting-top">' +
+            '<label class="setting-lbl" for="setSfxVol">&#128266; Sound Effects Volume</label>' +
+            '<span class="setting-val" id="setSfxVal">' + sPct + '%</span>' +
+          '</div>' +
+          '<input class="gp-slider" id="setSfxVol" type="range" min="0" max="100" step="1" value="' + sPct + '">' +
+          '<div class="setting-sub">Spectral blaster, footsteps, pickups &amp; Ghost King voice lines.</div>' +
+        '</div>' +
+        '<div class="setting-row">' +
+          '<div class="setting-toggle-row">' +
+            '<div>' +
+              '<div class="setting-lbl">&#8597; Invert Y-Axis (Camera Tilt)</div>' +
+              '<div class="setting-sub" id="setInvertSub">' +
+                (settings.invertY ? 'Inverted &mdash; Up/Down look controls are reversed.' : 'Standard &mdash; Mouse Up, Up Arrow &amp; Stick Up look up.') +
+              '</div>' +
+            '</div>' +
+            '<button type="button" class="gp-toggle' + (settings.invertY ? ' on' : '') + '" id="setInvertY" aria-pressed="' + settings.invertY + '"></button>' +
+          '</div>' +
+        '</div>' +
+        '</div>' +
+        '<div class="menu-row">' +
+        '<button class="gp-cta" style="margin-top:0;padding:10px 32px;font-size:15px" data-act="settingsback">&#10003; Save &amp; Back</button>' +
+        '</div>' +
+        '</div>';
+
+      const mSlider = document.getElementById('setMusicVol');
+      const mVal = document.getElementById('setMusicVal');
+      const sSlider = document.getElementById('setSfxVol');
+      const sVal = document.getElementById('setSfxVal');
+      const invBtn = document.getElementById('setInvertY');
+      const invSub = document.getElementById('setInvertSub');
+
+      mSlider.addEventListener('input', () => {
+        ensureAudio();
+        settings.musicVol = parseInt(mSlider.value, 10) / 100;
+        mVal.textContent = mSlider.value + '%';
+        applyAudioSettings();
+        saveSettings();
+      });
+      sSlider.addEventListener('input', () => {
+        ensureAudio();
+        settings.sfxVol = parseInt(sSlider.value, 10) / 100;
+        sVal.textContent = sSlider.value + '%';
+        applyAudioSettings();
+        saveSettings();
+      });
+      sSlider.addEventListener('change', () => {
+        if (settings.sfxVol > 0.01) sndCoin();
+      });
+      invBtn.addEventListener('click', () => {
+        ensureAudio();
+        settings.invertY = !settings.invertY;
+        invBtn.classList.toggle('on', settings.invertY);
+        invBtn.setAttribute('aria-pressed', String(settings.invertY));
+        invSub.innerHTML = settings.invertY
+          ? 'Inverted &mdash; Up/Down look controls are reversed.'
+          : 'Standard &mdash; Mouse Up, Up Arrow &amp; Stick Up look up.';
+        saveSettings();
+        if (settings.sfxVol > 0.01) sfx(settings.invertY ? 520 : 420, 0.06, 'sine', 0.08, 60);
+      });
     }
 
     function quitToMenu() {
@@ -4203,14 +4439,17 @@
       overlay.classList.add('in-pause');
       overlay.style.display = 'flex';
       overlay.innerHTML =
-        '<div class="panel" style="max-width:440px">' +
+        '<div class="panel" style="max-width:460px">' +
         gothicCornersHTML() +
         '<div class="gp-eyebrow">&#10022; Patrol Suspended &#10022;</div>' +
         '<div class="gp-big" style="color:var(--cyan)">Gallery Paused</div>' +
         '<div class="gp-divider">&#9670;</div>' +
         '<div class="gp-sub" style="font-size:14px">The wraiths wait in the dark corridors&hellip;</div>' +
-        '<div class="menu-row" style="margin-top:22px">' +
+        '<div class="menu-row" style="margin-top:20px;flex-wrap:wrap">' +
         '<button class="gp-cta" style="margin-top:0;padding:10px 28px;font-size:15px" data-act="resume">&#9654; Resume Patrol</button>' +
+        '</div>' +
+        '<div class="menu-row" style="margin-top:12px">' +
+        '<button class="minipill" data-act="settings">&#9881; Settings</button>' +
         '<button class="minipill danger" data-act="quitrun">&#9832; Main Menu</button>' +
         '</div>' +
         '</div>';
@@ -4253,7 +4492,7 @@
           '<div class="help-cols">' +
           '<div><div class="help-sub">Keyboard &amp; mouse</div>' +
           '<div class="help-k"><b>WASD</b> move</div>' +
-          '<div class="help-k"><b>Mouse</b> look</div>' +
+          '<div class="help-k"><b>Mouse / Arrows</b> pan &amp; tilt camera</div>' +
           '<div class="help-k"><b>Shift</b> sprint</div>' +
           '<div class="help-k"><b>Space</b> dash roll</div>' +
           '<div class="help-k"><b>L-click</b> shoot</div>' +
@@ -4262,7 +4501,7 @@
           '<div class="help-k"><b>R</b> new gallery</div></div>' +
           '<div><div class="help-sub">Controller</div>' +
           '<div class="help-k"><b>L stick</b> move</div>' +
-          '<div class="help-k"><b>R stick</b> look (inverted Y)</div>' +
+          '<div class="help-k"><b>R stick</b> look (Y invert in Settings)</div>' +
           '<div class="help-k"><b>L1</b> sprint</div>' +
           '<div class="help-k"><b>R1</b> dash roll</div>' +
           '<div class="help-k"><b>A</b> shoot / confirm</div>' +
@@ -4407,6 +4646,9 @@
       buildWeaponViewmodel();
 
       buildDungeon();
+      loadSettings();
+      initBgm();
+      window.addEventListener('pointerdown', () => ensureAudio(), { once: true });
       initUiFxCanvas();
       setupControls();
       loadHighScores();
