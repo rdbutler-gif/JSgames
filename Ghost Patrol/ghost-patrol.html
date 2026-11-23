@@ -47,6 +47,8 @@
     .pill.ammo   .ic { background: rgba(125,255,176,0.16); color: var(--mint); }
     .pill.ghosts .ic { background: rgba(185,140,255,0.18); color: var(--violet); }
     .pill.cursed .ic { background: rgba(255,207,92,0.14);  color: var(--gold); }
+    .pill.viewed .ic { background: rgba(127,233,255,0.16); color: var(--cyan); }
+    .pill.deaths .ic { background: rgba(255,107,138,0.16); color: var(--rose); }
     .pill .val { font-weight: 800; }
     .pill .sub { opacity: 0.55; font-weight: 600; font-size: 14px; }
     .pill .wpn { color: var(--mint); font-weight: 700; font-size: 14px; margin-left: 2px; }
@@ -116,6 +118,40 @@
       padding: 9px 20px; border-radius: 999px;
       box-shadow: 0 0 22px rgba(68,187,255,0.7), 0 4px 12px rgba(0,0,0,0.5);
       animation: cleansePulse 1.1s ease-in-out infinite;
+    }
+    #viewPrompt {
+      position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: none; pointer-events: none;
+      font-family: var(--font-display); font-weight: 600; font-size: 14.5px;
+      color: #f4efe0; background: linear-gradient(180deg, rgba(24,20,42,0.92), rgba(11,10,22,0.96));
+      border: 1px solid rgba(240, 196, 108, 0.55);
+      padding: 8px 18px; border-radius: 999px;
+      box-shadow: 0 0 18px rgba(127,233,255,0.35), 0 4px 12px rgba(0,0,0,0.6);
+    }
+    .gp-save-summary {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 12px;
+      margin: 6px auto 4px; padding: 7px 16px; border-radius: 10px;
+      background: linear-gradient(90deg, rgba(127,233,255,0.06), rgba(197,155,255,0.14), rgba(127,233,255,0.06));
+      border: 1px solid rgba(127, 233, 255, 0.30);
+      font-family: var(--font-ui); font-weight: 600; font-size: 12.5px; color: #dbe2ff;
+    }
+    .gp-save-summary b { color: var(--gold); }
+    .gp-cta-row {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      margin-top: 10px; flex-wrap: wrap;
+    }
+    .gp-cta-row .gp-cta { margin-top: 0; }
+    .gp-cta.secondary {
+      background: linear-gradient(180deg, #34294c 0%, #1d1630 100%);
+      color: var(--gold); border-color: rgba(240, 196, 108, 0.55);
+      box-shadow: 0 0 18px rgba(197, 155, 255, 0.25), 0 6px 16px rgba(0, 0, 0, 0.7);
+    }
+    .gp-cta.secondary:hover {
+      box-shadow: 0 0 26px rgba(240, 196, 108, 0.45), 0 8px 20px rgba(0, 0, 0, 0.8);
+    }
+    .gp-cta:disabled {
+      opacity: 0.38; cursor: not-allowed; filter: grayscale(0.6); transform: none !important;
+      box-shadow: none !important;
     }
 
     /* ---- Haunted Key Art & Ambient Particle Backdrop ---- */
@@ -690,6 +726,8 @@
     <div class="pill ammo"><span class="ic">&#10022;</span><span class="val" id="ammo">20</span><span class="wpn" id="weapon">Pistol</span></div>
     <div class="pill ghosts"><span class="ic">&#9760;</span><span class="val" id="ghostsBusted">0</span><span class="sub">/&nbsp;<span id="ghostTotal">0</span></span></div>
     <div class="pill cursed"><span class="ic">&#9640;</span><span class="val" id="cursed">0</span><span class="sub">/&nbsp;<span id="cursedTotal">0</span></span></div>
+    <div class="pill viewed"><span class="ic">&#128444;</span><span class="val" id="viewed">0</span><span class="sub">/&nbsp;<span id="viewedTotal">100</span></span></div>
+    <div class="pill deaths" id="deathsPill" style="display:none"><span class="ic">&#128128;</span><span class="val" id="deathsVal">0</span></div>
     <div class="pill hearts"><span class="ic" style="background:rgba(255,107,138,0.18);color:var(--rose)">&#9829;</span><span id="hearts"></span></div>
   </div>
   <div id="hudHelp">
@@ -700,6 +738,7 @@
   <div id="message"></div>
   <div id="cleanse">&#9880; Right-click to cleanse the cursed painting</div>
   <div id="fountainPrompt">&#9880; Right-click to enter the Fountain</div>
+  <div id="viewPrompt">&#128444; Click or Right-click to admire painting</div>
   <div id="shop">
     <div id="shopInner"></div>
   </div>
@@ -863,7 +902,14 @@
     // shop
     let shopOpen = false, shopFountain = null, shopItems = [], shopJustLeft = null;
     let nearFountain = null;    // fountain the player is standing at (prompt target)
-    let shotsFired = 0, shotsHit = 0, startTime = 0;
+    let shotsFired = 0, shotsHit = 0, startTime = 0, savedElapsedMs = 0;
+    let deaths = 0, victories = 0;
+    let viewedArtIds = new Set();
+    let dungeonSeed = 0;
+    let autoSaveTimer = 0;
+    let nearUnviewedArt = null;
+    const artRaycaster = new THREE.Raycaster();
+    const SCREEN_CENTER = new THREE.Vector2(0, 0);
     let highScores = [];
     let victoryHTML = '';
     let enteringInitials = false, initials = '', pendingRun = null;
@@ -1048,6 +1094,80 @@
     const sndStepStair  = () => playSample(sfxBuffers.step_stair, 0.36) || sfx(140, 0.04, 'triangle', 0.05, -30);
     const sndStepLadder = () => playSample(sfxBuffers.step_ladder, 0.42) || sfx(520, 0.04, 'sine', 0.06, 120);
 
+    // ---------- Seeded PRNG (mulberry32) for deterministic dungeon save/restore ----------
+    let rngFn = Math.random;
+    function mulberry32(a) {
+      let t = a >>> 0;
+      return function() {
+        t = (t + 0x6D2B79F5) >>> 0;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function dRand() { return rngFn(); }
+
+    // ---------- Persistent Save System (localStorage) ----------
+    const SAVE_KEY = 'ghostPatrolSaveV1';
+    function readSavedGame() {
+      try {
+        const raw = localStorage.getItem(SAVE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data || typeof data.dungeonSeed !== 'number') return null;
+        return data;
+      } catch (e) { return null; }
+    }
+    function hasSavedGame() { return !!readSavedGame(); }
+    function clearSavedGame() {
+      try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+    }
+    function getTotalElapsedMs() {
+      return savedElapsedMs + (startTime ? Math.max(0, performance.now() - startTime) : 0);
+    }
+    function saveGame() {
+      if (!dungeonSeed) return;
+      try {
+        const collectedCoins = [];
+        for (let i = 0; i < coins.length; i++) if (coins[i].collected) collectedCoins.push(i);
+        const collectedAmmo = [];
+        for (let i = 0; i < ammoBoxes.length; i++) if (ammoBoxes[i].collected) collectedAmmo.push(i);
+        const deadGhosts = [];
+        const ghostStates = [];
+        for (let i = 0; i < ghosts.length; i++) {
+          if (ghosts[i].dead) deadGhosts.push(i);
+          else ghostStates.push({ i, x: +ghosts[i].x.toFixed(2), z: +ghosts[i].z.toFixed(2), hp: ghosts[i].hp });
+        }
+        const cleansedCursed = [];
+        for (let i = 0; i < cursedPaintings.length; i++) if (cursedPaintings[i].framed) cleansedCursed.push(i);
+        const activeHearts = [];
+        for (const h of hearts) {
+          if (!h.collected) activeHearts.push({ floor: h.floor, x: +h.mesh.position.x.toFixed(2), z: +h.mesh.position.z.toFixed(2) });
+        }
+        const payload = {
+          v: 1,
+          savedAt: Date.now(),
+          dungeonSeed,
+          player: { x: +player.x.toFixed(3), y: +player.y.toFixed(3), z: +player.z.toFixed(3), yaw: +yaw.toFixed(4), pitch: +pitch.toFixed(4) },
+          lastFloorIdx,
+          health, maxHealth, ammo, ammoDropBonus,
+          hasRifle, hasAuto, hasPierce, hasSpread, hasDash,
+          coinCount, coinTotal, ghostsBusted, ghostTotal,
+          cursedFramed, cursedTotal,
+          deaths, victories,
+          viewedArtIds: Array.from(viewedArtIds),
+          shotsFired, shotsHit,
+          elapsedMs: Math.round(getTotalElapsedMs()),
+          collectedCoins, collectedAmmo, deadGhosts, ghostStates, cleansedCursed, activeHearts,
+          berserk,
+          boss: (boss && !boss.dead) ? {
+            x: +boss.x.toFixed(2), z: +boss.z.toFixed(2), floor: boss.floor, hp: boss.hp
+          } : null
+        };
+        localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+      } catch (e) {}
+    }
+
     // ---------- Maze generation ----------
     function generateMaze(n) {
       const cells = [];
@@ -1055,7 +1175,7 @@
         cells[x] = [];
         for (let y = 0; y < n; y++) cells[x][y] = { E: false, S: false, visited: false };
       }
-      const stack = [[Math.floor(Math.random() * n), Math.floor(Math.random() * n)]];
+      const stack = [[Math.floor(dRand() * n), Math.floor(dRand() * n)]];
       cells[stack[0][0]][stack[0][1]].visited = true;
       while (stack.length) {
         const [cx, cy] = stack[stack.length - 1];
@@ -1065,7 +1185,7 @@
         if (cy > 0     && !cells[cx][cy-1].visited) nbrs.push(['N', cx, cy-1]);
         if (cy < n - 1 && !cells[cx][cy+1].visited) nbrs.push(['S', cx, cy+1]);
         if (!nbrs.length) { stack.pop(); continue; }
-        const [dir, nx, ny] = nbrs[Math.floor(Math.random() * nbrs.length)];
+        const [dir, nx, ny] = nbrs[Math.floor(dRand() * nbrs.length)];
         if (dir === 'E') cells[cx][cy].E = true;
         if (dir === 'S') cells[cx][cy].S = true;
         if (dir === 'W') cells[nx][ny].E = true;
@@ -1075,9 +1195,9 @@
       }
       const extra = Math.floor(n * n * 0.15);
       for (let i = 0; i < extra; i++) {
-        const x = Math.floor(Math.random() * (n - 1));
-        const y = Math.floor(Math.random() * (n - 1));
-        if (Math.random() < 0.5) cells[x][y].E = true; else cells[x][y].S = true;
+        const x = Math.floor(dRand() * (n - 1));
+        const y = Math.floor(dRand() * (n - 1));
+        if (dRand() < 0.5) cells[x][y].E = true; else cells[x][y].S = true;
       }
       return cells;
     }
@@ -1376,7 +1496,7 @@
       artDeck = [];
       for (let i = 0; i < artPool.length; i++) if (!artPool[i].failed) artDeck.push(i);
       for (let i = artDeck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(dRand() * (i + 1));
         [artDeck[i], artDeck[j]] = [artDeck[j], artDeck[i]];
       }
       artDeckPos = 0;
@@ -1445,7 +1565,7 @@
         const onFloor = artDecals.filter(m => m.userData.floor === floor && m.visible);
         if (!onFloor.length) continue;
         for (let n = 0; n < CURSED_PER_FLOOR && onFloor.length; n++) {
-          const pick = onFloor[Math.floor(Math.random() * onFloor.length)];
+          const pick = onFloor[Math.floor(dRand() * onFloor.length)];
           const frame = new THREE.Mesh(
             new THREE.PlaneGeometry(ART_H * pick.scale.x + 0.5, ART_H + 0.5),
             new THREE.MeshBasicMaterial({ color: 0xffaa22, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })
@@ -2662,6 +2782,7 @@
       flashVignette();
       updateHUD();
       if (health <= 0) doGameOver();
+      else saveGame();
     }
 
     function updateGhosts(now, dt) {
@@ -2748,6 +2869,7 @@
         if (Math.random() < HEART_DROP_CHANCE) addHeart(g.floor, g.x, g.z);
         updateHUD();
         if (ghostsBusted === ghostTotal) spawnBoss();
+        saveGame();
       }
     }
 
@@ -2958,7 +3080,7 @@
       shopJustLeft = shopFountain;   // block reopen until player walks away
       shopFountain = null;
       document.getElementById('shop').style.display = 'none';
-      renderer.domElement.requestPointerLock();   // re-lock resumes play
+      safePointerLock();   // re-lock resumes play
     }
 
     function isOwned(id) {
@@ -3015,6 +3137,7 @@
       refreshWeaponViewmodel();
       updateHUD();
       renderShop();
+      saveGame();
     }
 
     function tryFrameCursed() {
@@ -3039,10 +3162,47 @@
         spawnBurst(c.x + c.nx * 0.2, c.y, c.z + c.nz * 0.2, 0xffcf5c, 28, 0.18);
         document.getElementById('cleanse').style.display = 'none';
         sndFrame();
+        // Cleansing a cursed painting also counts it as viewed!
+        if (c.mesh && c.mesh.userData && typeof c.mesh.userData.artIndex === 'number') {
+          viewedArtIds.add(c.mesh.userData.artIndex);
+        }
         showMessage('Painting cleansed! +' + bounty + ' coins');
         updateHUD();
-        return;
+        saveGame();
+        return true;
       }
+      return false;
+    }
+
+    function findAimedPainting(maxDist = 5.2) {
+      if (!artDecals.length || !camera) return null;
+      artRaycaster.setFromCamera(SCREEN_CENTER, camera);
+      artRaycaster.far = maxDist;
+      const hits = artRaycaster.intersectObjects(artDecals, false);
+      if (!hits.length) return null;
+      const hit = hits[0];
+      const m = hit.object;
+      if (!m.visible || m.userData.artIndex === undefined) return null;
+      return { mesh: m, artIndex: m.userData.artIndex, point: hit.point, dist: hit.distance };
+    }
+
+    function tryViewPainting(onlyIfUnviewed = false) {
+      if (!active) return false;
+      const hit = findAimedPainting(5.2);
+      if (!hit) return false;
+      const already = viewedArtIds.has(hit.artIndex);
+      if (onlyIfUnviewed && already) return false;
+      if (!already) {
+        viewedArtIds.add(hit.artIndex);
+        spawnBurst(hit.point.x, hit.point.y, hit.point.z, 0x7fe9ff, 14, 0.10);
+        if (settings.sfxVol > 0.01) sfx(740, 0.11, 'sine', 0.09, 180);
+        showMessage('Portrait #' + (hit.artIndex + 1) + ' admired! (' + viewedArtIds.size + ' / ' + WALL_ART_FILES.length + ' viewed)');
+        updateHUD();
+        saveGame();
+      } else {
+        showMessage('Portrait #' + (hit.artIndex + 1) + ' by D. Butler (already admired)');
+      }
+      return true;
     }
 
     function weaponName() {
@@ -3281,7 +3441,11 @@
       return { x: gx * ROOM - HALF + ROOM / 2, z: gy * ROOM - HALF + ROOM / 2 };
     }
 
-    function buildDungeon() {
+    function buildDungeon(savedState = null) {
+      dungeonSeed = (savedState && typeof savedState.dungeonSeed === 'number')
+        ? savedState.dungeonSeed
+        : ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) >>> 0) || 1337;
+      rngFn = mulberry32(dungeonSeed);
       if (worldGroup) {
         scene.remove(worldGroup);
         worldGroup.traverse(o => {
@@ -3351,19 +3515,19 @@
       //    own connection shared that room the two shafts would overlap and you
       //    get lost inside the block.
       const connections = [];
-      const firstKind = Math.random() < 0.5 ? 'stairs' : 'ladder';
+      const firstKind = dRand() < 0.5 ? 'stairs' : 'ladder';
       const secondKind = firstKind === 'stairs' ? 'ladder' : 'stairs';
       for (let f = 0; f < FLOORS - 1; f++) {
         let gx, gy, guard = 0;
         do {
-          gx = Math.floor(Math.random() * GRID);
-          gy = Math.floor(Math.random() * GRID);
+          gx = Math.floor(dRand() * GRID);
+          gy = Math.floor(dRand() * GRID);
           guard++;
         } while (guard < 200 && (
           (gx === 0 && gy === 0) ||                       // not the spawn room
           (f > 0 && gx === connections[f - 1].gx && gy === connections[f - 1].gy) // not stacked
         ));
-        const kind = f === 0 ? firstKind : (f === 1 ? secondKind : (Math.random() < 0.5 ? 'stairs' : 'ladder'));
+        const kind = f === 0 ? firstKind : (f === 1 ? secondKind : (dRand() < 0.5 ? 'stairs' : 'ladder'));
         connections.push({ floor: f, gx, gy, kind });
       }
       const reserved = new Set(['0,0,0']);
@@ -3382,8 +3546,8 @@
       for (let floor = 0; floor < FLOORS; floor++) {
         let gx, gy, guard = 0;
         do {
-          gx = Math.floor(Math.random() * GRID);
-          gy = Math.floor(Math.random() * GRID);
+          gx = Math.floor(dRand() * GRID);
+          gy = Math.floor(dRand() * GRID);
         } while (reserved.has(`${floor},${gx},${gy}`) && guard++ < 100);
         fountainRooms.push({ floor, gx, gy });
         reserved.add(`${floor},${gx},${gy}`);
@@ -3430,12 +3594,12 @@
             const c = roomCenter(gx, gy);
             // Coins: aim ~4 per room on average so collecting the whole floor
             // funds the fountain. Most rooms get a cluster; a few get none.
-            if (Math.random() < 0.85) {
-              const n = 3 + Math.floor(Math.random() * 4);   // 3-6 coins
+            if (dRand() < 0.85) {
+              const n = 3 + Math.floor(dRand() * 4);   // 3-6 coins
               for (let k = 0; k < n; k++)
-                addCoin(floor, c.x + (Math.random() * 5 - 2.5), c.z + (Math.random() * 5 - 2.5));
+                addCoin(floor, c.x + (dRand() * 5 - 2.5), c.z + (dRand() * 5 - 2.5));
             }
-            if (Math.random() < 0.35) {
+            if (dRand() < 0.35) {
               addTorchSconce(floor, c.x, c.z);
             }
           }
@@ -3443,13 +3607,13 @@
 
         let placed = 0, guard = 0;
         while (placed < GHOSTS_PER_FLOOR && guard++ < 200) {
-          const gx = Math.floor(Math.random() * GRID);
-          const gy = Math.floor(Math.random() * GRID);
+          const gx = Math.floor(dRand() * GRID);
+          const gy = Math.floor(dRand() * GRID);
           if (reserved.has(`${floor},${gx},${gy}`)) continue;
           // don't spawn ghosts adjacent to the player's start (floor 0, room 0,0)
           if (floor === 0 && gx <= 1 && gy <= 1) continue;
           const c = roomCenter(gx, gy);
-          addGhost(floor, c.x + (Math.random() * 4 - 2), c.z + (Math.random() * 4 - 2));
+          addGhost(floor, c.x + (dRand() * 4 - 2), c.z + (dRand() * 4 - 2));
           placed++;
         }
 
@@ -3461,11 +3625,11 @@
         // the shop's ammo upgrades are what make them worth collecting.
         let bplaced = 0, bguard = 0;
         while (bplaced < AMMO_BOXES_PER_FLOOR && bguard++ < 400) {
-          const gx = Math.floor(Math.random() * GRID);
-          const gy = Math.floor(Math.random() * GRID);
+          const gx = Math.floor(dRand() * GRID);
+          const gy = Math.floor(dRand() * GRID);
           if (reserved.has(`${floor},${gx},${gy}`)) continue;
           const c = roomCenter(gx, gy);
-          addAmmoBox(floor, c.x + (Math.random() * 4 - 2), c.z + (Math.random() * 4 - 2));
+          addAmmoBox(floor, c.x + (dRand() * 4 - 2), c.z + (dRand() * 4 - 2));
           bplaced++;
         }
       }
@@ -3473,11 +3637,108 @@
       flushArchBatcher();
       designateCursedPaintings();
 
+      rngFn = Math.random;
       const spawn = roomCenter(0, 0);
       player = { x: spawn.x, y: 0, z: spawn.z };
       vy = 0;
       yaw = -2.356; pitch = 0;   // 135 deg right, so the corner spawn faces into the room
       lastFloorIdx = 0;
+      savedElapsedMs = 0;
+
+      if (savedState) {
+        if (savedState.player) {
+          player.x = savedState.player.x;
+          player.y = savedState.player.y;
+          player.z = savedState.player.z;
+          yaw = savedState.player.yaw ?? yaw;
+          pitch = savedState.player.pitch ?? 0;
+        }
+        lastFloorIdx = savedState.lastFloorIdx ?? floorIndexOf(player.y);
+        maxHealth = Math.max(3, savedState.maxHealth || 3);
+        health = Math.max(1, Math.min(maxHealth, savedState.health || maxHealth));
+        ammo = typeof savedState.ammo === 'number' ? savedState.ammo : START_AMMO;
+        ammoDropBonus = savedState.ammoDropBonus || 0;
+        hasRifle = !!savedState.hasRifle;
+        hasAuto = !!savedState.hasAuto;
+        hasPierce = !!savedState.hasPierce;
+        hasSpread = !!savedState.hasSpread;
+        hasDash = !!savedState.hasDash;
+        coinCount = savedState.coinCount || 0;
+        deaths = savedState.deaths || 0;
+        victories = savedState.victories || 0;
+        viewedArtIds = new Set(Array.isArray(savedState.viewedArtIds) ? savedState.viewedArtIds : []);
+        shotsFired = savedState.shotsFired || 0;
+        shotsHit = savedState.shotsHit || 0;
+        savedElapsedMs = savedState.elapsedMs || 0;
+        berserk = !!savedState.berserk;
+
+        // Restore collected coins
+        if (Array.isArray(savedState.collectedCoins)) {
+          for (const idx of savedState.collectedCoins) {
+            if (coins[idx]) { coins[idx].collected = true; coins[idx].mesh.visible = false; }
+          }
+        }
+        // Restore collected ammo boxes
+        if (Array.isArray(savedState.collectedAmmo)) {
+          for (const idx of savedState.collectedAmmo) {
+            if (ammoBoxes[idx]) { ammoBoxes[idx].collected = true; ammoBoxes[idx].group.visible = false; }
+          }
+        }
+        // Restore busted ghosts & live ghost positions/HP
+        if (Array.isArray(savedState.deadGhosts)) {
+          for (const idx of savedState.deadGhosts) {
+            if (ghosts[idx]) {
+              ghosts[idx].dead = true;
+              ghosts[idx].group.visible = false;
+              if (ghosts[idx].bar) ghosts[idx].bar.sprite.visible = false;
+            }
+          }
+          ghostsBusted = savedState.deadGhosts.length;
+        }
+        if (Array.isArray(savedState.ghostStates)) {
+          for (const gs of savedState.ghostStates) {
+            const g = ghosts[gs.i];
+            if (g && !g.dead) {
+              g.x = gs.x; g.z = gs.z; g.hp = gs.hp;
+              if (g.bar && g.hp > 0 && g.hp < g.maxHp) {
+                drawHealthBar(g.bar, g.hp / g.maxHp);
+                g.bar.sprite.visible = true;
+              }
+            }
+          }
+        }
+        // Restore cleansed cursed paintings
+        if (Array.isArray(savedState.cleansedCursed)) {
+          for (const idx of savedState.cleansedCursed) {
+            const c = cursedPaintings[idx];
+            if (c && !c.framed) {
+              c.framed = true;
+              c.frame.material.opacity = 0.85;
+              c.frame.material.color.setHex(0x8a5a2a);
+              c.glow.color.setHex(0x66ffaa);
+              c.glow.intensity = 0.5;
+            }
+          }
+          cursedFramed = savedState.cleansedCursed.length;
+        }
+        // Restore uncollected dropped hearts
+        if (Array.isArray(savedState.activeHearts)) {
+          for (const ah of savedState.activeHearts) addHeart(ah.floor, ah.x, ah.z);
+        }
+        // Restore Ghost King boss if active
+        if (savedState.boss && ghostsBusted >= ghostTotal) {
+          spawnBoss();
+          if (boss) {
+            boss.x = savedState.boss.x;
+            boss.z = savedState.boss.z;
+            boss.floor = savedState.boss.floor;
+            boss.hp = savedState.boss.hp;
+            updateBossBar();
+          }
+        }
+        refreshWeaponViewmodel();
+      }
+      startTime = performance.now();
       updateHUD();
     }
 
@@ -3517,12 +3778,35 @@
         if (act === 'helpnext')     { helpPage = Math.min(helpPage + 1, HELP_PAGES - 1); renderHelp(); return; }
         if (act === 'helpprev')     { helpPage = Math.max(helpPage - 1, 0); renderHelp(); return; }
         if (act === 'tomenu')       { showTitleScreen(); return; }
-        if (act === 'new')          { showConfirm('This will erase all previous scores. Are you sure?', startNewGame, showTitleScreen); return; }
-        if (act === 'again')        { buildDungeon(); menuState = null; renderer.domElement.requestPointerLock(); return; }
-        if (act === 'menu')         { showTitleScreen(); return; }
-        // pause-menu: quit the current run to the title (confirmed)
-        if (act === 'resume')       { menuState = null; renderer.domElement.requestPointerLock(); return; }
-        if (act === 'quitrun')      { showConfirm('This will end progress for this run. Are you sure?', quitToMenu, showPauseScreen); return; }
+        if (act === 'continue') {
+          const saved = readSavedGame();
+          if (!saved) return;
+          if (gameOver || !dungeonSeed || dungeonSeed !== saved.dungeonSeed) buildDungeon(saved);
+          menuState = null;
+          safePointerLock();
+          return;
+        }
+        if (act === 'new') {
+          if (hasSavedGame()) {
+            showConfirm('Starting a New Game will permanently erase all saved progress (deaths, paintings viewed, upgrades, coins, ghosts killed, and cleansed art). Are you sure?', startNewGame, showTitleScreen);
+          } else {
+            startNewGame();
+          }
+          return;
+        }
+        if (act === 'respawn') {
+          const saved = readSavedGame();
+          if (saved) buildDungeon(saved);
+          else buildDungeon();
+          menuState = null;
+          safePointerLock();
+          return;
+        }
+        if (act === 'again')        { startNewGame(); return; }
+        if (act === 'menu')         { saveGame(); showTitleScreen(); return; }
+        // pause-menu: save & return to main menu
+        if (act === 'resume')       { menuState = null; safePointerLock(); return; }
+        if (act === 'quitrun')      { saveGame(); active = false; showTitleScreen(); return; }
         // confirm dialog
         if (act === 'confirmyes')   { const f = confirmYes; confirmYes = confirmNo = null; if (f) f(); return; }
         if (act === 'confirmno')    { const f = confirmNo;  confirmYes = confirmNo = null; if (f) f(); return; }
@@ -3533,12 +3817,7 @@
         if (menuState === 'pause') return;         // pause menu: buttons only
         if (menuState === 'help') return;          // only buttons act on help
         if (menuState === 'result') return;        // result screen: buttons only
-        // title or pause -> enter / resume the gallery
-        if (act === 'play' || menuState === 'title' || menuState === null) {
-          if (gameOver) buildDungeon();
-          menuState = null;
-          renderer.domElement.requestPointerLock();
-        }
+        if (menuState === 'title') return;         // title screen: explicit Continue / New Game buttons
       });
       document.addEventListener('pointerlockchange', () => {
         if (document.pointerLockElement) {
@@ -3562,12 +3841,24 @@
       });
       document.addEventListener('mousedown', (e) => {
         if (e.button === 0 && document.pointerLockElement) {
+          // Clicking directly on an unviewed portrait counts it as viewed (without wasting ammo if no enemy is right in front)
+          const pHit = findAimedPainting(4.6);
+          if (pHit && !viewedArtIds.has(pHit.artIndex)) {
+            const pf = floorIndexOf(player.y);
+            const enemyClose = ghosts.some(g => !g.dead && g.floor === pf && Math.hypot(g.x - player.x, g.z - player.z) < pHit.dist + 1.0)
+              || (boss && !boss.dead && boss.floor === pf && Math.hypot(boss.x - player.x, boss.z - player.z) < pHit.dist + 1.2);
+            if (!enemyClose) {
+              tryViewPainting(true);
+              return;
+            }
+            tryViewPainting(true);
+          }
           mouseHeld = true;
           shoot();   // first shot immediate; autofire loop continues if hasAuto
         }
         if (e.button === 2 && document.pointerLockElement) {
           if (nearFountain) openShop(nearFountain);   // enter shop if standing at a fountain
-          else tryFrameCursed();                       // otherwise frame a nearby cursed painting
+          else if (!tryFrameCursed()) tryViewPainting(false); // cleanse cursed art, or admire a portrait
         }
       });
       document.addEventListener('mouseup', (e) => {
@@ -3599,8 +3890,9 @@
         }
         keys[shadow[k] || k] = true;
         if (k === ' ' || k.startsWith('arrow')) e.preventDefault();   // dash & camera look keys shouldn't scroll the page
-        if (k === 'r' && !gameOver) {
+        if (k === 'r' && active && !gameOver) {
           buildDungeon();
+          saveGame();
           showMessage('New gallery generated');
         }
       });
@@ -3621,6 +3913,16 @@
       document.getElementById('ghostTotal').textContent = ghostTotal;
       document.getElementById('cursed').textContent = cursedFramed;
       document.getElementById('cursedTotal').textContent = cursedTotal;
+      const vEl = document.getElementById('viewed');
+      const vtEl = document.getElementById('viewedTotal');
+      if (vEl) vEl.textContent = viewedArtIds.size;
+      if (vtEl) vtEl.textContent = WALL_ART_FILES.length;
+      const dPill = document.getElementById('deathsPill');
+      const dVal = document.getElementById('deathsVal');
+      if (dPill && dVal) {
+        dVal.textContent = deaths;
+        dPill.style.display = deaths > 0 ? 'inline-flex' : 'none';
+      }
       document.getElementById('floor').textContent = floorIndexOf(player.y) + 1;
       document.getElementById('floorMax').textContent = FLOORS;
       document.getElementById('hearts').innerHTML =
@@ -3645,33 +3947,45 @@
     function doGameOver() {
       gameOver = true;
       outro = true;
+      deaths++;
+      // Prepare respawn state in save: restore full health & safe Floor 1 spawn while preserving deaths, upgrades, coins, ghosts killed, paintings viewed & cleansed
+      const spawn = roomCenter(0, 0);
+      player.x = spawn.x; player.y = 0; player.z = spawn.z; lastFloorIdx = 0;
+      health = maxHealth;
+      if (ammo < 8) ammo = 8;
+      saveGame();
+      updateHUD();
+
       document.getElementById('bossbar').style.display = 'none';
       document.getElementById('cleanse').style.display = 'none';
       document.getElementById('fountainPrompt').style.display = 'none';
+      const vp = document.getElementById('viewPrompt');
+      if (vp) vp.style.display = 'none';
       const overlay = document.getElementById('overlay');
-      // release lock so the message shows, but nothing is interactive yet
       setTimeout(() => document.exitPointerLock(), 400);
       overlay.style.display = 'flex';
       overlay.innerHTML =
         '<div class="panel">' +
+        gothicCornersHTML() +
         '<div class="gp-big lose">You Got Spooked</div>' +
-        '<div class="gp-sub" style="color:var(--gold)">Beat the Ghost King to win!</div>' +
+        `<div class="gp-sub" style="color:var(--gold)">Deaths Recorded: ${deaths} &bull; Progress Saved</div>` +
         '</div>';
-      // after the pause, show the leaderboard (no score recorded on a loss)
       setTimeout(() => {
         outro = false;
         menuState = 'result';
         overlay.innerHTML =
           '<div class="panel">' +
-          '<div class="gp-big lose">Game Over</div>' +
+          gothicCornersHTML() +
+          '<div class="gp-big lose">Fallen in the Gallery</div>' +
+          `<div class="gp-save-summary"><span>&#128128; Deaths: <b>${deaths}</b></span><span>&#128444; Viewed: <b>${viewedArtIds.size}/${WALL_ART_FILES.length}</b></span><span>&#128123; Ghosts: <b>${ghostsBusted}/${ghostTotal}</b></span><span>&#9679; Coins: <b>${coinCount}</b></span></div>` +
           '<div style="margin-top:8px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">&#9733; Top Runs</div>' +
           highScoreTableHTML(0) +
           '<div class="menu-row">' +
-          '<button class="minipill" data-act="again">&#9851; Try Again</button>' +
+          '<button class="gp-cta" style="margin-top:0;padding:10px 26px;font-size:14.5px" data-act="respawn">&#9654; Respawn &amp; Continue</button>' +
           '<button class="minipill" data-act="menu">&#9832; Main Menu</button>' +
           '</div>' +
           '</div>';
-      }, 3000);
+      }, 2600);
     }
 
     function doVictory() {
@@ -3683,8 +3997,10 @@
       document.getElementById('cleanse').style.display = 'none';
       document.getElementById('fountainPrompt').style.display = 'none';
 
+      victories++;
+      saveGame();
       // compute the run's stats now; record happens after initials are entered
-      const secs = Math.floor((performance.now() - startTime) / 1000);
+      const secs = Math.floor(getTotalElapsedMs() / 1000);
       const acc = shotsFired ? Math.round(shotsHit / shotsFired * 100) : 0;
       const score = computeScore(secs, coinCount, acc, cursedFramed);
       pendingRun = { score, secs, acc, coins: coinCount, cursed: cursedFramed };
@@ -3817,11 +4133,11 @@
         // Dash on right bumper (R1 / button 5)
         padDash = gp.buttons[5] && gp.buttons[5].pressed;
 
-        // Square (button 2) -> frame a cursed painting (edge-detected)
+        // Square (button 2) -> frame a cursed painting or admire a portrait (edge-detected)
         const sqNow = gp.buttons[2] && gp.buttons[2].pressed;
         if (sqNow && !prevPadButtons[2] && document.pointerLockElement) {
           if (nearFountain) openShop(nearFountain);
-          else tryFrameCursed();
+          else if (!tryFrameCursed()) tryViewPainting(false);
         }
         prevPadButtons[2] = sqNow;
 
@@ -3866,7 +4182,7 @@
           } else {
             ensureAudio();
             if (gameOver && !enteringInitials) buildDungeon();
-            else if (!gameOver) renderer.domElement.requestPointerLock();
+            else if (!gameOver) safePointerLock();
           }
         }
         prevXButton = xNow;
@@ -4003,7 +4319,10 @@
           lastFloorIdx = fi;
           showMessage('Floor ' + (fi + 1));
           updateHUD();
+          saveGame();
         }
+        autoSaveTimer += dt;
+        if (autoSaveTimer >= 480) { autoSaveTimer = 0; saveGame(); }
       }
 
       let shakeX = 0, shakeY = 0;
@@ -4057,6 +4376,7 @@
           coinCount++;
           sndCoin();
           updateHUD();
+          saveGame();
           if (coinCount === coinTotal) showMessage('All coins collected!');
         }
       }
@@ -4076,6 +4396,7 @@
           health++;
           sndHeart();
           updateHUD();
+          saveGame();
         }
       }
 
@@ -4097,6 +4418,7 @@
           const gain = AMMO_BOX_BASE + ammoDropBonus;
           showMessage('+' + gain + ' ammo');
           updateHUD();
+          saveGame();
         }
       }
 
@@ -4137,6 +4459,20 @@
         }
       }
       document.getElementById('fountainPrompt').style.display = nearFountain ? 'block' : 'none';
+      const viewPromptEl = document.getElementById('viewPrompt');
+      if (viewPromptEl) {
+        if (active && !nearFountain && !showCleanse && !shopOpen) {
+          const aimed = findAimedPainting(4.6);
+          if (aimed && !viewedArtIds.has(aimed.artIndex)) {
+            viewPromptEl.innerHTML = '&#128444; Click portrait #' + (aimed.artIndex + 1) + ' to admire (' + viewedArtIds.size + '/' + WALL_ART_FILES.length + ')';
+            viewPromptEl.style.display = 'block';
+          } else {
+            viewPromptEl.style.display = 'none';
+          }
+        } else {
+          viewPromptEl.style.display = 'none';
+        }
+      }
 
       // fire-rate cooldown + autofire (hold mouse/X to spray once owned)
       if (fireCooldown > 0) fireCooldown = Math.max(0, fireCooldown - dt);
@@ -4326,12 +4662,34 @@
         '<span><kbd class="gp-kbd">L-CLICK</kbd> Fire</span>' +
         '<span><kbd class="gp-kbd">R-CLICK</kbd> Cleanse / Shop</span>' +
         '</div>' +
+        (() => {
+          const sv = readSavedGame();
+          if (!sv) return '';
+          const vCount = Array.isArray(sv.viewedArtIds) ? sv.viewedArtIds.length : 0;
+          const fl = (sv.lastFloorIdx ?? 0) + 1;
+          return '<div class="gp-save-summary">' +
+            `<span>&#9673; Floor <b>${fl}/${FLOORS}</b></span>` +
+            `<span>&#9679; Coins <b>${sv.coinCount || 0}</b></span>` +
+            `<span>&#128123; Ghosts <b>${sv.ghostsBusted || 0}/${sv.ghostTotal || 24}</b></span>` +
+            `<span>&#128444; Viewed <b>${vCount}/${WALL_ART_FILES.length}</b></span>` +
+            `<span>&#9640; Cleansed <b>${sv.cursedFramed || 0}/${sv.cursedTotal || 3}</b></span>` +
+            `<span>&#128128; Deaths <b>${sv.deaths || 0}</b></span>` +
+            '</div>';
+        })() +
         '<div>' + topScoreHTML() + '</div>' +
-        '<div><button class="gp-cta" data-act="play">&#9876; Enter the Gallery</button></div>' +
+        (() => {
+          const hasSave = hasSavedGame();
+          return '<div class="gp-cta-row">' +
+            (hasSave
+              ? '<button class="gp-cta" data-act="continue">&#9654; Continue</button>' +
+                '<button class="gp-cta secondary" data-act="new">&#9876; New Game</button>'
+              : '<button class="gp-cta" data-act="new">&#9876; New Game</button>' +
+                '<button class="gp-cta secondary" data-act="continue" disabled title="No saved patrol yet">&#9654; Continue</button>') +
+            '</div>';
+        })() +
         '<div class="menu-row">' +
         '<button class="minipill" data-act="settings">&#9881; Settings</button>' +
         '<button class="minipill" data-act="help">&#128220; Field Guide</button>' +
-        '<button class="minipill danger" data-act="new">&#9760; Reset Records</button>' +
         '</div>' +
         '</div>';
     }
@@ -4434,6 +4792,7 @@
     }
 
     function showPauseScreen() {
+      saveGame();
       menuState = 'pause';
       const overlay = document.getElementById('overlay');
       overlay.classList.add('in-pause');
@@ -4542,22 +4901,37 @@
       const overlay = document.getElementById('overlay');
       overlay.style.display = 'flex';
       overlay.innerHTML =
-        '<div class="panel">' +
-        `<div class="gp-cta" style="margin-bottom:18px;max-width:340px;line-height:1.45">${message}</div>` +
+        '<div class="panel" style="max-width:480px">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow">&#9888; Warning &mdash; Permanent Action &#9888;</div>' +
+        '<div class="gp-big lose" style="font-size:28px;margin-bottom:8px">Erase Saved Progress?</div>' +
+        '<div class="gp-divider">&#9670;</div>' +
+        `<div class="gp-sub" style="font-size:14.5px;margin-bottom:18px">${message}</div>` +
         '<div class="menu-row">' +
         '<button class="minipill" data-act="confirmno">Cancel</button>' +
-        '<button class="minipill danger" data-act="confirmyes">Yes</button>' +
+        '<button class="minipill danger" data-act="confirmyes">&#9760; Yes, Start New Game</button>' +
         '</div>' +
         '</div>';
     }
 
+    function safePointerLock() {
+      try {
+        const p = renderer && renderer.domElement && renderer.domElement.requestPointerLock();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (e) {}
+    }
+
     function startNewGame() {
-      try { localStorage.removeItem(HS_KEY); } catch (e) {}
-      highScores = [];
+      clearSavedGame();
+      deaths = 0;
+      victories = 0;
+      viewedArtIds = new Set();
+      savedElapsedMs = 0;
       ensureAudio();
       buildDungeon();
+      saveGame();
       menuState = null;
-      renderer.domElement.requestPointerLock();
+      safePointerLock();
     }
 
     // ---------- Init ----------
@@ -4645,7 +5019,9 @@
       scene.add(camera);
       buildWeaponViewmodel();
 
-      buildDungeon();
+      const existingSave = readSavedGame();
+      buildDungeon(existingSave);
+      window.addEventListener('beforeunload', () => { if (dungeonSeed) saveGame(); });
       loadSettings();
       initBgm();
       window.addEventListener('pointerdown', () => ensureAudio(), { once: true });
