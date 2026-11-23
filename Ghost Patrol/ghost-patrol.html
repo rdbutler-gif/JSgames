@@ -6,18 +6,20 @@
   <title>Ghost Patrol</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Baloo+2:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --ink: #0a0a14;
+      --ink: #07060e;
       --cyan: #7fe9ff;
-      --violet: #b98cff;
-      --gold: #ffcf5c;
+      --violet: #c59bff;
+      --gold: #f0c46c;
+      --gold-dim: #9c7a38;
       --rose: #ff6b8a;
-      --mint: #7dffb0;
-      --panel: rgba(14,12,28,0.92);
-      --font-display: 'Fredoka', system-ui, sans-serif;
-      --font-ui: 'Baloo 2', system-ui, sans-serif;
+      --mint: #66f7b8;
+      --panel: rgba(11, 10, 22, 0.90);
+      --font-display: 'Cinzel', 'Cinzel Decorative', Georgia, serif;
+      --font-logo: 'Cinzel Decorative', 'Cinzel', Georgia, serif;
+      --font-ui: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     }
     body { margin: 0; overflow: hidden; background: #000; font-family: var(--font-ui); }
     canvas { display: block; }
@@ -116,51 +118,224 @@
       animation: cleansePulse 1.1s ease-in-out infinite;
     }
 
-    /* ---- overlay (title / pause / result) ---- */
+    /* ---- Haunted Key Art & Ambient Particle Backdrop ---- */
+    #uiFxCanvas {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      z-index: 65; pointer-events: none; opacity: 1; transition: opacity 0.4s ease;
+    }
+    #uiFxCanvas.hide { opacity: 0; }
+
+    @keyframes bgKenBurns {
+      0%   { transform: scale(1.03) translateY(0px); }
+      50%  { transform: scale(1.09) translateY(-10px); }
+      100% { transform: scale(1.03) translateY(0px); }
+    }
+    @keyframes crestPulse {
+      0%, 100% { filter: drop-shadow(0 0 12px rgba(127,233,255,0.65)) drop-shadow(0 0 28px rgba(197,155,255,0.35)); transform: translateY(0); }
+      50%      { filter: drop-shadow(0 0 20px rgba(127,233,255,0.95)) drop-shadow(0 0 42px rgba(240,196,108,0.55)); transform: translateY(-4px); }
+    }
+    @keyframes shimmerSweep {
+      0%   { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* ---- overlay (title / pause / help / result) ---- */
     #overlay {
       position: absolute; inset: 0; z-index: 20;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: radial-gradient(ellipse at 50% 40%, rgba(30,20,55,0.82), rgba(6,6,16,0.95));
-      color: #eef; text-align: center; cursor: pointer;
-      padding: 24px; box-sizing: border-box; overflow-y: auto;
+      background:
+        radial-gradient(ellipse at 50% 24%, rgba(10, 14, 28, 0.32) 0%, rgba(7, 6, 15, 0.86) 66%, rgba(4, 3, 9, 0.97) 100%),
+        url('textures/title-art.jpg') center 20% / cover no-repeat;
+      color: #eef; text-align: center; cursor: default;
+      padding: 16px; box-sizing: border-box; overflow-y: auto;
+      scrollbar-width: none; -ms-overflow-style: none;
       font-family: var(--font-ui);
     }
-    #overlay .panel { max-width: 500px; width: 100%; }
+    #overlay::-webkit-scrollbar { display: none; }
+    #overlay.in-pause {
+      background: radial-gradient(ellipse at 50% 40%, rgba(18, 14, 34, 0.78), rgba(5, 4, 12, 0.94));
+      backdrop-filter: blur(6px);
+    }
+
+    /* Ornate Gothic Framed Card */
+    #overlay .panel {
+      position: relative;
+      max-width: 710px; width: 100%;
+      background: linear-gradient(180deg, rgba(14, 13, 26, 0.86) 0%, rgba(8, 7, 16, 0.94) 100%);
+      border: 1px solid rgba(240, 196, 108, 0.40);
+      border-radius: 16px;
+      padding: 22px 30px 20px;
+      box-sizing: border-box;
+      box-shadow:
+        0 24px 70px rgba(0, 0, 0, 0.88),
+        0 0 50px rgba(127, 233, 255, 0.10),
+        inset 0 0 0 1px rgba(127, 233, 255, 0.12),
+        inset 0 0 36px rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+      pointer-events: none;
+      transition: opacity 0.45s cubic-bezier(0.25, 0.9, 0.35, 1), transform 0.45s cubic-bezier(0.25, 0.9, 0.35, 1);
+    }
+    body.loaded #overlay .panel {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+    #overlay .panel::before {
+      content: ''; position: absolute; inset: 6px;
+      border: 1px solid rgba(240, 196, 108, 0.16);
+      border-radius: 11px; pointer-events: none;
+    }
+
+    /* Corner Filigree Ornaments */
+    .gothic-corner {
+      position: absolute; width: 26px; height: 26px; pointer-events: none;
+      color: var(--gold); opacity: 0.78;
+    }
+    .gothic-corner.tl { top: 8px; left: 8px; }
+    .gothic-corner.tr { top: 8px; right: 8px; transform: scaleX(-1); }
+    .gothic-corner.bl { bottom: 8px; left: 8px; transform: scaleY(-1); }
+    .gothic-corner.br { bottom: 8px; right: 8px; transform: scale(-1, -1); }
+
+    .gp-eyebrow {
+      font-family: var(--font-display); font-weight: 600;
+      font-size: 11.5px; letter-spacing: 4.5px; text-transform: uppercase;
+      color: var(--gold); opacity: 0.9; margin: 0 0 8px;
+      text-shadow: 0 0 12px rgba(240, 196, 108, 0.45);
+    }
+    .gp-crest {
+      display: inline-flex; align-items: center; justify-content: center;
+      margin: 0 auto 6px; animation: crestPulse 3.6s ease-in-out infinite;
+    }
     .gp-title {
-      font-family: var(--font-display); font-weight: 700;
-      font-size: clamp(52px, 12vw, 104px); line-height: 0.92; letter-spacing: 2px;
-      color: #fff; margin: 0 0 6px;
+      font-family: var(--font-logo); font-weight: 900;
+      font-size: clamp(42px, 8.2vw, 76px); line-height: 0.96; letter-spacing: 4px;
+      color: #f7f4eb; margin: 0;
       text-shadow:
-        0 0 18px rgba(127,233,255,0.85),
-        0 0 40px rgba(185,140,255,0.7),
-        3px 3px 0 #6a3bd6, 6px 6px 0 #3a1a7a,
-        9px 9px 14px rgba(0,0,0,0.7);
-      animation: titleFloat 3.2s ease-in-out infinite;
+        0 0 22px rgba(127, 233, 255, 0.55),
+        0 0 48px rgba(197, 155, 255, 0.45),
+        0 3px 0 #2a1f3d,
+        0 6px 18px rgba(0, 0, 0, 0.9);
     }
-    @keyframes titleFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-    .gp-title .patrol { color: var(--cyan); display: block; }
+    .gp-title .patrol {
+      font-family: var(--font-display); font-weight: 800;
+      font-size: clamp(24px, 4.5vw, 40px); letter-spacing: 12px;
+      display: block; margin-top: 4px;
+      background: linear-gradient(180deg, #ffffff 0%, #8ef0ff 55%, #4bb8e8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 14px rgba(127, 233, 255, 0.65)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+    }
+    .gp-divider {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      margin: 12px auto 14px; width: min(360px, 85%);
+      color: var(--gold); font-size: 12px; opacity: 0.8;
+    }
+    .gp-divider::before, .gp-divider::after {
+      content: ''; flex: 1; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(240, 196, 108, 0.65), transparent);
+    }
     .gp-sub {
-      font-family: var(--font-ui); font-weight: 600; font-size: 17px;
-      color: #cdd3f0; margin: 4px 0; line-height: 1.5;
+      font-family: var(--font-ui); font-weight: 500; font-size: 15px;
+      color: #d0d6ee; margin: 4px auto; line-height: 1.55; max-width: 540px;
     }
-    .gp-sub .hot { color: var(--violet); }
+    .gp-sub .hot { color: var(--cyan); font-weight: 700; text-shadow: 0 0 10px rgba(127, 233, 255, 0.4); }
+    .gp-sub .king { color: var(--violet); font-weight: 700; text-shadow: 0 0 10px rgba(197, 155, 255, 0.45); }
+
+    /* 3-Column Haunted Feature Pillars on Title Screen */
+    .gp-pillars {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px;
+      margin: 13px 0 11px; text-align: left;
+    }
+    .gp-pillar {
+      background: linear-gradient(180deg, rgba(24, 22, 42, 0.72), rgba(12, 11, 22, 0.82));
+      border: 1px solid rgba(240, 196, 108, 0.22);
+      border-radius: 11px; padding: 10px 12px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .gp-pillar:hover {
+      border-color: rgba(127, 233, 255, 0.45);
+      transform: translateY(-2px);
+    }
+    .gp-pillar-h {
+      font-family: var(--font-display); font-weight: 700; font-size: 12px;
+      letter-spacing: 0.8px; color: var(--gold); margin-bottom: 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .gp-pillar-p {
+      font-size: 11.8px; line-height: 1.42; color: #b6bddb; margin: 0;
+    }
+    .gp-pillar-p b { color: #eef2ff; font-weight: 700; }
+
+    /* Tactical Keycap Ribbon */
+    .gp-keystrip {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+      gap: 6px 12px; margin: 10px auto 11px; padding: 7px 16px;
+      background: rgba(6, 5, 14, 0.68);
+      border: 1px solid rgba(127, 233, 255, 0.16);
+      border-radius: 999px; width: fit-content; max-width: 100%;
+      font-size: 11.5px; color: #b8c0de; white-space: nowrap;
+    }
+    .gp-keystrip span { display: inline-flex; align-items: center; gap: 5px; }
+    .gp-kbd {
+      display: inline-block; padding: 2px 7px; border-radius: 5px;
+      background: linear-gradient(180deg, #27253e, #171528);
+      border: 1px solid rgba(240, 196, 108, 0.42);
+      box-shadow: 0 2px 0 #0b0a14;
+      font-family: var(--font-display); font-weight: 700; font-size: 11px;
+      color: var(--gold); letter-spacing: 0.5px;
+    }
+
+    /* Champion's Reliquary Trophy Badge */
+    .gp-trophy {
+      display: inline-flex; align-items: center; gap: 10px;
+      margin: 4px auto 8px; padding: 6px 18px; border-radius: 999px;
+      background: linear-gradient(90deg, rgba(240, 196, 108, 0.08), rgba(240, 196, 108, 0.18), rgba(240, 196, 108, 0.08));
+      border: 1px solid rgba(240, 196, 108, 0.42);
+      font-family: var(--font-display); font-weight: 700; font-size: 13.5px;
+      color: var(--gold); letter-spacing: 0.8px;
+      box-shadow: 0 0 18px rgba(240, 196, 108, 0.15);
+    }
+
+    /* Primary Gothic CTA Button */
     .gp-cta {
-      display: inline-block; margin-top: 20px;
-      font-family: var(--font-display); font-weight: 600; font-size: 20px;
-      color: #1a1020; background: linear-gradient(180deg, #9bf0ff, #7fe9ff);
-      padding: 12px 34px; border-radius: 999px;
-      box-shadow: 0 0 26px rgba(127,233,255,0.6), 0 6px 0 #2c8aa8, 0 10px 18px rgba(0,0,0,0.5);
-      animation: ctaPulse 1.8s ease-in-out infinite;
+      position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      margin-top: 12px; cursor: pointer;
+      font-family: var(--font-display); font-weight: 800; font-size: 17px; letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: #09131c;
+      background: linear-gradient(180deg, #b8f5ff 0%, #68dcf8 48%, #32a8cc 100%);
+      padding: 13px 38px; border-radius: 10px;
+      border: 1px solid #e2fbff;
+      box-shadow:
+        0 0 28px rgba(127, 233, 255, 0.55),
+        0 0 0 3px rgba(240, 196, 108, 0.35),
+        0 6px 18px rgba(0, 0, 0, 0.75);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
     }
-    @keyframes ctaPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+    .gp-cta:hover {
+      transform: translateY(-2px) scale(1.02);
+      filter: brightness(1.08);
+      box-shadow:
+        0 0 38px rgba(127, 233, 255, 0.85),
+        0 0 0 3px rgba(240, 196, 108, 0.65),
+        0 10px 24px rgba(0, 0, 0, 0.85);
+    }
+    .gp-cta:active { transform: translateY(1px); }
+
     .gp-big {
-      font-family: var(--font-display); font-weight: 700;
-      font-size: clamp(30px, 6vw, 46px); margin: 6px 0;
+      font-family: var(--font-display); font-weight: 800;
+      font-size: clamp(28px, 5.5vw, 44px); letter-spacing: 2px; margin: 6px 0;
     }
-    .gp-big.win { color: var(--violet); text-shadow: 0 0 20px rgba(185,140,255,0.8), 3px 3px 0 #4a2080; }
-    .gp-big.lose { color: var(--rose); text-shadow: 0 0 20px rgba(255,107,138,0.7), 3px 3px 0 #7a2038; }
-    .gp-score { font-family: var(--font-display); font-weight: 700; font-size: 30px; color: var(--mint); margin: 8px 0; text-shadow: 0 0 16px rgba(125,255,176,0.6); }
-    .gp-hint { font-family: var(--font-ui); font-weight: 500; color: #9aa0c8; font-size: 14px; }
+    .gp-big.win { color: var(--gold); text-shadow: 0 0 24px rgba(240,196,108,0.75), 0 3px 0 #3a260c; }
+    .gp-big.lose { color: var(--rose); text-shadow: 0 0 24px rgba(255,107,138,0.75), 0 3px 0 #4a1222; }
+    .gp-score { font-family: var(--font-display); font-weight: 800; font-size: 32px; color: var(--mint); margin: 8px 0; letter-spacing: 1.5px; text-shadow: 0 0 18px rgba(102,247,184,0.6); }
+    .gp-hint { font-family: var(--font-ui); font-weight: 500; color: #9aa0c8; font-size: 13.5px; }
+    @media (max-width: 620px) {
+      .gp-pillars { grid-template-columns: 1fr; }
+      #overlay .panel { padding: 20px 18px; }
+    }
 
     /* ---- vignette ---- */
     #vignette {
@@ -280,52 +455,153 @@
     .help-dots { display: flex; gap: 8px; }
     .help-dots span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.2); }
     .help-dots span.on { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
-    /* ---- loading screen (shown while the 100 wall paintings stream in) ---- */
+    /* ---- AAA Haunted Opening Loading Screen (100% opaque so #overlay never bleeds through) ---- */
     #loading {
-      position: absolute; inset: 0; z-index: 40;
+      position: absolute; inset: 0; z-index: 60;
       display: flex; align-items: center; justify-content: center;
-      background: radial-gradient(ellipse at 50% 40%, rgba(30,20,55,0.95), rgba(6,6,16,0.99));
-      font-family: var(--font-ui); transition: opacity 0.5s ease;
+      background-color: #05040b;
+      overflow: hidden;
+      font-family: var(--font-ui);
+      transition: opacity 0.65s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.65s;
     }
-    #loading.hide { opacity: 0; pointer-events: none; }
-    #loading .load-panel { text-align: center; width: min(440px, 82vw); }
+    #loading.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+    #loading .load-bg {
+      position: absolute; inset: -4%;
+      background: url('textures/title-art.jpg') center 22% / cover no-repeat;
+      animation: bgKenBurns 18s ease-in-out infinite;
+      filter: brightness(0.75) contrast(1.08);
+    }
+    #loading .load-vignette {
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 30%, rgba(10, 14, 28, 0.25) 0%, rgba(7, 6, 15, 0.85) 62%, rgba(3, 2, 8, 0.98) 100%),
+        linear-gradient(180deg, rgba(4, 3, 10, 0.55) 0%, transparent 30%, rgba(4, 3, 10, 0.92) 100%);
+    }
+    #loading .load-panel {
+      position: relative; z-index: 2;
+      text-align: center; width: min(560px, 90vw);
+      background: linear-gradient(180deg, rgba(14, 13, 26, 0.88) 0%, rgba(7, 6, 15, 0.95) 100%);
+      border: 1px solid rgba(240, 196, 108, 0.44);
+      border-radius: 16px;
+      padding: 30px 34px 26px;
+      box-sizing: border-box;
+      box-shadow:
+        0 26px 80px rgba(0, 0, 0, 0.92),
+        0 0 55px rgba(127, 233, 255, 0.14),
+        inset 0 0 0 1px rgba(127, 233, 255, 0.14),
+        inset 0 0 40px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(12px);
+    }
+    #loading .load-panel::before {
+      content: ''; position: absolute; inset: 6px;
+      border: 1px solid rgba(240, 196, 108, 0.18);
+      border-radius: 11px; pointer-events: none;
+    }
+    #loading .load-kicker {
+      font-family: var(--font-display); font-weight: 600;
+      font-size: 11px; letter-spacing: 4.5px; text-transform: uppercase;
+      color: var(--gold); margin-bottom: 8px;
+      text-shadow: 0 0 12px rgba(240, 196, 108, 0.5);
+    }
     #loading .load-title {
-      font-family: var(--font-display); font-weight: 700;
-      font-size: clamp(40px, 10vw, 76px); line-height: 0.95; letter-spacing: 2px;
-      color: #fff; margin-bottom: 4px;
-      text-shadow: 0 0 18px rgba(127,233,255,0.85), 0 0 40px rgba(185,140,255,0.7),
-        3px 3px 0 #6a3bd6, 6px 6px 12px rgba(0,0,0,0.7);
+      font-family: var(--font-logo); font-weight: 900;
+      font-size: clamp(38px, 8vw, 68px); line-height: 0.96; letter-spacing: 4px;
+      color: #f7f4eb; margin: 0 0 4px;
+      text-shadow:
+        0 0 22px rgba(127, 233, 255, 0.6),
+        0 0 45px rgba(197, 155, 255, 0.45),
+        0 3px 0 #2a1f3d, 0 6px 16px rgba(0, 0, 0, 0.9);
     }
-    #loading .load-title .patrol { color: var(--cyan); }
+    #loading .load-title .patrol {
+      font-family: var(--font-display); font-weight: 800;
+      font-size: clamp(21px, 4vw, 34px); letter-spacing: 11px;
+      display: block; margin-top: 4px;
+      background: linear-gradient(180deg, #ffffff 0%, #8ef0ff 55%, #4bb8e8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 12px rgba(127, 233, 255, 0.65));
+    }
     #loading .load-sub {
-      font-family: var(--font-ui); font-weight: 600; font-size: 16px;
-      color: #cdd3f0; margin-bottom: 20px;
+      font-family: var(--font-display); font-weight: 600; font-size: 14px;
+      letter-spacing: 1.2px; color: #d6dcf5; margin: 14px 0 12px;
+      min-height: 1.4em;
     }
     #loading .load-track {
-      width: 100%; height: 16px; border-radius: 999px; margin: 0 auto;
-      background: rgba(40,30,60,0.8);
-      box-shadow: inset 0 0 0 2px rgba(127,233,255,0.4);
+      position: relative; width: 100%; height: 18px; border-radius: 9px; margin: 0 auto;
+      background: #090814;
+      border: 1px solid rgba(240, 196, 108, 0.48);
+      box-shadow:
+        inset 0 2px 6px rgba(0, 0, 0, 0.9),
+        0 0 20px rgba(127, 233, 255, 0.15);
       overflow: hidden;
     }
+    #loading .load-track::after {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent calc(10% - 1px),
+        rgba(240, 196, 108, 0.16) calc(10% - 1px),
+        rgba(240, 196, 108, 0.16) 10%
+      );
+      pointer-events: none;
+    }
     #loading .load-fill {
-      height: 100%; width: 0%; border-radius: 999px;
-      background: linear-gradient(90deg, #7fe9ff, #b98cff);
-      box-shadow: 0 0 12px rgba(127,233,255,0.7);
-      transition: width 0.2s ease;
+      position: relative; height: 100%; width: 0%; border-radius: 7px;
+      background: linear-gradient(90deg, #4b2384 0%, #8864e8 35%, #55ddf5 75%, #84ffca 100%);
+      background-size: 200% 100%;
+      animation: shimmerSweep 3s linear infinite;
+      box-shadow: 0 0 18px rgba(127, 233, 255, 0.85);
+      transition: width 0.18s cubic-bezier(0.25, 0.9, 0.35, 1);
     }
-    #loading .load-count {
-      font-family: var(--font-display); font-weight: 600; font-size: 15px;
-      color: rgba(220,225,255,0.7); margin-top: 10px; letter-spacing: 1px;
+    #loading .load-fill::after {
+      content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 14px;
+      background: radial-gradient(circle at right, #ffffff 0%, rgba(127, 233, 255, 0.9) 55%, transparent 100%);
+      filter: blur(1px);
     }
+    #loading .load-meta {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 10px; font-family: var(--font-display); font-weight: 700;
+      font-size: 12.5px; letter-spacing: 1.5px; color: var(--gold);
+    }
+    #loading .load-lore {
+      margin-top: 16px; padding-top: 12px;
+      border-top: 1px solid rgba(240, 196, 108, 0.18);
+      font-size: 12.5px; color: #9ea6c8; font-style: italic; line-height: 1.45;
+    }
+    #loading .load-lore b { color: var(--cyan); font-style: normal; }
   </style>
 </head>
 <body>
+  <canvas id="uiFxCanvas"></canvas>
   <div id="loading">
+    <div class="load-bg"></div>
+    <div class="load-vignette"></div>
     <div class="load-panel">
+      <svg class="gothic-corner tl" viewBox="0 0 32 32"><path fill="currentColor" d="M2 2h14v2H4v12H2V2zm4 4h8v2H8v6H6V6z"/></svg>
+      <svg class="gothic-corner tr" viewBox="0 0 32 32"><path fill="currentColor" d="M2 2h14v2H4v12H2V2zm4 4h8v2H8v6H6V6z"/></svg>
+      <svg class="gothic-corner bl" viewBox="0 0 32 32"><path fill="currentColor" d="M2 2h14v2H4v12H2V2zm4 4h8v2H8v6H6V6z"/></svg>
+      <svg class="gothic-corner br" viewBox="0 0 32 32"><path fill="currentColor" d="M2 2h14v2H4v12H2V2zm4 4h8v2H8v6H6V6z"/></svg>
+      <div class="load-kicker">&#10022; The Cursed Exhibition Awaits &#10022;</div>
+      <div class="gp-crest">
+        <svg width="56" height="44" viewBox="0 0 56 44" fill="none">
+          <path d="M8 34L13 14L22 24L28 8L34 24L43 14L48 34H8Z" stroke="#f0c46c" stroke-width="2.2" fill="rgba(240,196,108,0.14)"/>
+          <circle cx="28" cy="6" r="3" fill="#7fe9ff"/>
+          <circle cx="12" cy="12" r="2.2" fill="#c59bff"/>
+          <circle cx="44" cy="12" r="2.2" fill="#c59bff"/>
+          <circle cx="28" cy="25" r="3.5" fill="#7fe9ff"/>
+          <path d="M6 38H50" stroke="#f0c46c" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
       <div class="load-title">GHOST<span class="patrol">PATROL</span></div>
-      <div class="load-sub">Hanging the gallery&hellip;</div>
+      <div class="load-sub" id="loadStatus">Unlocking the wrought-iron gallery gates&hellip;</div>
       <div class="load-track"><div class="load-fill" id="loadFill"></div></div>
-      <div class="load-count" id="loadCount">0%</div>
+      <div class="load-meta">
+        <span id="loadCanvasCounter">CANVAS 0 / 100</span>
+        <span class="load-count" id="loadCount">0%</span>
+      </div>
+      <div class="load-lore">
+        <b> Curator&rsquo;s Note:</b> Every wall features an original hand-drawn artwork by <b>D. Butler</b>. Right-click smoldering cursed frames to cleanse them for gold.
+      </div>
     </div>
   </div>
   <div id="crosshair"></div>
@@ -886,19 +1162,33 @@
       const pct = Math.min(100, Math.round((artLoaded / total) * 100));
       const fill = document.getElementById('loadFill');
       const count = document.getElementById('loadCount');
+      const counter = document.getElementById('loadCanvasCounter');
+      const status = document.getElementById('loadStatus');
       if (fill) fill.style.width = pct + '%';
       if (count) count.textContent = pct + '%';
+      if (counter) counter.textContent = 'CANVAS ' + Math.min(artLoaded, total) + ' / ' + total;
+      if (status) {
+        if (pct < 22) status.textContent = 'Unlocking the wrought-iron gallery gates…';
+        else if (pct < 48) status.textContent = 'Lighting the chandelier sconces & marble halls…';
+        else if (pct < 76) status.textContent = 'Mounting 100 original canvases by D. Butler…';
+        else if (pct < 96) status.textContent = 'Binding the patrol wraiths to the corridors…';
+        else status.textContent = 'The Ghost King stirs upon the grand staircase…';
+      }
       if (artLoaded >= total) finishLoading();
     }
 
+    const loadStartTime = performance.now();
+    let finishTimer = null;
     function finishLoading() {
       if (artLoadDone) return;   // idempotent: timeout + last texture can't double-fire
       artLoadDone = true;
-      const el = document.getElementById('loading');
-      if (el) {
-        el.classList.add('hide');
-        setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 550);
-      }
+      const elapsed = performance.now() - loadStartTime;
+      const delay = Math.max(250, 950 - elapsed);
+      finishTimer = setTimeout(() => {
+        const el = document.getElementById('loading');
+        if (el) el.classList.add('hide');
+        setTimeout(() => { document.body.classList.add('loaded'); }, 260);
+      }, delay);
     }
 
     function loadArtPool() {
@@ -3724,6 +4014,59 @@
         updateParticles(dt);
       }
       renderer.render(scene, camera);
+      updateUiFxCanvas(dt);
+    }
+
+    // ---------- Haunted 2D Spectral Mist & Soul-Ember UI Particle System ----------
+    let uiFxCtx = null, uiFxW = 0, uiFxH = 0, uiEmbers = [];
+    function initUiFxCanvas() {
+      const c = document.getElementById('uiFxCanvas');
+      if (!c) return;
+      uiFxCtx = c.getContext('2d');
+      const resize = () => {
+        uiFxW = c.width = window.innerWidth;
+        uiFxH = c.height = window.innerHeight;
+      };
+      resize();
+      window.addEventListener('resize', resize);
+      uiEmbers = Array.from({ length: 48 }, () => ({
+        x: Math.random() * (uiFxW || 1600),
+        y: Math.random() * (uiFxH || 900),
+        r: 1.2 + Math.random() * 2.8,
+        vx: (Math.random() - 0.5) * 0.35,
+        vy: -0.35 - Math.random() * 0.75,
+        phase: Math.random() * Math.PI * 2,
+        hue: Math.random() < 0.55 ? '127, 233, 255' : (Math.random() < 0.7 ? '197, 155, 255' : '240, 196, 108')
+      }));
+    }
+
+    function updateUiFxCanvas(dt) {
+      const c = document.getElementById('uiFxCanvas');
+      if (!c || !uiFxCtx) return;
+      const showFx = !active && !shopOpen;
+      if (!showFx) {
+        if (!c.classList.contains('hide')) c.classList.add('hide');
+        return;
+      }
+      if (c.classList.contains('hide')) c.classList.remove('hide');
+      uiFxCtx.clearRect(0, 0, uiFxW, uiFxH);
+      for (const e of uiEmbers) {
+        e.phase += 0.035 * dt;
+        e.x += (e.vx + Math.sin(e.phase) * 0.25) * dt;
+        e.y += e.vy * dt;
+        if (e.y < -20) { e.y = uiFxH + 15; e.x = Math.random() * uiFxW; }
+        if (e.x < -20) e.x = uiFxW + 15;
+        if (e.x > uiFxW + 20) e.x = -15;
+        const alpha = 0.25 + 0.45 * (0.5 + 0.5 * Math.sin(e.phase));
+        const grad = uiFxCtx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r * 4.2);
+        grad.addColorStop(0, `rgba(${e.hue}, ${alpha})`);
+        grad.addColorStop(0.45, `rgba(${e.hue}, ${alpha * 0.35})`);
+        grad.addColorStop(1, `rgba(${e.hue}, 0)`);
+        uiFxCtx.fillStyle = grad;
+        uiFxCtx.beginPath();
+        uiFxCtx.arc(e.x, e.y, e.r * 4.2, 0, Math.PI * 2);
+        uiFxCtx.fill();
+      }
     }
 
     // ---------- High scores (persistent, localStorage) ----------
@@ -3769,30 +4112,76 @@
       return h;
     }
 
+    // ---------- Haunted Gothic Corner Ornaments & Crest SVG Helpers ----------
+    function gothicCornersHTML() {
+      const svg = '<path fill="currentColor" d="M2 2h14v2H4v12H2V2zm4 4h8v2H8v6H6V6z"/>';
+      return (
+        '<svg class="gothic-corner tl" viewBox="0 0 32 32">' + svg + '</svg>' +
+        '<svg class="gothic-corner tr" viewBox="0 0 32 32">' + svg + '</svg>' +
+        '<svg class="gothic-corner bl" viewBox="0 0 32 32">' + svg + '</svg>' +
+        '<svg class="gothic-corner br" viewBox="0 0 32 32">' + svg + '</svg>'
+      );
+    }
+
+    function gothicCrestHTML() {
+      return (
+        '<div class="gp-crest">' +
+        '<svg width="62" height="46" viewBox="0 0 56 44" fill="none">' +
+        '<path d="M8 34L13 14L22 24L28 8L34 24L43 14L48 34H8Z" stroke="#f0c46c" stroke-width="2.2" fill="rgba(240,196,108,0.14)"/>' +
+        '<circle cx="28" cy="6" r="3" fill="#7fe9ff"/>' +
+        '<circle cx="12" cy="12" r="2.2" fill="#c59bff"/>' +
+        '<circle cx="44" cy="12" r="2.2" fill="#c59bff"/>' +
+        '<circle cx="28" cy="25" r="3.5" fill="#7fe9ff"/>' +
+        '<path d="M6 38H50" stroke="#f0c46c" stroke-width="2" stroke-linecap="round"/>' +
+        '</svg>' +
+        '</div>'
+      );
+    }
+
     // ---------- Menu screens ----------
     function topScoreHTML() {
-      if (!highScores.length) return '';
+      if (!highScores.length) {
+        return '<div class="gp-trophy">&#9733; UNCLAIMED GALLERY RECORD &mdash; BE THE FIRST TO SURVIVE</div>';
+      }
       const s = highScores[0];
       const mm = Math.floor(s.secs / 60), ss = String(s.secs % 60).padStart(2, '0');
-      return '<div style="margin-top:14px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">' +
-        `&#9733; Top Score &nbsp; <span style="color:var(--mint)">${s.score}</span> &nbsp;` +
-        `<span style="color:#cdd3f0">${s.name || 'AAA'} &bull; ${mm}:${ss}</span></div>`;
+      return '<div class="gp-trophy">' +
+        `&#128081; CHAMPION &nbsp;<span style="color:#fff">${s.name || 'AAA'}</span> &bull; ` +
+        `<span style="color:var(--mint)">${s.score} PTS</span> &bull; ` +
+        `<span style="color:#cdd3f0">${mm}:${ss}</span></div>`;
     }
 
     function showTitleScreen() {
       menuState = 'title';
       const overlay = document.getElementById('overlay');
+      overlay.classList.remove('in-pause');
       overlay.style.display = 'flex';
       overlay.innerHTML =
         '<div class="panel">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow">&#10022; Midnight Exhibition &bull; Three Floors of Terror &#10022;</div>' +
+        gothicCrestHTML() +
         '<div class="gp-title">GHOST<span class="patrol">PATROL</span></div>' +
-        '<div class="gp-sub">Ghosts phase through walls. <span class="hot">You don\'t.</span></div>' +
-        '<div class="gp-sub">Bust them all &mdash; then their King comes for you.</div>' +
-        topScoreHTML() +
-        '<div class="gp-cta" data-act="play">Click to enter the gallery</div>' +
+        '<div class="gp-divider">&#9670;</div>' +
+        '<div class="gp-sub">Spectral wraiths phase through stone walls. <span class="hot">You don&rsquo;t.</span><br>' +
+        'Cleanse the cursed canvases, arm up at the mystic fountains, and banish the <span class="king">Ghost King</span>.</div>' +
+        '<div class="gp-pillars">' +
+        '<div class="gp-pillar"><div class="gp-pillar-h">&#128444; I. The Haunted Gallery</div><p class="gp-pillar-p">Explore 3 procedural floors hung with <b>100 original hand-drawn works</b> by artist <b>D. Butler</b>.</p></div>' +
+        '<div class="gp-pillar"><div class="gp-pillar-h">&#9880; II. Mystic Fountains</div><p class="gp-pillar-p">Gather pirate-skull gold &amp; cleanse cursed frames to buy the <b>Rifle, Tri-Spread, Pierce &amp; Dash</b>.</p></div>' +
+        '<div class="gp-pillar"><div class="gp-pillar-h">&#128081; III. The Ghost King</div><p class="gp-pillar-p">Bust all <b>24 patrol wraiths</b> to awaken their royal master, who hunts you across floors.</p></div>' +
+        '</div>' +
+        '<div class="gp-keystrip">' +
+        '<span><kbd class="gp-kbd">WASD</kbd> Move / Climb</span>' +
+        '<span><kbd class="gp-kbd">SHIFT</kbd> Sprint</span>' +
+        '<span><kbd class="gp-kbd">SPACE</kbd> Dash</span>' +
+        '<span><kbd class="gp-kbd">L-CLICK</kbd> Fire</span>' +
+        '<span><kbd class="gp-kbd">R-CLICK</kbd> Cleanse / Shop</span>' +
+        '</div>' +
+        '<div>' + topScoreHTML() + '</div>' +
+        '<div><button class="gp-cta" data-act="play">&#9876; Enter the Gallery</button></div>' +
         '<div class="menu-row">' +
-        '<button class="minipill" data-act="help">&#9432; Help</button>' +
-        '<button class="minipill danger" data-act="new">&#9851; New</button>' +
+        '<button class="minipill" data-act="help">&#128220; Field Guide</button>' +
+        '<button class="minipill danger" data-act="new">&#9760; Reset Records</button>' +
         '</div>' +
         '</div>';
     }
@@ -3811,12 +4200,17 @@
     function showPauseScreen() {
       menuState = 'pause';
       const overlay = document.getElementById('overlay');
+      overlay.classList.add('in-pause');
       overlay.style.display = 'flex';
       overlay.innerHTML =
-        '<div class="panel">' +
-        '<div class="gp-big" style="color:var(--cyan)">Paused</div>' +
-        '<div class="menu-row" style="margin-top:18px">' +
-        '<button class="minipill" data-act="resume">&#9654; Resume</button>' +
+        '<div class="panel" style="max-width:440px">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow">&#10022; Patrol Suspended &#10022;</div>' +
+        '<div class="gp-big" style="color:var(--cyan)">Gallery Paused</div>' +
+        '<div class="gp-divider">&#9670;</div>' +
+        '<div class="gp-sub" style="font-size:14px">The wraiths wait in the dark corridors&hellip;</div>' +
+        '<div class="menu-row" style="margin-top:22px">' +
+        '<button class="gp-cta" style="margin-top:0;padding:10px 28px;font-size:15px" data-act="resume">&#9654; Resume Patrol</button>' +
         '<button class="minipill danger" data-act="quitrun">&#9832; Main Menu</button>' +
         '</div>' +
         '</div>';
@@ -3889,6 +4283,7 @@
       }
       overlay.innerHTML =
         '<div class="panel help-panel">' +
+        gothicCornersHTML() +
         body +
         '<div class="menu-row">' +
         (helpPage > 0 ? '<button class="minipill" data-act="helpprev">&#8592; Back</button>' : '<span style="width:70px"></span>') +
@@ -4012,6 +4407,7 @@
       buildWeaponViewmodel();
 
       buildDungeon();
+      initUiFxCanvas();
       setupControls();
       loadHighScores();
       showTitleScreen();
