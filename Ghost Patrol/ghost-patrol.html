@@ -695,71 +695,191 @@
     #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
     #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
 
-    /* ---- shop ---- */
+    /* ---- Phase 4: Haunted Gothic Fountain Shop & Victory / Initials UI ---- */
     #shop {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-      min-width: 380px; z-index: 25; display: none;
-      background: var(--panel); color: #dfe6ff;
-      border-radius: 20px; padding: 22px 26px;
-      box-shadow: 0 0 40px rgba(127,233,255,0.25), 0 12px 40px rgba(0,0,0,0.7), inset 0 0 0 2px rgba(127,233,255,0.3);
+      width: min(510px, 92vw); z-index: 25; display: none;
+      background: linear-gradient(180deg, rgba(14, 13, 28, 0.94) 0%, rgba(8, 7, 18, 0.97) 100%);
+      color: #dfe6ff;
+      border: 1.5px solid rgba(240, 196, 108, 0.55);
+      border-radius: 18px; padding: 24px 28px 22px;
+      box-shadow:
+        0 26px 80px rgba(0, 0, 0, 0.92),
+        0 0 50px rgba(127, 233, 255, 0.18),
+        inset 0 0 0 1px rgba(127, 233, 255, 0.16),
+        inset 0 0 36px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(12px);
       font-family: var(--font-ui);
+      box-sizing: border-box;
+    }
+    #shop::before {
+      content: ''; position: absolute; inset: 6px;
+      border: 1px solid rgba(240, 196, 108, 0.20);
+      border-radius: 12px; pointer-events: none;
+    }
+    #shop .shop-eyebrow {
+      font-family: var(--font-display); font-weight: 600; font-size: 11px;
+      letter-spacing: 3.8px; text-transform: uppercase; color: var(--gold);
+      text-align: center; margin-bottom: 4px; opacity: 0.92;
     }
     #shop h2 {
-      margin: 0 0 2px; font-family: var(--font-display); font-weight: 700; font-size: 24px;
-      color: var(--cyan); text-shadow: 0 0 14px rgba(127,233,255,0.6), 2px 2px 0 #1c4a5c;
-      text-align: center;
+      margin: 0 0 4px; font-family: var(--font-display); font-weight: 800; font-size: 26px;
+      letter-spacing: 1.5px; color: var(--cyan);
+      text-shadow: 0 0 16px rgba(127,233,255,0.55), 0 2px 4px rgba(0,0,0,0.85);
+      text-align: center; display: flex; align-items: center; justify-content: center; gap: 10px;
     }
-    #shop .sub { color: #8f96c0; font-size: 13px; margin-bottom: 12px; text-align: center; }
+    #shop h2 svg { width: 24px; height: 24px; filter: drop-shadow(0 0 8px rgba(92,225,255,0.6)); }
+    #shop .sub { color: #9ea6c8; font-size: 12.5px; margin-bottom: 12px; text-align: center; }
     #shop .wallet {
-      text-align: center; margin-bottom: 12px; font-weight: 800; font-size: 18px; color: var(--gold);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin: 0 auto 14px; padding: 6px 18px; width: fit-content;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(240,196,108,0.10), rgba(240,196,108,0.22), rgba(240,196,108,0.10));
+      border: 1px solid rgba(240, 196, 108, 0.45);
+      font-family: var(--font-display); font-weight: 800; font-size: 16px; color: var(--gold);
+      box-shadow: 0 0 16px rgba(240,196,108,0.15);
     }
-    #shop .wallet .coinic { color: var(--gold); }
+    #shop .wallet svg { width: 20px; height: 20px; }
     #shop .item {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 11px 14px; margin: 7px 0; border-radius: 12px; cursor: pointer;
-      background: rgba(127,233,255,0.06); box-shadow: inset 0 0 0 1.5px rgba(127,233,255,0.18);
-      font-weight: 600; font-size: 15px; transition: transform 0.08s, background 0.12s;
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 10px 14px; margin: 8px 0; border-radius: 12px; cursor: pointer;
+      background: linear-gradient(180deg, rgba(24, 21, 44, 0.85), rgba(14, 12, 28, 0.92));
+      border: 1px solid rgba(240, 196, 108, 0.25);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+      transition: transform 0.12s ease, border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
     }
-    #shop .item:hover { background: rgba(127,233,255,0.16); transform: translateY(-1px); box-shadow: inset 0 0 0 1.5px var(--cyan); }
-    #shop .item.owned { opacity: 0.42; cursor: default; }
-    #shop .item.owned:hover { background: rgba(127,233,255,0.06); transform: none; box-shadow: inset 0 0 0 1.5px rgba(127,233,255,0.18); }
+    #shop .item:hover {
+      background: linear-gradient(180deg, rgba(36, 46, 78, 0.9), rgba(18, 22, 42, 0.95));
+      transform: translateY(-1px);
+      border-color: var(--cyan);
+      box-shadow: 0 4px 16px rgba(127,233,255,0.22), inset 0 0 0 1px rgba(127,233,255,0.35);
+    }
+    #shop .item.owned {
+      opacity: 0.52; cursor: default;
+      border-color: rgba(98, 245, 168, 0.28);
+    }
+    #shop .item.owned:hover {
+      background: linear-gradient(180deg, rgba(24, 21, 44, 0.85), rgba(14, 12, 28, 0.92));
+      transform: none; box-shadow: none;
+    }
+    #shop .item-left {
+      display: flex; align-items: center; gap: 11px; text-align: left;
+    }
+    #shop .item-ic {
+      width: 34px; height: 34px; border-radius: 9px; flex: 0 0 34px;
+      display: grid; place-items: center;
+      background: rgba(10, 9, 22, 0.85);
+      border: 1px solid rgba(240, 196, 108, 0.35);
+      box-shadow: inset 0 0 10px rgba(127, 233, 255, 0.12);
+    }
+    #shop .item-ic svg { width: 22px; height: 22px; }
+    #shop .item-info { display: flex; flex-direction: column; gap: 1px; }
+    #shop .item-title {
+      font-family: var(--font-display); font-weight: 700; font-size: 14.5px; color: #f4f6ff;
+      display: flex; align-items: center; gap: 7px;
+    }
+    #shop .item-desc { font-size: 11.5px; color: #9ea6c8; font-weight: 500; }
     #shop .item .key {
-      display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 10px;
-      background: var(--violet); color: #1a1020; border-radius: 7px; font-weight: 800; font-size: 14px;
+      display: inline-grid; place-items: center; width: 20px; height: 20px;
+      background: linear-gradient(180deg, #2b2744, #171528);
+      border: 1px solid rgba(240, 196, 108, 0.45);
+      color: var(--gold); border-radius: 5px;
+      font-family: var(--font-display); font-weight: 800; font-size: 11px;
     }
-    #shop .item .cost { color: var(--mint); font-weight: 800; }
-    #shop .item.cant .cost { color: var(--rose); }
-    #shop .item.owned .cost { color: #8f96c0; }
+    #shop .item .cost {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-family: var(--font-display); font-weight: 800; font-size: 14px;
+      color: var(--mint); padding: 4px 10px; border-radius: 8px;
+      background: rgba(98, 245, 168, 0.10); border: 1px solid rgba(98, 245, 168, 0.32);
+      white-space: nowrap;
+    }
+    #shop .item .cost svg { width: 15px; height: 15px; }
+    #shop .item.cant .cost {
+      color: var(--rose); background: rgba(255, 107, 138, 0.10); border-color: rgba(255, 107, 138, 0.32);
+    }
+    #shop .item.owned .cost {
+      color: var(--gold); background: rgba(240, 196, 108, 0.12); border-color: rgba(240, 196, 108, 0.32);
+      font-size: 11.5px; letter-spacing: 0.8px;
+    }
     #shop .leave {
-      display: block; margin: 14px auto 0; padding: 9px 24px; cursor: pointer;
-      background: linear-gradient(180deg, #ff8aa0, #ff6b8a); color: #2a0a14;
-      border: none; border-radius: 999px; font-family: var(--font-display);
-      font-weight: 600; font-size: 15px; box-shadow: 0 4px 0 #b03050;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      margin: 14px auto 0; padding: 10px 28px; cursor: pointer;
+      background: linear-gradient(180deg, rgba(255,107,138,0.22), rgba(140,24,54,0.45));
+      color: #ffd8e2;
+      border: 1px solid rgba(255, 107, 138, 0.55);
+      border-radius: 999px; font-family: var(--font-display);
+      font-weight: 700; font-size: 13.5px; letter-spacing: 1px; text-transform: uppercase;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+      transition: all 0.14s ease;
     }
-    #shop .leave:hover { filter: brightness(1.08); }
+    #shop .leave:hover {
+      background: linear-gradient(180deg, rgba(255,107,138,0.36), rgba(170,30,66,0.65));
+      color: #fff; transform: translateY(-1px);
+    }
+    #shop .shop-foot { text-align: center; }
 
-    /* ---- leaderboard ---- */
-    table.hs { border-collapse: collapse; margin: 10px auto; font-size: 14px; color: #dfe6ff; font-weight: 600; }
-    table.hs th { color: var(--cyan); padding: 4px 12px; border-bottom: 2px solid rgba(127,233,255,0.3); font-weight: 700; }
-    table.hs td { padding: 4px 12px; text-align: center; }
-    table.hs tr.me td { color: var(--gold); font-weight: 800; text-shadow: 0 0 10px rgba(255,207,92,0.5); }
+    /* ---- Gothic Victory & Leaderboard ---- */
+    table.hs {
+      border-collapse: collapse; margin: 8px auto; width: 100%; max-width: 520px;
+      font-size: 13px; color: #dfe6ff; font-weight: 600;
+      background: rgba(10, 9, 22, 0.65); border-radius: 10px; overflow: hidden;
+      border: 1px solid rgba(240, 196, 108, 0.24);
+    }
+    table.hs th {
+      font-family: var(--font-display); color: var(--gold); padding: 6px 10px;
+      background: rgba(240, 196, 108, 0.10);
+      border-bottom: 1px solid rgba(240, 196, 108, 0.3); font-weight: 700; font-size: 11.5px;
+      letter-spacing: 0.8px; text-transform: uppercase;
+    }
+    table.hs td { padding: 5px 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    table.hs tr.me td {
+      color: var(--gold); font-weight: 800;
+      background: rgba(240, 196, 108, 0.12);
+      text-shadow: 0 0 10px rgba(255,207,92,0.5);
+    }
+    .vic-stats-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+      margin: 10px auto 12px; max-width: 540px;
+    }
+    .vic-stat-card {
+      background: linear-gradient(180deg, rgba(24, 21, 44, 0.82), rgba(12, 10, 24, 0.92));
+      border: 1px solid rgba(240, 196, 108, 0.28);
+      border-radius: 10px; padding: 8px 6px;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .vic-stat-lbl {
+      font-family: var(--font-display); font-size: 10px; letter-spacing: 1px;
+      text-transform: uppercase; color: #9ea6c8;
+    }
+    .vic-stat-val {
+      font-family: var(--font-display); font-weight: 800; font-size: 16px; color: #fff;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .vic-stat-val svg { width: 16px; height: 16px; }
 
     /* ---- initials entry ---- */
-    .initrow { margin: 10px 0 4px; }
+    .initrow { margin: 10px 0 6px; }
     .initbox {
-      display: inline-grid; place-items: center; width: 52px; height: 62px;
-      margin: 0 7px; font-family: var(--font-display); font-weight: 700; font-size: 38px; color: var(--cyan);
-      border-radius: 12px; background: rgba(127,233,255,0.08);
-      box-shadow: inset 0 0 0 2px rgba(127,233,255,0.3); vertical-align: middle;
+      display: inline-grid; place-items: center; width: 54px; height: 64px;
+      margin: 0 7px; font-family: var(--font-display); font-weight: 800; font-size: 36px; color: var(--cyan);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(22, 20, 42, 0.92), rgba(10, 9, 22, 0.96));
+      border: 1.5px solid rgba(127, 233, 255, 0.38);
+      box-shadow: inset 0 0 14px rgba(127,233,255,0.12), 0 4px 14px rgba(0,0,0,0.6);
+      vertical-align: middle;
     }
     .confirm {
-      display: block; margin: 18px auto 4px; padding: 11px 32px; cursor: pointer;
-      background: linear-gradient(180deg, #9dffc0, #7dffb0); color: #0a2418; border: none;
-      border-radius: 999px; font-family: var(--font-display); font-weight: 600; font-size: 17px;
-      letter-spacing: 2px; box-shadow: 0 5px 0 #2c9c60, 0 8px 16px rgba(0,0,0,0.4);
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      margin: 14px auto 6px; padding: 11px 34px; cursor: pointer;
+      background: linear-gradient(180deg, #b8f5ff 0%, #68dcf8 48%, #32a8cc 100%);
+      color: #09131c; border: 1px solid #e2fbff;
+      border-radius: 10px; font-family: var(--font-display); font-weight: 800; font-size: 15.5px;
+      letter-spacing: 2px; text-transform: uppercase;
+      box-shadow: 0 0 24px rgba(127, 233, 255, 0.5), 0 0 0 2px rgba(240, 196, 108, 0.35), 0 6px 16px rgba(0,0,0,0.7);
+      transition: all 0.15s ease;
     }
-    .confirm:hover { filter: brightness(1.06); }
-    .confirm.off { opacity: 0.35; cursor: default; box-shadow: 0 5px 0 #333; filter: grayscale(0.6); }
+    .confirm:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .confirm.off { opacity: 0.35; cursor: default; box-shadow: none; filter: grayscale(0.7); transform: none; }
     @media (prefers-reduced-motion: reduce) {
       .gp-title, .gp-cta, #cleanse { animation: none; }
     }
@@ -1147,6 +1267,32 @@
         <path d="M16 4C16 4 11.5 9.2 11.5 12.2C11.5 14.7 13.5 16.5 16 16.5C18.5 16.5 20.5 14.7 20.5 12.2C20.5 9.2 16 4 16 4Z" fill="url(#g-cyan)"/>
         <path d="M6.5 18.5H25.5C24.8 22.2 21.4 24.4 18 24.8V27H22V29H10V27H14V24.8C10.6 24.4 7.2 22.2 6.5 18.5Z" fill="url(#g-gold)" stroke="#5e3a0a" stroke-width="1.2"/>
       </symbol>
+
+      <!-- Shop Upgrades: Rifle, Autofire, Pierce, Spread, Dash -->
+      <symbol id="ico-up-rifle" viewBox="0 0 32 32">
+        <path d="M4 18L11 14H28V17.5H14L9 22.5H4Z" fill="url(#g-gold)" stroke="#5c3808" stroke-width="1.3" stroke-linejoin="round"/>
+        <rect x="13" y="11" width="11" height="2.6" rx="1.2" fill="url(#g-cyan)"/>
+        <circle cx="27" cy="15.5" r="2" fill="#fff"/>
+      </symbol>
+      <symbol id="ico-up-auto" viewBox="0 0 32 32">
+        <path d="M6 10H19L23 12L19 14H6Z" fill="url(#g-cyan)"/>
+        <path d="M9 16H22L26 18L22 20H9Z" fill="url(#g-gold)"/>
+        <path d="M6 22H19L23 24L19 26H6Z" fill="url(#g-cyan)"/>
+      </symbol>
+      <symbol id="ico-up-pierce" viewBox="0 0 32 32">
+        <path d="M4 16H25" stroke="url(#g-violet)" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M19 9L28 16L19 23L21.5 16Z" fill="url(#g-violet)" stroke="#fff" stroke-width="1"/>
+        <line x1="12" y1="6" x2="12" y2="26" stroke="url(#g-gold)" stroke-width="2" stroke-dasharray="3 2"/>
+      </symbol>
+      <symbol id="ico-up-spread" viewBox="0 0 32 32">
+        <path d="M5 16L25 8M5 16H27M5 16L25 24" stroke="url(#g-cyan)" stroke-width="2.4" stroke-linecap="round"/>
+        <circle cx="25" cy="8" r="2.5" fill="url(#g-gold)"/>
+        <circle cx="27" cy="16" r="2.5" fill="url(#g-gold)"/>
+        <circle cx="25" cy="24" r="2.5" fill="url(#g-gold)"/>
+      </symbol>
+      <symbol id="ico-up-dash" viewBox="0 0 32 32">
+        <path d="M13 6L24 12L17 16L26 20L11 27L15 18L8 14Z" fill="url(#g-cyan)" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
+      </symbol>
     </defs>
   </svg>
   <div id="bossbar">
@@ -1189,7 +1335,9 @@
       <span class="mm-leg"><span class="mm-dot" style="background:#44ddff;transform:rotate(45deg)"></span>Fountain</span>
       <span class="mm-leg"><span class="mm-dot" style="background:#ffcf5c;box-shadow:0 0 5px #ff4d7a"></span>Cursed</span>
       <span class="mm-leg"><span class="mm-dot" style="background:#5ce1ff;width:9px;height:4px"></span>Unviewed Art</span>
-      <span class="mm-leg"><span class="mm-dot" style="background:#c59bff;border-radius:50%"></span>Wraith</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#5ce1ff;border-radius:50%"></span>Stalker</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#ff9e3d;transform:rotate(45deg)"></span>Dasher</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#b978ff;border:1.5px solid #f0c46c;border-radius:50%"></span>Warden</span>
     </div>
   </div>
   <div id="hudHelp">
@@ -1384,6 +1532,7 @@
     ];
     let dungeonSeed = 0;
     let autoSaveTimer = 0;
+    let proxCueTimer = 45;
     let nearUnviewedArt = null;
     const artRaycaster = new THREE.Raycaster();
     const SCREEN_CENTER = new THREE.Vector2(0, 0);
@@ -1408,7 +1557,7 @@
 
     // ---------- Settings (persisted in localStorage) ----------
     const SETTINGS_KEY = 'ghostPatrolSettings';
-    let settings = { musicVol: 0.42, sfxVol: 0.85, invertY: false };
+    let settings = { musicVol: 0.42, sfxVol: 0.85, invertY: false, vibration: true };
     let settingsReturnTo = 'title';
     function loadSettings() {
       try {
@@ -1418,11 +1567,45 @@
           if (typeof parsed.musicVol === 'number') settings.musicVol = Math.max(0, Math.min(1, parsed.musicVol));
           if (typeof parsed.sfxVol === 'number') settings.sfxVol = Math.max(0, Math.min(1, parsed.sfxVol));
           if (typeof parsed.invertY === 'boolean') settings.invertY = parsed.invertY;
+          if (typeof parsed.vibration === 'boolean') settings.vibration = parsed.vibration;
         }
       } catch (e) {}
     }
     function saveSettings() {
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+    }
+
+    // ---------- Phase 3: Controller Haptics (Gamepad.vibrationActuator Rumble) ----------
+    function triggerRumble(durationMs = 60, weakMag = 0.35, strongMag = 0.2) {
+      if (!settings.vibration) return;
+      try {
+        const pads = navigator.getGamepads ? navigator.getGamepads() : null;
+        if (!pads) return;
+        for (let i = 0; i < pads.length; i++) {
+          const gp = pads[i];
+          if (!gp) continue;
+          const act = gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]);
+          if (act && typeof act.playEffect === 'function') {
+            act.playEffect('dual-rumble', {
+              startDelay: 0,
+              duration: Math.max(15, Math.round(durationMs)),
+              weakMagnitude: Math.max(0, Math.min(1, weakMag)),
+              strongMagnitude: Math.max(0, Math.min(1, strongMag))
+            }).catch(() => {});
+          } else if (act && typeof act.pulse === 'function') {
+            act.pulse(Math.max(weakMag, strongMag), Math.max(15, Math.round(durationMs))).catch(() => {});
+          }
+        }
+      } catch (e) {}
+    }
+    function rumblePattern(pulses) {
+      if (!settings.vibration || !Array.isArray(pulses)) return;
+      let delay = 0;
+      for (const p of pulses) {
+        const d = p.dur || 60, w = p.weak ?? 0.35, s = p.strong ?? 0.25, gap = p.gap || 0;
+        setTimeout(() => triggerRumble(d, w, s), delay);
+        delay += d + gap;
+      }
     }
 
     // ---------- Audio & Haunted BGM ----------
@@ -2270,6 +2453,7 @@
           if (isGrand) {
             addBox(cx + s * (dW / 2 - jambW / 2 + 0.04), cz, jambW + 0.08, jambT + 0.06, y0, y0 + 0.35, ARCH_BRASS_MAT, false);
             addBox(cx + s * (dW / 2 - jambW / 2 + 0.04), cz, jambW + 0.08, jambT + 0.06, lintelY0 - 0.18, lintelY0 + 0.08, ARCH_BRASS_MAT, false);
+            addArchWallSconce(cx + s * (dW / 2 + 0.34), y0 + 2.28, cz, 'x', doorKind);
           }
         }
         addBox(cx, cz, dW + 0.28, jambT, lintelY0 - 0.06, lintelY0 + 0.14, isGrand ? ARCH_BRASS_MAT : ARCH_BRONZE_MAT, false);
@@ -2293,6 +2477,7 @@
           if (isGrand) {
             addBox(cx, cz + s * (dW / 2 - jambW / 2 + 0.04), jambT + 0.06, jambW + 0.08, y0, y0 + 0.35, ARCH_BRASS_MAT, false);
             addBox(cx, cz + s * (dW / 2 - jambW / 2 + 0.04), jambT + 0.06, jambW + 0.08, lintelY0 - 0.18, lintelY0 + 0.08, ARCH_BRASS_MAT, false);
+            addArchWallSconce(cx, y0 + 2.28, cz + s * (dW / 2 + 0.34), 'z', doorKind);
           }
         }
         addBox(cx, cz, jambT, dW + 0.28, lintelY0 - 0.06, lintelY0 + 0.14, isGrand ? ARCH_BRASS_MAT : ARCH_BRONZE_MAT, false);
@@ -3178,30 +3363,157 @@
       ctx.closePath();
     }
 
+    // ---------- Phase 3: Three Distinct Wraith Archetypes ----------
+    const WRAITH_ARCHETYPES = {
+      stalker: {
+        id: 'stalker',
+        name: 'Stalker Wraith',
+        hp: 3,
+        speedMult: 1.0,
+        scale: 1.72,
+        fallbackScale: 1.7,
+        tintHex: 0xffffff,
+        emissiveHex: 0x55ddff,
+        fallbackBodyHex: 0xd8f0ff,
+        fallbackEmissiveHex: 0x223344,
+        eyeHex: 0x9fffff,
+        hitParticleHex: 0x7fe9ff,
+        bustParticleHex: 0x9fffff,
+        mapColor: '#5ce1ff',
+        mapGlow: 'rgba(92, 225, 255, 0.30)',
+        bonusCoins: 0,
+        armored: false
+      },
+      dasher: {
+        id: 'dasher',
+        name: 'Poltergeist Dasher',
+        hp: 2,
+        speedMult: 1.24,
+        scale: 1.54,
+        fallbackScale: 1.52,
+        tintHex: 0xffe4b8,
+        emissiveHex: 0xff7b22,
+        fallbackBodyHex: 0xffcfa0,
+        fallbackEmissiveHex: 0x552208,
+        eyeHex: 0xffee55,
+        hitParticleHex: 0xffaa44,
+        bustParticleHex: 0xffcf5c,
+        mapColor: '#ff9e3d',
+        mapGlow: 'rgba(255, 158, 61, 0.34)',
+        bonusCoins: 2,
+        armored: false
+      },
+      warden: {
+        id: 'warden',
+        name: 'Void Warden',
+        hp: 6,
+        speedMult: 0.78,
+        scale: 1.98,
+        fallbackScale: 1.95,
+        tintHex: 0xe6d4ff,
+        emissiveHex: 0x9933ff,
+        fallbackBodyHex: 0xd4b8ff,
+        fallbackEmissiveHex: 0x2e1252,
+        eyeHex: 0xff55aa,
+        hitParticleHex: 0xc59bff,
+        bustParticleHex: 0xe2b8ff,
+        mapColor: '#b978ff',
+        mapGlow: 'rgba(185, 120, 255, 0.34)',
+        bonusCoins: 1,
+        armored: true
+      }
+    };
+
+    function pickWraithArchetype(floor, indexOnFloor) {
+      // Guarantee all 3 archetypes appear on every floor, with deeper floors fielding more Dashers & Wardens
+      if (floor === 0) {
+        const table = ['stalker', 'stalker', 'dasher', 'stalker', 'warden', 'stalker', 'dasher', 'stalker'];
+        return table[indexOnFloor % table.length];
+      } else if (floor === 1) {
+        const table = ['stalker', 'dasher', 'warden', 'stalker', 'dasher', 'warden', 'stalker', 'dasher'];
+        return table[indexOnFloor % table.length];
+      } else {
+        const table = ['dasher', 'warden', 'stalker', 'dasher', 'warden', 'dasher', 'warden', 'stalker'];
+        return table[indexOnFloor % table.length];
+      }
+    }
+
+    const DASH_HORN_GEO = new THREE.ConeGeometry(0.085, 0.34, 7);
+    const DASH_SHARD_GEO = new THREE.OctahedronGeometry(0.085, 0);
+    const WARDEN_RING_GEO = new THREE.TorusGeometry(0.62, 0.036, 8, 24);
+    const WARDEN_SHIELD_GEO = new THREE.OctahedronGeometry(0.14, 0);
+
+    function attachArchetypeAccents(group, archetypeId) {
+      if (archetypeId === 'dasher') {
+        const acc = new THREE.Group();
+        const hornMat = new THREE.MeshStandardMaterial({
+          color: 0xffd27a, emissive: 0xff6600, emissiveIntensity: 0.95, roughness: 0.25, metalness: 0.6
+        });
+        for (const s of [-1, 1]) {
+          const h = new THREE.Mesh(DASH_HORN_GEO, hornMat);
+          h.position.set(s * 0.24, 0.56, 0.05);
+          h.rotation.z = -s * 0.38;
+          h.rotation.x = -0.22;
+          acc.add(h);
+        }
+        for (let k = 0; k < 3; k++) {
+          const sh = new THREE.Mesh(DASH_SHARD_GEO, hornMat);
+          const a = (k / 3) * Math.PI * 2;
+          sh.position.set(Math.cos(a) * 0.48, 0.08 + (k - 1) * 0.12, Math.sin(a) * 0.48);
+          acc.add(sh);
+        }
+        group.add(acc);
+        return { accentGroup: acc, accentMat: hornMat };
+      }
+      if (archetypeId === 'warden') {
+        const acc = new THREE.Group();
+        const aegisMat = new THREE.MeshStandardMaterial({
+          color: 0xd8b268, emissive: 0x8833ff, emissiveIntensity: 0.75, roughness: 0.28, metalness: 0.85
+        });
+        const ring = new THREE.Mesh(WARDEN_RING_GEO, aegisMat);
+        ring.rotation.x = Math.PI / 2 + 0.18;
+        ring.position.y = 0.06;
+        acc.add(ring);
+        for (let k = 0; k < 4; k++) {
+          const crest = new THREE.Mesh(WARDEN_SHIELD_GEO, aegisMat);
+          const a = (k / 4) * Math.PI * 2;
+          crest.position.set(Math.cos(a) * 0.64, 0.06, Math.sin(a) * 0.64);
+          crest.scale.set(0.85, 1.35, 0.55);
+          crest.rotation.y = -a + Math.PI / 2;
+          acc.add(crest);
+        }
+        group.add(acc);
+        return { accentGroup: acc, accentMat: aegisMat };
+      }
+      return { accentGroup: null, accentMat: null };
+    }
+
     // Builds a wraith or Ghost King instance using our Trellis 3D textured GLBs
     // (or falls back to the embedded wraith until async GLB fetch completes).
-    function makeGhostMesh(bodyColor, emissive, eyeColor, opacity, isBoss) {
+    function makeGhostMesh(bodyColor, emissive, eyeColor, opacity, isBoss, archetypeKey = 'stalker') {
       const group = new THREE.Group();
       const glb = isBoss ? (KING_GLB || PATROL_GLB) : PATROL_GLB;
+      const arch = WRAITH_ARCHETYPES[archetypeKey] || WRAITH_ARCHETYPES.stalker;
 
       if (glb) {
         const bodyMat = new THREE.MeshStandardMaterial({
           map: glb.tex,
           emissiveMap: glb.tex,
-          color: 0xffffff,
-          emissive: isBoss ? 0xaa66ff : 0x55ddff,
-          emissiveIntensity: isBoss ? 0.42 : 0.45,
+          color: isBoss ? 0xffffff : arch.tintHex,
+          emissive: isBoss ? 0xaa66ff : arch.emissiveHex,
+          emissiveIntensity: isBoss ? 0.42 : (archetypeKey === 'dasher' ? 0.58 : 0.48),
           transparent: true,
-          opacity: isBoss ? 0.96 : 0.9,
+          opacity: isBoss ? 0.96 : (archetypeKey === 'warden' ? 0.94 : 0.9),
           roughness: 0.48,
-          metalness: isBoss ? 0.25 : 0.1,
+          metalness: isBoss ? 0.25 : (archetypeKey === 'warden' ? 0.3 : 0.1),
           side: THREE.DoubleSide
         });
         const wraith = new THREE.Mesh(glb.geo, bodyMat);
-        wraith.scale.setScalar(isBoss ? 1.24 : 1.72);
+        wraith.scale.setScalar(isBoss ? 1.24 : arch.scale);
         wraith.position.y = isBoss ? -0.22 : -0.05;
         group.add(wraith);
-        return { group, mats: [bodyMat], wraith };
+        const acc = isBoss ? { accentGroup: null, accentMat: null } : attachArchetypeAccents(group, archetypeKey);
+        return { group, mats: [bodyMat], wraith, ...acc };
       }
 
       if (GHOST_READY) {
@@ -3213,10 +3525,11 @@
           side: THREE.DoubleSide
         });
         const wraith = new THREE.Mesh(GHOST_GEO, bodyMat);
-        wraith.scale.setScalar(1.7);
+        wraith.scale.setScalar(isBoss ? 1.7 : arch.fallbackScale);
         wraith.position.y = -0.85;
         group.add(wraith);
-        return { group, mats: [bodyMat], wraith };
+        const acc = isBoss ? { accentGroup: null, accentMat: null } : attachArchetypeAccents(group, archetypeKey);
+        return { group, mats: [bodyMat], wraith, ...acc };
       }
 
       // ---- procedural fallback ----
@@ -3234,23 +3547,33 @@
         eye.position.set(s * 0.2, 0.12, 0.45);
         group.add(eye);
       }
-      return { group, mats: [bodyMat] };
+      const acc = isBoss ? { accentGroup: null, accentMat: null } : attachArchetypeAccents(group, archetypeKey);
+      return { group, mats: [bodyMat], ...acc };
     }
 
-    function addGhost(floor, x, z) {
-      const parts = makeGhostMesh(0xd8f0ff, 0x223344, 0x9fffff, 0.55);
+    function addGhost(floor, x, z, archetypeKey = 'stalker') {
+      const arch = WRAITH_ARCHETYPES[archetypeKey] || WRAITH_ARCHETYPES.stalker;
+      const parts = makeGhostMesh(arch.fallbackBodyHex, arch.fallbackEmissiveHex, arch.eyeHex, 0.65, false, arch.id);
       const { group, mats } = parts;
       group.position.set(x, floor * LEVEL_H + 1.6, z);
       const bar = makeHealthBar();
+      if (arch.id === 'warden') bar.sprite.position.y = 1.32;
       group.add(bar.sprite);   // rides along with the ghost automatically
       worldGroup.add(group);
       ghosts.push({
         group, mats, floor, x, z,
+        archetype: arch.id,
+        arch,
         spawnX: x, spawnZ: z,
         wraith: parts.wraith,
-        hp: GHOST_HP, maxHp: GHOST_HP, bar,
+        accentGroup: parts.accentGroup,
+        accentMat: parts.accentMat,
+        hp: arch.hp, maxHp: arch.hp, bar,
         dir: Math.random() * Math.PI * 2,
         dirTimer: 0, t: Math.random() * Math.PI * 2,
+        lungeCooldown: 90 + Math.random() * 90,
+        lungeFrames: 0,
+        lungeVX: 0, lungeVZ: 0,
         dead: false, fade: 1,
         kbx: 0, kbz: 0, kbTime: 0   // knockback velocity + remaining frames
       });
@@ -3263,6 +3586,7 @@
       invulnUntil = now + 1500;
       screenShake = 0.28;
       sndHurt();
+      triggerRumble(250, 0.85, 1.0);
       flashVignette();
       updateHUD();
       if (health <= 0) doGameOver();
@@ -3275,19 +3599,23 @@
         if (g.dead) {
           g.fade -= 0.03 * dt;
           g.mats.forEach(m => m.opacity = Math.max(0, g.fade * 0.55));
+          if (g.accentMat) { g.accentMat.transparent = true; g.accentMat.opacity = Math.max(0, g.fade); }
           g.group.position.y += 0.04 * dt;
           if (g.fade <= 0) g.group.visible = false;
           continue;
         }
-        g.t += 0.04 * dt;
+        const arch = g.arch || WRAITH_ARCHETYPES.stalker;
+        const bobRate = g.archetype === 'dasher' ? 0.065 : (g.archetype === 'warden' ? 0.03 : 0.04);
+        g.t += bobRate * dt;
+        if (g.accentGroup) {
+          g.accentGroup.rotation.y += (g.archetype === 'dasher' ? 0.07 : 0.032) * dt;
+        }
         const dx = player.x - g.x, dz = player.z - g.z;
         const dist = Math.hypot(dx, dz);
         const hunting = (g.floor === pf && dist < GHOST_AWARE);
 
         if (g.kbTime > 0) {
-          // Being knocked back: coast backward along the stored velocity, which
-          // eases out over several frames so the player actually sees the ghost
-          // recoil instead of teleporting. Pursuit is suppressed until it settles.
+          g.lungeFrames = 0;
           g.x += g.kbx * dt;
           g.z += g.kbz * dt;
           g.x = Math.max(-HALF + 1, Math.min(HALF - 1, g.x));
@@ -3296,34 +3624,57 @@
           g.kbx *= kbDecay;
           g.kbz *= kbDecay;
           g.kbTime -= dt;
-          // keep facing the player as it flies back, so the recoil reads clearly
           if (dist > 0.001) g.group.rotation.y = Math.atan2(dx, dz);
         } else if (hunting) {
-          const gspd = ghostSpeedFor(g.floor);
-          g.x += (dx / dist) * gspd * dt;
-          g.z += (dz / dist) * gspd * dt;
+          let gspd = ghostSpeedFor(g.floor) * arch.speedMult;
+          // Poltergeist Dasher: periodic high-speed flame lunge with telegraph burst
+          if (g.archetype === 'dasher') {
+            if (g.lungeFrames > 0) {
+              g.x += g.lungeVX * (gspd * 2.55) * dt;
+              g.z += g.lungeVZ * (gspd * 2.55) * dt;
+              g.x = Math.max(-HALF + 1, Math.min(HALF - 1, g.x));
+              g.z = Math.max(-HALF + 1, Math.min(HALF - 1, g.z));
+              g.lungeFrames -= dt;
+              if (Math.random() < 0.45 * dt) {
+                spawnBurst(g.x, g.floor * LEVEL_H + 1.5, g.z, 0xff8822, 1, 0.06);
+              }
+            } else {
+              g.lungeCooldown -= dt;
+              if (g.lungeCooldown <= 0 && dist > 2.0 && dist < 10.5) {
+                g.lungeVX = dx / dist;
+                g.lungeVZ = dz / dist;
+                g.lungeFrames = 17;
+                g.lungeCooldown = 135 + Math.random() * 75;
+                spawnBurst(g.x, g.floor * LEVEL_H + 1.6, g.z, 0xffaa33, 10, 0.14);
+                if (settings.sfxVol > 0.01) sfx(460, 0.09, 'sawtooth', 0.08, 220);
+              } else {
+                g.x += (dx / dist) * gspd * dt;
+                g.z += (dz / dist) * gspd * dt;
+              }
+            }
+          } else {
+            g.x += (dx / dist) * gspd * dt;
+            g.z += (dz / dist) * gspd * dt;
+          }
           g.group.rotation.y = Math.atan2(dx, dz);
         } else {
           g.dirTimer -= dt;
           if (g.dirTimer <= 0) { g.dir = Math.random() * Math.PI * 2; g.dirTimer = 120 + Math.random() * 180; }
-          g.x += Math.sin(g.dir) * 0.02 * dt;
-          g.z += Math.cos(g.dir) * 0.02 * dt;
+          const wanderSpd = 0.02 * arch.speedMult;
+          g.x += Math.sin(g.dir) * wanderSpd * dt;
+          g.z += Math.cos(g.dir) * wanderSpd * dt;
           g.x = Math.max(-HALF + 1, Math.min(HALF - 1, g.x));
           g.z = Math.max(-HALF + 1, Math.min(HALF - 1, g.z));
           g.group.rotation.y = g.dir;
         }
-        // extra vertical hop during knockback so the recoil is visible even when
-        // the ghost is backed against a wall and can't travel far horizontally
         const kbHop = g.kbTime > 0 ? Math.sin((1 - g.kbTime / KB_FRAMES) * Math.PI) * 0.6 : 0;
         g.group.position.set(g.x, g.floor * LEVEL_H + 1.6 + Math.sin(g.t) * 0.2 + kbHop, g.z);
 
-        // faint robe roll on the model itself (guarded for procedural fallback)
         if (g.wraith) g.wraith.rotation.z = Math.sin(g.t * 0.8) * 0.05;
 
-        if (hunting && dist < 1.1 && now > invulnUntil && !gameOver) {
+        const hitRad = g.archetype === 'warden' ? 1.22 : 1.1;
+        if (hunting && dist < hitRad && now > invulnUntil && !gameOver) {
           damagePlayer(now);
-          // launch a decaying knockback instead of an instant jump: same ~4-unit
-          // total distance, but spread over KB_FRAMES so it animates.
           const nx = dx / dist, nz = dz / dist;
           g.kbx = -nx * KB_SPEED;
           g.kbz = -nz * KB_SPEED;
@@ -3332,13 +3683,23 @@
       }
     }
 
-    function hitGhost(g, dmg) {
-      g.hp -= (dmg || 1);
+    function hitGhost(g, dmg, isPiercing = false, hitDist = 0) {
+      const arch = g.arch || WRAITH_ARCHETYPES.stalker;
+      let actualDmg = dmg || 1;
+      // Void Wardens have an abyssal rune shield that halves distant non-piercing shots (> 5.2m)
+      let shielded = false;
+      if (arch.armored && !isPiercing && hitDist > 5.2) {
+        actualDmg = Math.max(0.5, actualDmg * 0.5);
+        shielded = true;
+      }
+      g.hp -= actualDmg;
       shotsHit++;
       sndHit();
-      spawnBurst(g.group.position.x, g.group.position.y, g.group.position.z, 0x7fe9ff, 10, 0.14);
-      g.mats.forEach(m => { m.emissive.setHex(0xff4444); });
-      setTimeout(() => g.mats.forEach(m => m.emissive.setHex(PATROL_GLB ? 0x55ddff : 0x223344)), 120);
+      triggerRumble(35, 0.22, 0.12);
+      spawnBurst(g.group.position.x, g.group.position.y, g.group.position.z, shielded ? 0xffd86b : arch.hitParticleHex, shielded ? 14 : 10, 0.14);
+      const restoreHex = PATROL_GLB ? arch.emissiveHex : arch.fallbackEmissiveHex;
+      g.mats.forEach(m => { m.emissive.setHex(shielded ? 0xffd700 : 0xff4444); });
+      setTimeout(() => g.mats.forEach(m => m.emissive.setHex(restoreHex)), 120);
       if (g.bar && g.hp > 0 && g.hp < g.maxHp) {
         drawHealthBar(g.bar, g.hp / g.maxHp);
         g.bar.sprite.visible = true;
@@ -3347,10 +3708,19 @@
         g.dead = true;
         if (g.bar) g.bar.sprite.visible = false;
         ghostsBusted++;
-        screenShake = 0.12;
-        spawnBurst(g.group.position.x, g.group.position.y, g.group.position.z, 0x9fffff, 26, 0.22);
+        screenShake = g.archetype === 'warden' ? 0.18 : 0.12;
+        spawnBurst(g.group.position.x, g.group.position.y, g.group.position.z, arch.bustParticleHex, g.archetype === 'warden' ? 34 : 26, 0.22);
         sndBust();
-        if (Math.random() < HEART_DROP_CHANCE) addHeart(g.floor, g.x, g.z);
+        triggerRumble(115, 0.55, 0.45);
+        if (arch.bonusCoins > 0) {
+          coinCount += arch.bonusCoins;
+          sndCoin();
+          spawnBurst(g.group.position.x, g.group.position.y + 0.2, g.group.position.z, 0xffcf5c, 16, 0.16);
+          showMessage(arch.name + ' banished! +' + arch.bonusCoins + ' bonus gold');
+        }
+        if (g.archetype === 'warden' || Math.random() < HEART_DROP_CHANCE) {
+          if (Math.random() < (g.archetype === 'warden' ? 0.55 : HEART_DROP_CHANCE)) addHeart(g.floor, g.x, g.z);
+        }
         updateHUD();
         if (ghostsBusted === ghostTotal) spawnBoss();
         saveGame();
@@ -3402,6 +3772,7 @@
       };
       screenShake = 0.25;
       sndBoss();
+      rumblePattern([{ dur: 140, weak: 0.7, strong: 0.9, gap: 55 }, { dur: 260, weak: 0.9, strong: 1.0 }]);
       showMessage('The GHOST KING awakens...');
       updateBossBar();
       document.getElementById('bossbar').style.display = 'block';
@@ -3418,6 +3789,7 @@
       boss.hp -= (dmg || 1);
       shotsHit++;
       sndHit();
+      triggerRumble(45, 0.3, 0.2);
       spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, 0xd488ff, 14, 0.18);
       boss.mats.forEach(m => { m.emissive.setHex(0xff4444); });
       setTimeout(() => { if (boss) boss.mats.forEach(m => m.emissive.setHex(KING_GLB ? 0xaa66ff : 0x551166)); }, 120);
@@ -3427,6 +3799,7 @@
         screenShake = 0.4;
         spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, 0xffd700, 42, 0.28);
         sndBust();
+        rumblePattern([{ dur: 120, weak: 0.8, strong: 0.9, gap: 40 }, { dur: 280, weak: 1.0, strong: 1.0 }]);
         doVictory();
       }
     }
@@ -3475,6 +3848,7 @@
           boss.mats.forEach(m => m.emissive.setHex(0xff0000));
           showMessage('The Ghost King goes BERSERK!');
           sndBerserk();
+          rumblePattern([{ dur: 160, weak: 0.85, strong: 0.95, gap: 40 }, { dur: 200, weak: 0.95, strong: 1.0 }]);
         }
       }
       const bspeed = berserk ? BOSS_BERSERK_SPEED : BOSS_SPEED;
@@ -3486,6 +3860,7 @@
           boss.phaseTimer = 0;
           showMessage('The Ghost King phases through the floor!');
           sndPhase();
+          triggerRumble(180, 0.55, 0.75);
         }
       } else {
         boss.phaseTimer = 0;
@@ -3579,20 +3954,47 @@
       return false;   // hp is repeatable
     }
 
+    const SHOP_UPGRADE_META = {
+      hp:     { icon: '#ico-heart-full', desc: 'Permanently adds +1 Ruby Vitality Heart and heals 1 HP.' },
+      rifle:  { icon: '#ico-up-rifle',   desc: 'Doubles Aether Blaster impact to 2 damage per shot.' },
+      auto:   { icon: '#ico-up-auto',    desc: 'Hold Fire (L-Click / RT) for rapid continuous plasma fire.' },
+      pierce: { icon: '#ico-up-pierce',  desc: 'Bolts punch through all wraiths & bypass Void Warden armor.' },
+      spread: { icon: '#ico-up-spread',  desc: 'Fires a 3-bolt tri-spread fan with every pull of the trigger.' },
+      dash:   { icon: '#ico-up-dash',    desc: 'Unlocks high-speed Spirit Dash evade on Space / RB.' },
+      ammo2:  { icon: '#ico-ammo',       desc: 'Every ammo crate scavenged yields +3 plasma charges.' },
+      ammo5:  { icon: '#ico-ammo',       desc: 'Every ammo crate scavenged yields +6 plasma charges.' }
+    };
+
     function renderShop() {
       const f = shopFountain;
       const price = FLOOR_PRICE[f.floor];
-      let html = `<h2>&#9880; Fountain &mdash; Floor ${f.floor + 1}</h2>`;
-      html += `<div class="sub">D-Pad + A or Click to buy &bull; B / ESC to leave</div>`;
-      html += `<div class="wallet"><span class="coinic">&#9679;</span> ${coinCount}</div>`;
+      const roman = ROMAN_FLOORS[f.floor] || (f.floor + 1);
+      let html = gothicCornersHTML();
+      html += `<div class="shop-eyebrow">&#10022; Sanctum Reliquary &bull; Floor ${roman} &#10022;</div>`;
+      html += `<h2><svg><use href="#ico-fountain"/></svg><span>Mystic Fountain</span></h2>`;
+      html += `<div class="sub">D-Pad + A, 1&ndash;4, or Click to consecrate &bull; B / ESC to depart</div>`;
+      html += `<div class="wallet"><svg><use href="#ico-coin"/></svg><span>${coinCount} Gold Available</span></div>`;
       shopItems.forEach((item, i) => {
         const owned = isOwned(item.id);
         const canAfford = coinCount >= price;
         const cls = owned ? 'item owned' : (canAfford ? 'item' : 'item cant');
-        const right = owned ? '<span class="cost">OWNED</span>' : `<span class="cost">&#9679; ${price}</span>`;
-        html += `<div class="${cls}" data-slot="${i}"><span><span class="key">${i + 1}</span>${item.name}</span>${right}</div>`;
+        const meta = SHOP_UPGRADE_META[item.id] || { icon: '#ico-fountain', desc: 'Ancient gallery blessing.' };
+        const right = owned
+          ? '<span class="cost">&#10003; CONSECRATED</span>'
+          : `<span class="cost"><svg><use href="#ico-coin"/></svg>${price}</span>`;
+        html +=
+          `<div class="${cls}" data-slot="${i}">` +
+            `<div class="item-left">` +
+              `<div class="item-ic"><svg><use href="${meta.icon}"/></svg></div>` +
+              `<div class="item-info">` +
+                `<div class="item-title"><span class="key">${i + 1}</span><span>${item.name}</span></div>` +
+                `<div class="item-desc">${meta.desc}</div>` +
+              `</div>` +
+            `</div>` +
+            right +
+          `</div>`;
       });
-      html += `<button class="leave" data-leave="1">Leave (B / ESC)</button>`;
+      html += `<div class="shop-foot"><button class="leave" data-leave="1">&#10005; Depart Sanctuary (B / ESC)</button></div>`;
       const inner = document.getElementById('shopInner');
       inner.innerHTML = html;
       inner.querySelectorAll('.item').forEach(el => {
@@ -3648,6 +4050,7 @@
         spawnBurst(c.x + c.nx * 0.2, c.y, c.z + c.nz * 0.2, 0xffcf5c, 28, 0.18);
         document.getElementById('cleanse').style.display = 'none';
         sndFrame();
+        rumblePattern([{ dur: 70, weak: 0.5, strong: 0.3, gap: 45 }, { dur: 130, weak: 0.75, strong: 0.5 }]);
         // Cleansing a cursed painting also counts it as viewed!
         let bountyMsg = null;
         if (c.mesh && c.mesh.userData && typeof c.mesh.userData.artIndex === 'number') {
@@ -3673,6 +4076,7 @@
           if (m.ammo > 0) ammo += m.ammo;
           if (m.hp > 0) { maxHealth += m.hp; health = Math.min(maxHealth, health + m.hp); }
           sndBuy();
+          rumblePattern([{ dur: 65, weak: 0.45, strong: 0.25, gap: 35 }, { dur: 110, weak: 0.7, strong: 0.45 }]);
           triggeredMsg = m.title;
         }
       }
@@ -3822,9 +4226,13 @@
       }
     }
 
-    // ---------- Gothic Chandelier Lantern Sconces ----------
+    // ---------- Gothic Chandelier Lantern Sconces & Grand Archway Wall Torches ----------
     const SCONCE_IRON_MAT = new THREE.MeshStandardMaterial({ color: 0x1e2029, roughness: 0.5, metalness: 0.8 });
     const SCONCE_FLAME_MAT = new THREE.MeshBasicMaterial({ color: 0xffbb55 });
+    const SCONCE_TORCH_GEO = new THREE.CylinderGeometry(0.038, 0.022, 0.34, 8);
+    const SCONCE_BOWL_GEO = new THREE.CylinderGeometry(0.085, 0.045, 0.09, 10);
+    const SCONCE_FLAME_GEO = new THREE.ConeGeometry(0.068, 0.18, 8);
+
     function addTorchSconce(floor, x, z) {
       const yTop = (floor + 1) * LEVEL_H - SHRINK;
       const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.15, 8), SCONCE_IRON_MAT);
@@ -3841,6 +4249,22 @@
       light.position.set(x, yTop - 1.25, z);
       worldGroup.add(light);
       torches.push({ light, flame, baseY: yTop - 1.15, phase: Math.random() * Math.PI * 2 });
+    }
+
+    function addArchWallSconce(x, y, z, axis, doorKind) {
+      const isUp = doorKind && doorKind.includes('up');
+      const flameMat = isUp ? ARCH_GLOW_UP_MAT : SCONCE_FLAME_MAT;
+      // Batched wrought-iron & brass wall torch bracket + flickering flame cone on both faces of grand archway pilasters
+      for (const faceSign of [-1, 1]) {
+        const tx = axis === 'x' ? x : x + faceSign * 0.28;
+        const tz = axis === 'x' ? z + faceSign * 0.28 : z;
+        batchGeo(SCONCE_TORCH_GEO, ARCH_IRON_MAT, tx, y - 0.12, tz);
+        batchGeo(SCONCE_BOWL_GEO, ARCH_BRASS_MAT, tx, y + 0.06, tz);
+        const flame = new THREE.Mesh(SCONCE_FLAME_GEO, flameMat);
+        flame.position.set(tx, y + 0.17, tz);
+        worldGroup.add(flame);
+        torches.push({ light: null, flame, baseY: y + 0.17, phase: Math.random() * Math.PI * 2 });
+      }
     }
 
     // ---------- Shooting ----------
@@ -3874,6 +4298,7 @@
       weaponRecoil = 1.0;
       if (weaponMuzzleLight) weaponMuzzleLight.intensity = 2.4;
       sndShoot();
+      triggerRumble(hasRifle ? 55 : 40, hasRifle ? 0.5 : 0.35, hasRifle ? 0.32 : 0.16);
       updateHUD();
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
@@ -3916,11 +4341,14 @@
         if (!dead) {
           for (const g of ghosts) {
             if (g.dead) continue;
-            if (p.mesh.position.distanceTo(g.group.position) < 0.85) {
+            const hitRadius = g.archetype === 'warden' ? 1.0 : 0.85;
+            const distToGhost = p.mesh.position.distanceTo(g.group.position);
+            if (distToGhost < hitRadius) {
+              const playerDist = Math.hypot(player.x - g.x, player.z - g.z);
               if (p.pierce) {
-                if (!p.hit.has(g)) { p.hit.add(g); hitGhost(g, p.dmg); }
+                if (!p.hit.has(g)) { p.hit.add(g); hitGhost(g, p.dmg, true, playerDist); }
               } else {
-                hitGhost(g, p.dmg);
+                hitGhost(g, p.dmg, false, playerDist);
                 dead = true;
                 break;
               }
@@ -3959,6 +4387,9 @@
             o.geometry === HEART_GEO || o.geometry === AMMO_GEO || o.geometry === PARTICLE_GEO ||
             o.geometry === BAL_COLLAR_GEO || o.geometry === BAL_BASE_GEO ||
             o.geometry === NEWEL_ORB_GEO || o.geometry === NEWEL_RING_GEO ||
+            o.geometry === DASH_HORN_GEO || o.geometry === DASH_SHARD_GEO ||
+            o.geometry === WARDEN_RING_GEO || o.geometry === WARDEN_SHIELD_GEO ||
+            o.geometry === SCONCE_TORCH_GEO || o.geometry === SCONCE_BOWL_GEO || o.geometry === SCONCE_FLAME_GEO ||
             (PATROL_GLB && o.geometry === PATROL_GLB.geo) ||
             (KING_GLB && o.geometry === KING_GLB.geo) ||
             (FOUNTAIN_GLB && o.geometry === FOUNTAIN_GLB.geo) ||
@@ -4122,7 +4553,8 @@
           // don't spawn ghosts adjacent to the player's start (floor 0, room 0,0)
           if (floor === 0 && gx <= 1 && gy <= 1) continue;
           const c = roomCenter(gx, gy);
-          addGhost(floor, c.x + (dRand() * 4 - 2), c.z + (dRand() * 4 - 2));
+          const archKey = pickWraithArchetype(floor, placed);
+          addGhost(floor, c.x + (dRand() * 4 - 2), c.z + (dRand() * 4 - 2), archKey);
           placed++;
         }
 
@@ -4209,7 +4641,7 @@
           for (const gs of savedState.ghostStates) {
             const g = ghosts[gs.i];
             if (g && !g.dead) {
-              g.x = gs.x; g.z = gs.z; g.hp = gs.hp;
+              g.x = gs.x; g.z = gs.z; g.hp = Math.min(g.maxHp, gs.hp);
               g.group.position.set(g.x, g.floor * LEVEL_H + 1.6, g.z);
               if (g.bar && g.hp > 0 && g.hp < g.maxHp) {
                 drawHealthBar(g.bar, g.hp / g.maxHp);
@@ -4537,6 +4969,7 @@
         g.x = g.spawnX;
         g.z = g.spawnZ;
         g.kbx = 0; g.kbz = 0; g.kbTime = 0;
+        g.lungeFrames = 0; g.lungeCooldown = 90 + Math.random() * 90;
         g.group.position.set(g.x, g.floor * LEVEL_H + 1.6, g.z);
       }
       if (boss && !boss.dead) {
@@ -4605,9 +5038,12 @@
       overlay.style.display = 'flex';
       overlay.innerHTML =
         '<div class="panel">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow">&#10022; Royal Banishment Complete &#10022;</div>' +
+        gothicCrestHTML() +
         '<div class="gp-big win">The Ghost King Falls</div>' +
         `<div class="gp-score">SCORE ${score}</div>` +
-        '<div class="gp-hint">tallying your run&hellip;</div>' +
+        '<div class="gp-hint">Inscribing your patrol into the Gallery Archives&hellip;</div>' +
         '</div>';
 
       // buffer before the interactive initials screen so leftover fire-button
@@ -4620,24 +5056,38 @@
       }, 2500);
     }
 
+    function victoryStatsGridHTML(r) {
+      const mm = Math.floor(r.secs / 60), ss = String(r.secs % 60).padStart(2, '0');
+      return (
+        '<div class="vic-stats-grid">' +
+          `<div class="vic-stat-card"><span class="vic-stat-lbl">Patrol Time</span><span class="vic-stat-val" style="color:var(--cyan)">${mm}:${ss}</span></div>` +
+          `<div class="vic-stat-card"><span class="vic-stat-lbl">Accuracy</span><span class="vic-stat-val" style="color:var(--mint)">${r.acc}%</span></div>` +
+          `<div class="vic-stat-card"><span class="vic-stat-lbl">Gold Spoils</span><span class="vic-stat-val" style="color:var(--gold)"><svg><use href="#ico-coin"/></svg>${r.coins}</span></div>` +
+          `<div class="vic-stat-card"><span class="vic-stat-lbl">Art Admired</span><span class="vic-stat-val" style="color:var(--cyan)"><svg><use href="#ico-art"/></svg>${viewedArtIds.size}/${WALL_ART_FILES.length}</span></div>` +
+        '</div>'
+      );
+    }
+
     function renderInitialsScreen() {
       const r = pendingRun;
-      const mm = Math.floor(r.secs / 60), ss = String(r.secs % 60).padStart(2, '0');
       const boxes = [0, 1, 2].map(i => {
         const ch = initials[i] || '_';
-        const cur = (i === initials.length) ? ' style="color:var(--gold);box-shadow:inset 0 0 0 2px var(--gold)"' : '';
+        const cur = (i === initials.length) ? ' style="color:var(--gold);border-color:var(--gold);box-shadow:0 0 16px rgba(240,196,108,0.45),inset 0 0 12px rgba(240,196,108,0.22)"' : '';
         return `<span class="initbox"${cur}>${ch}</span>`;
       }).join('');
       const ready = initials.length === 3;
       victoryHTML =
         '<div class="panel">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow">&#10022; Midnight Exhibition Cleansed &#10022;</div>' +
+        gothicCrestHTML() +
         '<div class="gp-big win">Gallery Cleared!</div>' +
         `<div class="gp-score">SCORE ${r.score}</div>` +
-        `<div class="gp-hint">Time ${mm}:${ss} &bull; ${r.acc}% acc &bull; ${r.coins} coins &bull; ${r.cursed}/${cursedTotal} cursed</div>` +
-        '<div style="margin:18px 0 8px;font-family:var(--font-display);font-weight:600;color:var(--cyan);font-size:17px">Enter your initials</div>' +
+        victoryStatsGridHTML(r) +
+        '<div style="margin:10px 0 6px;font-family:var(--font-display);font-weight:700;color:var(--gold);font-size:15px;letter-spacing:1.5px;text-transform:uppercase">Inscribe Your Curator Initials</div>' +
         `<div class="initrow">${boxes}</div>` +
-        `<button class="confirm${ready ? '' : ' off'}" data-confirm="1"${ready ? '' : ' disabled'}>CONFIRM</button>` +
-        '<div class="gp-hint">Type 3 letters &bull; Backspace to fix &bull; Enter or Confirm to accept</div>' +
+        `<button class="confirm${ready ? '' : ' off'}" data-confirm="1"${ready ? '' : ' disabled'}>&#10003; Seal Record</button>` +
+        '<div class="gp-hint">Type 3 letters (or D-Pad Up/Down + A) &bull; Backspace / B to fix &bull; Enter to seal</div>' +
         '</div>';
       const overlay = document.getElementById('overlay');
       overlay.style.display = 'flex';
@@ -4652,17 +5102,18 @@
       const rank = recordScore(pendingRun);
       enteringInitials = false;
       const r = pendingRun;
-      const mm = Math.floor(r.secs / 60), ss = String(r.secs % 60).padStart(2, '0');
       victoryHTML =
         '<div class="panel">' +
+        gothicCornersHTML() +
+        '<div class="gp-eyebrow">&#10022; Hall of Master Curators &#10022;</div>' +
         '<div class="gp-big win">Gallery Cleared!</div>' +
         `<div class="gp-score">SCORE ${r.score}</div>` +
-        (rank ? `<div style="color:var(--gold);font-family:var(--font-display);font-weight:600;font-size:18px;text-shadow:0 0 12px rgba(255,207,92,0.6)">&#9733; New #${rank} on the leaderboard!</div>` : '') +
-        `<div class="gp-hint">Time ${mm}:${ss} &bull; ${r.acc}% acc &bull; ${r.coins} coins &bull; ${r.cursed}/${cursedTotal} cursed</div>` +
-        '<div style="margin-top:14px;font-family:var(--font-display);font-weight:600;color:var(--gold);font-size:16px">&#9733; Top Runs</div>' +
+        (rank ? `<div class="gp-trophy" style="margin:4px auto 8px">&#128081; NEW #${rank} ON THE GALLERY LEADERBOARD!</div>` : '') +
+        victoryStatsGridHTML(r) +
+        '<div style="margin-top:8px;font-family:var(--font-display);font-weight:700;color:var(--gold);font-size:15px;letter-spacing:1px">&#9733; Top Curator Runs</div>' +
         highScoreTableHTML(rank) +
         '<div class="menu-row">' +
-        '<button class="minipill" data-act="again">&#9851; Try Again</button>' +
+        '<button class="gp-cta" style="margin-top:0;padding:10px 26px;font-size:14.5px" data-act="again">&#9876; Patrol New Gallery</button>' +
         '<button class="minipill" data-act="menu">&#9832; Main Menu</button>' +
         '</div>' +
         '</div>';
@@ -5044,6 +5495,7 @@
           dashFrames = DASH_FRAMES;
           dashCooldown = DASH_COOLDOWN;
           sndDash();
+          triggerRumble(85, 0.45, 0.25);
         }
 
         let climbing = false;
@@ -5159,8 +5611,42 @@
       for (const t of torches) {
         t.phase += 0.09 * dt;
         const flick = Math.sin(t.phase) * 0.12 + Math.sin(t.phase * 2.3) * 0.08;
-        t.light.intensity = 0.92 + flick;
+        if (t.light) t.light.intensity = 0.92 + flick;
         t.flame.position.y = t.baseY + flick * 0.12;
+        t.flame.scale.y = 1.0 + flick * 0.6;
+      }
+
+      // Phase 4: Spatial Proximity Audio Cues (eerie hum near uncleansed cursed art & sanctuary chime near fountains)
+      if (active && !gameOver && settings.sfxVol > 0.02) {
+        proxCueTimer -= dt;
+        if (proxCueTimer <= 0) {
+          const pfNow = floorIndexOf(player.y);
+          let triggeredCue = false;
+          for (const c of cursedPaintings) {
+            if (c.framed || c.floor !== pfNow) continue;
+            const d = Math.hypot(player.x - c.x, player.z - c.z);
+            if (d < 6.8) {
+              const atten = Math.max(0.15, 1 - d / 7.2);
+              sfx(108, 0.24, 'sine', 0.038 * atten, -14);
+              proxCueTimer = 110;
+              triggeredCue = true;
+              break;
+            }
+          }
+          if (!triggeredCue) {
+            for (const f of fountains) {
+              if (f.floor !== pfNow) continue;
+              const d = Math.hypot(player.x - f.x, player.z - f.z);
+              if (d < 5.5) {
+                const atten = Math.max(0.15, 1 - d / 6.0);
+                sfx(528, 0.16, 'sine', 0.026 * atten, 132);
+                proxCueTimer = 140;
+                break;
+              }
+            }
+          }
+          if (proxCueTimer <= 0) proxCueTimer = 45;
+        }
       }
 
       const pf = floorIndexOf(player.y);
@@ -5586,7 +6072,7 @@
         ctx.restore();
       }
 
-      // 8. Live Wraith Blips (shown in visited rooms or within GHOST_AWARE motion radar)
+      // 8. Live Wraith Blips (color-coded by Wraith Archetype in visited rooms or within GHOST_AWARE motion radar)
       for (const g of ghosts) {
         if (g.dead || g.floor !== pf) continue;
         const rc = roomCoordsOf(g.x, g.z);
@@ -5594,13 +6080,25 @@
         if (!visitedRooms.has(`${pf},${rc.gx},${rc.gy}`) && dist > GHOST_AWARE) continue;
         const gx = worldToMapX(g.x);
         const gy = worldToMapY(g.z);
+        const arch = g.arch || WRAITH_ARCHETYPES.stalker;
         ctx.save();
-        ctx.fillStyle = 'rgba(197, 155, 255, 0.28)';
+        ctx.fillStyle = arch.mapGlow;
         ctx.beginPath(); ctx.arc(gx, gy, 7.5 + pulse * 2, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#c59bff';
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath(); ctx.arc(gx, gy, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = arch.mapColor;
+        ctx.strokeStyle = g.archetype === 'warden' ? '#f0c46c' : '#ffffff';
+        ctx.lineWidth = g.archetype === 'warden' ? 1.8 : 1.2;
+        if (g.archetype === 'dasher') {
+          // Diamond marker for Poltergeist Dashers
+          ctx.translate(gx, gy);
+          ctx.rotate(Math.PI / 4);
+          ctx.fillRect(-4.2, -4.2, 8.4, 8.4);
+          ctx.strokeRect(-4.2, -4.2, 8.4, 8.4);
+        } else {
+          ctx.beginPath();
+          ctx.arc(gx, gy, g.archetype === 'warden' ? 5.4 : 4.4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
         ctx.restore();
       }
 
@@ -5994,6 +6492,17 @@
             '<button type="button" class="gp-toggle' + (settings.invertY ? ' on' : '') + '" id="setInvertY" aria-pressed="' + settings.invertY + '"></button>' +
           '</div>' +
         '</div>' +
+        '<div class="setting-row">' +
+          '<div class="setting-toggle-row">' +
+            '<div>' +
+              '<div class="setting-lbl">&#127918; Controller Haptics (Vibration)</div>' +
+              '<div class="setting-sub" id="setVibSub">' +
+                (settings.vibration ? 'Enabled &mdash; Dual-motor rumble on blaster fire, dash, damage &amp; boss roars.' : 'Disabled &mdash; Controller vibration effects are muted.') +
+              '</div>' +
+            '</div>' +
+            '<button type="button" class="gp-toggle' + (settings.vibration ? ' on' : '') + '" id="setVibration" aria-pressed="' + settings.vibration + '"></button>' +
+          '</div>' +
+        '</div>' +
         '</div>' +
         '<div class="menu-row">' +
         '<button class="gp-cta" style="margin-top:0;padding:10px 32px;font-size:15px" data-act="settingsback">&#10003; Save &amp; Back</button>' +
@@ -6006,6 +6515,8 @@
       const sVal = document.getElementById('setSfxVal');
       const invBtn = document.getElementById('setInvertY');
       const invSub = document.getElementById('setInvertSub');
+      const vibBtn = document.getElementById('setVibration');
+      const vibSub = document.getElementById('setVibSub');
 
       mSlider.addEventListener('input', () => {
         ensureAudio();
@@ -6034,6 +6545,18 @@
           : 'Standard &mdash; Mouse Up, Up Arrow &amp; Stick Up look up.';
         saveSettings();
         if (settings.sfxVol > 0.01) sfx(settings.invertY ? 520 : 420, 0.06, 'sine', 0.08, 60);
+      });
+      vibBtn.addEventListener('click', () => {
+        ensureAudio();
+        settings.vibration = !settings.vibration;
+        vibBtn.classList.toggle('on', settings.vibration);
+        vibBtn.setAttribute('aria-pressed', String(settings.vibration));
+        vibSub.innerHTML = settings.vibration
+          ? 'Enabled &mdash; Dual-motor rumble on blaster fire, dash, damage &amp; boss roars.'
+          : 'Disabled &mdash; Controller vibration effects are muted.';
+        saveSettings();
+        if (settings.sfxVol > 0.01) sfx(settings.vibration ? 560 : 400, 0.06, 'sine', 0.08, 60);
+        if (settings.vibration) triggerRumble(90, 0.55, 0.45);
       });
       syncUiFocus(true);
     }
@@ -6094,6 +6617,7 @@
           '<div class="help-item"><span class="hic" style="color:var(--mint)">&#9880;</span><div><b>Fountains</b> (one per floor) are shops. Walk up and <b>right-click</b> (Square) to enter, then spend coins on health, weapons, and ammo perks. Higher floors sell better gear.</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--mint)">&#10022;</span><div><b>Ammo is finite.</b> Boxes only refill a little at first &mdash; upgrade your ammo perks and make every shot count.</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed paintings</b> smolder on the walls &mdash; one per floor. Right-click up close to cleanse them for a coin bounty.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9760;</span><div><b>3 Wraith Archetypes:</b> <b style="color:var(--cyan)">Stalkers</b> (classic patrol), <b style="color:#ff9e3d">Poltergeist Dashers</b> (fast flame lunge + bonus gold drops), and <b style="color:var(--violet)">Void Wardens</b> (armored sentinels weak to Pierce or close-range shots).</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div>Busted ghosts sometimes drop <b>hearts</b>. Play aggressive to stay healed.</div></div>' +
           '</div>';
       } else if (helpPage === 1) {
@@ -6247,16 +6771,17 @@
         PATROL_GLB = glb;
         for (const g of ghosts) {
           if (g.wraith) {
+            const arch = g.arch || WRAITH_ARCHETYPES.stalker;
             g.wraith.geometry = glb.geo;
-            g.wraith.scale.setScalar(1.72);
+            g.wraith.scale.setScalar(arch.scale);
             g.wraith.position.y = -0.05;
             g.mats.forEach(m => {
               m.map = glb.tex;
               m.emissiveMap = glb.tex;
-              m.color.setHex(0xffffff);
-              m.emissive.setHex(0x55ddff);
-              m.emissiveIntensity = 0.45;
-              m.opacity = 0.9;
+              m.color.setHex(arch.tintHex);
+              m.emissive.setHex(arch.emissiveHex);
+              m.emissiveIntensity = g.archetype === 'dasher' ? 0.58 : 0.48;
+              m.opacity = g.archetype === 'warden' ? 0.94 : 0.9;
               m.needsUpdate = true;
             });
           }
