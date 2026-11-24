@@ -102,6 +102,8 @@
     .pill.cursed .ic { background: radial-gradient(circle at 35% 30%, rgba(255,198,84,0.28), rgba(46,28,16,0.85)); }
     .pill.viewed { border-color: rgba(127,233,255,0.26); }
     .pill.viewed .ic { background: radial-gradient(circle at 35% 30%, rgba(127,233,255,0.22), rgba(24,28,48,0.88)); }
+    .pill.relics { border-color: rgba(240,196,108,0.38); }
+    .pill.relics .ic { background: radial-gradient(circle at 35% 30%, rgba(240,196,108,0.30), rgba(44,30,14,0.88)); }
     .pill.deaths { border-color: rgba(255,107,138,0.36); }
     .pill.deaths .ic { background: radial-gradient(circle at 35% 30%, rgba(255,107,138,0.28), rgba(52,16,28,0.88)); }
     .pill .val { font-weight: 800; font-size: 18px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
@@ -252,7 +254,19 @@
       height: 100%; width: 100%; border-radius: 999px;
       background: linear-gradient(90deg, #a855f7, #ec4899, #ff6b8a);
       box-shadow: 0 0 14px rgba(236,72,153,0.65);
-      transition: width 0.2s ease;
+      transition: width 0.2s ease, background 0.35s ease;
+    }
+    #bossbar.phase-wrath {
+      border-color: rgba(255, 107, 138, 0.72);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.75), 0 0 32px rgba(255, 77, 122, 0.45);
+    }
+    #bossbar.phase-wrath .bosslabel {
+      color: #ffd86b;
+      text-shadow: 0 0 14px rgba(255, 77, 122, 0.95), 0 2px 0 #3d0c1b;
+    }
+    #bossbar.phase-wrath .bossfill {
+      background: linear-gradient(90deg, #ff3355, #ff8833, #ffd86b);
+      box-shadow: 0 0 18px rgba(255, 107, 138, 0.9);
     }
 
     /* ---- floating message ---- */
@@ -300,11 +314,12 @@
       box-shadow: 0 0 18px rgba(127,233,255,0.35), 0 4px 12px rgba(0,0,0,0.6);
     }
     .gp-save-summary {
-      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 13px;
-      margin: 6px auto 4px; padding: 7px 16px; border-radius: 10px;
+      display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 6px 11px;
+      margin: 5px auto 3px; padding: 6px 14px; border-radius: 10px;
       background: linear-gradient(90deg, rgba(127,233,255,0.06), rgba(197,155,255,0.14), rgba(127,233,255,0.06));
       border: 1px solid rgba(127, 233, 255, 0.30);
-      font-family: var(--font-ui); font-weight: 600; font-size: 12.5px; color: #dbe2ff;
+      font-family: var(--font-ui); font-weight: 600; font-size: 12px; color: #dbe2ff;
+      white-space: nowrap;
     }
     .gp-save-summary span {
       display: inline-flex; align-items: center; gap: 4px;
@@ -433,6 +448,14 @@
     }
     .gal-card.locked .gal-card-num {
       border-color: rgba(185,140,255,0.25); color: rgba(200,190,230,0.55);
+    }
+    .gal-card-run {
+      position: absolute; top: 4px; left: 5px;
+      background: rgba(8, 26, 34, 0.88);
+      border: 1px solid rgba(92, 225, 255, 0.65);
+      color: var(--cyan); font-size: 9px; font-weight: 800;
+      letter-spacing: 0.4px; padding: 1px 5px; border-radius: 5px;
+      box-shadow: 0 0 8px rgba(92, 225, 255, 0.35);
     }
     .gal-lock-ic {
       font-size: 18px; color: rgba(185, 140, 255, 0.35); margin-bottom: 2px;
@@ -567,7 +590,7 @@
     }
     .gp-divider {
       display: flex; align-items: center; justify-content: center; gap: 12px;
-      margin: 12px auto 14px; width: min(360px, 85%);
+      margin: 8px auto 10px; width: min(360px, 85%);
       color: var(--gold); font-size: 12px; opacity: 0.8;
     }
     .gp-divider::before, .gp-divider::after {
@@ -583,13 +606,13 @@
 
     /* 3-Column Haunted Feature Pillars on Title Screen */
     .gp-pillars {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px;
-      margin: 13px 0 11px; text-align: left;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+      margin: 10px 0 8px; text-align: left;
     }
     .gp-pillar {
       background: linear-gradient(180deg, rgba(24, 22, 42, 0.72), rgba(12, 11, 22, 0.82));
       border: 1px solid rgba(240, 196, 108, 0.22);
-      border-radius: 11px; padding: 10px 12px;
+      border-radius: 11px; padding: 8px 11px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
       transition: border-color 0.2s, transform 0.2s;
     }
@@ -609,12 +632,12 @@
 
     /* Tactical Keycap Ribbon */
     .gp-keystrip {
-      display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
-      gap: 6px 12px; margin: 10px auto 11px; padding: 7px 16px;
+      display: flex; flex-wrap: nowrap; align-items: center; justify-content: center;
+      gap: 6px 10px; margin: 7px auto 8px; padding: 6px 14px;
       background: rgba(6, 5, 14, 0.68);
       border: 1px solid rgba(127, 233, 255, 0.16);
       border-radius: 999px; width: fit-content; max-width: 100%;
-      font-size: 11.5px; color: #b8c0de; white-space: nowrap;
+      font-size: 11px; color: #b8c0de; white-space: nowrap;
     }
     .gp-keystrip span { display: inline-flex; align-items: center; gap: 5px; }
     .gp-kbd {
@@ -629,12 +652,41 @@
     /* Champion's Reliquary Trophy Badge */
     .gp-trophy {
       display: inline-flex; align-items: center; gap: 10px;
-      margin: 4px auto 8px; padding: 6px 18px; border-radius: 999px;
+      margin: 3px auto 6px; padding: 5px 16px; border-radius: 999px;
       background: linear-gradient(90deg, rgba(240, 196, 108, 0.08), rgba(240, 196, 108, 0.18), rgba(240, 196, 108, 0.08));
       border: 1px solid rgba(240, 196, 108, 0.42);
-      font-family: var(--font-display); font-weight: 700; font-size: 13.5px;
+      font-family: var(--font-display); font-weight: 700; font-size: 13px;
       color: var(--gold); letter-spacing: 0.8px;
       box-shadow: 0 0 18px rgba(240, 196, 108, 0.15);
+    }
+    .gp-mode-row {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin: 3px auto 4px;
+    }
+    .gp-mode-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 16px; border-radius: 999px; cursor: pointer;
+      font-family: var(--font-display); font-weight: 700; font-size: 12.5px;
+      letter-spacing: 0.8px;
+      background: rgba(16, 14, 30, 0.88);
+      border: 1px solid rgba(127, 233, 255, 0.35);
+      color: var(--cyan);
+      transition: all 0.14s ease;
+    }
+    .gp-mode-pill:hover {
+      border-color: var(--gold); color: #fff;
+    }
+    .gp-mode-pill.nightmare {
+      background: linear-gradient(90deg, rgba(90, 16, 36, 0.88), rgba(145, 22, 54, 0.92), rgba(90, 16, 36, 0.88));
+      border-color: var(--rose);
+      color: #ffd8e2;
+      box-shadow: 0 0 18px rgba(255, 77, 122, 0.45);
+    }
+    .nm-badge {
+      display: inline-block; padding: 1px 6px; border-radius: 5px;
+      background: rgba(255, 77, 122, 0.22); border: 1px solid rgba(255, 107, 138, 0.65);
+      color: #ff8aa4; font-family: var(--font-display); font-size: 10px; font-weight: 800;
+      letter-spacing: 0.6px; vertical-align: 1px; margin-left: 4px;
     }
 
     /* Primary Gothic CTA Button */
@@ -1059,12 +1111,12 @@
     #loading .load-lore b { color: var(--cyan); font-style: normal; }
 
     /* ---- Haunted Gothic Settings Modal ---- */
-    .settings-panel { max-width: 500px !important; text-align: left; }
-    .settings-list { display: flex; flex-direction: column; gap: 14px; margin: 16px 0 20px; }
+    .settings-panel { max-width: 520px !important; text-align: left; }
+    .settings-list { display: flex; flex-direction: column; gap: 10px; margin: 12px 0 16px; }
     .setting-row {
       background: linear-gradient(180deg, rgba(22, 20, 38, 0.78), rgba(11, 10, 22, 0.88));
       border: 1px solid rgba(240, 196, 108, 0.24);
-      border-radius: 12px; padding: 13px 16px;
+      border-radius: 12px; padding: 11px 15px;
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
     .setting-top {
@@ -1322,6 +1374,17 @@
       <symbol id="ico-up-dash" viewBox="0 0 32 32">
         <path d="M13 6L24 12L17 16L26 20L11 27L15 18L8 14Z" fill="url(#g-cyan)" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>
       </symbol>
+      <!-- Sacred Gallery Relic Star Emblem -->
+      <symbol id="ico-relic" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="12" fill="rgba(40,26,12,0.85)" stroke="url(#g-gold)" stroke-width="1.8"/>
+        <path d="M16 4.5L18.9 12.2L27 13L20.8 18.2L22.7 26.2L16 21.8L9.3 26.2L11.2 18.2L5 13L13.1 12.2Z" fill="url(#g-gold)" stroke="#fff3be" stroke-width="0.9" stroke-linejoin="round"/>
+        <circle cx="16" cy="16" r="3.2" fill="url(#g-cyan)"/>
+      </symbol>
+      <!-- Sacred Aegis Ward Shield Heart -->
+      <symbol id="ico-shield-ward" viewBox="0 0 32 32">
+        <path d="M16 3.5L26.5 7.8V15.6C26.5 22.4 21.8 27.2 16 29.2C10.2 27.2 5.5 22.4 5.5 15.6V7.8L16 3.5Z" fill="url(#g-cyan)" stroke="url(#g-gold)" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M16 9L18.2 13.8L23.2 14.5L19.4 18L20.4 23L16 20.4L11.6 23L12.6 18L8.8 14.5L13.8 13.8Z" fill="#ffffff" opacity="0.9"/>
+      </symbol>
     </defs>
   </svg>
   <div id="bossbar">
@@ -1341,6 +1404,7 @@
       <div class="pill ghosts"><span class="ic"><svg><use href="#ico-ghost"/></svg></span><div class="pill-body"><span class="pill-lbl">Wraiths</span><span class="pill-num"><span class="val" id="ghostsBusted">0</span><span class="sub">/&nbsp;<span id="ghostTotal">0</span></span></span></div></div>
       <div class="pill cursed"><span class="ic"><svg><use href="#ico-cursed"/></svg></span><div class="pill-body"><span class="pill-lbl">Cursed</span><span class="pill-num"><span class="val" id="cursed">0</span><span class="sub">/&nbsp;<span id="cursedTotal">0</span></span></span></div></div>
       <div class="pill viewed"><span class="ic"><svg><use href="#ico-art"/></svg></span><div class="pill-body"><span class="pill-lbl">Portraits</span><span class="pill-num"><span class="val" id="viewed">0</span><span class="sub">/&nbsp;<span id="viewedTotal">100</span></span></span></div></div>
+      <div class="pill relics"><span class="ic"><svg><use href="#ico-relic"/></svg></span><div class="pill-body"><span class="pill-lbl">Relics</span><span class="pill-num"><span class="val" id="relicsFound">0</span><span class="sub">/&nbsp;<span id="relicsTotal">3</span></span></span></div></div>
       <div class="pill deaths" id="deathsPill" style="display:none"><span class="ic"><svg><use href="#ico-death"/></svg></span><div class="pill-body"><span class="pill-lbl">Deaths</span><span class="pill-num"><span class="val" id="deathsVal">0</span></span></div></div>
     </div>
   </div>
@@ -1363,6 +1427,7 @@
       <span class="mm-leg"><span class="mm-dot" style="background:#62f5a8;border-radius:50%"></span>Stairs/Lad</span>
       <span class="mm-leg"><span class="mm-dot" style="background:#44ddff;transform:rotate(45deg)"></span>Fountain</span>
       <span class="mm-leg"><span class="mm-dot" style="background:#ffcf5c;box-shadow:0 0 5px #ff4d7a"></span>Cursed</span>
+      <span class="mm-leg"><span class="mm-dot" style="background:#ffd86b;border:1.5px solid #5ce1ff;border-radius:50%"></span>Relic</span>
       <span class="mm-leg"><span class="mm-dot" style="background:#5ce1ff;width:9px;height:4px"></span>Unviewed Art</span>
       <span class="mm-leg"><span class="mm-dot" style="background:#5ce1ff;border-radius:50%"></span>Stalker</span>
       <span class="mm-leg"><span class="mm-dot" style="background:#ff9e3d;transform:rotate(45deg)"></span>Dasher</span>
@@ -1438,8 +1503,10 @@
     // Level 1 is gentle, level 2 medium, top floor keeps the full-speed value.
     // Any floor beyond the table falls back to GHOST_SPEED.
     const GHOST_SPEED_BY_FLOOR = [0.045, 0.057, 0.07];
-    const ghostSpeedFor = (floor) =>
-      GHOST_SPEED_BY_FLOOR[floor] !== undefined ? GHOST_SPEED_BY_FLOOR[floor] : GHOST_SPEED;
+    const ghostSpeedFor = (floor) => {
+      const base = GHOST_SPEED_BY_FLOOR[floor] !== undefined ? GHOST_SPEED_BY_FLOOR[floor] : GHOST_SPEED;
+      return base * (nightmareMode ? 1.18 : 1.0);
+    };
     const GHOST_AWARE = 13;
     // Knockback when a ghost touches the player: KB_SPEED is the initial per-frame
     // push; with the 0.82 decay it sums to ~4 units total (the old instant jump),
@@ -1528,8 +1595,9 @@
     let holes = [];
     let ramps = [];
     let ladders = [];
-    let coins = [], ghosts = [], projectiles = [], hearts = [], bossOrbs = [], ammoBoxes = [], fountains = [];
+    let coins = [], ghosts = [], projectiles = [], hearts = [], bossOrbs = [], bossDecoys = [], ammoBoxes = [], fountains = [], relics = [];
     let boss = null;
+    let hasMonocle = false, hasMagnet = false, hasWard = false, wardActive = false;
     let coinCount = 0, coinTotal = 0, ghostsBusted = 0, ghostTotal = 0;
     let health = 3, maxHealth = 3, invulnUntil = 0, gameOver = false, won = false;
     let active = false;   // true only during live play: gates ALL actor motion
@@ -1547,6 +1615,7 @@
     let shotsFired = 0, shotsHit = 0, startTime = 0, savedElapsedMs = 0;
     let deaths = 0, victories = 0;
     let viewedArtIds = new Set();
+    let lifetimeArtIds = new Set();
     let claimedBounties = new Set();
     let galleryReturnTo = 'title';
     let galleryPage = 0;
@@ -1588,7 +1657,8 @@
 
     // ---------- Settings (persisted in localStorage) ----------
     const SETTINGS_KEY = 'ghostPatrolSettings';
-    let settings = { musicVol: 0.42, sfxVol: 0.85, invertY: false, vibration: true };
+    let settings = { musicVol: 0.42, sfxVol: 0.85, lookSens: 1.0, invertY: false, vibration: true, nightmare: false };
+    let nightmareMode = false;
     let settingsReturnTo = 'title';
     function loadSettings() {
       try {
@@ -1597,8 +1667,10 @@
           const parsed = JSON.parse(raw);
           if (typeof parsed.musicVol === 'number') settings.musicVol = Math.max(0, Math.min(1, parsed.musicVol));
           if (typeof parsed.sfxVol === 'number') settings.sfxVol = Math.max(0, Math.min(1, parsed.sfxVol));
+          if (typeof parsed.lookSens === 'number') settings.lookSens = Math.max(0.25, Math.min(2.0, parsed.lookSens));
           if (typeof parsed.invertY === 'boolean') settings.invertY = parsed.invertY;
           if (typeof parsed.vibration === 'boolean') settings.vibration = parsed.vibration;
+          if (typeof parsed.nightmare === 'boolean') settings.nightmare = parsed.nightmare;
         }
       } catch (e) {}
     }
@@ -1798,8 +1870,35 @@
     }
     function dRand() { return rngFn(); }
 
-    // ---------- Persistent Save System (localStorage) ----------
+    // ---------- Persistent Save System & Lifetime Art Archive (localStorage) ----------
     const SAVE_KEY = 'ghostPatrolSaveV1';
+    const LIFETIME_ART_KEY = 'ghostPatrolLifetimeArtV1';
+
+    function loadLifetimeArt() {
+      try {
+        const raw = localStorage.getItem(LIFETIME_ART_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        lifetimeArtIds = new Set(Array.isArray(arr) ? arr.filter(n => typeof n === 'number' && n >= 0 && n < WALL_ART_FILES.length) : []);
+      } catch (e) {
+        lifetimeArtIds = new Set();
+      }
+    }
+
+    function saveLifetimeArt() {
+      try {
+        localStorage.setItem(LIFETIME_ART_KEY, JSON.stringify(Array.from(lifetimeArtIds)));
+      } catch (e) {}
+    }
+
+    function recordArtViewed(artIndex) {
+      if (typeof artIndex !== 'number' || artIndex < 0 || artIndex >= WALL_ART_FILES.length) return false;
+      const wasNewInRun = !viewedArtIds.has(artIndex);
+      const wasNewLifetime = !lifetimeArtIds.has(artIndex);
+      viewedArtIds.add(artIndex);
+      lifetimeArtIds.add(artIndex);
+      if (wasNewLifetime) saveLifetimeArt();
+      return wasNewInRun;
+    }
     function readSavedGame() {
       try {
         const raw = localStorage.getItem(SAVE_KEY);
@@ -1843,6 +1942,8 @@
           lastFloorIdx,
           health, maxHealth, ammo, ammoDropBonus,
           hasRifle, hasAuto, hasPierce, hasSpread, hasDash,
+          hasMonocle, hasMagnet, hasWard, wardActive,
+          collectedRelics: relics.map((r, idx) => r.collected ? idx : -1).filter(idx => idx >= 0),
           coinCount, coinTotal, ghostsBusted, ghostTotal,
           cursedFramed, cursedTotal,
           deaths, victories,
@@ -1852,7 +1953,7 @@
           shotsFired, shotsHit,
           elapsedMs: Math.round(getTotalElapsedMs()),
           collectedCoins, collectedAmmo, deadGhosts, ghostStates, cleansedCursed, activeHearts,
-          berserk,
+          berserk, nightmareMode,
           boss: (boss && !boss.dead) ? {
             x: +boss.x.toFixed(2), z: +boss.z.toFixed(2), floor: boss.floor, hp: boss.hp
           } : null
@@ -3394,6 +3495,118 @@
       ctx.closePath();
     }
 
+    // ---------- Step 3: Sacred Gallery Relics (Secret Dead-End Curio Shrines) ----------
+    const RELIC_DEFS = [
+      {
+        id: 'monocle',
+        name: "Curator's Monocle",
+        desc: 'Reveals unviewed paintings & relics in adjacent rooms and extends portrait admire reach!',
+        gemColor: 0x5ce1ff,
+        emissiveColor: 0x1e88bb
+      },
+      {
+        id: 'magnet',
+        name: 'Aether Magnet',
+        desc: 'Magnetically draws nearby gold coins, vitality hearts, and ammo crates to you!',
+        gemColor: 0xffcf5c,
+        emissiveColor: 0xb87314
+      },
+      {
+        id: 'ward',
+        name: 'Sacred Aegis Ward',
+        desc: 'Grants a regenerating spectral shield that absorbs 1 hit on every floor!',
+        gemColor: 0xc59bff,
+        emissiveColor: 0x6b28b8
+      }
+    ];
+    const RELIC_PED_GEO = new THREE.CylinderGeometry(0.32, 0.42, 0.76, 8);
+    const RELIC_CAP_GEO = new THREE.CylinderGeometry(0.38, 0.34, 0.08, 8);
+    const RELIC_RING_GEO = new THREE.TorusGeometry(0.28, 0.025, 8, 24);
+    const RELIC_GEM_GEO = new THREE.OctahedronGeometry(0.20, 0);
+
+    function pickRelicRoom(floor, maze, reserved) {
+      // Prefer a dead-end gallery room (only 1 open doorway) that isn't reserved
+      const candidates = [];
+      const fallbacks = [];
+      for (let gx = 0; gx < GRID; gx++) {
+        for (let gy = 0; gy < GRID; gy++) {
+          if (reserved.has(`${floor},${gx},${gy}`)) continue;
+          if (floor === 0 && gx === 0 && gy === 0) continue;
+          let exits = 0;
+          if (gy > 0 && maze[gx][gy - 1].S) exits++;
+          if (gy < GRID - 1 && maze[gx][gy].S) exits++;
+          if (gx > 0 && maze[gx - 1][gy].E) exits++;
+          if (gx < GRID - 1 && maze[gx][gy].E) exits++;
+          if (exits === 1) candidates.push({ gx, gy });
+          else fallbacks.push({ gx, gy });
+        }
+      }
+      const pool = candidates.length ? candidates : fallbacks;
+      return pool.length ? pool[Math.floor(dRand() * pool.length)] : { gx: GRID - 1, gy: GRID - 1 };
+    }
+
+    function addRelic(floor, gx, gy) {
+      const def = RELIC_DEFS[floor] || RELIC_DEFS[0];
+      const c = roomCenter(gx, gy);
+      const yBase = floor * LEVEL_H;
+      const group = new THREE.Group();
+      group.position.set(c.x, yBase, c.z);
+
+      const marbleMat = getMarbleMat();
+      const ped = new THREE.Mesh(RELIC_PED_GEO, marbleMat);
+      ped.position.y = 0.38;
+      group.add(ped);
+
+      const cap = new THREE.Mesh(RELIC_CAP_GEO, ARCH_BRASS_MAT);
+      cap.position.y = 0.78;
+      group.add(cap);
+
+      const orbGroup = new THREE.Group();
+      orbGroup.position.y = 1.24;
+      const gemMat = new THREE.MeshStandardMaterial({
+        color: def.gemColor, emissive: def.emissiveColor, emissiveIntensity: 0.95,
+        roughness: 0.18, metalness: 0.35
+      });
+      const gem = new THREE.Mesh(RELIC_GEM_GEO, gemMat);
+      orbGroup.add(gem);
+
+      const ring1 = new THREE.Mesh(RELIC_RING_GEO, ARCH_BRASS_MAT);
+      ring1.rotation.x = Math.PI / 3;
+      orbGroup.add(ring1);
+
+      const ring2 = new THREE.Mesh(RELIC_RING_GEO, ARCH_BRASS_MAT);
+      ring2.rotation.y = Math.PI / 3;
+      orbGroup.add(ring2);
+
+      group.add(orbGroup);
+      worldGroup.add(group);
+
+      relics.push({
+        floor, gx, gy, x: c.x, z: c.z, yBase,
+        id: def.id, name: def.name, desc: def.desc, gemColor: def.gemColor,
+        group, orbGroup, gemMat,
+        t: Math.random() * Math.PI * 2,
+        collected: false
+      });
+    }
+
+    function applyRelicEffect(r, silent = false) {
+      if (!r || r.collected) return;
+      r.collected = true;
+      if (r.orbGroup) r.orbGroup.visible = false;
+      if (r.id === 'monocle') hasMonocle = true;
+      if (r.id === 'magnet') hasMagnet = true;
+      if (r.id === 'ward') { hasWard = true; wardActive = true; }
+      if (!silent) {
+        coinCount += 20;
+        sndFrame();
+        rumblePattern([{ dur: 75, weak: 0.55, strong: 0.35, gap: 40 }, { dur: 150, weak: 0.85, strong: 0.65 }]);
+        spawnBurst(r.x, r.yBase + 1.25, r.z, r.gemColor, 32, 0.22);
+        showMessage(`Sacred Relic Found: ${r.name}! (+20 Gold • ${r.desc})`);
+        updateHUD();
+        saveGame();
+      }
+    }
     // ---------- Phase 3: Three Distinct Wraith Archetypes ----------
     const WRAITH_ARCHETYPES = {
       stalker: {
@@ -3456,6 +3669,16 @@
     };
 
     function pickWraithArchetype(floor, indexOnFloor) {
+      // In Nightmare Exhibition, deeper floor wraith compositions appear right from Floor I
+      if (nightmareMode) {
+        if (floor === 0) {
+          const table = ['stalker', 'dasher', 'warden', 'dasher', 'stalker', 'warden', 'dasher', 'stalker'];
+          return table[indexOnFloor % table.length];
+        } else {
+          const table = ['dasher', 'warden', 'dasher', 'warden', 'stalker', 'dasher', 'warden', 'dasher'];
+          return table[indexOnFloor % table.length];
+        }
+      }
       // Guarantee all 3 archetypes appear on every floor, with deeper floors fielding more Dashers & Wardens
       if (floor === 0) {
         const table = ['stalker', 'stalker', 'dasher', 'stalker', 'warden', 'stalker', 'dasher', 'stalker'];
@@ -3613,6 +3836,21 @@
 
     function damagePlayer(now) {
       if (now <= invulnUntil || gameOver) return;
+      if (wardActive) {
+        wardActive = false;
+        invulnUntil = now + 1500;
+        screenShake = 0.18;
+        if (settings.sfxVol > 0.01) {
+          sfx(720, 0.14, 'triangle', 0.14, -220);
+          setTimeout(() => sfx(520, 0.18, 'sine', 0.12, 160), 70);
+        }
+        triggerRumble(140, 0.55, 0.45);
+        spawnBurst(player.x, player.y + 1.2, player.z, 0x7fe9ff, 24, 0.20);
+        showMessage('Sacred Aegis Ward absorbed the hit! (Recharges next floor)');
+        updateHUD();
+        saveGame();
+        return;
+      }
       health--;
       invulnUntil = now + 1500;
       screenShake = 0.28;
@@ -3758,7 +3996,7 @@
       }
     }
 
-    // ---------- Boss: the Ghost King ----------
+    // ---------- Boss: the Ghost King (Phase I: Royal Hunt & Phase II: Royal Wrath) ----------
     function spawnBoss() {
       const pf = floorIndexOf(player.y);
       let best = null, bestDist = -1;
@@ -3794,19 +4032,90 @@
 
       boss = {
         group, mats,
-        crown, wraith: parts.wraith,
+        crown, shardMat, bossLight, wraith: parts.wraith,
         x: best.x, z: best.z, floor: pf,
         spawnX: best.x, spawnZ: best.z, spawnFloor: pf,
         hp: BOSS_HP, t: 0,
+        phase: 1,
+        blinkTimer: 165,
         phaseTimer: 0, shootTimer: 120,
         dead: false, fade: 1
       };
+      const barEl = document.getElementById('bossbar');
+      if (barEl) {
+        barEl.classList.remove('phase-wrath');
+        const titleSpan = barEl.querySelector('.bosslabel span');
+        if (titleSpan) titleSpan.textContent = 'THE GHOST KING';
+        barEl.style.display = 'block';
+      }
       screenShake = 0.25;
       sndBoss();
       rumblePattern([{ dur: 140, weak: 0.7, strong: 0.9, gap: 55 }, { dur: 260, weak: 0.9, strong: 1.0 }]);
       showMessage('The GHOST KING awakens...');
       updateBossBar();
-      document.getElementById('bossbar').style.display = 'block';
+    }
+
+    function spawnBossDecoys() {
+      if (!boss || boss.dead) return;
+      // Clear any remaining decoys first
+      for (const d of bossDecoys) worldGroup.remove(d.group);
+      bossDecoys = [];
+      for (const side of [-1, 1]) {
+        const parts = makeGhostMesh(0xff88cc, 0x771144, 0xffee66, 0.62, false, 'dasher');
+        const { group, mats } = parts;
+        group.scale.setScalar(1.18);
+        mats.forEach(m => {
+          m.color.setHex(0xffb8e6);
+          m.emissive.setHex(0xff3377);
+          m.emissiveIntensity = 0.75;
+          m.opacity = 0.68;
+        });
+        const ang = Math.atan2(player.x - boss.x, player.z - boss.z) + side * 1.1;
+        const dx = Math.max(-HALF + 1.2, Math.min(HALF - 1.2, boss.x + Math.sin(ang) * 2.4));
+        const dz = Math.max(-HALF + 1.2, Math.min(HALF - 1.2, boss.z + Math.cos(ang) * 2.4));
+        group.position.set(dx, boss.floor * LEVEL_H + 1.65, dz);
+        worldGroup.add(group);
+        spawnBurst(dx, boss.floor * LEVEL_H + 1.65, dz, 0xff4d7a, 18, 0.18);
+        bossDecoys.push({
+          group, mats,
+          wraith: parts.wraith,
+          accentGroup: parts.accentGroup,
+          x: dx, z: dz, floor: boss.floor,
+          t: Math.random() * Math.PI * 2,
+          dead: false, fade: 1
+        });
+      }
+    }
+
+    function triggerBossPhase2(silent = false) {
+      if (!boss || boss.phase >= 2) return;
+      boss.phase = 2;
+      boss.blinkTimer = 140;
+      const restoreHex = KING_GLB ? 0xff4488 : 0x881144;
+      boss.mats.forEach(m => m.emissive.setHex(restoreHex));
+      if (boss.shardMat) {
+        boss.shardMat.color.setHex(0xffee77);
+        boss.shardMat.emissive.setHex(0xff2255);
+        boss.shardMat.emissiveIntensity = 1.25;
+      }
+      if (boss.bossLight) {
+        boss.bossLight.color.setHex(0xff3366);
+        boss.bossLight.intensity = 2.4;
+      }
+      const barEl = document.getElementById('bossbar');
+      if (barEl) {
+        barEl.classList.add('phase-wrath');
+        const titleSpan = barEl.querySelector('.bosslabel span');
+        if (titleSpan) titleSpan.textContent = 'THE GHOST KING • ROYAL WRATH';
+      }
+      if (!silent) {
+        screenShake = 0.34;
+        sndBerserk();
+        rumblePattern([{ dur: 130, weak: 0.85, strong: 0.95, gap: 45 }, { dur: 220, weak: 1.0, strong: 1.0 }]);
+        spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, 0xff4d7a, 36, 0.25);
+        showMessage('ROYAL WRATH! The Ghost King summons Phantom Apparitions!');
+        spawnBossDecoys();
+      }
     }
 
     function updateBossBar() {
@@ -3821,12 +4130,22 @@
       shotsHit++;
       sndHit();
       triggerRumble(45, 0.3, 0.2);
-      spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, 0xd488ff, 14, 0.18);
+      spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, boss.phase >= 2 ? 0xff6b8a : 0xd488ff, 14, 0.18);
       boss.mats.forEach(m => { m.emissive.setHex(0xff4444); });
-      setTimeout(() => { if (boss) boss.mats.forEach(m => m.emissive.setHex(KING_GLB ? 0xaa66ff : 0x551166)); }, 120);
+      const baseEmissive = boss.phase >= 2 ? (KING_GLB ? 0xff4488 : 0x881144) : (KING_GLB ? 0xaa66ff : 0x551166);
+      setTimeout(() => { if (boss && !boss.dead) boss.mats.forEach(m => m.emissive.setHex(berserk ? 0xff0000 : baseEmissive)); }, 120);
+      if (boss.hp > 0 && boss.hp <= BOSS_HP * 0.5 && boss.phase < 2) {
+        triggerBossPhase2(false);
+      }
       updateBossBar();
       if (boss.hp <= 0) {
         boss.dead = true;
+        for (const d of bossDecoys) {
+          if (!d.dead) {
+            d.dead = true;
+            spawnBurst(d.group.position.x, d.group.position.y, d.group.position.z, 0xff88cc, 14, 0.16);
+          }
+        }
         screenShake = 0.4;
         spawnBurst(boss.group.position.x, boss.group.position.y, boss.group.position.z, 0xffd700, 42, 0.28);
         sndBust();
@@ -3835,28 +4154,85 @@
       }
     }
 
-    function fireOrb() {
-      const bx = boss.x, by = boss.floor * LEVEL_H + 1.8, bz = boss.z;
-      const dx = player.x - bx, dy = (player.y + 1.2) - by, dz = player.z - bz;
-      const len = Math.hypot(dx, dy, dz);
+    function hitBossDecoy(d) {
+      if (!d || d.dead) return;
+      d.dead = true;
+      shotsHit++;
+      sndBust();
+      triggerRumble(55, 0.35, 0.25);
+      spawnBurst(d.group.position.x, d.group.position.y, d.group.position.z, 0xff88cc, 22, 0.20);
+      showMessage('Royal Apparition banished!');
+    }
+
+    function updateBossDecoys(now, dt) {
+      const pf = floorIndexOf(player.y);
+      for (let i = bossDecoys.length - 1; i >= 0; i--) {
+        const d = bossDecoys[i];
+        if (d.dead) {
+          d.fade -= 0.05 * dt;
+          d.mats.forEach(m => m.opacity = Math.max(0, d.fade * 0.65));
+          d.group.position.y += 0.05 * dt;
+          if (d.fade <= 0) {
+            worldGroup.remove(d.group);
+            bossDecoys.splice(i, 1);
+          }
+          continue;
+        }
+        d.t += 0.065 * dt;
+        if (d.accentGroup) d.accentGroup.rotation.y += 0.08 * dt;
+        if (boss && !boss.dead) d.floor = boss.floor;
+        if (d.floor === pf) {
+          const dx = player.x - d.x, dz = player.z - d.z;
+          const dist = Math.hypot(dx, dz) || 1;
+          const spd = BOSS_SPEED * 1.12;
+          d.x += (dx / dist) * spd * dt;
+          d.z += (dz / dist) * spd * dt;
+          d.group.rotation.y = Math.atan2(dx, dz);
+          if (dist < 1.15 && now > invulnUntil && !gameOver) {
+            damagePlayer(now);
+            d.dead = true;
+            spawnBurst(d.group.position.x, d.group.position.y, d.group.position.z, 0xff4d7a, 18, 0.18);
+          }
+        }
+        d.group.position.set(d.x, d.floor * LEVEL_H + 1.65 + Math.sin(d.t) * 0.22, d.z);
+      }
+    }
+
+    function spawnBossOrbWithVec(bx, by, bz, vx, vy, vz, isWrath = false) {
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.24, 12, 12),
-        new THREE.MeshBasicMaterial({ color: 0xdd66ff })
+        new THREE.MeshBasicMaterial({ color: isWrath ? 0xff5588 : 0xdd66ff })
       );
       const halo = new THREE.Mesh(
         new THREE.SphereGeometry(0.38, 10, 10),
-        new THREE.MeshBasicMaterial({ color: 0x9922ff, transparent: true, opacity: 0.35 })
+        new THREE.MeshBasicMaterial({ color: isWrath ? 0xffaa33 : 0x9922ff, transparent: true, opacity: 0.38 })
       );
       mesh.add(halo);
       mesh.position.set(bx, by, bz);
       worldGroup.add(mesh);
-      bossOrbs.push({
-        mesh,
-        vx: dx / len * BOSS_ORB_SPEED,
-        vy: dy / len * BOSS_ORB_SPEED,
-        vz: dz / len * BOSS_ORB_SPEED,
-        life: 300
-      });
+      bossOrbs.push({ mesh, vx, vy, vz, life: 300 });
+    }
+
+    function fireOrb() {
+      const bx = boss.x, by = boss.floor * LEVEL_H + 1.8, bz = boss.z;
+      const dx = player.x - bx, dy = (player.y + 1.2) - by, dz = player.z - bz;
+      const len = Math.hypot(dx, dy, dz) || 1;
+      const baseVx = (dx / len) * BOSS_ORB_SPEED;
+      const baseVy = (dy / len) * BOSS_ORB_SPEED;
+      const baseVz = (dz / len) * BOSS_ORB_SPEED;
+      const isWrath = boss.phase >= 2;
+      spawnBossOrbWithVec(bx, by, bz, baseVx, baseVy, baseVz, isWrath);
+      // Phase II (Royal Wrath): fires a 3-orb royal fan!
+      if (isWrath) {
+        const fanAngle = 14 * Math.PI / 180;
+        for (const sign of [-1, 1]) {
+          const a = sign * fanAngle;
+          const c = Math.cos(a), s = Math.sin(a);
+          const rvx = baseVx * c - baseVz * s;
+          const rvz = baseVx * s + baseVz * c;
+          spawnBossOrbWithVec(bx, by, bz, rvx, baseVy, rvz, true);
+        }
+      }
       sndOrb();
     }
 
@@ -3869,7 +4245,7 @@
         if (boss.fade <= 0) boss.group.visible = false;
         return;
       }
-      boss.t += 0.04 * dt;
+      boss.t += (boss.phase >= 2 ? 0.055 : 0.04) * dt;
       const pf = floorIndexOf(player.y);
 
       if (!berserk && ammo <= 0) {
@@ -3882,13 +4258,15 @@
           rumblePattern([{ dur: 160, weak: 0.85, strong: 0.95, gap: 40 }, { dur: 200, weak: 0.95, strong: 1.0 }]);
         }
       }
-      const bspeed = berserk ? BOSS_BERSERK_SPEED : BOSS_SPEED;
+      const wrathMult = (boss.phase >= 2 ? 1.15 : 1.0) * (nightmareMode ? 1.14 : 1.0);
+      const bspeed = (berserk ? BOSS_BERSERK_SPEED : BOSS_SPEED) * wrathMult;
 
       if (boss.floor !== pf) {
         boss.phaseTimer += dt;
-        if (boss.phaseTimer > (berserk ? 60 : 150)) {
+        if (boss.phaseTimer > (berserk ? 60 : (boss.phase >= 2 ? 110 : 150))) {
           boss.floor = pf;
           boss.phaseTimer = 0;
+          for (const d of bossDecoys) d.floor = pf;
           showMessage('The Ghost King phases through the floor!');
           sndPhase();
           triggerRumble(180, 0.55, 0.75);
@@ -3902,6 +4280,22 @@
           boss.z += (dz / dist) * bspeed * dt;
           boss.group.rotation.y = Math.atan2(dx, dz);
         }
+        // Phase II (Royal Wrath): periodic lateral Spectral Blink Step when closing in on the player
+        if (boss.phase >= 2) {
+          boss.blinkTimer -= dt;
+          if (boss.blinkTimer <= 0 && dist > 3.2 && dist < 13.5) {
+            const oldX = boss.x, oldZ = boss.z;
+            const perpAngle = Math.atan2(dx, dz) + (Math.random() < 0.5 ? 1 : -1) * (Math.PI * 0.42);
+            const stepDist = 2.6 + Math.random() * 1.2;
+            boss.x = Math.max(-HALF + 1.4, Math.min(HALF - 1.4, boss.x + Math.sin(perpAngle) * stepDist));
+            boss.z = Math.max(-HALF + 1.4, Math.min(HALF - 1.4, boss.z + Math.cos(perpAngle) * stepDist));
+            boss.blinkTimer = 145 + Math.random() * 75;
+            spawnBurst(oldX, boss.floor * LEVEL_H + 1.8, oldZ, 0xff4d7a, 18, 0.18);
+            spawnBurst(boss.x, boss.floor * LEVEL_H + 1.8, boss.z, 0xffd86b, 18, 0.18);
+            if (settings.sfxVol > 0.01) sfx(320, 0.12, 'sawtooth', 0.10, 260);
+            triggerRumble(65, 0.4, 0.3);
+          }
+        }
         if (dist < 1.4 && now > invulnUntil && !gameOver) {
           damagePlayer(now);
           boss.x -= (dx / dist) * 3;
@@ -3910,12 +4304,16 @@
         boss.shootTimer -= dt;
         if (boss.shootTimer <= 0 && dist < 16 && dist > 2) {
           fireOrb();
-          boss.shootTimer = (berserk ? 70 : 140) + Math.random() * 60;
+          const baseCd = (berserk ? 70 : (boss.phase >= 2 ? 112 : 140)) * (nightmareMode ? 0.82 : 1.0);
+          boss.shootTimer = baseCd + Math.random() * 55;
         }
       }
       boss.group.position.set(boss.x, boss.floor * LEVEL_H + 1.8 + Math.sin(boss.t) * 0.25, boss.z);
 
-      if (boss.crown) { boss.crown.position.y = 0.55 + Math.sin(boss.t * 1.6) * 0.08; boss.crown.rotation.y += 0.035 * dt; }
+      if (boss.crown) {
+        boss.crown.position.y = 0.55 + Math.sin(boss.t * 1.6) * 0.08;
+        boss.crown.rotation.y += (boss.phase >= 2 ? 0.065 : 0.035) * dt;
+      }
     }
 
     function updateBossOrbs(now, dt) {
@@ -4085,8 +4483,7 @@
         // Cleansing a cursed painting also counts it as viewed!
         let bountyMsg = null;
         if (c.mesh && c.mesh.userData && typeof c.mesh.userData.artIndex === 'number') {
-          const wasNew = !viewedArtIds.has(c.mesh.userData.artIndex);
-          viewedArtIds.add(c.mesh.userData.artIndex);
+          const wasNew = recordArtViewed(c.mesh.userData.artIndex);
           if (wasNew) bountyMsg = checkCuratorBounty();
         }
         showMessage(bountyMsg ? ('Painting cleansed! +' + bounty + ' coins • ' + bountyMsg) : ('Painting cleansed! +' + bounty + ' coins'));
@@ -4116,8 +4513,9 @@
 
     function findAimedPainting(maxDist = 5.2) {
       if (!artDecals.length || !camera) return null;
+      const reach = hasMonocle ? Math.max(maxDist, 6.8) : maxDist;
       artRaycaster.setFromCamera(SCREEN_CENTER, camera);
-      artRaycaster.far = maxDist;
+      artRaycaster.far = reach;
       const hits = artRaycaster.intersectObjects(artDecals, false);
       if (!hits.length) return null;
       const hit = hits[0];
@@ -4130,18 +4528,20 @@
       if (!active) return false;
       const hit = findAimedPainting(5.2);
       if (!hit) return false;
-      const already = viewedArtIds.has(hit.artIndex);
-      if (onlyIfUnviewed && already) return false;
-      if (!already) {
-        viewedArtIds.add(hit.artIndex);
+      const alreadyInRun = viewedArtIds.has(hit.artIndex);
+      if (onlyIfUnviewed && alreadyInRun) return false;
+      if (!alreadyInRun) {
+        const wasNewLifetime = !lifetimeArtIds.has(hit.artIndex);
+        recordArtViewed(hit.artIndex);
         spawnBurst(hit.point.x, hit.point.y, hit.point.z, 0x7fe9ff, 14, 0.10);
         const bountyMsg = checkCuratorBounty();
         if (!bountyMsg && settings.sfxVol > 0.01) sfx(740, 0.11, 'sine', 0.09, 180);
-        showMessage(bountyMsg || ('Portrait #' + (hit.artIndex + 1) + ' admired! (' + viewedArtIds.size + ' / ' + WALL_ART_FILES.length + ' viewed)'));
+        const tag = wasNewLifetime ? 'New Archive Discovery!' : 'Admired this run!';
+        showMessage(bountyMsg || (`Portrait #${hit.artIndex + 1} — ${tag} (Run ${viewedArtIds.size}/100 • Archive ${lifetimeArtIds.size}/100)`));
         updateHUD();
         saveGame();
       } else {
-        showMessage('Portrait #' + (hit.artIndex + 1) + ' by D. Butler (already admired)');
+        showMessage('Portrait #' + (hit.artIndex + 1) + ' by D. Butler (already admired this patrol)');
       }
       return true;
     }
@@ -4386,6 +4786,15 @@
             }
           }
         }
+        if (!dead && bossDecoys.length) {
+          for (const d of bossDecoys) {
+            if (d.dead) continue;
+            if (p.mesh.position.distanceTo(d.group.position) < 0.95) {
+              hitBossDecoy(d);
+              if (!p.pierce) { dead = true; break; }
+            }
+          }
+        }
         if (!dead && boss && !boss.dead) {
           if (p.mesh.position.distanceTo(boss.group.position) < 1.3) {
             if (!p.pierce || !p.hit.has(boss)) { if (p.pierce) p.hit.add(boss); hitBoss(p.dmg); }
@@ -4421,6 +4830,7 @@
             o.geometry === DASH_HORN_GEO || o.geometry === DASH_SHARD_GEO ||
             o.geometry === WARDEN_RING_GEO || o.geometry === WARDEN_SHIELD_GEO ||
             o.geometry === SCONCE_TORCH_GEO || o.geometry === SCONCE_BOWL_GEO || o.geometry === SCONCE_FLAME_GEO ||
+            o.geometry === RELIC_PED_GEO || o.geometry === RELIC_CAP_GEO || o.geometry === RELIC_RING_GEO || o.geometry === RELIC_GEM_GEO ||
             (PATROL_GLB && o.geometry === PATROL_GLB.geo) ||
             (KING_GLB && o.geometry === KING_GLB.geo) ||
             (FOUNTAIN_GLB && o.geometry === FOUNTAIN_GLB.geo) ||
@@ -4455,7 +4865,7 @@
       holes = new Array(FLOORS).fill(null);
       ramps = [];
       ladders = [];
-      coins = []; ghosts = []; projectiles = []; hearts = []; bossOrbs = []; ammoBoxes = []; fountains = [];
+      coins = []; ghosts = []; projectiles = []; hearts = []; bossOrbs = [], bossDecoys = []; ammoBoxes = []; fountains = []; relics = [];
       fxParticles = []; torches = [];
       boss = null;
       coinCount = 0; coinTotal = 0; ghostsBusted = 0; ghostTotal = 0;
@@ -4463,6 +4873,10 @@
       outro = false; enteringInitials = false; pendingRun = null;
       ammo = START_AMMO; ammoDropBonus = 0; hasRifle = false; hasAuto = false;
       hasPierce = false; hasSpread = false; hasDash = false;
+      hasMonocle = false; hasMagnet = false; hasWard = false; wardActive = false;
+      nightmareMode = (savedState && typeof savedState.nightmareMode === 'boolean')
+        ? savedState.nightmareMode
+        : !!settings.nightmare;
       fireCooldown = 0; dashCooldown = 0; dashFrames = 0; berserk = false; shopOpen = false;
       cursedPaintings = []; cursedFramed = 0; cursedTotal = 0;
       refreshWeaponViewmodel();
@@ -4593,6 +5007,11 @@
         const fr = fountainRooms[floor];
         addFountain(floor, fr.gx, fr.gy);
 
+        // sacred gallery relic for this floor (placed in a dead-end room)
+        const rr = pickRelicRoom(floor, maze, reserved);
+        reserved.add(`${floor},${rr.gx},${rr.gy}`);
+        addRelic(floor, rr.gx, rr.gy);
+
         // ammo boxes: a fixed handful per floor. Base value is low on purpose;
         // the shop's ammo upgrades are what make them worth collecting.
         let bplaced = 0, bguard = 0;
@@ -4635,15 +5054,30 @@
         hasPierce = !!savedState.hasPierce;
         hasSpread = !!savedState.hasSpread;
         hasDash = !!savedState.hasDash;
+        hasMonocle = !!savedState.hasMonocle;
+        hasMagnet = !!savedState.hasMagnet;
+        hasWard = !!savedState.hasWard;
+        wardActive = !!savedState.wardActive;
+        if (Array.isArray(savedState.collectedRelics)) {
+          for (const idx of savedState.collectedRelics) {
+            if (relics[idx]) applyRelicEffect(relics[idx], true);
+          }
+        }
         coinCount = savedState.coinCount || 0;
         deaths = savedState.deaths || 0;
         victories = savedState.victories || 0;
         viewedArtIds = new Set(Array.isArray(savedState.viewedArtIds) ? savedState.viewedArtIds : []);
+        let mergedLifetime = false;
+        for (const id of viewedArtIds) {
+          if (!lifetimeArtIds.has(id)) { lifetimeArtIds.add(id); mergedLifetime = true; }
+        }
+        if (mergedLifetime) saveLifetimeArt();
         claimedBounties = new Set(Array.isArray(savedState.claimedBounties) ? savedState.claimedBounties : []);
         shotsFired = savedState.shotsFired || 0;
         shotsHit = savedState.shotsHit || 0;
         savedElapsedMs = savedState.elapsedMs || 0;
         berserk = !!savedState.berserk;
+        if (typeof savedState.nightmareMode === 'boolean') nightmareMode = savedState.nightmareMode;
 
         // Restore collected coins
         if (Array.isArray(savedState.collectedCoins)) {
@@ -4707,6 +5141,7 @@
             boss.z = savedState.boss.z;
             boss.floor = savedState.boss.floor;
             boss.hp = savedState.boss.hp;
+            if (boss.hp <= BOSS_HP * 0.5) triggerBossPhase2(true);
             updateBossBar();
           }
         }
@@ -4748,6 +5183,15 @@
         ensureAudio();
 
         // explicit button actions
+        if (act === 'togglemode') {
+          settings.nightmare = !settings.nightmare;
+          nightmareMode = settings.nightmare;
+          saveSettings();
+          if (settings.sfxVol > 0.01) sfx(settings.nightmare ? 240 : 520, 0.09, 'sawtooth', 0.09, settings.nightmare ? -60 : 120);
+          triggerRumble(60, 0.4, 0.3);
+          showTitleScreen('[data-act="togglemode"]');
+          return;
+        }
         if (act === 'settings')     { showSettingsScreen(menuState || 'title'); return; }
         if (act === 'settingsback') { if (settingsReturnTo === 'pause') showPauseScreen(); else showTitleScreen(); return; }
         if (act === 'gallery')      { showGalleryScreen(menuState || 'title'); return; }
@@ -4766,7 +5210,7 @@
         if (act === 'galzoom') {
           const btnEl = e.target.closest('[data-art-idx]');
           const idx = btnEl ? parseInt(btnEl.getAttribute('data-art-idx'), 10) : -1;
-          if (idx >= 0 && viewedArtIds.has(idx)) {
+          if (idx >= 0 && (lifetimeArtIds.has(idx) || viewedArtIds.has(idx))) {
             galleryZoomIdx = idx;
             renderGalleryScreen('[data-act="galzoomnext"]');
           } else {
@@ -4782,7 +5226,8 @@
           return;
         }
         if (act === 'galzoomprev' || act === 'galzoomnext') {
-          const unlocked = Array.from(viewedArtIds).sort((a, b) => a - b);
+          const unlockedSet = new Set([...lifetimeArtIds, ...viewedArtIds]);
+          const unlocked = Array.from(unlockedSet).sort((a, b) => a - b);
           if (unlocked.length) {
             const curPos = unlocked.indexOf(galleryZoomIdx);
             const step = act === 'galzoomnext' ? 1 : -1;
@@ -4806,7 +5251,7 @@
         }
         if (act === 'new') {
           if (hasSavedGame()) {
-            showConfirm('Starting a New Game will permanently erase all saved progress (deaths, paintings viewed, upgrades, coins, ghosts killed, and cleansed art). Are you sure?', startNewGame, showTitleScreen);
+            showConfirm('Starting a New Game will reset your current patrol run (floor progress, upgrades, coins, and wraiths), while permanently keeping your Lifetime Art Catalog and Leaderboard High Scores. Start a fresh patrol?', startNewGame, showTitleScreen);
           } else {
             startNewGame();
           }
@@ -4854,8 +5299,9 @@
       });
       document.addEventListener('mousemove', (e) => {
         if (!document.pointerLockElement) return;
-        yaw -= e.movementX * 0.0025;
-        pitch += (settings.invertY ? 1 : -1) * e.movementY * 0.0025;
+        const sens = 0.0025 * (settings.lookSens || 1.0);
+        yaw -= e.movementX * sens;
+        pitch += (settings.invertY ? 1 : -1) * e.movementY * sens;
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
       });
       document.addEventListener('mousedown', (e) => {
@@ -4965,6 +5411,10 @@
       const vtEl = document.getElementById('viewedTotal');
       if (vEl) vEl.textContent = viewedArtIds.size;
       if (vtEl) vtEl.textContent = WALL_ART_FILES.length;
+      const rEl = document.getElementById('relicsFound');
+      const rtEl = document.getElementById('relicsTotal');
+      if (rEl) rEl.textContent = relics.filter(r => r.collected).length;
+      if (rtEl) rtEl.textContent = relics.length || FLOORS;
       const dPill = document.getElementById('deathsPill');
       const dVal = document.getElementById('deathsVal');
       if (dPill && dVal) {
@@ -4977,9 +5427,11 @@
       if (ammoBox) ammoBox.classList.toggle('low-ammo', ammo <= 5);
       const fullH = Math.max(0, health);
       const emptyH = Math.max(0, maxHealth - fullH);
+      const wardHTML = wardActive ? '<svg class="heart-svg full" title="Sacred Aegis Ward Active"><use href="#ico-shield-ward"/></svg>' : '';
       document.getElementById('hearts').innerHTML =
         '<svg class="heart-svg full"><use href="#ico-heart-full"/></svg>'.repeat(fullH) +
-        '<svg class="heart-svg empty"><use href="#ico-heart-empty"/></svg>'.repeat(emptyH);
+        '<svg class="heart-svg empty"><use href="#ico-heart-empty"/></svg>'.repeat(emptyH) +
+        wardHTML;
     }
 
     function showMessage(text) {
@@ -5023,6 +5475,8 @@
       }
       for (const o of bossOrbs) worldGroup.remove(o.mesh);
       bossOrbs = [];
+      for (const d of bossDecoys) worldGroup.remove(d.group);
+      bossDecoys = [];
       saveGame();
       updateHUD();
 
@@ -5073,8 +5527,9 @@
       // compute the run's stats now; record happens after initials are entered
       const secs = Math.floor(getTotalElapsedMs() / 1000);
       const acc = shotsFired ? Math.round(shotsHit / shotsFired * 100) : 0;
-      const score = computeScore(secs, coinCount, acc, cursedFramed);
-      pendingRun = { score, secs, acc, coins: coinCount, cursed: cursedFramed };
+      const relicsCount = relics.filter(r => r.collected).length;
+      const score = computeScore(secs, coinCount, acc, cursedFramed, relicsCount, nightmareMode);
+      pendingRun = { score, secs, acc, coins: coinCount, cursed: cursedFramed, relics: relicsCount, nightmare: nightmareMode };
 
       const overlay = document.getElementById('overlay');
       setTimeout(() => document.exitPointerLock(), 400);
@@ -5272,8 +5727,10 @@
       // Range slider value adjustment with D-pad Left / Right
       if (cur && cur.tagName === 'INPUT' && cur.type === 'range' && (dir === 'left' || dir === 'right')) {
         const step = 5;
+        const minV = parseInt(cur.min, 10) || 0;
+        const maxV = parseInt(cur.max, 10) || 100;
         const curVal = parseInt(cur.value, 10) || 0;
-        const nextVal = Math.max(0, Math.min(100, curVal + (dir === 'right' ? step : -step)));
+        const nextVal = Math.max(minV, Math.min(maxV, curVal + (dir === 'right' ? step : -step)));
         cur.value = String(nextVal);
         cur.dispatchEvent(new Event('input', { bubbles: true }));
         cur.dispatchEvent(new Event('change', { bubbles: true }));
@@ -5506,11 +5963,12 @@
         a = a || lx < -0.01;
         d = d || lx >  0.01;
 
-        // Right stick -> look (respects Y-axis invert toggle in Settings)
+        // Right stick -> look (respects Look Sensitivity & Y-axis invert toggle in Settings)
         const rx = dz(gp.axes[2] || 0);
         const ry = dz(gp.axes[3] || 0);
-        yaw -= rx * PAD_LOOK_SPEED * dt;
-        pitch += (settings.invertY ? 1 : -1) * ry * PAD_LOOK_SPEED * dt;
+        const padSens = PAD_LOOK_SPEED * (settings.lookSens || 1.0);
+        yaw -= rx * padSens * dt;
+        pitch += (settings.invertY ? 1 : -1) * ry * padSens * dt;
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
 
         // Sprint on left-stick click (button 10) or left bumper (button 4),
@@ -5570,12 +6028,13 @@
       pollGamepad(dt);
 
       if (active) {
-        // Arrow keys pan (Left/Right) and tilt (Up/Down) the camera
+        // Arrow keys pan (Left/Right) and tilt (Up/Down) the camera (scaled by Look Sensitivity)
         const yLookSign = settings.invertY ? -1 : 1;
-        if (keys['arrowleft'])  yaw += KEY_LOOK_SPEED * dt;
-        if (keys['arrowright']) yaw -= KEY_LOOK_SPEED * dt;
-        if (keys['arrowup'])    pitch += yLookSign * KEY_LOOK_SPEED * dt;
-        if (keys['arrowdown'])  pitch -= yLookSign * KEY_LOOK_SPEED * dt;
+        const keySens = KEY_LOOK_SPEED * (settings.lookSens || 1.0);
+        if (keys['arrowleft'])  yaw += keySens * dt;
+        if (keys['arrowright']) yaw -= keySens * dt;
+        if (keys['arrowup'])    pitch += yLookSign * keySens * dt;
+        if (keys['arrowdown'])  pitch -= yLookSign * keySens * dt;
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
 
         let lad = null;
@@ -5681,7 +6140,12 @@
         }
         if (fi !== lastFloorIdx) {
           lastFloorIdx = fi;
-          showMessage('Floor ' + (fi + 1));
+          if (hasWard && !wardActive) {
+            wardActive = true;
+            showMessage('Floor ' + (fi + 1) + ' • Sacred Aegis Ward Recharged!');
+          } else {
+            showMessage('Floor ' + (fi + 1));
+          }
           updateHUD();
           saveGame();
         }
@@ -5759,12 +6223,31 @@
       }
 
       const pf = floorIndexOf(player.y);
+      for (const r of relics) {
+        if (r.collected) continue;
+        if (active && r.orbGroup) {
+          r.t += 0.045 * dt;
+          r.orbGroup.position.y = 1.24 + Math.sin(r.t) * 0.10;
+          r.orbGroup.rotation.y += 0.035 * dt;
+        }
+        if (active && r.floor === pf && Math.hypot(player.x - r.x, player.z - r.z) < 1.35) {
+          applyRelicEffect(r, false);
+        }
+      }
       for (const c of coins) {
         if (c.collected) continue;
         if (active) {
           c.t += 0.03 * dt;
           c.mesh.position.y = c.baseY + Math.sin(c.t) * 0.25;
           c.mesh.rotation.y += 0.04 * dt;
+          if (hasMagnet && c.floor === pf) {
+            const mdx = player.x - c.mesh.position.x, mdz = player.z - c.mesh.position.z;
+            const mdist = Math.hypot(mdx, mdz);
+            if (mdist > 0.2 && mdist < 3.8) {
+              c.mesh.position.x += (mdx / mdist) * 0.15 * dt;
+              c.mesh.position.z += (mdz / mdist) * 0.15 * dt;
+            }
+          }
         }
         if (active &&
             Math.hypot(player.x - c.mesh.position.x, player.z - c.mesh.position.z) < 1.2 &&
@@ -5785,6 +6268,14 @@
           h.t += 0.04 * dt;
           h.mesh.position.y = h.baseY + Math.sin(h.t) * 0.25;
           h.mesh.rotation.y += 0.05 * dt;
+          if (hasMagnet && h.floor === pf && health < maxHealth) {
+            const mdx = player.x - h.mesh.position.x, mdz = player.z - h.mesh.position.z;
+            const mdist = Math.hypot(mdx, mdz);
+            if (mdist > 0.2 && mdist < 3.8) {
+              h.mesh.position.x += (mdx / mdist) * 0.14 * dt;
+              h.mesh.position.z += (mdz / mdist) * 0.14 * dt;
+            }
+          }
         }
         if (active && health < maxHealth &&
             Math.hypot(player.x - h.mesh.position.x, player.z - h.mesh.position.z) < 1.2 &&
@@ -5805,6 +6296,14 @@
           b.t += 0.03 * dt;
           b.group.position.y = b.baseY + Math.sin(b.t) * 0.15;
           b.group.rotation.y += 0.02 * dt;
+          if (hasMagnet && b.floor === pf) {
+            const mdx = player.x - b.group.position.x, mdz = player.z - b.group.position.z;
+            const mdist = Math.hypot(mdx, mdz);
+            if (mdist > 0.2 && mdist < 3.8) {
+              b.group.position.x += (mdx / mdist) * 0.14 * dt;
+              b.group.position.z += (mdz / mdist) * 0.14 * dt;
+            }
+          }
         }
         if (active &&
             Math.hypot(player.x - b.group.position.x, player.z - b.group.position.z) < 1.2 &&
@@ -5891,6 +6390,7 @@
       if (active) {
         updateGhosts(now, dt);
         updateBoss(now, dt);
+        updateBossDecoys(now, dt);
         updateBossOrbs(now, dt);
         updateProjectiles(dt);
         updateParticles(dt);
@@ -5961,7 +6461,9 @@
       }
       const titleEl = document.getElementById('minimapTitle');
       const roomsEl = document.getElementById('minimapRooms');
-      if (titleEl) titleEl.innerHTML = `Floor ${ROMAN_FLOORS[pf] || (pf + 1)} &bull; Blueprint`;
+      if (titleEl) {
+        titleEl.innerHTML = `Floor ${ROMAN_FLOORS[pf] || (pf + 1)} &bull; ${nightmareMode ? '<span style="color:#ff6b8a">Nightmare</span>' : 'Blueprint'}`;
+      }
       if (roomsEl) roomsEl.textContent = `${floorVisitedCount}/${GRID * GRID} Rooms`;
 
       // 1. Dark Obsidian Blueprint Background
@@ -6059,11 +6561,12 @@
         }
       }
 
-      // 4. Wall Portraits (Unviewed vs Viewed) in Visited Rooms
+      // 4. Wall Portraits (Unviewed vs Viewed) in Visited Rooms (or Glimpsed Rooms when Curator's Monocle is owned)
       for (const m of artDecals) {
         if (!m.visible || m.userData.floor !== pf || m.userData.artIndex === undefined) continue;
         const rc = roomCoordsOf(m.position.x, m.position.z);
-        if (!visitedRooms.has(`${pf},${rc.gx},${rc.gy}`)) continue;
+        const roomVis = visitedRooms.has(`${pf},${rc.gx},${rc.gy}`);
+        if (!roomVis && !(hasMonocle && isRoomGlimpsed(pf, rc.gx, rc.gy))) continue;
         const mx = worldToMapX(m.position.x);
         const my = worldToMapY(m.position.z);
         const isViewed = viewedArtIds.has(m.userData.artIndex);
@@ -6154,11 +6657,31 @@
         ctx.restore();
       }
 
-      // 7. Cursed Painting Icon
+      // 7. Cursed Painting Icon & Sacred Gallery Relic Shrine Icon
+      for (const r of relics) {
+        if (r.floor !== pf) continue;
+        const key = `${pf},${r.gx},${r.gy}`;
+        if (!visitedRooms.has(key) && !isRoomGlimpsed(pf, r.gx, r.gy)) continue;
+        const rx = worldToMapX(r.x);
+        const ry = worldToMapY(r.z);
+        ctx.save();
+        if (!r.collected) {
+          ctx.fillStyle = 'rgba(255, 216, 107, 0.28)';
+          ctx.beginPath(); ctx.arc(rx, ry, 8.5 + pulse * 2, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffd86b';
+          ctx.strokeStyle = '#5ce1ff';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.arc(rx, ry, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        } else {
+          ctx.fillStyle = 'rgba(98, 245, 168, 0.45)';
+          ctx.beginPath(); ctx.arc(rx, ry, 4.0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
       for (const c of cursedPaintings) {
         if (c.floor !== pf) continue;
         const rc = roomCoordsOf(c.x, c.z);
-        if (!visitedRooms.has(`${pf},${rc.gx},${rc.gy}`)) continue;
+        if (!visitedRooms.has(`${pf},${rc.gx},${rc.gy}`) && !(hasMonocle && isRoomGlimpsed(pf, rc.gx, rc.gy))) continue;
         const cx = worldToMapX(c.x);
         const cy = worldToMapY(c.z);
         ctx.save();
@@ -6211,7 +6734,20 @@
         ctx.restore();
       }
 
-      // 9. Ghost King Boss Beacon
+      // 9. Ghost King Boss Beacon & Phase II Royal Apparition Decoys
+      for (const d of bossDecoys) {
+        if (d.dead || d.floor !== pf) continue;
+        const dx = worldToMapX(d.x);
+        const dy = worldToMapY(d.z);
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 77, 122, 0.28)';
+        ctx.beginPath(); ctx.arc(dx, dy, 6.5 + pulse * 1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff6b9d';
+        ctx.strokeStyle = '#ffd86b';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(dx, dy, 4.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
       if (boss && !boss.dead) {
         const bx = worldToMapX(boss.x);
         const by = worldToMapY(boss.z);
@@ -6333,13 +6869,15 @@
     function saveHighScores() {
       try { localStorage.setItem(HS_KEY, JSON.stringify(highScores)); } catch (e) {}
     }
-    function computeScore(secs, coins, acc, cursed) {
+    function computeScore(secs, coins, acc, cursed, relicsCount = 0, isNightmare = false) {
       const base = 1000;
       const speed = Math.max(0, 600 - secs) * 3;
       const accBonus = Math.round(acc * 10);
       const coinBonus = coins * 2;
       const cursedBonus = cursed * 250;
-      return Math.round(base + speed + accBonus + coinBonus + cursedBonus);
+      const relicBonus = (relicsCount || 0) * 200;
+      const raw = base + speed + accBonus + coinBonus + cursedBonus + relicBonus;
+      return Math.round(raw * (isNightmare ? 1.5 : 1.0));
     }
     // returns the 1-based rank if it made the top 10, else 0
     function recordScore(entry) {
@@ -6356,7 +6894,7 @@
       highScores.forEach((s, i) => {
         const mm = Math.floor(s.secs / 60), ss = String(s.secs % 60).padStart(2, '0');
         const hl = (i + 1 === highlightRank) ? ' class="me"' : '';
-        const nm = s.name || 'AAA';
+        const nm = (s.name || 'AAA') + (s.nightmare ? '<span class="nm-badge">NM</span>' : '');
         h += `<tr${hl}><td>${i + 1}</td><td>${nm}</td><td>${s.score}</td><td>${mm}:${ss}</td><td>${s.acc}%</td><td>${s.cursed}</td></tr>`;
       });
       h += '</table>';
@@ -6402,11 +6940,12 @@
         `<span style="color:#cdd3f0">${mm}:${ss}</span></div>`;
     }
 
-    function showTitleScreen() {
+    function showTitleScreen(preferSelector = null) {
       menuState = 'title';
       const overlay = document.getElementById('overlay');
       overlay.classList.remove('in-pause');
       overlay.style.display = 'flex';
+      const isNm = !!settings.nightmare;
       overlay.innerHTML =
         '<div class="panel">' +
         gothicCornersHTML() +
@@ -6418,8 +6957,8 @@
         'Cleanse the cursed canvases, arm up at the mystic fountains, and banish the <span class="king">Ghost King</span>.</div>' +
         '<div class="gp-pillars">' +
         '<div class="gp-pillar"><div class="gp-pillar-h">&#128444; I. The Haunted Gallery</div><p class="gp-pillar-p">Explore 3 procedural floors hung with <b>100 original hand-drawn works</b> by artist <b>D. Butler</b>.</p></div>' +
-        '<div class="gp-pillar"><div class="gp-pillar-h">&#9880; II. Mystic Fountains</div><p class="gp-pillar-p">Gather pirate-skull gold &amp; cleanse cursed frames to buy the <b>Rifle, Tri-Spread, Pierce &amp; Dash</b>.</p></div>' +
-        '<div class="gp-pillar"><div class="gp-pillar-h">&#128081; III. The Ghost King</div><p class="gp-pillar-p">Bust all <b>24 patrol wraiths</b> to awaken their royal master, who hunts you across floors.</p></div>' +
+        '<div class="gp-pillar"><div class="gp-pillar-h">&#9880; II. Fountains &amp; Relics</div><p class="gp-pillar-p">Gather gold &amp; secret <b>Sacred Relics</b> to unlock the <b>Rifle, Pierce, Monocle &amp; Aegis Ward</b>.</p></div>' +
+        '<div class="gp-pillar"><div class="gp-pillar-h">&#128081; III. The Ghost King</div><p class="gp-pillar-p">Bust all <b>24 patrol wraiths</b> to awaken their royal master and survive his <b>Royal Wrath</b>.</p></div>' +
         '</div>' +
         '<div class="gp-keystrip">' +
         '<span><kbd class="gp-kbd">WASD</kbd> Move</span>' +
@@ -6433,16 +6972,25 @@
           const sv = readSavedGame();
           if (!sv) return '';
           const vCount = Array.isArray(sv.viewedArtIds) ? sv.viewedArtIds.length : 0;
+          const rCount = Array.isArray(sv.collectedRelics) ? sv.collectedRelics.length : 0;
           const fl = (sv.lastFloorIdx ?? 0) + 1;
           return '<div class="gp-save-summary">' +
+            (sv.nightmareMode ? '<span style="color:#ff8aa4;font-weight:800">&#9760; NIGHTMARE</span>' : '') +
             `<span><svg><use href="#ico-floor"/></svg> Floor <b>${fl}/${FLOORS}</b></span>` +
             `<span><svg><use href="#ico-coin"/></svg> Gold <b>${sv.coinCount || 0}</b></span>` +
             `<span><svg><use href="#ico-ghost"/></svg> Wraiths <b>${sv.ghostsBusted || 0}/${sv.ghostTotal || 24}</b></span>` +
+            `<span><svg><use href="#ico-relic"/></svg> Relics <b>${rCount}/${FLOORS}</b></span>` +
             `<span><svg><use href="#ico-art"/></svg> Viewed <b>${vCount}/${WALL_ART_FILES.length}</b></span>` +
             `<span><svg><use href="#ico-cursed"/></svg> Cleansed <b>${sv.cursedFramed || 0}/${sv.cursedTotal || 3}</b></span>` +
-            `<span><svg><use href="#ico-death"/></svg> Deaths <b>${sv.deaths || 0}</b></span>` +
             '</div>';
         })() +
+        '<div class="gp-mode-row">' +
+          `<button type="button" class="gp-mode-pill${isNm ? ' nightmare' : ''}" data-act="togglemode">` +
+            (isNm
+              ? '&#9760; Mode: Nightmare Exhibition (1.5&times; Score &bull; Fiercer Wraiths)'
+              : '&#9876; Mode: Standard Exhibition (Click for Nightmare 1.5&times;)') +
+          '</button>' +
+        '</div>' +
         '<div>' + topScoreHTML() + '</div>' +
         (() => {
           const hasSave = hasSavedGame();
@@ -6455,12 +7003,12 @@
             '</div>';
         })() +
         '<div class="menu-row">' +
-        `<button class="minipill" data-act="gallery"><svg style="width:15px;height:15px;vertical-align:-3px;margin-right:5px"><use href="#ico-art"/></svg>Art Catalog (${viewedArtIds.size}/${WALL_ART_FILES.length})</button>` +
+        `<button class="minipill" data-act="gallery"><svg style="width:15px;height:15px;vertical-align:-3px;margin-right:5px"><use href="#ico-art"/></svg>Art Catalog (${Math.max(lifetimeArtIds.size, viewedArtIds.size)}/${WALL_ART_FILES.length})</button>` +
         '<button class="minipill" data-act="settings">&#9881; Settings</button>' +
         '<button class="minipill" data-act="help">&#128220; Field Guide</button>' +
         '</div>' +
         '</div>';
-      syncUiFocus(true);
+      syncUiFocus(true, preferSelector);
     }
 
     function showGalleryScreen(returnTo) {
@@ -6477,16 +7025,19 @@
     function renderGalleryScreen(preferSelector = null) {
       const overlay = document.getElementById('overlay');
       const total = WALL_ART_FILES.length;
-      const unlockedCount = viewedArtIds.size;
-      const pct = Math.round((unlockedCount / total) * 100);
-      const nextMilestone = CURATOR_MILESTONES.find(m => unlockedCount < m.count);
+      for (const id of viewedArtIds) lifetimeArtIds.add(id);
+      const archiveCount = lifetimeArtIds.size;
+      const runCount = viewedArtIds.size;
+      const pct = Math.round((archiveCount / total) * 100);
+      const nextMilestone = CURATOR_MILESTONES.find(m => runCount < m.count);
       const bountyText = nextMilestone
-        ? `Next Bounty at ${nextMilestone.count}/100: +${nextMilestone.coins} Gold${nextMilestone.ammo ? ' +' + nextMilestone.ammo + ' Ammo' : ''}${nextMilestone.hp ? ' +1 Max Heart' : ''}`
-        : 'All Curator Bounties Claimed! (100/100)';
+        ? `Run Bounty (${runCount}/${nextMilestone.count}): +${nextMilestone.coins} Gold${nextMilestone.ammo ? ' +' + nextMilestone.ammo + ' Ammo' : ''}${nextMilestone.hp ? ' +1 Max Heart' : ''}`
+        : 'All Run Curator Bounties Claimed! (100/100)';
 
       if (galleryZoomIdx !== null) {
         const numStr = String(galleryZoomIdx + 1).padStart(2, '0');
         const imgUrl = WALL_ART_FILES[galleryZoomIdx];
+        const inRun = viewedArtIds.has(galleryZoomIdx);
         overlay.innerHTML =
           '<div class="panel gallery-panel">' +
           gothicCornersHTML() +
@@ -6494,7 +7045,7 @@
           `<div class="gp-big" style="color:var(--gold);font-size:26px;margin-bottom:4px">Portrait #${numStr}</div>` +
           '<div class="gal-zoom-box">' +
             `<div class="gal-zoom-frame"><img src="${imgUrl}" alt="Portrait #${numStr} by D. Butler"></div>` +
-            `<div class="gal-zoom-meta">Hand-Drawn Original #${numStr} of ${total} &bull; Artist: D. Butler</div>` +
+            `<div class="gal-zoom-meta">Hand-Drawn Original #${numStr} of ${total} &bull; Artist: D. Butler &bull; <span style="color:${inRun ? 'var(--cyan)' : 'var(--gold)'}">${inRun ? '&#9733; Admired This Run' : 'Unlocked in Lifetime Archive'}</span></div>` +
           '</div>' +
           '<div class="menu-row">' +
             '<button class="minipill" data-act="galzoomprev">&#8592; Prev Unlocked (LB / &larr;)</button>' +
@@ -6518,11 +7069,13 @@
       let cardsHTML = '';
       for (let i = startIdx; i < endIdx; i++) {
         const numStr = String(i + 1).padStart(2, '0');
-        const isUnlocked = viewedArtIds.has(i);
+        const isUnlocked = lifetimeArtIds.has(i) || viewedArtIds.has(i);
+        const inThisRun = viewedArtIds.has(i);
         if (isUnlocked) {
           cardsHTML +=
-            `<button type="button" class="gal-card unlocked" data-act="galzoom" data-art-idx="${i}" title="Inspect Portrait #${numStr} by D. Butler">` +
+            `<button type="button" class="gal-card unlocked" data-act="galzoom" data-art-idx="${i}" title="Inspect Portrait #${numStr} by D. Butler${inThisRun ? ' (Admired This Run)' : ' (Unlocked in Lifetime Archive)'}">` +
             `<img src="${WALL_ART_FILES[i]}" alt="Portrait #${numStr}" loading="lazy">` +
+            (inThisRun ? '<span class="gal-card-run">&#9733; RUN</span>' : '') +
             `<span class="gal-card-num">#${numStr}</span>` +
             '</button>';
         } else {
@@ -6538,11 +7091,11 @@
       overlay.innerHTML =
         '<div class="panel gallery-panel">' +
         gothicCornersHTML() +
-        '<div class="gp-eyebrow">&#10022; Curator&rsquo;s Archive &bull; Original Works by D. Butler &#10022;</div>' +
+        '<div class="gp-eyebrow">&#10022; Curator&rsquo;s Permanent Archive &bull; Original Works by D. Butler &#10022;</div>' +
         '<div class="gp-big" style="color:var(--cyan);font-size:28px;margin-bottom:4px">Haunted Art Catalog</div>' +
         '<div class="gal-header-bar">' +
           '<div class="gal-prog-wrap">' +
-            `<div style="display:flex;justify-content:space-between;gap:10px;font-weight:700;white-space:nowrap"><span>Portraits Admired: <b style="color:var(--cyan)">${unlockedCount}/${total}</b> (${pct}%)</span><span style="color:rgba(215,222,250,0.68)">Wing ${galleryPage + 1}/5 (#${startIdx + 1}&ndash;#${endIdx})</span></div>` +
+            `<div style="display:flex;justify-content:space-between;gap:10px;font-weight:700;white-space:nowrap"><span>Lifetime Archive: <b style="color:var(--gold)">${archiveCount}/${total}</b> (${pct}%) &bull; This Patrol: <b style="color:var(--cyan)">${runCount}/${total}</b></span><span style="color:rgba(215,222,250,0.68)">Wing ${galleryPage + 1}/5 (#${startIdx + 1}&ndash;#${endIdx})</span></div>` +
             `<div class="gal-prog-track"><div class="gal-prog-fill" style="width:${pct}%"></div></div>` +
           '</div>' +
           `<div class="gal-bounty-badge">&#9733; ${bountyText}</div>` +
@@ -6567,11 +7120,12 @@
       overlay.style.display = 'flex';
       const mPct = Math.round(settings.musicVol * 100);
       const sPct = Math.round(settings.sfxVol * 100);
+      const lPct = Math.round((settings.lookSens || 1.0) * 100);
       overlay.innerHTML =
         '<div class="panel settings-panel">' +
         gothicCornersHTML() +
         '<div class="gp-eyebrow" style="text-align:center">&#10022; Gallery Sanctuary Preferences &#10022;</div>' +
-        '<div class="gp-big" style="color:var(--cyan);text-align:center;font-size:32px;margin-bottom:4px">Settings</div>' +
+        '<div class="gp-big" style="color:var(--cyan);text-align:center;font-size:30px;margin-bottom:2px">Settings</div>' +
         '<div class="gp-divider">&#9670;</div>' +
         '<div class="settings-list">' +
         '<div class="setting-row">' +
@@ -6589,6 +7143,14 @@
           '</div>' +
           '<input class="gp-slider" id="setSfxVol" type="range" min="0" max="100" step="1" value="' + sPct + '">' +
           '<div class="setting-sub">Spectral blaster, footsteps, pickups &amp; Ghost King voice lines.</div>' +
+        '</div>' +
+        '<div class="setting-row">' +
+          '<div class="setting-top">' +
+            '<label class="setting-lbl" for="setLookSens">&#127919; Camera Look Sensitivity</label>' +
+            '<span class="setting-val" id="setLookVal">' + lPct + '%</span>' +
+          '</div>' +
+          '<input class="gp-slider" id="setLookSens" type="range" min="25" max="200" step="5" value="' + lPct + '">' +
+          '<div class="setting-sub">Turn &amp; aim speed for Mouse, Keyboard Arrow keys, and Controller Right Stick.</div>' +
         '</div>' +
         '<div class="setting-row">' +
           '<div class="setting-toggle-row">' +
@@ -6622,6 +7184,8 @@
       const mVal = document.getElementById('setMusicVal');
       const sSlider = document.getElementById('setSfxVol');
       const sVal = document.getElementById('setSfxVal');
+      const lSlider = document.getElementById('setLookSens');
+      const lVal = document.getElementById('setLookVal');
       const invBtn = document.getElementById('setInvertY');
       const invSub = document.getElementById('setInvertSub');
       const vibBtn = document.getElementById('setVibration');
@@ -6643,6 +7207,12 @@
       });
       sSlider.addEventListener('change', () => {
         if (settings.sfxVol > 0.01) sndCoin();
+      });
+      lSlider.addEventListener('input', () => {
+        ensureAudio();
+        settings.lookSens = parseInt(lSlider.value, 10) / 100;
+        lVal.textContent = lSlider.value + '%';
+        saveSettings();
       });
       invBtn.addEventListener('click', () => {
         ensureAudio();
@@ -6698,7 +7268,7 @@
         '<button class="gp-cta" style="margin-top:0;padding:10px 28px;font-size:15px" data-act="resume">&#9654; Resume Patrol</button>' +
         '</div>' +
         '<div class="menu-row" style="margin-top:12px;flex-wrap:wrap">' +
-        `<button class="minipill" data-act="gallery"><svg style="width:15px;height:15px;vertical-align:-3px;margin-right:5px"><use href="#ico-art"/></svg>Art Catalog (${viewedArtIds.size}/${WALL_ART_FILES.length})</button>` +
+        `<button class="minipill" data-act="gallery"><svg style="width:15px;height:15px;vertical-align:-3px;margin-right:5px"><use href="#ico-art"/></svg>Art Catalog (${Math.max(lifetimeArtIds.size, viewedArtIds.size)}/${WALL_ART_FILES.length})</button>` +
         '<button class="minipill" data-act="settings">&#9881; Settings</button>' +
         '<button class="minipill danger" data-act="quitrun">&#9832; Main Menu</button>' +
         '</div>' +
@@ -6822,6 +7392,7 @@
 
     function startNewGame() {
       clearSavedGame();
+      nightmareMode = !!settings.nightmare;
       deaths = 0;
       victories = 0;
       viewedArtIds = new Set();
@@ -6922,6 +7493,7 @@
       buildWeaponViewmodel();
 
       const existingSave = readSavedGame();
+      loadLifetimeArt();
       buildDungeon(existingSave);
       window.addEventListener('beforeunload', () => { if (dungeonSeed) saveGame(); });
       loadSettings();
