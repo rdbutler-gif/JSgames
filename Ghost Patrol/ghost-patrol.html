@@ -109,6 +109,75 @@
     .pill .val { font-weight: 800; font-size: 18px; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
     .pill .sub { opacity: 0.52; font-weight: 600; font-size: 13px; }
 
+    /* ---- Active Sacred Relic Buffs HUD Strip ---- */
+    #hudRelicBuffs {
+      display: none; flex-direction: column; gap: 5px; width: fit-content;
+    }
+    #hudRelicBuffs.has-buffs { display: flex; }
+    .relic-buff-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, rgba(22, 18, 38, 0.90), rgba(11, 9, 22, 0.95));
+      border: 1px solid rgba(240, 196, 108, 0.42);
+      border-radius: 11px; padding: 5px 11px 5px 7px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+      backdrop-filter: blur(8px);
+    }
+    .relic-buff-chip.monocle { border-color: rgba(92, 225, 255, 0.48); }
+    .relic-buff-chip.magnet  { border-color: rgba(255, 207, 92, 0.48); }
+    .relic-buff-chip.ward    { border-color: rgba(197, 155, 255, 0.48); }
+    .relic-buff-ic {
+      width: 26px; height: 26px; border-radius: 7px;
+      display: grid; place-items: center; flex: 0 0 auto;
+      background: radial-gradient(circle at 35% 30%, rgba(240,196,108,0.28), rgba(26,20,38,0.9));
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+    }
+    .relic-buff-chip.monocle .relic-buff-ic { background: radial-gradient(circle at 35% 30%, rgba(92,225,255,0.30), rgba(16,32,52,0.9)); }
+    .relic-buff-chip.magnet  .relic-buff-ic { background: radial-gradient(circle at 35% 30%, rgba(255,207,92,0.32), rgba(46,32,14,0.9)); }
+    .relic-buff-chip.ward    .relic-buff-ic { background: radial-gradient(circle at 35% 30%, rgba(197,155,255,0.32), rgba(36,20,56,0.9)); }
+    .relic-buff-ic svg { width: 18px; height: 18px; display: block; }
+    .relic-buff-meta { display: flex; flex-direction: column; gap: 1px; line-height: 1.15; }
+    .relic-buff-name {
+      font-family: var(--font-display); font-size: 10.5px; font-weight: 700;
+      letter-spacing: 0.8px; color: var(--gold); text-transform: uppercase;
+    }
+    .relic-buff-chip.monocle .relic-buff-name { color: var(--cyan); }
+    .relic-buff-chip.ward    .relic-buff-name { color: var(--violet); }
+    .relic-buff-desc {
+      font-family: var(--font-ui); font-size: 10px; font-weight: 600;
+      color: rgba(220, 226, 250, 0.78);
+    }
+
+    /* ---- Relic Discovery Modal Card ---- */
+    .relic-modal-panel { max-width: 490px !important; }
+    .relic-showcase {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      margin: 12px auto 14px; padding: 16px 20px; border-radius: 14px;
+      background: radial-gradient(circle at 50% 25%, rgba(240,196,108,0.16), rgba(14,12,28,0.92) 75%);
+      border: 1px solid rgba(240, 196, 108, 0.42);
+      box-shadow: inset 0 0 24px rgba(127, 233, 255, 0.10), 0 8px 24px rgba(0,0,0,0.65);
+    }
+    .relic-medallion {
+      width: 72px; height: 72px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: radial-gradient(circle at 35% 30%, rgba(255,240,180,0.28), rgba(24,18,42,0.95));
+      border: 2px solid var(--gold);
+      box-shadow: 0 0 26px rgba(240, 196, 108, 0.45), inset 0 0 14px rgba(127, 233, 255, 0.25);
+      animation: crestPulse 3s ease-in-out infinite;
+    }
+    .relic-medallion svg { width: 44px; height: 44px; display: block; }
+    .relic-bonus-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 13px; border-radius: 999px;
+      background: rgba(98, 245, 168, 0.14); border: 1px solid rgba(98, 245, 168, 0.45);
+      font-family: var(--font-display); font-weight: 700; font-size: 12px;
+      color: var(--mint); letter-spacing: 0.8px;
+    }
+    .relic-bonus-pill svg { width: 15px; height: 15px; }
+    .relic-effect-box {
+      font-family: var(--font-ui); font-size: 14.5px; line-height: 1.52;
+      color: #e6ecff; max-width: 410px; margin: 2px auto 0;
+    }
+
     /* ---- Bottom-Right Weapon & Spectral Ammo Panel ---- */
     #hudAmmo {
       position: absolute; bottom: 16px; right: 16px; z-index: 10;
@@ -1213,7 +1282,7 @@
         <span id="loadCanvasCounter">CANVAS 0 / 100</span>
         <span class="load-count" id="loadCount">0%</span>
       </div>
-      <div class="load-lore">
+      <div class="load-lore" id="loadLore">
         <b> Curator&rsquo;s Note:</b> Every wall features an original hand-drawn artwork by <b>D. Butler</b>. Right-click smoldering cursed frames to cleanse them for gold.
       </div>
     </div>
@@ -1385,6 +1454,20 @@
         <path d="M16 3.5L26.5 7.8V15.6C26.5 22.4 21.8 27.2 16 29.2C10.2 27.2 5.5 22.4 5.5 15.6V7.8L16 3.5Z" fill="url(#g-cyan)" stroke="url(#g-gold)" stroke-width="1.8" stroke-linejoin="round"/>
         <path d="M16 9L18.2 13.8L23.2 14.5L19.4 18L20.4 23L16 20.4L11.6 23L12.6 18L8.8 14.5L13.8 13.8Z" fill="#ffffff" opacity="0.9"/>
       </symbol>
+      <!-- Curator's Monocle Relic -->
+      <symbol id="ico-relic-monocle" viewBox="0 0 32 32">
+        <circle cx="15" cy="15" r="9.5" fill="rgba(20,45,68,0.85)" stroke="url(#g-gold)" stroke-width="2.2"/>
+        <circle cx="15" cy="15" r="6.2" fill="url(#g-cyan)" opacity="0.88"/>
+        <path d="M11.5 11.5C13 10 15.5 9.8 17.5 11" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M24.5 15H27.5V27.5" fill="none" stroke="url(#g-gold)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 2"/>
+      </symbol>
+      <!-- Aether Magnet Relic -->
+      <symbol id="ico-relic-magnet" viewBox="0 0 32 32">
+        <path d="M8 7V16.5C8 21.2 11.5 25 16 25C20.5 25 24 21.2 24 16.5V7H19.5V16.2C19.5 18.4 18 20.2 16 20.2C14 20.2 12.5 18.4 12.5 16.2V7H8Z" fill="url(#g-gold)" stroke="#5c3506" stroke-width="1.4" stroke-linejoin="round"/>
+        <rect x="7.5" y="4.5" width="5.5" height="3.5" rx="1" fill="url(#g-cyan)"/>
+        <rect x="19" y="4.5" width="5.5" height="3.5" rx="1" fill="url(#g-cyan)"/>
+        <path d="M13 11L11 14H14L12.5 17.5M19 11L17 14H20L18.5 17.5" fill="none" stroke="#fff3be" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
     </defs>
   </svg>
   <div id="bossbar">
@@ -1407,6 +1490,7 @@
       <div class="pill relics"><span class="ic"><svg><use href="#ico-relic"/></svg></span><div class="pill-body"><span class="pill-lbl">Relics</span><span class="pill-num"><span class="val" id="relicsFound">0</span><span class="sub">/&nbsp;<span id="relicsTotal">3</span></span></span></div></div>
       <div class="pill deaths" id="deathsPill" style="display:none"><span class="ic"><svg><use href="#ico-death"/></svg></span><div class="pill-body"><span class="pill-lbl">Deaths</span><span class="pill-num"><span class="val" id="deathsVal">0</span></span></div></div>
     </div>
+    <div id="hudRelicBuffs"></div>
   </div>
   <div id="hudAmmo">
     <span class="ammo-ic"><svg><use href="#ico-ammo"/></svg></span>
@@ -1571,9 +1655,12 @@
     let scene, camera, renderer, headlamp;
     let wallTexture, floorTexture, ceilingTexture, carpetTexture, marbleTexture, stoneBumpTex;
     let weaponGroup = null, weaponMuzzleLight = null, weaponCoreMat = null, weaponBarrel = null, weaponTriBarrels = null;
-    let weaponRecoil = 0, walkBob = 0, screenShake = 0;
+    let weaponGlbHolder = null, weaponRotorGroup = null, weaponAmmoCanvas = null, weaponAmmoTex = null, weaponAmmoBarSegments = [];
+    let weaponMuzzleRing = null, weaponChargeCoilGroup = null;
+    let weaponRecoil = 0, walkBob = 0, screenShake = 0, rotorAngle = 0;
     let fxParticles = [], torches = [];
     let KING_GLB = null, FOUNTAIN_GLB = null, PATROL_GLB = null, STAIR_STATUE_GLB = null, LADDER_CROWN_GLB = null;
+    let GUN_PISTOL_GLB = null, GUN_RIFLE_GLB = null, GUN_MG_GLB = null;
     let stairStatueSlots = [], ladderCrownSlots = [];
     let transitionRoomSet = new Set();
     let transitionRoomInfo = new Map();
@@ -1650,10 +1737,76 @@
     let prevXButton = false;    // for edge detection (shoot/start fire once per press)
     let mouseHeld = false, padShootHeld = false, padDash = false;
     let prevPadButtons = [];    // edge detection for shop face buttons
+    let controllerActive = false; // tracks whether gamepad or keyboard/mouse was used most recently
+    let padSeenOnce = false;
     const STICK_DEADZONE = 0.18;
     const PAD_LOOK_SPEED = 0.045;
     const KEY_LOOK_SPEED = 0.036;
     function dz(v) { return Math.abs(v) < STICK_DEADZONE ? 0 : v; }
+
+    function setControllerActive(isPad) {
+      if (controllerActive === isPad) return;
+      controllerActive = isPad;
+      refreshInputPrompts();
+    }
+
+    function refreshInputPrompts() {
+      const hudHelp = document.getElementById('hudHelp');
+      if (hudHelp) {
+        hudHelp.innerHTML = controllerActive
+          ? '<b>L-Stick</b> move &bull; <b>R-Stick</b> look<br>' +
+            '<b>LB / L3</b> sprint &bull; <b>RB</b> dash &bull; <b>RT</b> fire / view art<br>' +
+            '<b>X</b> cleanse / shop / view &bull; <b>View</b> map &bull; <b>Start</b> pause'
+          : '<b>WASD</b> move &bull; <b>Arrows / Mouse</b> look<br>' +
+            '<b>Shift</b> sprint &bull; <b>Space</b> dash &bull; <b>L-click</b> fire / view art<br>' +
+            '<b>R-click</b> cleanse / shop / view &bull; <b>M</b> map &bull; <b>Esc</b> pause';
+      }
+      const cleanseEl = document.getElementById('cleanse');
+      if (cleanseEl) {
+        cleanseEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-cursed"/></svg>' +
+          (controllerActive ? 'Press X to cleanse the cursed painting' : 'Right-click to cleanse the cursed painting');
+      }
+      const fountainEl = document.getElementById('fountainPrompt');
+      if (fountainEl) {
+        fountainEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-fountain"/></svg>' +
+          (controllerActive ? 'Press X to enter the Fountain' : 'Right-click to enter the Fountain');
+      }
+      const viewEl = document.getElementById('viewPrompt');
+      if (viewEl) {
+        viewEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-art"/></svg>' +
+          (controllerActive ? 'Press X or RT to admire painting' : 'Click or Right-click to admire painting');
+      }
+      const loadLoreEl = document.getElementById('loadLore');
+      if (loadLoreEl) {
+        loadLoreEl.innerHTML = '<b> Curator&rsquo;s Note:</b> Every wall features an original hand-drawn artwork by <b>D. Butler</b>. ' +
+          (controllerActive ? 'Press <b>X</b> on' : 'Right-click') + ' smoldering cursed frames to cleanse them for gold.';
+      }
+      const modePill = document.querySelector('[data-act="togglemode"]');
+      if (modePill && menuState === 'title') {
+        const isNm = !!settings.nightmare;
+        const actVerb = controllerActive ? 'Press A' : 'Click';
+        modePill.innerHTML = isNm
+          ? '&#9760; Mode: Nightmare Exhibition (1.5&times; Score &bull; Fiercer Wraiths)'
+          : `&#9876; Mode: Standard Exhibition (${actVerb} for Nightmare 1.5&times;)`;
+      }
+      if (menuState === 'help') {
+        renderHelp();
+      }
+      if (menuState === 'relic' && activeRelicModal) {
+        showRelicModal(activeRelicModal);
+      }
+      if (shopOpen) {
+        renderShop();
+      }
+    }
+
+    window.addEventListener('gamepadconnected', () => setControllerActive(true));
+    window.addEventListener('gamepaddisconnected', () => {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      let any = false;
+      for (const p of pads) if (p) { any = true; break; }
+      if (!any) setControllerActive(false);
+    });
 
     // ---------- Settings (persisted in localStorage) ----------
     const SETTINGS_KEY = 'ghostPatrolSettings';
@@ -3496,25 +3649,32 @@
     }
 
     // ---------- Step 3: Sacred Gallery Relics (Secret Dead-End Curio Shrines) ----------
+    let activeRelicModal = null;
     const RELIC_DEFS = [
       {
         id: 'monocle',
         name: "Curator's Monocle",
-        desc: 'Reveals unviewed paintings & relics in adjacent rooms and extends portrait admire reach!',
+        shortBuff: 'Reveals adjacent art/relics & +30% admire reach',
+        desc: 'Reveals unviewed paintings & relics in adjacent rooms on your blueprint minimap and extends portrait admire reach!',
+        icon: '#ico-relic-monocle',
         gemColor: 0x5ce1ff,
         emissiveColor: 0x1e88bb
       },
       {
         id: 'magnet',
         name: 'Aether Magnet',
-        desc: 'Magnetically draws nearby gold coins, vitality hearts, and ammo crates to you!',
+        shortBuff: 'Pulls nearby gold, hearts & ammo crates',
+        desc: 'Magnetically draws nearby gold coins, vitality hearts, and ammo crates directly to you!',
+        icon: '#ico-relic-magnet',
         gemColor: 0xffcf5c,
         emissiveColor: 0xb87314
       },
       {
         id: 'ward',
         name: 'Sacred Aegis Ward',
-        desc: 'Grants a regenerating spectral shield that absorbs 1 hit on every floor!',
+        shortBuff: 'Blocks 1 hit per floor (auto-recharges)',
+        desc: 'Grants a regenerating spectral shield that absorbs 1 hit on every floor and recharges whenever you ascend or descend!',
+        icon: '#ico-shield-ward',
         gemColor: 0xc59bff,
         emissiveColor: 0x6b28b8
       }
@@ -3583,11 +3743,47 @@
 
       relics.push({
         floor, gx, gy, x: c.x, z: c.z, yBase,
-        id: def.id, name: def.name, desc: def.desc, gemColor: def.gemColor,
+        id: def.id, name: def.name, shortBuff: def.shortBuff, desc: def.desc, icon: def.icon || '#ico-relic', gemColor: def.gemColor,
         group, orbGroup, gemMat,
         t: Math.random() * Math.PI * 2,
         collected: false
       });
+    }
+
+    function showRelicModal(r) {
+      if (!r) return;
+      activeRelicModal = r;
+      active = false;
+      menuState = 'relic';
+      if (document.pointerLockElement) document.exitPointerLock();
+      const roman = ROMAN_FLOORS[r.floor] || (r.floor + 1);
+      const accentCol = r.id === 'monocle' ? 'var(--cyan)' : (r.id === 'ward' ? 'var(--violet)' : 'var(--gold)');
+      const btnHint = controllerActive ? 'A / B / Start' : 'Click / Space / Enter';
+      const overlay = document.getElementById('overlay');
+      overlay.classList.add('in-pause');
+      overlay.style.display = 'flex';
+      overlay.innerHTML =
+        '<div class="panel relic-modal-panel">' +
+        gothicCornersHTML() +
+        `<div class="gp-eyebrow">&#10022; Sacred Gallery Relic Discovered &bull; Floor ${roman} &#10022;</div>` +
+        `<div class="gp-big" style="color:${accentCol};font-size:30px;margin-bottom:4px">${r.name}</div>` +
+        '<div class="relic-showcase">' +
+          `<div class="relic-medallion" style="border-color:${accentCol}"><svg><use href="${r.icon || '#ico-relic'}"/></svg></div>` +
+          '<div class="relic-bonus-pill"><svg><use href="#ico-coin"/></svg><span>+20 Gold Spoils &bull; Permanent Patrol Blessing</span></div>' +
+          `<div class="relic-effect-box">${r.desc}</div>` +
+        '</div>' +
+        '<div class="gp-hint" style="margin-bottom:10px">Active relic blessings are pinned beneath your HUD stats on the top-left.</div>' +
+        '<div class="menu-row" style="margin-top:8px">' +
+          `<button class="gp-cta" style="margin-top:0;padding:11px 32px;font-size:15px" data-act="relicclose">&#10003; Claim Blessing &amp; Continue (${btnHint})</button>` +
+        '</div>' +
+        '</div>';
+      syncUiFocus(true, '[data-act="relicclose"]');
+    }
+
+    function closeRelicModal() {
+      activeRelicModal = null;
+      menuState = null;
+      safePointerLock();
     }
 
     function applyRelicEffect(r, silent = false) {
@@ -3602,9 +3798,9 @@
         sndFrame();
         rumblePattern([{ dur: 75, weak: 0.55, strong: 0.35, gap: 40 }, { dur: 150, weak: 0.85, strong: 0.65 }]);
         spawnBurst(r.x, r.yBase + 1.25, r.z, r.gemColor, 32, 0.22);
-        showMessage(`Sacred Relic Found: ${r.name}! (+20 Gold • ${r.desc})`);
         updateHUD();
         saveGame();
+        showRelicModal(r);
       }
     }
     // ---------- Phase 3: Three Distinct Wraith Archetypes ----------
@@ -4386,10 +4582,10 @@
     const SHOP_UPGRADE_META = {
       hp:     { icon: '#ico-heart-full', desc: 'Permanently adds +1 Ruby Vitality Heart and heals 1 HP.' },
       rifle:  { icon: '#ico-up-rifle',   desc: 'Doubles Aether Blaster impact to 2 damage per shot.' },
-      auto:   { icon: '#ico-up-auto',    desc: 'Hold Fire (L-Click / RT) for rapid continuous plasma fire.' },
+      auto:   { icon: '#ico-up-auto',    desc: () => controllerActive ? 'Hold Fire (RT) for rapid continuous plasma fire.' : 'Hold Fire (L-Click / RT) for rapid continuous plasma fire.' },
       pierce: { icon: '#ico-up-pierce',  desc: 'Bolts punch through all wraiths & bypass Void Warden armor.' },
       spread: { icon: '#ico-up-spread',  desc: 'Fires a 3-bolt tri-spread fan with every pull of the trigger.' },
-      dash:   { icon: '#ico-up-dash',    desc: 'Unlocks high-speed Spirit Dash evade on Space / RB.' },
+      dash:   { icon: '#ico-up-dash',    desc: () => controllerActive ? 'Unlocks high-speed Spirit Dash evade on RB.' : 'Unlocks high-speed Spirit Dash evade on Space / RB.' },
       ammo2:  { icon: '#ico-ammo',       desc: 'Every ammo crate scavenged yields +3 plasma charges.' },
       ammo5:  { icon: '#ico-ammo',       desc: 'Every ammo crate scavenged yields +6 plasma charges.' }
     };
@@ -4401,13 +4597,14 @@
       let html = gothicCornersHTML();
       html += `<div class="shop-eyebrow">&#10022; Sanctum Reliquary &bull; Floor ${roman} &#10022;</div>`;
       html += `<h2><svg><use href="#ico-fountain"/></svg><span>Mystic Fountain</span></h2>`;
-      html += `<div class="sub">D-Pad + A, 1&ndash;4, or Click to consecrate &bull; B / ESC to depart</div>`;
+      html += `<div class="sub">${controllerActive ? 'D-Pad + A to consecrate &bull; B / Start to depart' : 'D-Pad + A, 1&ndash;4, or Click to consecrate &bull; B / ESC to depart'}</div>`;
       html += `<div class="wallet"><svg><use href="#ico-coin"/></svg><span>${coinCount} Gold Available</span></div>`;
       shopItems.forEach((item, i) => {
         const owned = isOwned(item.id);
         const canAfford = coinCount >= price;
         const cls = owned ? 'item owned' : (canAfford ? 'item' : 'item cant');
         const meta = SHOP_UPGRADE_META[item.id] || { icon: '#ico-fountain', desc: 'Ancient gallery blessing.' };
+        const descText = typeof meta.desc === 'function' ? meta.desc() : meta.desc;
         const right = owned
           ? '<span class="cost">&#10003; CONSECRATED</span>'
           : `<span class="cost"><svg><use href="#ico-coin"/></svg>${price}</span>`;
@@ -4417,13 +4614,13 @@
               `<div class="item-ic"><svg><use href="${meta.icon}"/></svg></div>` +
               `<div class="item-info">` +
                 `<div class="item-title"><span class="key">${i + 1}</span><span>${item.name}</span></div>` +
-                `<div class="item-desc">${meta.desc}</div>` +
+                `<div class="item-desc">${descText}</div>` +
               `</div>` +
             `</div>` +
             right +
           `</div>`;
       });
-      html += `<div class="shop-foot"><button class="leave" data-leave="1">&#10005; Depart Sanctuary (B / ESC)</button></div>`;
+      html += `<div class="shop-foot"><button class="leave" data-leave="1">&#10005; Depart Sanctuary (${controllerActive ? 'B / Start' : 'B / ESC'})</button></div>`;
       const inner = document.getElementById('shopInner');
       inner.innerHTML = html;
       inner.querySelectorAll('.item').forEach(el => {
@@ -4553,51 +4750,272 @@
       return 'Pistol';
     }
 
-    // ---------- First-Person Spectral Blaster Viewmodel ----------
+    // ---------- First-Person High-Tech Spectral Ghost Guns + On-Weapon Holographic Ammo Counter ----------
+    let lastRenderedGunAmmo = -1, lastRenderedGunName = '', lastRenderedGunCol = -1;
+
+    function updateWeaponAmmoDisplay() {
+      if (!weaponAmmoCanvas) return;
+      const wName = weaponName();
+      const colHex = hasPierce ? 0xff66ff : (hasRifle && hasAuto ? 0xc59bff : (hasRifle ? 0xffcc44 : (hasAuto ? 0x5ce1ff : 0x66ffcc)));
+      if (ammo === lastRenderedGunAmmo && wName === lastRenderedGunName && colHex === lastRenderedGunCol) return;
+      lastRenderedGunAmmo = ammo;
+      lastRenderedGunName = wName;
+      lastRenderedGunCol = colHex;
+
+      const c = weaponAmmoCanvas;
+      const ctx = c.getContext('2d');
+      const W = c.width, H = c.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const isLow = ammo <= 5;
+      const isEmpty = ammo <= 0;
+      const mainCol = isEmpty ? '#ff3355' : (isLow ? '#ff6b8a' : (hasPierce ? '#ff77ff' : (hasRifle ? '#ffd86b' : '#66ffcc')));
+      const subCol  = isLow ? '#ff99aa' : '#7fe9ff';
+
+      // Dark obsidian holographic display panel with scanline & beveled frame
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, 'rgba(8, 12, 24, 0.96)');
+      bg.addColorStop(0.5, 'rgba(14, 22, 38, 0.96)');
+      bg.addColorStop(1, 'rgba(6, 9, 18, 0.98)');
+      ctx.fillStyle = bg;
+      roundRect(ctx, 3, 3, W - 6, H - 6, 16);
+      ctx.fill();
+
+      // Subtle tech grid / scanlines
+      ctx.fillStyle = 'rgba(127, 233, 255, 0.05)';
+      for (let y = 10; y < H - 10; y += 6) {
+        ctx.fillRect(10, y, W - 20, 2);
+      }
+
+      // Glowing outer bezel
+      ctx.strokeStyle = mainCol;
+      ctx.lineWidth = 5;
+      roundRect(ctx, 5, 5, W - 10, H - 10, 14);
+      ctx.stroke();
+
+      // Top header bar: Weapon Class & Mode Tags
+      ctx.fillStyle = subCol;
+      ctx.font = '800 18px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(wName.toUpperCase(), 18, 14);
+
+      // Status badge on top right
+      const tag = isEmpty ? 'EMPTY' : (isLow ? 'LOW' : (hasPierce ? 'PIERCE' : (hasSpread ? 'TRI-FAN' : 'AETHER')));
+      ctx.fillStyle = isLow ? '#ff4d7a' : '#f0c46c';
+      ctx.font = '800 16px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(tag, W - 18, 15);
+
+      // Large Digital Ammo Readout
+      const numStr = String(Math.max(0, ammo)).padStart(2, '0');
+      ctx.save();
+      ctx.shadowColor = mainCol;
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 74px "Plus Jakarta Sans", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(numStr, W * 0.44, H * 0.54);
+      ctx.restore();
+
+      // Vertical mini telemetry label next to digits
+      ctx.fillStyle = mainCol;
+      ctx.font = '800 15px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('CHG', W * 0.72, H * 0.44);
+      ctx.fillStyle = 'rgba(215, 228, 255, 0.75)';
+      ctx.font = '700 13px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(hasAuto ? 'AUTO' : 'SEMI', W * 0.72, H * 0.60);
+
+      // Bottom 12-segment energy bar on the screen
+      const segs = 12;
+      const barX = 18, barY = H - 27, barW = W - 36, barH = 11;
+      const gap = 3;
+      const sw = (barW - gap * (segs - 1)) / segs;
+      const fillRatio = Math.max(0, Math.min(1, ammo / START_AMMO));
+      const activeSegs = ammo > 0 ? Math.max(1, Math.round(fillRatio * segs)) : 0;
+      for (let i = 0; i < segs; i++) {
+        const sx = barX + i * (sw + gap);
+        if (i < activeSegs) {
+          ctx.fillStyle = isLow ? '#ff4d7a' : (i >= segs - 3 ? '#7fe9ff' : mainCol);
+        } else {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+        }
+        ctx.fillRect(sx, barY, sw, barH);
+      }
+
+      if (weaponAmmoTex) weaponAmmoTex.needsUpdate = true;
+
+      // Also update 3D physical LED charge spine segments along the top of the weapon
+      if (weaponAmmoBarSegments && weaponAmmoBarSegments.length) {
+        const n3d = weaponAmmoBarSegments.length;
+        const lit3d = ammo > 0 ? Math.max(1, Math.round(fillRatio * n3d)) : 0;
+        const litHex = isEmpty ? 0xff2244 : (isLow ? 0xff4d7a : colHex);
+        for (let i = 0; i < n3d; i++) {
+          const segMat = weaponAmmoBarSegments[i].material;
+          const on = i < lit3d;
+          segMat.color.setHex(on ? litHex : 0x161926);
+          segMat.emissive.setHex(on ? litHex : 0x05060c);
+          segMat.emissiveIntensity = on ? 1.65 : 0.1;
+        }
+      }
+    }
+
     function buildWeaponViewmodel() {
       if (weaponGroup) camera.remove(weaponGroup);
       weaponGroup = new THREE.Group();
-      const darkMetal = new THREE.MeshStandardMaterial({ color: 0x222634, roughness: 0.35, metalness: 0.85 });
-      const brassMat  = new THREE.MeshStandardMaterial({ color: 0xc89b3c, roughness: 0.3,  metalness: 0.88 });
+      weaponAmmoBarSegments = [];
+      lastRenderedGunAmmo = -1;
+
+      const darkMetal = new THREE.MeshStandardMaterial({ color: 0x1e2230, roughness: 0.32, metalness: 0.88 });
+      const gunMetal  = new THREE.MeshStandardMaterial({ color: 0x2c3246, roughness: 0.28, metalness: 0.90 });
+      const brassMat  = new THREE.MeshStandardMaterial({ color: 0xd4a448, roughness: 0.26, metalness: 0.90 });
+      const copperMat = new THREE.MeshStandardMaterial({ color: 0xb86b35, roughness: 0.32, metalness: 0.85 });
       weaponCoreMat   = new THREE.MeshStandardMaterial({
-        color: 0x66ffcc, emissive: 0x33ddaa, emissiveIntensity: 1.4, roughness: 0.2, metalness: 0.1
+        color: 0x66ffcc, emissive: 0x33ddaa, emissiveIntensity: 1.5, roughness: 0.15, metalness: 0.15,
+        transparent: true, opacity: 0.94
       });
 
-      // Receiver body
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.42), darkMetal);
-      body.position.set(0, 0, -0.1);
-      weaponGroup.add(body);
+      // 1. Holder for AI-Generated 3D Textured Weapon GLB (Pistol / Rail Rifle / Rotary Machine Gun)
+      weaponGlbHolder = new THREE.Group();
+      weaponGroup.add(weaponGlbHolder);
 
-      // Glowing plasma chamber rails
-      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.26, 12), weaponCoreMat);
-      core.rotation.x = Math.PI / 2;
-      core.position.set(0, 0.055, -0.12);
-      weaponGroup.add(core);
+      // 2. Sculpted High-Tech Spectral Exo-Frame & Energy Conduit Spine (slim profile that hugs the 3D GLB weapon)
+      const chassis = new THREE.Group();
+      weaponGroup.add(chassis);
 
-      // Main barrel (lengthens when rifle upgrade is owned)
-      weaponBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.028, 0.36, 12), darkMetal);
-      weaponBarrel.rotation.x = Math.PI / 2;
-      weaponBarrel.position.set(0, 0.025, -0.36);
+      for (const s of [-1, 1]) {
+        const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, 0.24, 8), weaponCoreMat);
+        conduit.rotation.x = Math.PI / 2;
+        conduit.position.set(s * 0.036, 0.015, -0.24);
+        chassis.add(conduit);
+      }
+
+      // Glowing Aether Core Chamber + 3 Compact Toroidal Accelerator Coils
+      weaponChargeCoilGroup = new THREE.Group();
+      const coreTube = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.24, 12), weaponCoreMat);
+      coreTube.rotation.x = Math.PI / 2;
+      coreTube.position.set(0, 0.022, -0.24);
+      weaponChargeCoilGroup.add(coreTube);
+
+      for (let k = 0; k < 3; k++) {
+        const coil = new THREE.Mesh(new THREE.TorusGeometry(0.020, 0.0035, 8, 16), k % 2 === 0 ? brassMat : copperMat);
+        coil.position.set(0, 0.022, -0.17 - k * 0.065);
+        weaponChargeCoilGroup.add(coil);
+      }
+      weaponGroup.add(weaponChargeCoilGroup);
+
+      // 3. Forward Barrel Assembly (fallback when GLB isn't loaded yet) & Machine Gun Rotary Gatling Cluster
+      weaponBarrel = new THREE.Group();
+      const innerBore = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.34, 12), gunMetal);
+      innerBore.rotation.x = Math.PI / 2;
+      innerBore.position.set(0, 0.025, -0.36);
+      weaponBarrel.add(innerBore);
+
+      weaponMuzzleRing = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.005, 10, 20), weaponCoreMat);
+      weaponMuzzleRing.position.set(0, 0.025, -0.52);
+      weaponBarrel.add(weaponMuzzleRing);
       weaponGroup.add(weaponBarrel);
 
-      // Muzzle emitter ring
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.008, 8, 16), brassMat);
-      ring.position.set(0, 0.025, -0.52);
-      weaponGroup.add(ring);
+      // Animated 6-Barrel Rotary Plasma Gatling Cluster (visible at the muzzle on Auto Pistol / Auto Machine Gun)
+      weaponRotorGroup = new THREE.Group();
+      weaponRotorGroup.position.set(0, 0.025, -0.48);
+      const rotorHub = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.045, 14), brassMat);
+      rotorHub.rotation.x = Math.PI / 2;
+      weaponRotorGroup.add(rotorHub);
+      const rotorRingFront = new THREE.Mesh(new THREE.TorusGeometry(0.034, 0.0045, 8, 18), brassMat);
+      rotorRingFront.position.z = -0.10;
+      weaponRotorGroup.add(rotorRingFront);
+      for (let b = 0; b < 6; b++) {
+        const ang = (b / 6) * Math.PI * 2;
+        const bx = Math.cos(ang) * 0.026;
+        const by = Math.sin(ang) * 0.026;
+        const gTube = new THREE.Mesh(new THREE.CylinderGeometry(0.0065, 0.0075, 0.22, 8), gunMetal);
+        gTube.rotation.x = Math.PI / 2;
+        gTube.position.set(bx, by, -0.02);
+        weaponRotorGroup.add(gTube);
+        const gTip = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.02, 8), weaponCoreMat);
+        gTip.rotation.x = Math.PI / 2;
+        gTip.position.set(bx, by, -0.13);
+        weaponRotorGroup.add(gTip);
+      }
+      weaponRotorGroup.visible = false;
+      weaponGroup.add(weaponRotorGroup);
 
-      // Tri-barrel side emitters (visible when spread upgrade is owned)
+      // 4. Tri-Spread Wing Prisms (visible when Spread Shot upgrade is owned)
       weaponTriBarrels = new THREE.Group();
       for (const s of [-1, 1]) {
-        const sb = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.018, 0.25, 10), brassMat);
-        sb.rotation.x = Math.PI / 2;
-        sb.position.set(s * 0.055, 0.02, -0.34);
-        weaponTriBarrels.add(sb);
+        const wingArm = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.010, 0.055), brassMat);
+        wingArm.position.set(s * 0.052, 0.020, -0.34);
+        wingArm.rotation.y = -s * 0.24;
+        weaponTriBarrels.add(wingArm);
+
+        const emitterPod = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.014, 0.16, 10), gunMetal);
+        emitterPod.rotation.x = Math.PI / 2;
+        emitterPod.rotation.z = -s * 0.18;
+        emitterPod.position.set(s * 0.072, 0.020, -0.38);
+        weaponTriBarrels.add(emitterPod);
+
+        const prismCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.013, 0), weaponCoreMat);
+        prismCrystal.position.set(s * 0.078, 0.020, -0.46);
+        weaponTriBarrels.add(prismCrystal);
       }
       weaponTriBarrels.visible = false;
       weaponGroup.add(weaponTriBarrels);
 
-      weaponMuzzleLight = new THREE.PointLight(0x66ffcc, 0, 5);
-      weaponMuzzleLight.position.set(0, 0.04, -0.6);
+      // 5. Physical 8-Segment LED Charge Bar along the Top Spine of the Receiver
+      for (let i = 0; i < 8; i++) {
+        const segMat = new THREE.MeshStandardMaterial({
+          color: 0x66ffcc, emissive: 0x66ffcc, emissiveIntensity: 1.6, roughness: 0.2, metalness: 0.2
+        });
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.006, 0.014), segMat);
+        seg.position.set(0, 0.068, -0.14 - i * 0.022);
+        weaponGroup.add(seg);
+        weaponAmmoBarSegments.push(seg);
+      }
+
+      // 6. Tactical Holographic Rear/Side Ammo Display Screen mounted directly on the weapon!
+      weaponAmmoCanvas = document.createElement('canvas');
+      weaponAmmoCanvas.width = 256;
+      weaponAmmoCanvas.height = 144;
+      weaponAmmoTex = new THREE.CanvasTexture(weaponAmmoCanvas);
+      weaponAmmoTex.minFilter = THREE.LinearFilter;
+      weaponAmmoTex.magFilter = THREE.LinearFilter;
+      sharedTexSet.add(weaponAmmoTex);
+
+      const holoHousing = new THREE.Group();
+      // Mounted on the upper-left receiver bridge, angled cleanly toward the player's eye without clipping
+      holoHousing.position.set(-0.082, 0.074, -0.155);
+      holoHousing.rotation.order = 'YXZ';
+      holoHousing.rotation.y = 0.28;
+      holoHousing.rotation.x = -0.15;
+
+      // Armored brass & dark metal hood around the display
+      const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.116, 0.070, 0.012), darkMetal);
+      bezel.position.z = -0.006;
+      holoHousing.add(bezel);
+      const brassRim = new THREE.Mesh(new THREE.BoxGeometry(0.122, 0.076, 0.008), brassMat);
+      brassRim.position.z = -0.008;
+      holoHousing.add(brassRim);
+
+      // Strut connecting the display housing to the main receiver body
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.012, 0.016), brassMat);
+      strut.position.set(0.048, -0.026, -0.006);
+      strut.rotation.z = 0.42;
+      holoHousing.add(strut);
+
+      const screenMat = new THREE.MeshBasicMaterial({
+        map: weaponAmmoTex, transparent: true
+      });
+      const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.108, 0.060), screenMat);
+      screenMesh.position.z = 0.002;
+      holoHousing.add(screenMesh);
+
+      weaponGroup.add(holoHousing);
+
+      weaponMuzzleLight = new THREE.PointLight(0x66ffcc, 0, 5.5);
+      weaponMuzzleLight.position.set(0, 0.04, -0.68);
       weaponGroup.add(weaponMuzzleLight);
 
       weaponGroup.position.set(0.28, -0.24, -0.42);
@@ -4607,12 +5025,73 @@
 
     function refreshWeaponViewmodel() {
       if (!weaponCoreMat) return;
-      const col = hasPierce ? 0xff66ff : (hasRifle ? 0xffcc44 : 0x66ffcc);
+      const col = hasPierce ? 0xff66ff : (hasRifle && hasAuto ? 0xc59bff : (hasRifle ? 0xffcc44 : (hasAuto ? 0x5ce1ff : 0x66ffcc)));
       weaponCoreMat.color.setHex(col);
       weaponCoreMat.emissive.setHex(col);
       if (weaponMuzzleLight) weaponMuzzleLight.color.setHex(col);
-      if (weaponBarrel) weaponBarrel.scale.y = hasRifle ? 1.38 : 1.0;
+      const anyGlbReady = !!(GUN_PISTOL_GLB || GUN_RIFLE_GLB || GUN_MG_GLB);
+      if (weaponBarrel) {
+        weaponBarrel.scale.z = hasRifle ? 1.32 : 1.0;
+        weaponBarrel.visible = !anyGlbReady && !hasAuto;
+      }
+      if (weaponRotorGroup) {
+        weaponRotorGroup.visible = !!hasAuto;
+        weaponRotorGroup.scale.setScalar(hasRifle ? 1.05 : 0.88);
+      }
       if (weaponTriBarrels) weaponTriBarrels.visible = !!hasSpread;
+
+      // Populate or swap the AI-generated 3D textured GLB weapon mesh according to the active tier
+      if (weaponGlbHolder) {
+        while (weaponGlbHolder.children.length) {
+          const ch = weaponGlbHolder.children[0];
+          weaponGlbHolder.remove(ch);
+          if (ch.material) ch.material.dispose();
+        }
+        // Tier selection:
+        // 1) Auto (or Auto + Rifle) -> Heavy Rotary Plasma Machine Gun GLB
+        // 2) Rifle -> Spectral Railgun Carbine GLB
+        // 3) Base -> Aether Plasma Pistol GLB
+        let glb = null;
+        let mode = 'pistol';
+        if (hasAuto && GUN_MG_GLB) { glb = GUN_MG_GLB; mode = 'mg'; }
+        else if (hasRifle && GUN_RIFLE_GLB) { glb = GUN_RIFLE_GLB; mode = 'rifle'; }
+        else if (GUN_PISTOL_GLB) { glb = GUN_PISTOL_GLB; mode = 'pistol'; }
+        else if (GUN_RIFLE_GLB) { glb = GUN_RIFLE_GLB; mode = 'rifle'; }
+        else if (GUN_MG_GLB) { glb = GUN_MG_GLB; mode = 'mg'; }
+
+        if (glb) {
+          const mat = new THREE.MeshStandardMaterial({
+            map: glb.tex,
+            emissiveMap: glb.tex,
+            color: 0xffffff,
+            emissive: col,
+            emissiveIntensity: 0.14,
+            roughness: 0.36,
+            metalness: 0.65,
+            side: THREE.DoubleSide
+          });
+          const mesh = new THREE.Mesh(glb.geo, mat);
+          if (mode === 'pistol') {
+            // gun_pistol.glb has barrel along -X and grip at +X,-Y -> rotate -90 deg around Y so barrel points forward (-Z) away from camera!
+            mesh.rotation.y = -Math.PI / 2;
+            mesh.scale.setScalar(0.54);
+            mesh.position.set(0.01, -0.02, -0.24);
+          } else if (mode === 'rifle') {
+            // gun_rifle.glb has barrel along -Z and stock/grip at +Z,-Y -> aligned with -Z!
+            mesh.rotation.y = 0;
+            mesh.scale.setScalar(0.84);
+            mesh.position.set(0.01, -0.01, -0.21);
+          } else {
+            // gun_machinegun.glb has multi-barrel muzzle at +Z and stock/grip at -Z -> rotate 180 deg around Y so muzzle points forward (-Z)
+            mesh.rotation.y = Math.PI;
+            mesh.scale.setScalar(0.68);
+            mesh.position.set(0.01, -0.015, -0.26);
+          }
+          weaponGlbHolder.add(mesh);
+        }
+      }
+      lastRenderedGunAmmo = -1; // Force holographic ammo screen refresh
+      updateWeaponAmmoDisplay();
     }
 
     // ---------- 3D Particle System ----------
@@ -4835,7 +5314,10 @@
             (KING_GLB && o.geometry === KING_GLB.geo) ||
             (FOUNTAIN_GLB && o.geometry === FOUNTAIN_GLB.geo) ||
             (STAIR_STATUE_GLB && o.geometry === STAIR_STATUE_GLB.geo) ||
-            (LADDER_CROWN_GLB && o.geometry === LADDER_CROWN_GLB.geo);
+            (LADDER_CROWN_GLB && o.geometry === LADDER_CROWN_GLB.geo) ||
+            (GUN_PISTOL_GLB && o.geometry === GUN_PISTOL_GLB.geo) ||
+            (GUN_RIFLE_GLB && o.geometry === GUN_RIFLE_GLB.geo) ||
+            (GUN_MG_GLB && o.geometry === GUN_MG_GLB.geo);
           if (o.geometry && !isSharedGeo) o.geometry.dispose();
           if (o.material && o.material.map && !sharedTexSet.has(o.material.map)) {
             o.material.map.dispose();
@@ -5269,12 +5751,14 @@
         if (act === 'menu')         { saveGame(); showTitleScreen(); return; }
         // pause-menu: save & return to main menu
         if (act === 'resume')       { menuState = null; safePointerLock(); return; }
+        if (act === 'relicclose')   { closeRelicModal(); return; }
         if (act === 'quitrun')      { saveGame(); active = false; showTitleScreen(); return; }
         // confirm dialog
         if (act === 'confirmyes')   { const f = confirmYes; confirmYes = confirmNo = null; if (f) f(); return; }
         if (act === 'confirmno')    { const f = confirmNo;  confirmYes = confirmNo = null; if (f) f(); return; }
 
         // background clicks depend on which screen we're on
+        if (menuState === 'relic') return;         // relic discovery dialog: button only
         if (menuState === 'settings') return;      // settings modal: interactive controls only
         if (menuState === 'gallery') return;       // gallery catalog modal: buttons only
         if (menuState === 'confirm') return;       // confirm dialog: buttons only
@@ -5293,18 +5777,20 @@
           // win/lose/outro screens are owned by doVictory/doGameOver/commitInitials;
           // don't overwrite them here. Only the in-play pause is handled below.
           if (won || gameOver || outro || enteringInitials) return;
-          if (menuState === 'confirm') return;   // don't stomp an open confirm dialog
+          if (menuState === 'confirm' || menuState === 'relic') return;   // don't stomp an open confirm or relic dialog
           showPauseScreen();
         }
       });
       document.addEventListener('mousemove', (e) => {
         if (!document.pointerLockElement) return;
+        if (Math.abs(e.movementX) > 1 || Math.abs(e.movementY) > 1) setControllerActive(false);
         const sens = 0.0025 * (settings.lookSens || 1.0);
         yaw -= e.movementX * sens;
         pitch += (settings.invertY ? 1 : -1) * e.movementY * sens;
         pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
       });
       document.addEventListener('mousedown', (e) => {
+        if (e.isTrusted) setControllerActive(false);
         if (e.button === 0 && document.pointerLockElement) {
           // Clicking directly on an unviewed portrait counts it as viewed (without wasting ammo if no enemy is right in front)
           const pHit = findAimedPainting(4.6);
@@ -5334,6 +5820,7 @@
       // instead of clobbering the keyboard. Other keys pass through directly.
       const shadow = { w: '_kw', a: '_ka', s: '_ks', d: '_kd', shift: '_kshift' };
       document.addEventListener('keydown', (e) => {
+        setControllerActive(false);
         const k = e.key.toLowerCase();
         // initials entry captures everything first (Arcade 3-slot spinner + direct typing)
         if (enteringInitials) {
@@ -5363,6 +5850,14 @@
           if (k === 'escape') { closeShop(); return; }
           const n = parseInt(k, 10);
           if (!isNaN(n) && n >= 1) buyItem(n - 1);
+          return;
+        }
+        // Relic discovery modal keyboard shortcuts (Enter, Space, Escape)
+        if (!active && menuState === 'relic') {
+          if (k === 'enter' || k === ' ' || k === 'escape') {
+            closeRelicModal();
+            e.preventDefault();
+          }
           return;
         }
         // Art Catalog keyboard shortcuts (Left/Right arrows, A/D, PageUp/PageDown, Esc/Backspace)
@@ -5415,6 +5910,39 @@
       const rtEl = document.getElementById('relicsTotal');
       if (rEl) rEl.textContent = relics.filter(r => r.collected).length;
       if (rtEl) rtEl.textContent = relics.length || FLOORS;
+      const rbWrap = document.getElementById('hudRelicBuffs');
+      if (rbWrap) {
+        const activeChips = [];
+        if (hasMonocle) {
+          activeChips.push(
+            '<div class="relic-buff-chip monocle" title="Curator\'s Monocle: Reveals unviewed art &amp; relics in adjacent rooms and extends portrait admire reach">' +
+              '<span class="relic-buff-ic"><svg><use href="#ico-relic-monocle"/></svg></span>' +
+              '<div class="relic-buff-meta"><span class="relic-buff-name">Curator\'s Monocle</span><span class="relic-buff-desc">Adjacent Art Radar &bull; +Reach</span></div>' +
+            '</div>'
+          );
+        }
+        if (hasMagnet) {
+          activeChips.push(
+            '<div class="relic-buff-chip magnet" title="Aether Magnet: Magnetically pulls nearby gold coins, hearts, and ammo crates to you">' +
+              '<span class="relic-buff-ic"><svg><use href="#ico-relic-magnet"/></svg></span>' +
+              '<div class="relic-buff-meta"><span class="relic-buff-name">Aether Magnet</span><span class="relic-buff-desc">Auto-Pulls Gold, Hearts &amp; Ammo</span></div>' +
+            '</div>'
+          );
+        }
+        if (hasWard) {
+          const wardState = wardActive
+            ? '<span style="color:var(--mint)">Shield Ready (1 Hit)</span>'
+            : '<span style="color:rgba(220,226,250,0.5)">Recharges Next Floor</span>';
+          activeChips.push(
+            '<div class="relic-buff-chip ward" title="Sacred Aegis Ward: Regenerating shield that absorbs 1 hit per floor">' +
+              '<span class="relic-buff-ic"><svg><use href="#ico-shield-ward"/></svg></span>' +
+              `<div class="relic-buff-meta"><span class="relic-buff-name">Sacred Aegis Ward</span><span class="relic-buff-desc">${wardState}</span></div>` +
+            '</div>'
+          );
+        }
+        rbWrap.innerHTML = activeChips.join('');
+        rbWrap.classList.toggle('has-buffs', activeChips.length > 0);
+      }
       const dPill = document.getElementById('deathsPill');
       const dVal = document.getElementById('deathsVal');
       if (dPill && dVal) {
@@ -5432,6 +5960,7 @@
         '<svg class="heart-svg full"><use href="#ico-heart-full"/></svg>'.repeat(fullH) +
         '<svg class="heart-svg empty"><use href="#ico-heart-empty"/></svg>'.repeat(emptyH) +
         wardHTML;
+      updateWeaponAmmoDisplay();
     }
 
     function showMessage(text) {
@@ -5821,6 +6350,10 @@
         const noBtn = ov.querySelector('[data-act="confirmno"]');
         if (noBtn) { noBtn.click(); return true; }
       }
+      if (menuState === 'relic') {
+        closeRelicModal();
+        return true;
+      }
       if (menuState === 'pause') {
         const resBtn = ov.querySelector('[data-act="resume"]');
         if (resBtn) { resBtn.click(); return true; }
@@ -5849,6 +6382,21 @@
       if (gp) {
         const btn = (i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5));
         const rtPressed = !!(gp.buttons[7] && (gp.buttons[7].pressed || gp.buttons[7].value > 0.35));
+        let anyBtnOrAxis = rtPressed;
+        if (!anyBtnOrAxis) {
+          for (let i = 0; i < gp.buttons.length; i++) {
+            if (gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.35)) { anyBtnOrAxis = true; break; }
+          }
+        }
+        if (!anyBtnOrAxis && gp.axes) {
+          for (let i = 0; i < 4; i++) {
+            if (Math.abs(gp.axes[i] || 0) > STICK_DEADZONE) { anyBtnOrAxis = true; break; }
+          }
+        }
+        if (anyBtnOrAxis || !padSeenOnce) {
+          padSeenOnce = true;
+          setControllerActive(true);
+        }
 
         // Initials entry: Arcade 3-slot letter spinner!
         // D-Pad Up/Down OR Left/Right Stick Up/Down cycles active slot's letter (A-Z, 0-9).
@@ -5933,7 +6481,7 @@
           if (btn(1)  && !prevPadButtons[1])  triggerUiBack();
           if (btn(9)  && !prevPadButtons[9]) {
             if (shopOpen) closeShop();
-            else if (menuState === 'pause') triggerUiBack();
+            else if (menuState === 'pause' || menuState === 'relic') triggerUiBack();
           }
           for (let i = 0; i < 16; i++) prevPadButtons[i] = btn(i);
           prevXButton = btn(0); prevRTButton = rtPressed;
@@ -6173,6 +6721,15 @@
         if (weaponMuzzleLight && weaponMuzzleLight.intensity > 0) {
           weaponMuzzleLight.intensity = Math.max(0, weaponMuzzleLight.intensity - 0.45 * dt);
         }
+        if (weaponRotorGroup && weaponRotorGroup.visible) {
+          const spinRate = (weaponRecoil > 0.05 || (hasAuto && (mouseHeld || padShootHeld))) ? 0.36 : 0.025;
+          rotorAngle += spinRate * dt;
+          weaponRotorGroup.rotation.z = rotorAngle;
+        }
+        if (weaponChargeCoilGroup) {
+          const pulse = 1.15 + 0.35 * Math.sin(now * 0.007) + weaponRecoil * 0.9;
+          if (weaponCoreMat) weaponCoreMat.emissiveIntensity = pulse;
+        }
         weaponGroup.position.set(
           0.28 + Math.sin(walkBob * 0.5) * 0.012,
           -0.24 + Math.abs(Math.cos(walkBob)) * 0.014 - weaponRecoil * 0.02,
@@ -6340,9 +6897,16 @@
           }
         }
       }
-      document.getElementById('cleanse').style.display = showCleanse ? 'block' : 'none';
+      const cleanseEl = document.getElementById('cleanse');
+      if (showCleanse) {
+        cleanseEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-cursed"/></svg>' +
+          (controllerActive ? 'Press X to cleanse the cursed painting' : 'Right-click to cleanse the cursed painting');
+        cleanseEl.style.display = 'block';
+      } else {
+        cleanseEl.style.display = 'none';
+      }
 
-      // fountain -> show a prompt when near; player right-clicks to enter
+      // fountain -> show a prompt when near; player right-clicks or presses X to enter
       nearFountain = null;
       if (active && !shopOpen) {
         for (const f of fountains) {
@@ -6355,13 +6919,21 @@
           if (near) { nearFountain = f; break; }
         }
       }
-      document.getElementById('fountainPrompt').style.display = nearFountain ? 'block' : 'none';
+      const fountainPromptEl = document.getElementById('fountainPrompt');
+      if (nearFountain) {
+        fountainPromptEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-fountain"/></svg>' +
+          (controllerActive ? 'Press X to enter the Fountain' : 'Right-click to enter the Fountain');
+        fountainPromptEl.style.display = 'block';
+      } else {
+        fountainPromptEl.style.display = 'none';
+      }
       const viewPromptEl = document.getElementById('viewPrompt');
       if (viewPromptEl) {
         if (active && !nearFountain && !showCleanse && !shopOpen) {
           const aimed = findAimedPainting(4.6);
           if (aimed && !viewedArtIds.has(aimed.artIndex)) {
-            viewPromptEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-art"/></svg>Click portrait #' + (aimed.artIndex + 1) + ' to admire (' + viewedArtIds.size + '/' + WALL_ART_FILES.length + ')';
+            const viewAct = controllerActive ? 'Press X or RT on' : 'Click or Right-click';
+            viewPromptEl.innerHTML = '<svg class="prompt-svg"><use href="#ico-art"/></svg>' + viewAct + ' portrait #' + (aimed.artIndex + 1) + ' to admire (' + viewedArtIds.size + '/' + WALL_ART_FILES.length + ')';
             viewPromptEl.style.display = 'block';
           } else {
             viewPromptEl.style.display = 'none';
@@ -6973,7 +7545,7 @@
           `<button type="button" class="gp-mode-pill${isNm ? ' nightmare' : ''}" data-act="togglemode">` +
             (isNm
               ? '&#9760; Mode: Nightmare Exhibition (1.5&times; Score &bull; Fiercer Wraiths)'
-              : '&#9876; Mode: Standard Exhibition (Click for Nightmare 1.5&times;)') +
+              : `&#9876; Mode: Standard Exhibition (${controllerActive ? 'Press A' : 'Click'} for Nightmare 1.5&times;)`) +
           '</button>' +
         '</div>' +
         '<div>' + topScoreHTML() + '</div>' +
@@ -7277,9 +7849,9 @@
           '<div class="help-p">Spectral wraiths phase through stone walls &mdash; <span class="hot">you don&rsquo;t</span>. ' +
           'Explore three procedural floors, arm up at the Mystic Fountains, and banish all 24 wraiths to awaken the <span class="hot">Ghost King</span> and survive his Phase II <b>Royal Wrath</b>.</div>' +
           '<div class="help-grid">' +
-          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Gold &amp; Mystic Fountains:</b> Gather pirate-skull gold and right-click (or press <b>X</b>) at a floor&rsquo;s Fountain to consecrate the <b>Rifle, Autofire, Tri-Spread, Piercing Shot &amp; Spirit Dash</b>.</div></div>' +
+          `<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Gold &amp; Mystic Fountains:</b> Gather pirate-skull gold and ${controllerActive ? 'press <b>X</b>' : 'right-click (or press <b>X</b>)'} at a floor&rsquo;s Fountain to consecrate the <b>Rifle, Autofire, Tri-Spread, Piercing Shot &amp; Spirit Dash</b>.</div></div>` +
           '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9733;</span><div><b>Sacred Gallery Relics:</b> One secret dead-end room per floor holds a relic pedestal &mdash; the <b>Curator&rsquo;s Monocle</b> (Floor I), <b>Aether Magnet</b> (Floor II), and <b>Sacred Aegis Ward</b> (Floor III).</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed Paintings:</b> Smoldering frames hang one per floor. Right-click up close to cleanse them for a rich coin bounty.</div></div>' +
+          `<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed Paintings:</b> Smoldering frames hang one per floor. ${controllerActive ? 'Press <b>X</b>' : 'Right-click (or press <b>X</b>)'} up close to cleanse them for a rich coin bounty.</div></div>` +
           '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9760;</span><div><b>3 Wraith Archetypes:</b> <b style="color:var(--cyan)">Stalkers</b> (balanced patrol), <b style="color:#ff9e3d">Poltergeist Dashers</b> (fast flame lunge + bonus gold), and <b style="color:var(--violet)">Void Wardens</b> (armored sentinels weak to Pierce or close-range shots).</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div><b>Vitality &amp; Ammo:</b> Ammo crates are scarce until upgraded; banished wraiths drop hearts to keep your patrol alive.</div></div>' +
           '</div>';
@@ -7287,7 +7859,7 @@
         body =
           '<div class="help-h">Your HUD &amp; Blueprint</div>' +
           '<div class="help-grid">' +
-          '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9673;</span><div><b>Floor &amp; Blueprint Minimap</b> &mdash; tracks explored rooms, doorways, stairs/ladders, fountains, relics, and unviewed art (press <b>M</b> or <b>View</b> to expand).</div></div>' +
+          `<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9673;</span><div><b>Floor &amp; Blueprint Minimap</b> &mdash; tracks explored rooms, doorways, stairs/ladders, fountains, relics, and unviewed art (press <b>${controllerActive ? 'View' : 'M / View'}</b> to expand).</div></div>` +
           '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Gold, Cursed &amp; Relics</b> &mdash; your spoils, cleansed paintings (3), and discovered Sacred Relics (3).</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--violet)">&#9760;</span><div><b>Wraiths &amp; Portraits</b> &mdash; wraiths banished (24 wakes the King) and paintings admired this run.</div></div>' +
           '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div><b>Vitality &amp; Ammo</b> &mdash; your ruby hearts (plus Aegis Ward shield) and equipped weapon charges.</div></div>' +
@@ -7316,7 +7888,7 @@
           '<div class="help-h">The Art on These Walls</div>' +
           '<div class="help-p">Every painting you pass &mdash; and every cursed canvas you cleanse &mdash; is a real hand-drawn original by artist <span class="hot">D. Butler</span>. One hundred of her doodles and mandalas hang throughout the three floors of the gallery; none were AI-generated, and each was drawn by hand.</div>' +
           '<div class="help-p">Her work is surreal and meditative, folding geometry into nature: tessellated petals, spiraling mandalas, and organic forms that resolve into intricate pattern the longer you look.</div>' +
-          '<div class="help-p">Click or right-click any portrait during your patrol to admire it: you&rsquo;ll earn <b>Curator&rsquo;s Bounty</b> gold, ammo, and vitality milestones at <b>10, 25, 50, 75, and 100</b> works viewed, and every painting you discover is permanently unlocked for full-screen inspection in your <b>Haunted Art Catalog</b>.</div>';
+          `<div class="help-p">${controllerActive ? 'Press <b>X</b> or <b>RT</b> on' : 'Click or right-click (or press <b>X</b> / <b>RT</b> on)'} any portrait during your patrol to admire it: you&rsquo;ll earn <b>Curator&rsquo;s Bounty</b> gold, ammo, and vitality milestones at <b>10, 25, 50, 75, and 100</b> works viewed, and every painting you discover is permanently unlocked for full-screen inspection in your <b>Haunted Art Catalog</b>.</div>`;
       }
       overlay.innerHTML =
         '<div class="panel help-panel">' +
@@ -7409,7 +7981,19 @@
       buildAmmoGeo();
       loadSamples();
 
-      // Load our AI-generated 3D textured GLB models (Patrol Ghost, Ghost King, Fountain)
+      // Load our AI-generated 3D textured GLB models (Patrol Ghost, Ghost King, Fountain, and 3 Ghost Guns)
+      loadGlbModel('textures/gun_pistol.glb', (glb) => {
+        GUN_PISTOL_GLB = glb;
+        refreshWeaponViewmodel();
+      });
+      loadGlbModel('textures/gun_rifle.glb', (glb) => {
+        GUN_RIFLE_GLB = glb;
+        refreshWeaponViewmodel();
+      });
+      loadGlbModel('textures/gun_machinegun.glb', (glb) => {
+        GUN_MG_GLB = glb;
+        refreshWeaponViewmodel();
+      });
       loadGlbModel('textures/fountain.glb', (glb) => {
         FOUNTAIN_GLB = glb;
         for (const f of fountains) populateFountainGroup(f);
