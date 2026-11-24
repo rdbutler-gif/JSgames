@@ -857,16 +857,45 @@
     }
     .vic-stat-val svg { width: 16px; height: 16px; }
 
-    /* ---- initials entry ---- */
-    .initrow { margin: 10px 0 6px; }
+    /* ---- initials entry (arcade 3-slot spinner with controller & mouse arrows) ---- */
+    .initrow {
+      display: flex; align-items: center; justify-content: center; gap: 16px;
+      margin: 10px 0 8px;
+    }
+    .initslot {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    .initarr {
+      width: 48px; height: 24px; border-radius: 7px; cursor: pointer;
+      background: rgba(18, 16, 36, 0.88);
+      border: 1px solid rgba(127, 233, 255, 0.28);
+      color: var(--cyan); font-size: 11px; line-height: 1;
+      display: grid; place-items: center; padding: 0;
+      transition: all 0.12s ease;
+    }
+    .initarr:hover {
+      background: rgba(127, 233, 255, 0.22);
+      border-color: var(--cyan); color: #fff;
+    }
+    .initslot.active .initarr {
+      border-color: rgba(240, 196, 108, 0.65);
+      color: var(--gold);
+      background: rgba(240, 196, 108, 0.14);
+    }
     .initbox {
-      display: inline-grid; place-items: center; width: 54px; height: 64px;
-      margin: 0 7px; font-family: var(--font-display); font-weight: 800; font-size: 36px; color: var(--cyan);
-      border-radius: 12px;
+      display: inline-grid; place-items: center; width: 58px; height: 66px;
+      font-family: var(--font-display); font-weight: 800; font-size: 36px; color: var(--cyan);
+      border-radius: 12px; cursor: pointer;
       background: linear-gradient(180deg, rgba(22, 20, 42, 0.92), rgba(10, 9, 22, 0.96));
-      border: 1.5px solid rgba(127, 233, 255, 0.38);
+      border: 1.5px solid rgba(127, 233, 255, 0.35);
       box-shadow: inset 0 0 14px rgba(127,233,255,0.12), 0 4px 14px rgba(0,0,0,0.6);
-      vertical-align: middle;
+      transition: all 0.14s ease;
+    }
+    .initslot.active .initbox {
+      color: var(--gold);
+      border-color: var(--gold);
+      box-shadow: 0 0 18px rgba(240, 196, 108, 0.5), inset 0 0 14px rgba(240, 196, 108, 0.24);
+      transform: scale(1.04);
     }
     .confirm {
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -1538,7 +1567,9 @@
     const SCREEN_CENTER = new THREE.Vector2(0, 0);
     let highScores = [];
     let victoryHTML = '';
-    let enteringInitials = false, initials = '', pendingRun = null;
+    let enteringInitials = false, initials = 'AAA', initialsCursor = 0, pendingRun = null;
+    let prevStickVert = 0, prevStickHoriz = 0, initRepeatTimer = 0;
+    const INITIAL_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let outro = false;   // non-interactive pause after win/lose before the result screen
     let menuState = 'title';   // 'title' | 'help' | 'result' | null (in-play/pause)
     let helpPage = 0;
@@ -4858,12 +4889,24 @@
       const shadow = { w: '_kw', a: '_ka', s: '_ks', d: '_kd', shift: '_kshift' };
       document.addEventListener('keydown', (e) => {
         const k = e.key.toLowerCase();
-        // initials entry captures everything first
+        // initials entry captures everything first (Arcade 3-slot spinner + direct typing)
         if (enteringInitials) {
-          if (e.key === 'Enter') { if (initials.length === 3) commitInitials(); return; }
-          if (e.key === 'Backspace') { initials = initials.slice(0, -1); renderInitialsScreen(); e.preventDefault(); return; }
-          if (/^[a-z0-9]$/.test(k) && initials.length < 3) {
-            initials += k.toUpperCase();
+          if (e.key === 'Enter') { commitInitials(); e.preventDefault(); return; }
+          if (e.key === 'ArrowUp') { cycleInitialChar(initialsCursor, 1); e.preventDefault(); return; }
+          if (e.key === 'ArrowDown') { cycleInitialChar(initialsCursor, -1); e.preventDefault(); return; }
+          if (e.key === 'ArrowLeft') { moveInitialCursor(-1); e.preventDefault(); return; }
+          if (e.key === 'ArrowRight') { moveInitialCursor(1); e.preventDefault(); return; }
+          if (e.key === 'Backspace') {
+            moveInitialCursor(-1);
+            e.preventDefault();
+            return;
+          }
+          if (/^[a-z0-9]$/.test(k)) {
+            const chars = (initials || 'AAA').padEnd(3, 'A').slice(0, 3).split('');
+            chars[initialsCursor] = k.toUpperCase();
+            initials = chars.join('');
+            if (initialsCursor < 2) initialsCursor++;
+            if (settings.sfxVol > 0.01) sfx(620, 0.03, 'sine', 0.05, 40);
             renderInitialsScreen();
           }
           e.preventDefault();
@@ -5051,9 +5094,29 @@
       setTimeout(() => {
         outro = false;
         enteringInitials = true;
-        initials = '';
+        initials = (initials && initials.length === 3) ? initials : 'AAA';
+        initialsCursor = 0;
         renderInitialsScreen();
       }, 2500);
+    }
+
+    function cycleInitialChar(slotIdx, delta) {
+      const idx = Math.max(0, Math.min(2, slotIdx));
+      const chars = (initials || 'AAA').padEnd(3, 'A').slice(0, 3).split('');
+      const curPos = Math.max(0, INITIAL_CHARS.indexOf(chars[idx]));
+      const nextPos = (curPos + delta + INITIAL_CHARS.length) % INITIAL_CHARS.length;
+      chars[idx] = INITIAL_CHARS[nextPos];
+      initials = chars.join('');
+      initialsCursor = idx;
+      if (settings.sfxVol > 0.01) sfx(delta > 0 ? 640 : 520, 0.03, 'sine', 0.05, 35);
+      triggerRumble(22, 0.18, 0.08);
+      renderInitialsScreen();
+    }
+
+    function moveInitialCursor(delta) {
+      initialsCursor = Math.max(0, Math.min(2, initialsCursor + delta));
+      if (settings.sfxVol > 0.01) sfx(580, 0.025, 'sine', 0.04, 25);
+      renderInitialsScreen();
     }
 
     function victoryStatsGridHTML(r) {
@@ -5070,12 +5133,19 @@
 
     function renderInitialsScreen() {
       const r = pendingRun;
+      initials = (initials || 'AAA').padEnd(3, 'A').slice(0, 3);
+      initialsCursor = Math.max(0, Math.min(2, initialsCursor));
       const boxes = [0, 1, 2].map(i => {
-        const ch = initials[i] || '_';
-        const cur = (i === initials.length) ? ' style="color:var(--gold);border-color:var(--gold);box-shadow:0 0 16px rgba(240,196,108,0.45),inset 0 0 12px rgba(240,196,108,0.22)"' : '';
-        return `<span class="initbox"${cur}>${ch}</span>`;
+        const ch = initials[i] || 'A';
+        const activeCls = (i === initialsCursor) ? ' active' : '';
+        return (
+          `<div class="initslot${activeCls}" data-slot="${i}">` +
+            `<button type="button" class="initarr" data-init-up="${i}" title="Next Letter">&#9650;</button>` +
+            `<span class="initbox" data-init-box="${i}">${ch}</span>` +
+            `<button type="button" class="initarr" data-init-dn="${i}" title="Previous Letter">&#9660;</button>` +
+          `</div>`
+        );
       }).join('');
-      const ready = initials.length === 3;
       victoryHTML =
         '<div class="panel">' +
         gothicCornersHTML() +
@@ -5084,16 +5154,35 @@
         '<div class="gp-big win">Gallery Cleared!</div>' +
         `<div class="gp-score">SCORE ${r.score}</div>` +
         victoryStatsGridHTML(r) +
-        '<div style="margin:10px 0 6px;font-family:var(--font-display);font-weight:700;color:var(--gold);font-size:15px;letter-spacing:1.5px;text-transform:uppercase">Inscribe Your Curator Initials</div>' +
+        '<div style="margin:8px 0 4px;font-family:var(--font-display);font-weight:700;color:var(--gold);font-size:15px;letter-spacing:1.5px;text-transform:uppercase">Inscribe Your Curator Initials</div>' +
         `<div class="initrow">${boxes}</div>` +
-        `<button class="confirm${ready ? '' : ' off'}" data-confirm="1"${ready ? '' : ' disabled'}>&#10003; Seal Record</button>` +
-        '<div class="gp-hint">Type 3 letters (or D-Pad Up/Down + A) &bull; Backspace / B to fix &bull; Enter to seal</div>' +
+        `<button class="confirm" data-confirm="1">&#10003; Seal Record (A / Start / Enter)</button>` +
+        '<div class="gp-hint">D-Pad / Stick &uarr;&darr; Spin Letter &bull; &larr;&rarr; / A / B Move Slot &bull; Type or Click Arrows</div>' +
         '</div>';
       const overlay = document.getElementById('overlay');
       overlay.style.display = 'flex';
       overlay.innerHTML = victoryHTML;
+      overlay.querySelectorAll('[data-init-up]').forEach(el => {
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          cycleInitialChar(parseInt(el.getAttribute('data-init-up'), 10), 1);
+        });
+      });
+      overlay.querySelectorAll('[data-init-dn]').forEach(el => {
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          cycleInitialChar(parseInt(el.getAttribute('data-init-dn'), 10), -1);
+        });
+      });
+      overlay.querySelectorAll('[data-init-box]').forEach(el => {
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          initialsCursor = parseInt(el.getAttribute('data-init-box'), 10) || 0;
+          renderInitialsScreen();
+        });
+      });
       const btn = overlay.querySelector('.confirm');
-      if (btn && ready) btn.addEventListener('click', () => commitInitials());
+      if (btn) btn.addEventListener('click', (ev) => { ev.stopPropagation(); commitInitials(); });
     }
 
     function commitInitials() {
@@ -5304,36 +5393,56 @@
         const btn = (i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5));
         const rtPressed = !!(gp.buttons[7] && (gp.buttons[7].pressed || gp.buttons[7].value > 0.35));
 
-        // Initials entry: D-pad up/down cycles letter, A (0) locks/confirms, B (1) backspaces, Y (3) confirms
+        // Initials entry: Arcade 3-slot letter spinner!
+        // D-Pad Up/Down OR Left/Right Stick Up/Down cycles active slot's letter (A-Z, 0-9).
+        // D-Pad Left/Right OR Stick Left/Right OR LB/RB moves between slots 0..2.
+        // A (0) advances to next slot (or seals record on slot 3); B (1) steps back a slot; Start (9) / Y (3) seals record at any time.
         if (enteringInitials) {
-          const up = btn(12), down = btn(13), aBtn = btn(0), bBtn = btn(1), yBtn = btn(3);
-          if ((up && !prevPadButtons[12]) || (down && !prevPadButtons[13])) {
-            const pos = Math.min(initials.length, 2);
-            let code = (initials.charCodeAt(pos) || 64);
-            if (initials.length <= pos) {
-              code = up ? 65 : 90;
-              initials = (initials.slice(0, pos) + String.fromCharCode(code));
-            } else {
-              code = up ? (code === 90 ? 65 : code + 1) : (code === 65 ? 90 : code - 1);
-              initials = (initials.slice(0, pos) + String.fromCharCode(code)).slice(0, 3);
+          const stickY = (Math.abs(gp.axes[1] || 0) > Math.abs(gp.axes[3] || 0)) ? (gp.axes[1] || 0) : (gp.axes[3] || 0);
+          const stickX = (Math.abs(gp.axes[0] || 0) > Math.abs(gp.axes[2] || 0)) ? (gp.axes[0] || 0) : (gp.axes[2] || 0);
+          const stickUp = stickY < -0.52, stickDown = stickY > 0.52;
+          const stickLeft = stickX < -0.52, stickRight = stickX > 0.52;
+          const upHeld = btn(12) || stickUp;
+          const downHeld = btn(13) || stickDown;
+
+          const upEdge = (btn(12) && !prevPadButtons[12]) || (stickUp && prevStickVert >= -0.52);
+          const downEdge = (btn(13) && !prevPadButtons[13]) || (stickDown && prevStickVert <= 0.52);
+          const leftEdge = (btn(14) && !prevPadButtons[14]) || (btn(4) && !prevPadButtons[4]) || (stickLeft && prevStickHoriz >= -0.52);
+          const rightEdge = (btn(15) && !prevPadButtons[15]) || (btn(5) && !prevPadButtons[5]) || (stickRight && prevStickHoriz <= 0.52);
+          const aEdge = btn(0) && !prevPadButtons[0];
+          const bEdge = btn(1) && !prevPadButtons[1];
+          const yOrStartEdge = (btn(3) && !prevPadButtons[3]) || (btn(9) && !prevPadButtons[9]);
+
+          if (upEdge) { cycleInitialChar(initialsCursor, 1); initRepeatTimer = 22; }
+          else if (downEdge) { cycleInitialChar(initialsCursor, -1); initRepeatTimer = 22; }
+          else if (upHeld || downHeld) {
+            initRepeatTimer -= dt;
+            if (initRepeatTimer <= 0) {
+              cycleInitialChar(initialsCursor, upHeld ? 1 : -1);
+              initRepeatTimer = 7;
             }
-            renderInitialsScreen();
+          } else {
+            initRepeatTimer = 0;
           }
-          if (aBtn && !prevPadButtons[0]) {
-            if (initials.length < 3) {
-              initials = initials.padEnd(initials.length + 1, 'A');
-              renderInitialsScreen();
-            } else {
-              commitInitials();
-            }
+
+          if (leftEdge) moveInitialCursor(-1);
+          else if (rightEdge) moveInitialCursor(1);
+
+          if (aEdge) {
+            if (initialsCursor < 2) moveInitialCursor(1);
+            else commitInitials();
           }
-          if (bBtn && !prevPadButtons[1] && initials.length > 0) {
-            initials = initials.slice(0, -1);
-            renderInitialsScreen();
+          if (bEdge && initialsCursor > 0) {
+            moveInitialCursor(-1);
           }
-          if (yBtn && !prevPadButtons[3] && initials.length === 3) commitInitials();
+          if (yOrStartEdge) {
+            commitInitials();
+          }
+
+          prevStickVert = stickY;
+          prevStickHoriz = stickX;
           for (let i = 0; i < 16; i++) prevPadButtons[i] = btn(i);
-          prevXButton = aBtn; prevRTButton = rtPressed;
+          prevXButton = btn(0); prevRTButton = rtPressed;
           keys['w'] = w; keys['s'] = s; keys['a'] = a; keys['d'] = d;
           return;
         }
