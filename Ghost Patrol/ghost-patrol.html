@@ -6930,11 +6930,11 @@
     // ---------- Menu screens ----------
     function topScoreHTML() {
       if (!highScores.length) {
-        return '<div class="gp-trophy">&#9733; UNCLAIMED GALLERY RECORD &mdash; BE THE FIRST TO SURVIVE</div>';
+        return '<div class="gp-trophy" style="white-space:nowrap">&#9733; UNCLAIMED GALLERY RECORD &mdash; BE THE FIRST TO SURVIVE</div>';
       }
       const s = highScores[0];
       const mm = Math.floor(s.secs / 60), ss = String(s.secs % 60).padStart(2, '0');
-      return '<div class="gp-trophy">' +
+      return '<div class="gp-trophy" style="white-space:nowrap">' +
         `&#128081; CHAMPION &nbsp;<span style="color:#fff">${s.name || 'AAA'}</span> &bull; ` +
         `<span style="color:var(--mint)">${s.score} PTS</span> &bull; ` +
         `<span style="color:#cdd3f0">${mm}:${ss}</span></div>`;
@@ -6947,27 +6947,13 @@
       overlay.style.display = 'flex';
       const isNm = !!settings.nightmare;
       overlay.innerHTML =
-        '<div class="panel">' +
+        '<div class="panel" style="max-width:580px">' +
         gothicCornersHTML() +
-        '<div class="gp-eyebrow">&#10022; Midnight Exhibition &bull; Three Floors of Terror &#10022;</div>' +
+        '<div class="gp-eyebrow" style="letter-spacing:3.2px;white-space:nowrap">&#10022; Midnight Exhibition &bull; Three Floors of Terror &#10022;</div>' +
         gothicCrestHTML() +
         '<div class="gp-title">GHOST<span class="patrol">PATROL</span></div>' +
         '<div class="gp-divider">&#9670;</div>' +
-        '<div class="gp-sub">Spectral wraiths phase through stone walls. <span class="hot">You don&rsquo;t.</span><br>' +
-        'Cleanse the cursed canvases, arm up at the mystic fountains, and banish the <span class="king">Ghost King</span>.</div>' +
-        '<div class="gp-pillars">' +
-        '<div class="gp-pillar"><div class="gp-pillar-h">&#128444; I. The Haunted Gallery</div><p class="gp-pillar-p">Explore 3 procedural floors hung with <b>100 original hand-drawn works</b> by artist <b>D. Butler</b>.</p></div>' +
-        '<div class="gp-pillar"><div class="gp-pillar-h">&#9880; II. Fountains &amp; Relics</div><p class="gp-pillar-p">Gather gold &amp; secret <b>Sacred Relics</b> to unlock the <b>Rifle, Pierce, Monocle &amp; Aegis Ward</b>.</p></div>' +
-        '<div class="gp-pillar"><div class="gp-pillar-h">&#128081; III. The Ghost King</div><p class="gp-pillar-p">Bust all <b>24 patrol wraiths</b> to awaken their royal master and survive his <b>Royal Wrath</b>.</p></div>' +
-        '</div>' +
-        '<div class="gp-keystrip">' +
-        '<span><kbd class="gp-kbd">WASD</kbd> Move</span>' +
-        '<span><kbd class="gp-kbd">&larr;&uarr;&darr;&rarr;</kbd> Look</span>' +
-        '<span><kbd class="gp-kbd">SHIFT</kbd> Sprint</span>' +
-        '<span><kbd class="gp-kbd">SPACE</kbd> Dash</span>' +
-        '<span><kbd class="gp-kbd">L-CLICK</kbd> Fire</span>' +
-        '<span><kbd class="gp-kbd">R-CLICK</kbd> Cleanse / Shop</span>' +
-        '</div>' +
+        '<div class="gp-sub" style="margin-bottom:10px">Explore the cursed gallery, banish 24 spectral wraiths, and survive the <span class="king">Ghost King</span>.</div>' +
         (() => {
           const sv = readSavedGame();
           if (!sv) return '';
@@ -6981,10 +6967,9 @@
             `<span><svg><use href="#ico-ghost"/></svg> Wraiths <b>${sv.ghostsBusted || 0}/${sv.ghostTotal || 24}</b></span>` +
             `<span><svg><use href="#ico-relic"/></svg> Relics <b>${rCount}/${FLOORS}</b></span>` +
             `<span><svg><use href="#ico-art"/></svg> Viewed <b>${vCount}/${WALL_ART_FILES.length}</b></span>` +
-            `<span><svg><use href="#ico-cursed"/></svg> Cleansed <b>${sv.cursedFramed || 0}/${sv.cursedTotal || 3}</b></span>` +
             '</div>';
         })() +
-        '<div class="gp-mode-row">' +
+        '<div class="gp-mode-row" style="margin:8px auto 6px">' +
           `<button type="button" class="gp-mode-pill${isNm ? ' nightmare' : ''}" data-act="togglemode">` +
             (isNm
               ? '&#9760; Mode: Nightmare Exhibition (1.5&times; Score &bull; Fiercer Wraiths)'
@@ -7288,60 +7273,50 @@
       let body;
       if (helpPage === 0) {
         body =
-          '<div class="help-h">How to survive</div>' +
-          '<div class="help-p">You\'re on patrol in a haunted, ever-shifting gallery of three floors. ' +
-          'Explore, arm up, and clear every ghost &mdash; when the last one falls, the <span class="hot">Ghost King</span> awakens and hunts you across floors. Put him down to win.</div>' +
+          '<div class="help-h">Patrol Briefing &amp; Survival</div>' +
+          '<div class="help-p">Spectral wraiths phase through stone walls &mdash; <span class="hot">you don&rsquo;t</span>. ' +
+          'Explore three procedural floors, arm up at the Mystic Fountains, and banish all 24 wraiths to awaken the <span class="hot">Ghost King</span> and survive his Phase II <b>Royal Wrath</b>.</div>' +
           '<div class="help-grid">' +
-          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Coins</b> litter the rooms. Grab them all &mdash; they buy upgrades.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#9880;</span><div><b>Fountains</b> (one per floor) are shops. Walk up and <b>right-click</b> (Square) to enter, then spend coins on health, weapons, and ammo perks. Higher floors sell better gear.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#10022;</span><div><b>Ammo is finite.</b> Boxes only refill a little at first &mdash; upgrade your ammo perks and make every shot count.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed paintings</b> smolder on the walls &mdash; one per floor. Right-click up close to cleanse them for a coin bounty.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9760;</span><div><b>3 Wraith Archetypes:</b> <b style="color:var(--cyan)">Stalkers</b> (classic patrol), <b style="color:#ff9e3d">Poltergeist Dashers</b> (fast flame lunge + bonus gold drops), and <b style="color:var(--violet)">Void Wardens</b> (armored sentinels weak to Pierce or close-range shots).</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div>Busted ghosts sometimes drop <b>hearts</b>. Play aggressive to stay healed.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Gold &amp; Mystic Fountains:</b> Gather pirate-skull gold and right-click (or press <b>X</b>) at a floor&rsquo;s Fountain to consecrate the <b>Rifle, Autofire, Tri-Spread, Piercing Shot &amp; Spirit Dash</b>.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9733;</span><div><b>Sacred Gallery Relics:</b> One secret dead-end room per floor holds a relic pedestal &mdash; the <b>Curator&rsquo;s Monocle</b> (Floor I), <b>Aether Magnet</b> (Floor II), and <b>Sacred Aegis Ward</b> (Floor III).</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9880;</span><div><b>Cursed Paintings:</b> Smoldering frames hang one per floor. Right-click up close to cleanse them for a rich coin bounty.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9760;</span><div><b>3 Wraith Archetypes:</b> <b style="color:var(--cyan)">Stalkers</b> (balanced patrol), <b style="color:#ff9e3d">Poltergeist Dashers</b> (fast flame lunge + bonus gold), and <b style="color:var(--violet)">Void Wardens</b> (armored sentinels weak to Pierce or close-range shots).</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div><b>Vitality &amp; Ammo:</b> Ammo crates are scarce until upgraded; banished wraiths drop hearts to keep your patrol alive.</div></div>' +
           '</div>';
       } else if (helpPage === 1) {
         body =
-          '<div class="help-h">Your HUD</div>' +
+          '<div class="help-h">Your HUD &amp; Blueprint</div>' +
           '<div class="help-grid">' +
-          '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9673;</span><div><b>Floor</b> &mdash; which of the 3 levels you\'re on.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Coins</b> collected / total on the run.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--mint)">&#10022;</span><div><b>Ammo</b> remaining, and your current weapon.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--violet)">&#9760;</span><div><b>Ghosts</b> busted / total. Clear them to wake the King.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9640;</span><div><b>Cursed</b> paintings cleansed / total.</div></div>' +
-          '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div><b>Hearts</b> &mdash; your health. Lose them all and you\'re spooked.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--cyan)">&#9673;</span><div><b>Floor &amp; Blueprint Minimap</b> &mdash; tracks explored rooms, doorways, stairs/ladders, fountains, relics, and unviewed art (press <b>M</b> or <b>View</b> to expand).</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--gold)">&#9679;</span><div><b>Gold, Cursed &amp; Relics</b> &mdash; your spoils, cleansed paintings (3), and discovered Sacred Relics (3).</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--violet)">&#9760;</span><div><b>Wraiths &amp; Portraits</b> &mdash; wraiths banished (24 wakes the King) and paintings admired this run.</div></div>' +
+          '<div class="help-item"><span class="hic" style="color:var(--rose)">&#9829;</span><div><b>Vitality &amp; Ammo</b> &mdash; your ruby hearts (plus Aegis Ward shield) and equipped weapon charges.</div></div>' +
           '</div>' +
-          '<div class="help-h" style="margin-top:14px">Controls</div>' +
+          '<div class="help-h" style="margin-top:12px">Controls</div>' +
           '<div class="help-cols">' +
-          '<div><div class="help-sub">Keyboard &amp; mouse</div>' +
-          '<div class="help-k"><b>WASD</b> move</div>' +
-          '<div class="help-k"><b>Mouse / Arrows</b> pan &amp; tilt camera</div>' +
-          '<div class="help-k"><b>Shift</b> sprint</div>' +
-          '<div class="help-k"><b>Space</b> dash roll</div>' +
-          '<div class="help-k"><b>L-click</b> shoot</div>' +
-          '<div class="help-k"><b>R-click</b> cleanse art / enter fountain</div>' +
-          '<div class="help-k"><b>W</b> climb stairs / ladders</div>' +
-          '<div class="help-k"><b>R</b> new gallery</div></div>' +
+          '<div><div class="help-sub">Keyboard &amp; Mouse</div>' +
+          '<div class="help-k"><b>WASD</b> move &bull; <b>Shift</b> sprint</div>' +
+          '<div class="help-k"><b>Mouse / Arrows</b> look &amp; aim</div>' +
+          '<div class="help-k"><b>Space</b> spirit dash roll</div>' +
+          '<div class="help-k"><b>L-click</b> fire / admire art</div>' +
+          '<div class="help-k"><b>R-click</b> cleanse / shop / view</div>' +
+          '<div class="help-k"><b>W / S</b> climb stairs &amp; ladders</div>' +
+          '<div class="help-k"><b>M</b> expand map &bull; <b>Esc</b> pause</div></div>' +
           '<div><div class="help-sub">Controller</div>' +
-          '<div class="help-k"><b>L stick</b> move</div>' +
-          '<div class="help-k"><b>R stick</b> look (Y invert in Settings)</div>' +
-          '<div class="help-k"><b>LB / L3</b> sprint</div>' +
-          '<div class="help-k"><b>RB</b> dash roll</div>' +
-          '<div class="help-k"><b>RT</b> shoot / admire portrait</div>' +
-          '<div class="help-k"><b>X / Square</b> cleanse / shop / view art</div>' +
-          '<div class="help-k"><b>D-Pad</b> navigate menus &amp; shop</div>' +
-          '<div class="help-k"><b>A / B</b> select / back</div></div>' +
+          '<div class="help-k"><b>L / R Stick</b> move &amp; look</div>' +
+          '<div class="help-k"><b>LB / L3</b> sprint &bull; <b>RB</b> dash</div>' +
+          '<div class="help-k"><b>RT</b> fire / admire portrait</div>' +
+          '<div class="help-k"><b>X / Square</b> cleanse / shop / view</div>' +
+          '<div class="help-k"><b>View</b> expand blueprint map</div>' +
+          '<div class="help-k"><b>D-Pad + A / B</b> menus &amp; shop</div>' +
+          '<div class="help-k"><b>LB / RB</b> flip catalog wings</div></div>' +
           '</div>';
       } else {
         body =
-          '<div class="help-h">The art on these walls</div>' +
-          '<div class="help-p">Every painting you pass &mdash; and every cursed one you cleanse &mdash; is a real hand-drawn original by <span class="hot">D. Butler</span>. One hundred of her doodles and mandalas hang throughout the gallery. None were generated; each was drawn by hand.</div>' +
-          '<div class="help-p">Her work is surreal and meditative, folding geometry into nature: tessellated petals, spiraling mandalas, organic forms that resolve into pattern the longer you look. It\'s a strange and fitting thing to wander past while ghost-busting &mdash; which is exactly why it\'s here.</div>' +
-          '<div class="help-p">D. Butler is a little known local artist. If the gallery catches your eye, the source does far more justice than any game wall can &mdash; her albums are on Facebook:</div>' +
-          '<div style="text-align:center;margin-top:4px">' +
-          '<a href="https://www.facebook.com/shininggoober/photos_albums" target="_blank" rel="noopener" ' +
-          'style="color:var(--cyan);font-family:var(--font-display);font-weight:600;font-size:15px;text-decoration:none;border-bottom:1px solid rgba(127,233,255,0.5);padding-bottom:1px">' +
-          '&#9673; D. Butler&rsquo;s Doodles on Facebook &#8599;</a>' +
-          '</div>';
+          '<div class="help-h">The Art on These Walls</div>' +
+          '<div class="help-p">Every painting you pass &mdash; and every cursed canvas you cleanse &mdash; is a real hand-drawn original by artist <span class="hot">D. Butler</span>. One hundred of her doodles and mandalas hang throughout the three floors of the gallery; none were AI-generated, and each was drawn by hand.</div>' +
+          '<div class="help-p">Her work is surreal and meditative, folding geometry into nature: tessellated petals, spiraling mandalas, and organic forms that resolve into intricate pattern the longer you look.</div>' +
+          '<div class="help-p">Click or right-click any portrait during your patrol to admire it: you&rsquo;ll earn <b>Curator&rsquo;s Bounty</b> gold, ammo, and vitality milestones at <b>10, 25, 50, 75, and 100</b> works viewed, and every painting you discover is permanently unlocked for full-screen inspection in your <b>Haunted Art Catalog</b>.</div>';
       }
       overlay.innerHTML =
         '<div class="panel help-panel">' +
