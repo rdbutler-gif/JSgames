@@ -32,6 +32,8 @@ export function saveProgress(G, ship) {
     heard: [...G.heard],
     lanternDark: !!G.lanternDark,
     air: G.air,
+    lanternLost: !!G.lanternLost,
+    lastLightDown: !!G.lastLightDown,
     scrubbers: G.scrubbers || 0,
     briefed: [...(G.briefed || [])],
     targetIndex: G.targetIndex,

@@ -6,8 +6,10 @@ import { makeFighter, toon } from './fighters.js';
 import { cloneModel, hasModel } from './models.js';
 import { settings } from './settings.js';
 import { sfx } from './audio.js';
+import { createLastLightFight } from './lastlight.js';
 
-const BOUNDS = { x: 62, y: 34 };
+const BOUNDS0 = { x: 62, y: 34 };
+const BOUNDS = { ...BOUNDS0 }; // the Last Light's Quiet shrinks it (phase 3)
 const FORM_Z = -175;
 const CAM_BACK = 40, CAM_UP = 9;
 const FONT = '"Chakra Petch", sans-serif';
@@ -212,7 +214,7 @@ export function createAssault(scene, camera, hooks) {
   const pBolts = Array.from({ length: 70 }, () => { const m = new THREE.Mesh(boltGeo, boltMat); m.visible = false; root.add(m); return { m, vel: new THREE.Vector3(), life: 0 }; });
   const eBoltGeo = new THREE.SphereGeometry(1.7, 10, 8);
   const eBoltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 0.9, 2.6) });
-  const eBolts = Array.from({ length: 90 }, () => {
+  const eBolts = Array.from({ length: 170 }, () => { // the Last Light's walls need many at once
     const m = new THREE.Mesh(eBoltGeo, eBoltMat); m.visible = false;
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, color: new THREE.Color(1.6, 0.25, 0.8), blending: THREE.AdditiveBlending, depthWrite: false }));
     halo.scale.setScalar(5.5); m.add(halo);
@@ -371,6 +373,7 @@ export function createAssault(scene, camera, hooks) {
   }
 
   function damageEnemy(e, dmg, at) {
+    if (e.part) { e.onHit(dmg, at); return; } // a part of the Last Light: its own rules
     e.hp -= dmg;
     e.flash = 1;
     particles.emit(at, 7, { speed: 60, life: 0.3, size: 2.2, colors: [[4, 3.5, 2], [2, 4, 5]], drag: 4 });
@@ -440,8 +443,29 @@ export function createAssault(scene, camera, hooks) {
     return sP.distanceToSquared(c) < r * r;
   }
 
+  // the Last Light (9b): it reaches into the arena through this
+  function fireAt(from, to, speed) {
+    const b = eBolts.find((x) => x.life <= 0);
+    if (!b) return false;
+    b.vel.subVectors(to, from).normalize().multiplyScalar(speed);
+    b.m.position.copy(from); b.m.visible = true; b.life = 7;
+    return true;
+  }
+  const lastLight = createLastLightFight({
+    root, player, S: () => S, spawn, startDive, slotsFor, fireAt, enemyFire, hurtPlayer, flash, particles, sfx,
+    kill: (e) => killEnemy(e),
+    say: (t) => hooks.say(t), line: (id) => (hooks.line ? hooks.line(id) : null),
+    bounds: () => BOUNDS, setBounds: (x, y) => { BOUNDS.x = x; BOUNDS.y = y; },
+    // a target that is part of the flagship: bolts and aim assist treat it like an enemy, its owner decides the rest
+    part: ({ pos, radius, hp, onHit }) => {
+      const e = { part: true, kind: 'part', state: 'part', pos, radius, hp, maxHp: hp, alive: true, flash: 0, onHit, vel: new THREE.Vector3(), obj: null };
+      S.enemies.push(e);
+      return e;
+    },
+  });
+
   // ---------- public API ----------
-  function start({ origin, quat, level = 1, shield = 1, hull = 1, squadName = 'RAIDERS', mods = {} }) {
+  function start({ origin, quat, level = 1, shield = 1, hull = 1, squadName = 'RAIDERS', mods = {}, boss = null }) {
     root.position.copy(origin);
     root.quaternion.copy(quat);
     root.updateMatrixWorld(true);
@@ -459,7 +483,16 @@ export function createAssault(scene, camera, hooks) {
       mods: { dmgK: 1, regen: 9, delay: 4, fireCd: 0.13, ...mods }, // Workshop upgrades
     };
     camLocal.set(0, CAM_UP + 30, CAM_BACK + 80);
-    startWave(0);
+    BOUNDS.x = BOUNDS0.x; BOUNDS.y = BOUNDS0.y;
+    if (boss === 'lastlight') {
+      // one long fight instead of waves; escorts still use the formation code
+      S.boss = lastLight;
+      S.waves = [{ name: 'THE LAST LIGHT', dive: 3, maxDivers: 2, fire: 0.05 * S.d, groups: [] }];
+      S.banner = { text: 'THE LAST LIGHT', t: 0 };
+      S.hint = 9;
+      lastLight.start(S.d);
+      sfx.wave();
+    } else startWave(0);
   }
 
   function stop() {
@@ -470,6 +503,8 @@ export function createAssault(scene, camera, hooks) {
     orbs.forEach((o) => { o.life = 0; o.m.visible = false; });
     flashes.forEach((f) => { f.s.visible = false; });
     particles.clear();
+    lastLight.stop();
+    BOUNDS.x = BOUNDS0.x; BOUNDS.y = BOUNDS0.y;
     root.visible = false;
     S = null;
   }
@@ -556,14 +591,15 @@ export function createAssault(scene, camera, hooks) {
     }
     engines.forEach((s) => s.scale.setScalar(2.4 + Math.random() * 0.6 + Math.abs(input.moveY) * 0.8));
 
-    // ----- waves & spawning -----
+    // ----- waves & spawning (the Last Light runs its own fight) -----
     const w = S.waves[S.wave];
-    for (const g of S.pending) {
+    if (S.boss) S.boss.update(dt);
+    else for (const g of S.pending) {
       while (g.spawned < g.n && S.waveT >= g.at + g.spawned * 0.24) { spawn(g.kind, g.side, g.spawned); g.spawned++; }
     }
     const allSpawned = S.pending.every((g) => g.spawned >= g.n);
-    const alive = S.enemies.filter((e) => e.alive);
-    if (!S.over && allSpawned && alive.length === 0) {
+    const alive = S.enemies.filter((e) => e.alive && !e.part);
+    if (!S.boss && !S.over && allSpawned && alive.length === 0) {
       if (S.wave < S.waves.length - 1) {
         if (S.intermission <= 0) { S.intermission = 2.6; S.score += 50 * (S.wave + 1); sfx.pickup(); S.banner = { text: 'WAVE CLEAR', t: 0 }; }
         S.intermission -= dt;
@@ -577,7 +613,7 @@ export function createAssault(scene, camera, hooks) {
     }
 
     // dives
-    if (!S.over) {
+    if (!S.over && !S.boss) {
       S.diveT -= dt;
       const divers = alive.filter((e) => e.state === 'dive').length;
       if (S.diveT <= 0 && S.waveT > 4) {
@@ -590,7 +626,7 @@ export function createAssault(scene, camera, hooks) {
 
     // ----- enemies -----
     for (const e of S.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || e.part) continue; // parts ride on the flagship
       e.prev.copy(e.pos);
       e.t += dt;
       if (e.state === 'enter' || e.state === 'return') {
@@ -665,6 +701,10 @@ export function createAssault(scene, camera, hooks) {
           break;
         }
       }
+      if (b.life > 0 && S.boss && S.boss.hullHit(b.m.position)) {
+        particles.emit(b.m.position, 3, { speed: 40, life: 0.2, size: 2, colors: [[3, 2, 1.4]], drag: 5 });
+        b.life = 0; b.m.visible = false;
+      }
     }
     // ----- enemy bolts -----
     for (const b of eBolts) {
@@ -674,7 +714,7 @@ export function createAssault(scene, camera, hooks) {
       if (b.life <= 0 || b.m.position.z > 90) { b.life = 0; b.m.visible = false; continue; }
       if (!S.over && b.m.position.distanceTo(player.pos) < 4.3) {
         b.life = 0; b.m.visible = false;
-        hurtPlayer(S.warden && S.warden.alive ? 22 : 18);
+        hurtPlayer(S.boss ? 24 : S.warden && S.warden.alive ? 22 : 18);
       }
     }
     // ----- Wayshard pickups drift to the player -----
@@ -720,9 +760,10 @@ export function createAssault(scene, camera, hooks) {
 
     if (S.over && S.over.t > (S.over.win ? 2.6 : 2.2)) {
       return {
+        boss: S.boss ? 'lastlight' : null,
         win: S.over.win, kills: S.kills, score: S.score, hitsTaken: S.hitsTaken,
         // reward scales with threat: harder squadrons carry more
-        wayshards: Math.round((S.shards + S.score / 10 + (S.over.win && S.hitsTaken === 0 ? 50 : 0)) * ({ 1: 0.6, 2: 0.8, 3: 1, 4: 1.4, 5: 1.8 }[S.level] || 1)),
+        wayshards: Math.round((S.shards + S.score / 10 + (S.over.win && S.hitsTaken === 0 ? 50 : 0) + (S.boss && S.over.win ? 400 : 0)) * ({ 1: 0.6, 2: 0.8, 3: 1, 4: 1.4, 5: 1.8 }[S.level] || 1)),
         shield: player.shield / 100, hull: Math.max(0, player.hull) / 100,
       };
     }
@@ -788,10 +829,13 @@ export function createAssault(scene, camera, hooks) {
       if (t.ok) text(ctx, p.text, t.x, t.y - 20 - p.t * 40, 22 * sc + 8, GOLD, 1 - p.t / 0.9, 'center', 700);
     }
 
-    // top: wave + remaining
-    const remaining = S.enemies.filter((e) => e.alive).length + S.pending.reduce((a, g) => a + g.n - g.spawned, 0);
-    text(ctx, 'PHASE II · ' + S.squadName + ' · THREAT ' + S.level, W / 2, 26, 13 * sc + 5, AMBER, 0.85);
-    text(ctx, `WAVE ${S.wave + 1}/${S.waves.length} · HOSTILES ${remaining}`, W / 2, 48, 16 * sc + 6, CYAN, 0.95, 'center', 700);
+    // top: wave + remaining (the Last Light draws its own phase line and hull bar)
+    text(ctx, 'PHASE II · ' + S.squadName + (S.boss ? ' · FINAL GATE' : ' · THREAT ' + S.level), W / 2, 26, 13 * sc + 5, AMBER, 0.85);
+    if (S.boss) S.boss.drawHud(ctx, W, H, { text, bar, toScreen, sc });
+    else {
+      const remaining = S.enemies.filter((e) => e.alive).length + S.pending.reduce((a, g) => a + g.n - g.spawned, 0);
+      text(ctx, `WAVE ${S.wave + 1}/${S.waves.length} · HOSTILES ${remaining}`, W / 2, 48, 16 * sc + 6, CYAN, 0.95, 'center', 700);
+    }
 
     // warden health
     if (S.warden && S.warden.alive && S.warden.state !== 'enter') {
@@ -822,6 +866,7 @@ export function createAssault(scene, camera, hooks) {
       const a = Math.min(1, S.hint);
       const pad = device === 'gamepad';
       text(ctx, pad ? 'LEFT STICK move · RT or RB fire · LT, B or LB dodge' : 'MOUSE or WASD move · CLICK or SPACE fire · SHIFT dodge', W / 2, H * 0.58, 15 * sc + 5, CYAN, a * 0.9);
+      if (S.boss) text(ctx, 'RED LANES: the main guns fire down them · move out, or DODGE through', W / 2, H * 0.58 + 26 * sc + 6, 15 * sc + 5, RED, a * 0.9);
     }
   }
 

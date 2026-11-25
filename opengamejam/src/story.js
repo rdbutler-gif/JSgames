@@ -14,6 +14,9 @@ export const SPEAKERS = {
   // voices in WREN's recovered memories: played through the radio filter, like an old recording
   warden: { name: 'WARDEN · MEMORY', short: 'WARDEN', rgb: '205,185,255', radio: true },
   warden2: { name: 'WARDEN · MEMORY', short: 'WARDEN', rgb: '205,185,255', radio: true },
+  // dead channels near the Heart: old calls from colonies whose lines went out (step 9a)
+  colony: { name: 'DEAD CHANNEL · TALLOW REACH', short: 'TALLOW REACH', rgb: '170,176,186', radio: true },
+  colony2: { name: 'DEAD CHANNEL · BRASK HOLLOW', short: 'BRASK HOLLOW', rgb: '170,176,186', radio: true },
 };
 
 export const LINES = {
@@ -83,6 +86,13 @@ export const LINES = {
   'hub-launch': ['ilsa', 'Clamps off. Fly safe, Runner.'],
   'air-low': ['ilsa', "Runner, the air's getting thin up here. Three days left. Please hurry."],
   'air-out': ['ilsa', "We've sealed the outer ring. Everyone's crowded into the spindle now. Please, Runner."],
+  // ---- air at zero: Lantern is lost, and play goes on (owner, 2026-11-25) ----
+  'air-lost-1': ['ilsa', "Runner, it's Ilsa. The scrubbers have stopped. We're all in the spindle, and it's very quiet now."],
+  'air-lost-2': ['ilsa', "Don't come back for us. Finish it. Make the lines mean something again."],
+  'air-lost-3': ['wren', "Lantern's gone silent. I'm so sorry, Runner. The dock and the Workshop still answer our codes."],
+  'hub-lost-back': ['wren', 'The clamps still know us. No one else is answering.'],
+  'hub-r2-lost': ['wren', 'Two keys. I keep expecting Ilsa on the radio.'],
+  'hub-r3-lost': ['wren', "All three keys, and no one left at Lantern to see them. The Heart is past the Final Gate. I'll know the way."],
   // ---- WREN's memories, played as we drive back to the Wayfarer (owner, 2026-11-21: voiced, not a text card) ----
   'mem1-1': ['wren', 'The relic spoke Warden, and I answered it before I knew I was doing it.'],
   'mem1-2': ['wren', "I remember a foundry hall. Warden hands, fitting a small bright mind into a navigator's frame."],
@@ -118,6 +128,31 @@ export const LINES = {
   // ---- Vireo (step 7): the veil fog needs a Veil Sounder ----
   'vireo-fog-1': ['wren', "Vireo is under the veil. That fog swallows every return I send. I can't find the ground to put us down on."],
   'vireo-fog-2': ['wren', "Lantern's Workshop can fit a Veil Sounder. It's three hundred Wayshards. The Scrap Crown carry plenty."],
+  // ---- the final run (step 9a): down Lantern's dead line to the Final Gate; the Quiet ----
+  'fin-nav': ['wren', "The Final Gate is on the nav. We follow Lantern's line to the end of it."],
+  'fin-quiet-1': ['wren', "Runner, the stars are going out ahead of us. Not behind a cloud. Just gone."],
+  'fin-orrick-1': ['orrick', "Runner. You've got all three keys. So it's you and me, at the end of the road."],
+  'fin-orrick-2': ['orrick', 'I kept the relay on the Corran line for nineteen years. It went dark on my shift. Forty people on that station. My wife. My son.'],
+  'fin-orrick-3': ['orrick', 'The Wardens could have saved it. They shut it off, and they left.'],
+  'fin-orrick-4': ['orrick', 'Bring me the keys. One lane, mine, lit again. Anyone who wants air can buy it from me. That is more than the Wardens ever gave them.'],
+  'fin-orrick-wren': ['wren', "One line, and every colony on its knees for air. He's not having them. Keep us on course."],
+  'fin-dead-1': ['colony', "Tallow Reach, Tallow Reach. Our line's gone. If anyone hears this, we've moved everyone into the core, we're..."],
+  'fin-dead-2': ['colony2', "Relay Brask Hollow, day forty. There's something on the dead line. It doesn't talk. It just... listens."],
+  'fin-quiet-2': ['wren', 'Those calls are years old. The lines carried them in here, and nothing ever carried them out.'],
+  'fin-quiet-3': ['wren', 'There is something between the lines, Runner. My charts keep drawing a shape around the Heart, then forgetting they drew it.'],
+  'fin-quiet-4': ['wren', "I remember now. The Wardens didn't let the lines die. They starved them, so this would starve too. It's been waiting for the lights to go out."],
+  'fin-arrive-1': ['wren', "The Final Gate. And that's the Last Light, sitting in its mouth. Orrick's flagship."],
+  'fin-arrive-2': ['orrick', 'Last chance, Runner. No? Then come and take the road from me.'],
+  'fin-arrive-3': ['wren', "Its guns cover the whole Gate. We go through him, or we don't go through. Engage when you're ready."],
+  // ---- the Last Light fight (step 9b) ----
+  'll-wren-1': ['wren', 'Four gun batteries on that hull. Take them out. When a lane lights red, get out of it, or roll through.'],
+  'll-orrick-1': ['orrick', "You think you're saving them? You're only choosing who chokes."],
+  'll-wren-2': ['wren', "The hull's opening. That's its core. Hit it when the plates part, and find the gap when they shut."],
+  'll-wren-3': ['wren', 'The Quiet is closing on us, Runner. Finish it fast.'],
+  'll-orrick-2': ['orrick', "Hear that? That's what the Wardens left us."],
+  'll-orrick-end': ['orrick', 'Corran... I kept the light on. As long as I could.'],
+  'll-wren-end': ['wren', "He's gone. The Gate is open."],
+  'fin-sealed': ['wren', "That's the Final Gate. It won't open for us yet. It wants all three keys home, and Ilsa should hear what we found."],
   'hub-sounder': ['ilsa', "Your Sounder's in. It'll ping the ground through that fog. Watch the edges down there. Vireo's rock doesn't all stay put."],
 };
 
@@ -125,9 +160,11 @@ export const LINES = {
 export const BRIEFINGS = [
   { id: 'first', lines: ['hub-first-1', 'hub-first-2', 'hub-first-3'], when: (G) => relicCount(G) === 0 },
   { id: 'dark', lines: ['hub-dark-1', 'hub-dark-2', 'hub-dark-3', 'hub-dark-4'], when: (G) => G.lanternDark },
-  { id: 'r2', lines: ['hub-r2-1', 'hub-r2-2', 'hub-r2-3'], when: (G) => relicCount(G) >= 2 },
-  { id: 'r3', lines: ['hub-r3-1', 'hub-r3-2', 'hub-r3-3'], when: (G) => relicCount(G) >= 3 },
+  { id: 'r2', lines: ['hub-r2-1', 'hub-r2-2', 'hub-r2-3'], lost: ['hub-r2-lost'], when: (G) => relicCount(G) >= 2 },
+  { id: 'r3', lines: ['hub-r3-1', 'hub-r3-2', 'hub-r3-3'], lost: ['hub-r3-lost'], when: (G) => relicCount(G) >= 3 },
 ];
+// once Lantern is lost, WREN gives what she can of a briefing (Ilsa's are gone); one with no `lost` is skipped
+export const briefingLines = (b, G) => (G.lanternLost ? b.lost || [] : b.lines);
 
 // one lore beat per cruise trip, in this order, when its condition holds
 const LORE = [

@@ -26,10 +26,12 @@ const LensShader = {
     vignette: { value: 0.4 }, ca: { value: 0.002 }, grain: { value: 0.03 },
     lift: { value: new THREE.Vector3() }, gain: { value: new THREE.Vector3(1, 1, 1) },
     sat: { value: 1 }, contrast: { value: 1 },
+    quiet: { value: 0 }, tear: { value: 0 }, tearY: { value: 0.5 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float time, aspect, vignette, ca, grain, sat, contrast;
+    uniform float quiet, tear, tearY;
     uniform vec3 lift, gain; varying vec2 vUv;
     float hash(vec2 p){ p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
     void main(){
@@ -37,22 +39,32 @@ const LensShader = {
       float r2 = dot(d, d);
       // lateral chromatic aberration: grows with the square of the distance from centre
       vec2 off = (vUv - 0.5) * ca * r2 * 4.0;
+      // the Quiet: now and then a thin band of the picture slips sideways, like a signal losing lock
+      vec2 uv = vUv;
+      float band = exp(-pow((vUv.y - tearY) * 38.0, 2.0)) * tear;
+      uv.x += band * 0.012 * sin(vUv.y * 900.0 + time * 40.0);
       vec3 c;
-      c.r = texture2D(tDiffuse, vUv - off).r;
-      c.g = texture2D(tDiffuse, vUv).g;
-      c.b = texture2D(tDiffuse, vUv + off).b;
+      c.r = texture2D(tDiffuse, uv - off).r;
+      c.g = texture2D(tDiffuse, uv).g;
+      c.b = texture2D(tDiffuse, uv + off).b;
       c = max(c, 0.0);
       // grade (linear light): contrast around mid grey in log space, then lift and gain, then saturation
       c = 0.18 * pow(c / 0.18 + 1e-5, vec3(contrast));
       c = c * gain + lift * (1.0 - clamp(c, 0.0, 1.0));
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = mix(vec3(l), c, sat);
+      c = mix(vec3(l), c, sat * (1.0 - 0.6 * quiet));
+      // the light itself feels heavier: shadows sink, the edges close in
+      c *= 1.0 - 0.18 * quiet;
+      c = max(c - 0.004 * quiet, 0.0);
       // optical vignette: cos^4-style falloff, never to black
-      c *= mix(1.0, 1.0 - smoothstep(0.15, 1.25, sqrt(r2) * 1.25), vignette);
+      c *= mix(1.0, 1.0 - smoothstep(0.15, 1.25, sqrt(r2) * 1.25), min(1.0, vignette + 0.35 * quiet));
       // grain: luminance-weighted so blacks stay black, refreshed at 24 Hz
       float t = floor(time * 24.0);
       float n = hash(gl_FragCoord.xy + t * 17.0) - 0.5;
       c += n * grain * (0.08 + sqrt(max(l, 0.0))) * 0.5;
+      // static: fine horizontal grain that does not care how bright the pixel is (dim, never a flash)
+      float st = hash(vec2(floor(gl_FragCoord.y * 0.5), t)) - 0.5;
+      c += (n * 0.6 + st * 0.4) * quiet * 0.022 + band * st * 0.04;
       gl_FragColor = vec4(max(c, 0.0), 1.0);
     }`,
 };
@@ -127,6 +139,8 @@ export function createPost(renderer, scene, camera, cockpit) {
       composer.setSize(lastW, lastH);
     },
     // speed feel: boost and cruise drive pull the lens (more edge fringing and vignette), eased
+    // the Quiet near the Heart: q 0..1 (grade and static); tear 0..1 (a band of the picture slipping)
+    setQuiet(q, tear = 0, tearY = 0.5) { U.quiet.value = q; U.tear.value = tear; U.tearY.value = tearY; },
     render(time, speedKick = 0, dt = 1 / 60) {
       kick += (speedKick - kick) * Math.min(1, dt * 3);
       U.ca.value = base.ca + kick * 0.0022; U.vignette.value = base.vignette + kick * 0.14;

@@ -92,11 +92,42 @@ export function updateEngine(s, active) {
   engOsc[0].frequency.setTargetAtTime(base, t, 0.12);
   engOsc[1].frequency.setTargetAtTime(base * 1.011, t, 0.12);
   engOsc[2].frequency.setTargetAtTime(base * 2.003, t, 0.12);
-  engFilter.frequency.setTargetAtTime(180 + s.throttle * 600 + boost * 900 + cruise * 1400, t, 0.12);
+  engFilter.frequency.setTargetAtTime((180 + s.throttle * 600 + boost * 900 + cruise * 1400) * (1 - 0.55 * quietK), t, 0.12); // the Quiet dulls the engine
   engGain.gain.setTargetAtTime(active ? (0.05 + s.throttle * 0.07 + boost * 0.05) * voiceDuck() : 0, t, 0.2);
   const sf = Math.min(1, s.speed / 600);
   rushGain.gain.setTargetAtTime(active ? (boost * 0.22 + cruise * 0.32 + sf * 0.03) * voiceDuck() : 0, t, 0.25);
   rushFilter.frequency.setTargetAtTime(260 + sf * 700 + cruise * 1600, t, 0.25);
+}
+
+// The Quiet (near the Heart): a sub hum that beats against itself, a dry crackle of static, and the
+// music pad drained away. q 0..1. Dread, not a monster: nothing here is loud, it is what goes missing.
+let quietK = 0, quiet = null;
+export function updateQuiet(q) {
+  if (!ac) return;
+  const t = ac.currentTime;
+  if (!quiet && q > 0.001) {
+    const g = ac.createGain(); g.gain.value = 0; g.connect(master);
+    const hf = ac.createBiquadFilter(); hf.type = 'lowpass'; hf.frequency.value = 170; hf.connect(g); // the 114 Hz pair carries the throb on laptop speakers that cannot play 38 Hz
+    const hums = [[38, 0.5], [39.3, 0.45], [76.4, 0.18], [57.1, 0.12], [113.8, 0.09], [115.1, 0.09]].map(([f, v]) => {
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+      const og = ac.createGain(); og.gain.value = v; o.connect(og); og.connect(hf); o.start(); return o;
+    });
+    // static: sparse clicks and crackle (a sparse random buffer through a band), not a hiss
+    const len = ac.sampleRate * 3, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() < 0.004 ? (Math.random() * 2 - 1) : (Math.random() * 2 - 1) * 0.05;
+    const n = ac.createBufferSource(); n.buffer = buf; n.loop = true;
+    const nf = ac.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1900; nf.Q.value = 0.8;
+    const ng = ac.createGain(); ng.gain.value = 0; n.connect(nf); nf.connect(ng); ng.connect(master); n.start();
+    // the static swells and falls slowly, so it comes and goes
+    const lfo = ac.createOscillator(); lfo.frequency.value = 0.09; const lg = ac.createGain(); lg.gain.value = 0.5;
+    const sw = ac.createGain(); sw.gain.value = 0.5; lfo.connect(lg); lg.connect(sw.gain); nf.disconnect(); nf.connect(sw); sw.connect(ng); lfo.start();
+    quiet = { g, ng, hums };
+  }
+  quietK = q;
+  if (!quiet) return;
+  quiet.g.gain.setTargetAtTime(settings.muted ? 0 : 0.34 * q * q, t, 0.6);
+  quiet.ng.gain.setTargetAtTime(settings.muted ? 0 : 0.09 * q, t, 0.6);
+  padGain.gain.setTargetAtTime(0.045 * (1 - 0.9 * q), t, 0.8);
 }
 
 export function blip(freq = 880, dur = 0.08, type = 'square', vol = 0.06, delay = 0, slide = 0) {

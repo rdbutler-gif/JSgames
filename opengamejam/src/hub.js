@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { cloneModel, onModel } from './models.js';
 import { createMenu } from './ui.js';
-import { BRIEFINGS } from './story.js';
+import { BRIEFINGS, briefingLines } from './story.js';
 import { UPGRADES, SCRUBBER, tier, nextCost } from './workshop.js';
 
 const ROMAN = ['', 'I', 'II', 'III'];
@@ -53,10 +53,10 @@ export function createHub(ctx) {
   // ---------- menus ----------
   let view = 'main', flashT = 0;
   const relicN = () => Object.values(G.relics).filter(Boolean).length;
-  const latestBriefing = () => [...BRIEFINGS].reverse().find((b) => G.briefed.has(b.id));
+  const latestBriefing = () => [...BRIEFINGS].reverse().find((b) => G.briefed.has(b.id) && briefingLines(b, G).length);
 
   const mainMenu = createMenu($('hub-menu'), () => [
-    ...(latestBriefing() ? [{ label: 'BRIEFING · ILSA', act: () => { story.clear(); story.lines(latestBriefing().lines); } }] : []),
+    ...(latestBriefing() ? [{ label: G.lanternLost ? 'BRIEFING · WREN' : 'BRIEFING · ILSA', act: () => { story.clear(); story.lines(briefingLines(latestBriefing(), G)); } }] : []),
     { label: 'WORKSHOP', act: () => setView('shop') },
     { label: 'LAUNCH', act: () => ctx.launch() },
   ]);
@@ -70,7 +70,7 @@ export function createHub(ctx) {
         act: () => buy(u),
       };
     });
-    if (G.lanternDark) items.push({
+    if (G.lanternDark && !G.lanternLost) items.push({
       scrub: true,
       label: () => 'SCRUBBER PARTS · +' + SCRUBBER.days + ' DAYS AIR',
       value: () => '◆ ' + SCRUBBER.cost(G.scrubbers || 0),
@@ -105,7 +105,8 @@ export function createHub(ctx) {
     G.upgrades[u.id] = tier(G.upgrades, u.id) + 1;
     sfx.buy();
     ctx.applyUpgrades();
-    if (u.id === 'rime') { story.flush(); story.line('hub-rime'); }
+    if (G.lanternLost) { /* no one on the dock to say it */ }
+    else if (u.id === 'rime') { story.flush(); story.line('hub-rime'); }
     else if (u.id === 'sounder') { story.flush(); story.line('hub-sounder'); }
     else if (!story.busy) story.line(buyBark++ % 2 ? 'hub-buy-2' : 'hub-buy-1');
     ctx.autosave(true);
@@ -131,7 +132,8 @@ export function createHub(ctx) {
 
   function status() {
     const bits = [`<span class="shards">◆ ${G.wayshards} WAYSHARDS</span>`, 'HULL ' + Math.round(G.ship.hull * 100) + '%'];
-    if (G.lanternDark) bits.push(`<span class="${G.air <= 3 ? 'air low' : 'air'}">RESERVE AIR ${airText(G.air)}</span>`);
+    if (G.lanternLost) bits.push('<span class="air low">LANTERN LOST</span>');
+    else if (G.lanternDark) bits.push(`<span class="${G.air <= 3 ? 'air low' : 'air'}">RESERVE AIR ${airText(G.air)}</span>`);
     else bits.push('<span class="line">WAYLINE LIVE</span>');
     bits.push('RELICS ' + relicN() + ' / 3');
     return bits.join('<i>·</i>');
@@ -164,10 +166,10 @@ export function createHub(ctx) {
       const due = BRIEFINGS.filter((b) => !G.briefed.has(b.id) && b.when(G));
       if (due.length) {
         const ids = [];
-        for (const b of due) { G.briefed.add(b.id); ids.push(...b.lines); }
-        story.lines(ids);
+        for (const b of due) { G.briefed.add(b.id); ids.push(...briefingLines(b, G)); }
+        story.lines(ids.length ? ids : G.lanternLost ? ['hub-lost-back'] : []);
         mainMenu.render(); // the BRIEFING item appears now
-      } else story.line(G.dockCount % 2 ? 'hub-back-2' : 'hub-back-1');
+      } else story.line(G.lanternLost ? 'hub-lost-back' : G.dockCount % 2 ? 'hub-back-2' : 'hub-back-1');
       G.dockCount = (G.dockCount || 0) + 1;
     },
     close() { rig.visible = false; ctx.show('hub', false); },

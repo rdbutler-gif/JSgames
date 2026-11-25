@@ -5,7 +5,7 @@ This is the plan we build from. The owner's `gameplan.md` (the long production b
 and ideas**, and it is a loose suggestion: anything in it can change if the game needs it. When
 the two disagree, this file wins, and this file changes whenever the owner decides something new.
 
-*Last updated: 2026-11-22. Session handoff: `docs/HANDOFF.md`.*
+*Last updated: 2026-11-25. Session handoff: `docs/HANDOFF.md`.*
 
 ---
 
@@ -21,6 +21,11 @@ the two disagree, this file wins, and this file changes whenever the owner decid
 | Raider look | **Keep the current raider** (plum, crimson, gold). It is the Scrap Crown fighter | Variants by tint and emissive, not new models, unless a new role needs a new silhouette |
 | Raider difficulty | Squadrons have **threat levels**; WREN assesses them on contact; upgrades are the answer to the high ones | Section 3 |
 | Dialog | Every line serves the **mission goal at that moment**: what to do, why it matters, what changed | Section 5 |
+| Endings | **Restart and Sever**, as planned. No Surrender (owner, 2026-11-25) | §2, §6 step 9 |
+| The Quiet | **A felt presence**, never shown: static, dead channels, a starless void round the Heart, the picture losing lock (owner, 2026-11-25) | Built in 9a. Canon: the Wardens starved the lines so the Quiet would starve too |
+| Final boss | **A Phase II arcade fight** against a **new flagship model**, the *Last Light* (Orrick). Difficult and multi-phase (owner, 2026-11-25) | 9b |
+| The choice | **Save before the choice** so a player can see both endings. More endgame content to follow later (owner, 2026-11-25) | 9c |
+| Air at zero | **Lantern is lost and the game goes on. No hard fail** (owner, 2026-11-25). The ring seals at 1 day; at 0 Ilsa's last call, the station goes dark, WREN speaks for the dock | Built. The endings change: Restart relights a dead station, Sever has no convoy |
 | Controls | Gamepad first, mouse and keyboard fully supported. The owner plays **Y inverted**; check the vertical sense of every new control scheme with the owner | Phase II stick/mouse vertical is the opposite of Phase I by the owner's choice |
 
 ---
@@ -111,7 +116,7 @@ Each step ends playable, with the owner testing before the next.
 | 6 | The other two planets (reusing the Phase III systems with their own terrain, natives, gate and guardian) | Thalor 6a done (Rime Shielding 300, owner approved). 6b built 2026-11-21: Rime Spire, Compass Trim, ice maze with whiteout, Thalor creatures (rime crawlers, shardbacks). 6c built 2026-11-21: Sentinel Prime fight, Rime Compass, WREN memory Truth. Vireo 7a built 2026-11-21: Veil Sounder gate (300), mesas over the veil, land bridges, floating rock, light gravity (owner chose low gravity and 300). 7b built 2026-11-21: veil wall round the vault, Veil Shrine with Phase Blink, the Hollowed and veil drifters, Warden launch ramps (owner liked jumping in low gravity). 7c built 2026-11-21: Hollowed Matriarch (blink through her veil waves, shoot her heart when solid), Veil Lens, WREN memory 3 FATE voiced. All three worlds are now playable end to end |
 | 7 | Ship upgrades that counter raider levels; Hexers, Reavers, Vex encounters | Folded into the progression and balance work below (owner, 2026-11-22) |
 | 8 | Voices: WREN (three stages), Orrick, Ilsa, Vex; music per planet | Started in 4d: WREN = Melz, Ilsa = Cass, Orrick = Obsidian (ElevenLabs library voices) |
-| 9 | Final Gate run, *Last Light* boss, ending choice | **Next: the owner's first priority** (2026-11-22) |
+| 9 | Final Gate run, *Last Light* boss, ending choice | In progress (owner's first priority). **9a** built 2026-11-25: the Final Gate on the nav after Ilsa's three-relic briefing, the run down Lantern's dead line with the Quiet building, Orrick's offer, dead channels, the Gate, the Heart, a stand-in *Last Light* (engaging shows a "next build step" card). Voiced. Awaiting owner playtest. **9b** built 2026-11-25: the *Last Light* fight (Meshy model from an owner-approved concept; batteries and lanes, the opening hull and its core, the Quiet shrinking the arena), voiced, awaiting owner playtest. **9c** Orrick's end and the choice (save first), **9d** the two endings, epilogue, credits |
 | 10 | Polish, performance, accessibility, trailer, jam submission | Jam entry **published** on OpenGame 2026-11-22 (https://opengame.io/g/f3sqhmgmbq); updates are allowed until entries close 18 Dec 2026, 11:59 pm PT |
 
 Order can change. Voices and music can start earlier where a step needs them.

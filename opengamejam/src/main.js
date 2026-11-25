@@ -10,7 +10,7 @@ import * as THREE from 'three';
 
 import { settings, saveSettings } from './settings.js';
 import { input, initInput, pollInput, endFrame, requestLock, releaseLock } from './input.js';
-import { initAudio, applyVolume, updateEngine, updateRover, stopRover, roverDebug, sfx, loadVoice, playVoice, voiceState } from './audio.js';
+import { initAudio, applyVolume, updateEngine, updateRover, stopRover, roverDebug, sfx, loadVoice, playVoice, voiceState, updateQuiet } from './audio.js';
 import { createWorld } from './world.js';
 import { createSquads } from './fighters.js';
 import { createShip, updateShip, FLIGHT } from './ship.js';
@@ -18,7 +18,8 @@ import { createCockpit } from './cockpit.js';
 import { createPost } from './post.js';
 import { createHud } from './hud.js';
 import { createMenu } from './ui.js';
-import { COMMS_NAME } from './data.js';
+import { COMMS_NAME, QUIET } from './data.js';
+import { createGate } from './gate.js';
 import { createAssault } from './assault.js';
 import { loadModels } from './models.js';
 import { createSurface } from './surface.js';
@@ -49,13 +50,14 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, 1, 1, 420000); // the worlds are ~110,000 u from Lantern and ~190,000 u apart
 const world = createWorld(scene);
 const station = createStation(scene);
+const gate = createGate(scene);
 world.setPixelRatio(PR);
 const squads = createSquads(scene);
 const ship = createShip();
 const cockpit = createCockpit(renderer);
 const hud = createHud($('hud'));
 const hudCtx = $('hud').getContext('2d');
-const assault = createAssault(scene, camera, { say: (t) => say(t), note: (t, c) => note(t, c) });
+const assault = createAssault(scene, camera, { say: (t) => say(t), note: (t, c) => note(t, c), line: (id) => story.line(id) });
 assault.setPixelRatio(PR);
 loadModels();
 const surface = createSurface({
@@ -169,13 +171,22 @@ const G = {
   tripLore: false, tripT: 0, lastLoreT: -999, saveT: 0,
   where: 'space', surfaceId: null, surfaceOut: null, tutCheckpoint: null,
   air: 14, scrubbers: 0, briefed: new Set(), dockCount: 0, // Lantern's reserve air (days), Workshop scrubber crates, briefings heard
+  lastLightDown: false, // Orrick's flagship destroyed (9b)
+  lanternLost: false, // the air ran out: Lantern is silent, play goes on, the endings change (owner, 2026-11-25)
 };
-// nav targets: the three worlds, then Lantern (its dock bay mouth)
+// nav targets: the three worlds, then Lantern (its dock bay mouth), then the Final Gate once Ilsa has
+// briefed us on all three relics
 const LANTERN_NAV = world.planets.length;
-const navCount = () => world.planets.length + 1;
+const GATE_NAV = world.planets.length + 1;
+const gateOpen = () => G.briefed.has('r3');
+const navCount = () => world.planets.length + (gateOpen() ? 2 : 1);
 const bayMouth = () => station.toWorld(new THREE.Vector3(0, BAY_Y, BAY_MOUTH_Z), new THREE.Vector3());
 G.lanternNav = LANTERN_NAV;
 G.bayMouth = bayMouth;
+G.gateNav = GATE_NAV;
+G.gate = gate;
+G.gateOpen = gateOpen;
+G.quiet = 0;
 const AIR_DAY = 300; // seconds of play per day of Lantern's reserve air (14 days ≈ 70 minutes)
 
 // Saves happen on events (loud: the corner shows PROGRESS SAVED) and every few seconds in play (quiet).
@@ -295,10 +306,12 @@ function resetRun() {
   Object.assign(G, { relics: { kessa: false, thalor: false, vireo: false }, upgrades: {}, wayshards: 0, assaultsWon: 0, logs: [],
     heard: new Set(), tutorialDone: false, lanternDark: false, task: null, waypoint: null, lineTag: false, targetIndex: 0,
     greeted: new Set(), squadWarn: new Map(), comms: [], notes: [], prompt: null, tripLore: false, lastLoreT: -999,
-    where: 'space', surfaceId: null, surfaceOut: null, tutCheckpoint: null, air: 14, scrubbers: 0, briefed: new Set(), dockCount: 0 });
+    where: 'space', surfaceId: null, surfaceOut: null, tutCheckpoint: null, air: 14, scrubbers: 0, briefed: new Set(), dockCount: 0, lanternLost: false, lastLightDown: false });
   applyUpgrades();
-  story.clear();
+  story.clear(); finalRun.queued.clear();
   station.setLineAlive(true, true);
+  station.setHabitat(true, true, true);
+  gate.lastLight.visible = true;
   ship.hull = 1; ship.shield = 1; ship.boostEnergy = 1;
 }
 // in the dock bay, clamps shut, engines idle
@@ -321,8 +334,12 @@ function continueGame() {
   resetRun();
   if (p) {
     Object.assign(G, { relics: { ...G.relics, ...p.relics }, upgrades: p.upgrades || {}, wayshards: p.wayshards || 0, assaultsWon: p.assaultsWon || 0,
-      heard: new Set(p.heard || []), tutorialDone: !!p.tutorialDone, lanternDark: !!p.lanternDark, targetIndex: (p.targetIndex || 0) % navCount(),
-      air: Number.isFinite(p.air) ? p.air : 14, scrubbers: p.scrubbers || 0, briefed: new Set(p.briefed || []) });
+      heard: new Set(p.heard || []), tutorialDone: !!p.tutorialDone, lanternDark: !!p.lanternDark,
+      air: Number.isFinite(p.air) ? p.air : 14, scrubbers: p.scrubbers || 0, briefed: new Set(p.briefed || []), lanternLost: !!p.lanternLost, lastLightDown: !!p.lastLightDown });
+    gate.lastLight.visible = !G.lastLightDown;
+    if (G.lanternDark && G.air <= 0) G.lanternLost = true; // a save from before Lantern could be lost
+    station.setHabitat(G.air > 1, !G.lanternLost, true);
+    G.targetIndex = (p.targetIndex || 0) % navCount(); // after `briefed`: the Gate is a nav target only once it is open
     station.setLineAlive(!G.lanternDark, true);
     applyUpgrades();
   }
@@ -401,7 +418,7 @@ function resume() {
 function toTitle() {
   show('pause', false);
   if (G.state !== 'title') autosave(false);
-  story.clear(); G.task = null; G.waypoint = null; G.lineTag = false;
+  story.clear(); finalRun.queued.clear(); G.task = null; G.waypoint = null; G.lineTag = false;
   if (tutorial.active) tutorial.abort();
   if (hub.visible || G.where === 'hub') hub.close();
   if (G.inSurface) { surface.exit(); G.inSurface = false; renderPass.scene = scene; }
@@ -474,6 +491,8 @@ function cruiseBlock(margin) {
   }
   // Lantern's traffic zone: cruise drops us out short of the station, so we can dock (not during the tutorial's launch)
   if (G.tutorialDone && station.root.position.distanceTo(ship.pos) < 1800 + margin) return { reason: 'LANTERN TRAFFIC ZONE', lantern: true };
+  // the Final Gate: cruise drops us out with the Gate and the Last Light ahead
+  if (gate.pos.distanceTo(ship.pos) < 2600 + margin) return { reason: 'FINAL GATE', gate: true };
   return null;
 }
 
@@ -503,12 +522,13 @@ function handleCruise(dt) {
       // Lantern: brake hard and settle to a crawl with the whole station in view, about 2.5 km out
       // (it used to coast 5 km at full throttle, straight into or past the station; owner, 2026-11-21)
       if (b.lantern) { ship.brakeT = 3; ship.throttle = 0.2; say('Lantern ahead. Cruise is off, and I have slowed us right down. Bring us to the bay mouth to dock.'); }
+      if (b.gate) { ship.brakeT = 3; ship.throttle = 0.15; finalRun.arrive(); }
     }
   }
 }
 
 function handleCollisions() {
-  const n = station.collide(ship.pos, 9);
+  const n = station.collide(ship.pos, 9) || gate.collide(ship.pos, 9);
   if (n) {
     const vn = ship.vel.dot(n);
     if (vn < 0) ship.vel.addScaledVector(n, -vn * 1.2);
@@ -575,6 +595,12 @@ function updatePrompts() {
       return;
     }
   }
+  // the Final Gate: sealed until all three keys are home; once open, the Last Light waits in its mouth
+  // (cruise drops us about 3.3 km out: the prompt is there the moment we settle)
+  if (gate.pos.distanceTo(ship.pos) < 4200) {
+    if (!gateOpen()) { G.prompt = { type: 'sealed', label: 'FINAL GATE · SEALED · NEEDS ALL THREE RELICS' }; return; }
+    if (!G.lastLightDown && gate.lastLightWorld().distanceTo(ship.pos) < 3900) { G.prompt = { type: 'lastlight', label: 'ENGAGE THE LAST LIGHT' }; return; }
+  }
   // Lantern's dock: in front of the bay mouth, close and slow enough
   if (G.tutorialDone && !tutorial.active) {
     const L = station.local(ship.pos, tmpV);
@@ -605,6 +631,12 @@ function acceptPrompt() {
     startEntry(pr.planet);
   } else if (pr.type === 'dock') {
     startDocking();
+  } else if (pr.type === 'sealed') {
+    sfx.denied();
+    const n = Object.values(G.relics).filter(Boolean).length;
+    say(n < 3 ? 'The Gate is sealed. It wants all three keys, and we carry ' + n + '.' : 'The Gate is sealed. Ilsa should hear what we found first. Take us home.');
+  } else if (pr.type === 'lastlight') {
+    finalRun.engage();
   }
 }
 
@@ -694,10 +726,13 @@ function launchFromHub() {
       G.planets.forEach((p, i) => { if (!G.relics[p.data.id]) { const d = p.center.distanceTo(ship.pos); if (d < bd) { bd = d; best = i; } } });
       if (best >= 0) G.targetIndex = best;
     }
+    // all three keys home: the only way left is the Gate
+    if (gateOpen() && G.planets.every((p) => G.relics[p.data.id])) G.targetIndex = GATE_NAV;
     G.state = 'flight';
     camera.fov = ship.fov; camera.updateProjectionMatrix();
     if (wantsMouse()) requestLock();
-    story.clear(); story.line('hub-launch');
+    story.clear(); finalRun.queued.clear(); if (!G.lanternLost) story.line('hub-launch');
+    if (gateOpen() && !G.heard.has('fin-nav')) story.line('fin-nav');
     G.dockHinted = true; G.leaving = true; G.leaveT = G.time; // leaving: no "bay is open, I'll dock us" (or dock prompt) on the way out
     note('CLAMPS RELEASED · THROTTLE UP', '255,211,106');
     autosave(false);
@@ -705,7 +740,7 @@ function launchFromHub() {
 }
 
 // ---------- Phase II ----------
-function startAssault(sq) {
+function startAssault(sq, opts = {}) {
   G.state = 'assault-in';
   ship.cruise = 0;
   flash(() => {
@@ -713,7 +748,8 @@ function startAssault(sq) {
     G.assaultSquad = sq;
     G.inAssault = true;
     // Fight where we met them, facing the way we were flying.
-    assault.start({ origin: ship.pos, quat: ship.quat, level: sq.level, shield: ship.shield, hull: ship.hull, squadName: sq.name,
+    if (opts.boss) gate.lastLight.visible = false; // the arena has its own; the Gate's would show behind it
+    assault.start({ origin: ship.pos, quat: ship.quat, level: sq.level, shield: ship.shield, hull: ship.hull, squadName: sq.name, boss: opts.boss,
       mods: { dmgK: eff(G.upgrades, 'plating', 'dmgK'), regen: eff(G.upgrades, 'capacitor', 'regen'), delay: eff(G.upgrades, 'capacitor', 'delay'), fireCd: eff(G.upgrades, 'repeater', 'fireCd') } });
     G.state = 'assault';
     if (wantsMouse()) requestLock();
@@ -728,7 +764,15 @@ function endAssault(r) {
     sq.release(r.win);
     ship.vel.set(0, 0, 0); ship.ang.set(0, 0, 0); ship.speed = 60; ship.throttle = 0.3;
     camera.fov = ship.fov; camera.updateProjectionMatrix();
-    if (r.win) {
+    if (r.boss) gate.lastLight.visible = !G.lastLightDown && !r.win;
+    if (r.boss && r.win) {
+      finalRun.won();
+      G.wayshards += r.wayshards;
+      ship.shield = 1; ship.hull = Math.max(ship.hull, 0.6);
+      showEvent('PHASE II · VICTORY', 'THE LAST LIGHT BREAKS',
+        `Orrick's flagship is gone, and the Final Gate stands open. Kills ${r.kills} · score ${r.score}${r.hitsTaken === 0 ? ' · flawless' : ''}. You recovered ${r.wayshards} Wayshards. What waits past the Gate, the Heart and WREN's choice, is the next build step (9c).`,
+        () => { closeEvent(); note('THE GATE IS OPEN', '205,185,255'); });
+    } else if (r.win) {
       G.assaultsWon++;
       G.wayshards += r.wayshards;
       autosave(true);
@@ -873,13 +917,21 @@ function updateObjective(dt) {
     return;
   }
   const left = G.planets.filter((p) => !G.relics[p.data.id]);
-  if (!left.length) { G.task = null; return; }
+  if (!left.length) {
+    // the final run: follow Lantern's dead line to the Gate
+    if (!gateOpen()) { G.task = null; return; }
+    if (G.targetIndex !== GATE_NAV) G.task = { label: 'SET NAV TO THE FINAL GATE', key: () => navKey };
+    else if (G.lastLightDown) G.task = { label: 'THE GATE IS OPEN · THE HEART IS THE NEXT BUILD STEP', key: () => 'OBJECTIVE' };
+    else if (gate.pos.distanceTo(ship.pos) < 4200) G.task = { label: 'ENGAGE THE LAST LIGHT', key: () => 'OBJECTIVE' };
+    else G.task = { label: "FLY TO THE FINAL GATE · FOLLOW LANTERN'S LINE", key: () => 'OBJECTIVE' };
+    return;
+  }
   const onOne = left.some((p) => G.planets.indexOf(p) === G.targetIndex);
   const tgt = G.planets[G.targetIndex];
-  const gate = onOne && stormBlocks(tgt);
-  if (gate) {
+  const landGate = onOne && stormBlocks(tgt);
+  if (landGate) {
     // the way down goes through raider fights: say what it costs and how far along we are
-    const cost = UPGRADE[gate.up].costs[0], part = UPGRADE[gate.up].name, world = tgt.data.name;
+    const cost = UPGRADE[landGate.up].costs[0], part = UPGRADE[landGate.up].name, world = tgt.data.name;
     G.task = G.wayshards >= cost
       ? { label: 'BUY ' + part + ' AT LANTERN · THEN ' + world, key: () => 'OBJECTIVE' }
       : { label: part + ' FOR ' + world + ' · ◆ ' + G.wayshards + ' / ' + cost + ' · FIGHT RAIDERS FOR WAYSHARDS', key: () => 'OBJECTIVE' };
@@ -892,7 +944,9 @@ function updateObjective(dt) {
 
 // ---------- Lantern's reserve air ----------
 // Once the line is dark, the station breathes from reserves. The clock runs on play time (flight, fights,
-// the surface), never in menus or while docked. At zero Lantern seals its outer ring; it is not a game over.
+// the surface), never in menus or while docked. At one day left Lantern seals its outer ring. At zero Lantern
+// is lost (owner, 2026-11-25: "At air zero Lantern is lost game continues. No hard fail."): Ilsa's last call,
+// the station goes dark, and from then on WREN speaks for the dock. The endings read G.lanternLost.
 const AIR_STATES = new Set(['flight', 'assault', 'surface', 'entry', 'docking']);
 let airShown = '';
 function updateAir(dt) {
@@ -902,11 +956,89 @@ function updateAir(dt) {
     const before = G.air;
     G.air = Math.max(0, G.air - dt / AIR_DAY);
     if (before > 3 && G.air <= 3 && !G.heard.has('air-low')) story.line('air-low');
-    if (before > 0 && G.air <= 0 && !G.heard.has('air-out')) story.line('air-out');
+    if (before > 1 && G.air <= 1 && !G.heard.has('air-out')) { story.line('air-out'); station.setHabitat(false, true); }
+    if (before > 0 && G.air <= 0 && !G.lanternLost) {
+      G.lanternLost = true;
+      station.setHabitat(false, false);
+      story.flush(); story.lines(['air-lost-1', 'air-lost-2', 'air-lost-3']);
+      autosave(true);
+    }
   }
-  const s = on ? (G.air <= 0 ? 'LANTERN AIR · OUTER RING SEALED' : 'LANTERN AIR · ' + airText(G.air)) : '';
+  const s = on ? (G.lanternLost ? 'LANTERN · LOST' : G.air <= 1 ? 'LANTERN AIR · ' + airText(G.air) + ' · OUTER RING SEALED' : 'LANTERN AIR · ' + airText(G.air)) : '';
   if (s !== airShown) { airShown = s; el.textContent = s; el.classList.toggle('on', !!s); el.classList.toggle('low', G.air <= 3); }
   el.classList.toggle('side', !!(G.inSurface || G.inAssault)); // the rover compass and the fight HUD own the top centre
+}
+
+// ---------- the final run (step 9a): from Lantern, down its dead line, to the Final Gate ----------
+// The approach is told in beats keyed to how far down the line we are (p: 0 at Lantern, 1 at the Heart),
+// one at a time and never over other talk: WREN notices the void ahead, Orrick makes his case, the dead
+// channels, then WREN names what is out here. At cruise the whole trip is about 70 s, and so is the talk,
+// so the beats start right after launch. (They used to wait for the Quiet's strength, which left 45 s.)
+const FINAL_BEATS = [
+  { p: 0.04, lines: ['fin-quiet-1'] },
+  { p: 0.1, lines: ['fin-orrick-1', 'fin-orrick-2', 'fin-orrick-3', 'fin-orrick-4', 'fin-orrick-wren'] },
+  { p: 0.45, lines: ['fin-dead-1', 'fin-dead-2', 'fin-quiet-2'] },
+  { p: 0.66, lines: ['fin-quiet-3'] },
+  { p: 0.8, lines: ['fin-quiet-4'] },
+];
+const RUN_LEN = station.root.position.distanceTo(gate.heartPos);
+const finalRun = {
+  queued: new Set(), // beats handed to the story this session (heard or not yet)
+  get on() { return gateOpen() && G.planets.every((p) => G.relics[p.data.id]); },
+  update() {
+    if (!this.on || story.busy) return;
+    const p = 1 - ship.pos.distanceTo(gate.heartPos) / RUN_LEN;
+    const b = FINAL_BEATS.find((x) => !G.heard.has(x.lines[0]) && !this.queued.has(x));
+    if (b && p >= b.p) { this.queued.add(b); story.lines(b.lines); }
+  },
+  // cruise dropped us at the Gate: whatever the run did not have time for plays first, then the arrival
+  arrive() {
+    if (!this.on) { if (!G.heard.has('fin-sealed')) story.line('fin-sealed'); return; }
+    if (!G.heard.has('fin-arrive-1')) {
+      const rest = FINAL_BEATS.filter((b) => !G.heard.has(b.lines[0]) && !this.queued.has(b));
+      rest.forEach((b) => this.queued.add(b));
+      story.lines([...rest.flatMap((b) => b.lines), 'fin-arrive-1', 'fin-arrive-2', 'fin-arrive-3']);
+    } else say('The Last Light is still holding the Gate. Engage when you are ready.');
+    autosave(true);
+  },
+  // 9b: the flagship fight, a Phase II battle at threat five. Losing is the usual emergency jump, and
+  // the Last Light is still there to engage again, at full strength (an arcade fight starts clean).
+  engage() {
+    if (G.lastLightDown) return;
+    story.flush();
+    startAssault(LAST_LIGHT_SQUAD, { boss: 'lastlight' });
+  },
+  won() {
+    G.lastLightDown = true;
+    gate.lastLight.visible = false;
+    autosave(true);
+  },
+};
+// what startAssault and endAssault expect of a squadron, for the flagship
+const LAST_LIGHT_SQUAD = { name: 'THE LAST LIGHT', level: 5, engage() {}, release() {} };
+
+// The Quiet: felt, never shown. It rises as we near the Heart (and as more lines have died), and it
+// takes things away: colour, stars, the engine's edge, the music. A patch of sky round the Heart has no
+// stars at all, and it is larger for every relic we hold. Now and then the picture loses lock for a moment.
+const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const quietFx = { tear: 0, tearDur: 0, tearY: 0.5, tearT: 0, dir: new THREE.Vector3() };
+function updateQuietFx(dt) {
+  const inSpace = !G.inSurface && !inTitle() && !hub.visible;
+  const rf = Object.values(G.relics).filter(Boolean).length / 3;
+  const d = ship.pos.distanceTo(gate.heartPos);
+  const k = THREE.MathUtils.clamp((QUIET.far - d) / (QUIET.far - QUIET.near), 0, 1);
+  const q = inSpace ? k * k * (3 - 2 * k) * (0.4 + 0.6 * rf) : 0;
+  G.quiet = q;
+  quietFx.dir.copy(gate.heartPos).sub(ship.pos).normalize();
+  world.setQuiet(q, quietFx.dir, inSpace ? Math.atan2(QUIET.VOID_R * (0.35 + 0.65 * rf), d) : 0);
+  // signal tears: rare at the edge of the Quiet, every few seconds near the Gate; short, dim, never a flash
+  const Q = quietFx;
+  if (Q.tearT > 0) { Q.tearT -= dt; Q.tear = Math.sin(Math.PI * Math.max(0, Q.tearT) / Q.tearDur) * (REDUCED_MOTION ? 0.35 : 1); }
+  else { Q.tear = 0; if (q > 0.08 && Math.random() < q * 0.32 * dt) { Q.tearDur = Q.tearT = 0.12 + Math.random() * 0.22; Q.tearY = 0.15 + Math.random() * 0.7; } }
+  G.quietTear = Q.tear;
+  post.setQuiet(q, Q.tear, Q.tearY);
+  updateQuiet(inSpace && (G.state === 'flight' || G.inAssault || G.state === 'docking' || G.state === 'event') ? q : 0);
+  gate.update(dt, q);
 }
 
 // ---------- main loop ----------
@@ -989,7 +1121,7 @@ function step(dt) {
         // Lantern joins the list once the tutorial is done (its lessons count on three targets)
         G.targetIndex = (G.targetIndex + 1) % (G.tutorialDone ? navCount() : G.planets.length);
         if (G.targetIndex === LANTERN_NAV) G.dockHinted = false;
-        sfx.target(); note('NAV TARGET · ' + (G.targetIndex === LANTERN_NAV ? 'LANTERN' : G.planets[G.targetIndex].data.name), '255,211,106');
+        sfx.target(); note('NAV TARGET · ' + (G.targetIndex === LANTERN_NAV ? 'LANTERN' : G.targetIndex === GATE_NAV ? 'THE FINAL GATE' : G.planets[G.targetIndex].data.name), '255,211,106');
       }
       if (P.has('zero')) ship.throttle = 0;
       handleCruise(dt);
@@ -1000,8 +1132,10 @@ function step(dt) {
       tutorial.update(dt);
       if (!tutorial.active && G.tutorialDone) updateObjective(dt);
       // one lore beat per cruise trip, a few seconds in, never over other talk
+      finalRun.update(dt);
       if (ship.cruise === 2 && G.tutorialDone) {
         G.tripT += dt;
+        if (finalRun.on) G.tripLore = true; // the run to the Gate has its own lines
         if (G.tripT > 7 && !G.tripLore && !story.busy) { G.tripLore = true; if (story.lore()) G.lastLoreT = G.time; }
       }
       G.saveT += dt;
@@ -1033,6 +1167,7 @@ function step(dt) {
   }
 
   station.update(dt);
+  updateQuietFx(dt);
   if (G.inSurface) return;
   if (G.inAssault) { world.update(camera.position, ZERO, dt); return; }
   titleRig.visible = inTitle();
@@ -1091,4 +1226,4 @@ draw();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => cockpit.redrawAll(G));
 document.fonts && document.fonts.load('600 20px "Chakra Petch"').then(() => cockpit.redrawAll(G)).catch(() => {});
 requestAnimationFrame(frame);
-if (import.meta.env.DEV) window.__relic = { roverDebug, leaveSurface, hub, startDocking, openHub, startEntry, toTitle, launchFromHub, autosave, G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post, station, story, tutorial, newGame, continueGame };
+if (import.meta.env.DEV) window.__relic = { roverDebug, leaveSurface, hub, startDocking, openHub, startEntry, toTitle, launchFromHub, autosave, G, ship, assault, startAssault, surface, enterSurface, step, draw, input, camera, cockpit, post, station, story, tutorial, newGame, continueGame, FLIGHT, gate, finalRun };

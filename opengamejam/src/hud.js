@@ -24,6 +24,22 @@ export function createHud(canvas) {
     };
   }
 
+  // the Quiet eats the readouts: deep in it, a few characters at a time drop to noise (they change
+  // about six times a second, not every frame, so it reads as a failing signal and not a flicker)
+  let quietNow = 0, quietTick = 0;
+  const NOISE_CH = '░▒·:/';
+  function eaten(str) {
+    if (quietNow < 0.25) return str;
+    const p = (quietNow - 0.25) * 0.16;
+    let o = '';
+    for (let i = 0; i < str.length; i++) {
+      const h = Math.sin((i + 1) * 12.9898 + quietTick * 78.233 + str.length) * 43758.5453;
+      const r = h - Math.floor(h);
+      o += str[i] !== ' ' && r < p ? NOISE_CH[Math.floor(r / p * NOISE_CH.length) % NOISE_CH.length] : str[i];
+    }
+    return o;
+  }
+  // only readouts and labels go through eaten(); subtitles, tasks and prompts always stay whole
   function text(str, x, y, size, rgb, a = 1, align = 'center', weight = 600) {
     ctx.font = `${weight} ${size}px ${FONT}`;
     ctx.textAlign = align; ctx.textBaseline = 'middle';
@@ -69,9 +85,13 @@ export function createHud(canvas) {
     },
     draw(G, cam) {
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      ctx.globalAlpha = 1;
       ctx.clearRect(0, 0, W, H);
       if (G.state === 'title' || G.inAssault || G.inSurface) return;
       const s = G.ship;
+      quietNow = G.quiet || 0; quietTick = Math.floor(G.time * 6);
+      // a signal tear drops the canopy display for a moment
+      ctx.globalAlpha = 1 - 0.75 * (G.quietTear || 0);
       const scale = Math.min(W, H) / 900;
       const tanHalf = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
 
@@ -88,8 +108,8 @@ export function createHud(canvas) {
           const r = Math.max(16, Math.min(rpx * 1.1, H * 0.3));
           if (rpx < H * 0.3) brackets(p.x, p.y, r, rgb, isT ? 0.95 : 0.55);
           const ly = rpx < H * 0.3 ? p.y - r - 16 : H * 0.12;
-          text(pl.data.name + (isT ? '  ◆' : ''), p.x, ly - 15, 15 * Math.max(0.85, scale), rgb, isT ? 1 : 0.7, 'center', 700);
-          text(fmtDist(surf), p.x, ly + 2, 13 * Math.max(0.85, scale), rgb, isT ? 0.9 : 0.6);
+          text(eaten(pl.data.name + (isT ? '  ◆' : '')), p.x, ly - 15, 15 * Math.max(0.85, scale), rgb, isT ? 1 : 0.7, 'center', 700);
+          text(eaten(fmtDist(surf)), p.x, ly + 2, 13 * Math.max(0.85, scale), rgb, isT ? 0.9 : 0.6);
         } else if (isT) {
           edgeArrow(p, GOLD, pl.data.name);
         }
@@ -105,6 +125,29 @@ export function createHud(canvas) {
           text('LANTERN DOCK  ◆', p.x, p.y - r - 16, 15 * Math.max(0.85, scale), GOLD, 1, 'center', 700);
           text(fmtDist(d), p.x, p.y + r + 14, 13 * Math.max(0.85, scale), GOLD, 0.9);
         } else edgeArrow(p, GOLD, 'LANTERN');
+      }
+
+      // the Final Gate as the nav target (or on the final run), and the Last Light waiting in it
+      if (G.gate && G.gateOpen && G.gateOpen() && (G.targetIndex === G.gateNav || (G.task && /FINAL GATE|LAST LIGHT/.test(G.task.label)))) {
+        const gp = G.gate.pos, p = project(gp.clone(), cam), d = gp.distanceTo(s.pos);
+        const VIOLET = '205,185,255';
+        if (onScreen(p, 10)) {
+          const r = 18 * Math.max(0.9, scale);
+          ctx.strokeStyle = `rgba(${VIOLET},0.95)`; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.45, 0, Math.PI * 2); ctx.stroke();
+          // one line above the marker: the Last Light's label sits below its own bracket, in the same spot
+          text('THE FINAL GATE  ◆  ' + eaten(fmtDist(d)), p.x, p.y - r - 16, 15 * Math.max(0.85, scale), VIOLET, 1, 'center', 700);
+        } else edgeArrow(p, VIOLET, 'FINAL GATE');
+        const lw = G.gate.lastLightWorld(), ld = lw.distanceTo(s.pos);
+        if (ld < 30000) {
+          const lp = project(lw.clone(), cam);
+          if (onScreen(lp, 10)) {
+            const r = Math.max(18, Math.min(H * 0.25, 160 / Math.max(1, ld) / tanHalf * (H / 2)));
+            brackets(lp.x, lp.y, r, RED, 0.6 + 0.3 * Math.sin(G.time * 3));
+            text(eaten('THE LAST LIGHT · ORRICK'), lp.x, Math.max(lp.y + r + 16, p.y + 40), 14 * Math.max(0.85, scale), RED, 0.95, 'center', 700);
+          }
+        }
       }
 
       // tutorial waypoint
@@ -220,6 +263,7 @@ export function createHud(canvas) {
         });
       }
 
+      ctx.globalAlpha = 1;
       // the tutorial's current task, with its key
       if (G.task && G.state === 'flight') {
         const label = G.task.label, key = G.task.key();

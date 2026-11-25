@@ -10,6 +10,7 @@ const DEFS = {
   crate: { url: 'models/crate.glb', height: 1.7, yaw: 0, pitch: 0 },
   rover: { url: 'models/rover.glb', length: 4.3, yaw: -Math.PI / 2, pitch: 0 }, // front on -X
   player: { url: 'models/player.glb', length: 20, yaw: -Math.PI / 2, pitch: 0 }, // nose on -X too
+  lastlight: { url: 'models/lastlight.glb', length: 1, yaw: -Math.PI / 2, pitch: 0 }, // Orrick's flagship (9b); scaled where used
 };
 
 const loaded = new Map();   // name -> normalised template Group

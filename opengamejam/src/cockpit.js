@@ -130,6 +130,7 @@ function drawScanner(x, G) {
   };
   G.planets.forEach((p, i) => blip(p.center, 'planet', p.data.name, i === G.targetIndex));
   if (G.bayMouth && G.tutorialDone) blip(G.bayMouth(), 'planet', 'LANTERN', G.targetIndex === G.lanternNav);
+  if (G.gate && G.gateOpen && G.gateOpen()) blip(G.gate.pos, 'planet', 'GATE', G.targetIndex === G.gateNav);
   G.squads.forEach((sq) => { if (sq.state === 'patrol') blip(sq.pos, 'enemy', String(sq.level)); });
   x.fillStyle = '#eafdff';
   x.beginPath(); x.moveTo(cx, cy - 8); x.lineTo(cx + 6, cy + 6); x.lineTo(cx - 6, cy + 6); x.closePath(); x.fill();
@@ -151,7 +152,9 @@ function drawNav(x, G) {
   x.textAlign = 'right'; x.font = `600 16px ${FONT}`; x.fillStyle = '#ffd36a';
   x.fillText('◆ ' + G.wayshards + ' WAYSHARDS', SW - 16, 19);
   // Lantern as a nav target: a stand-in with the fields the screen reads
-  const p = G.planets[G.targetIndex] || { center: G.bayMouth(), data: { R: 0, name: 'LANTERN STATION', lantern: true, blurb: G.lanternDark ? 'Home port · on reserve air' : 'Home port · Workshop and repairs' } };
+  const p = G.planets[G.targetIndex] || (G.targetIndex === G.gateNav && G.gate
+    ? { center: G.gate.pos, data: { R: 0, name: 'THE FINAL GATE', lantern: true, blurb: 'Where every line meets · the Heart lies past it' } }
+    : { center: G.bayMouth(), data: { R: 0, name: 'LANTERN STATION', lantern: true, blurb: G.lanternDark ? 'Home port · on reserve air' : 'Home port · Workshop and repairs' } });
   const d = Math.max(0, p.center.distanceTo(G.ship.pos) - p.data.R);
   x.textAlign = 'left';
   x.font = `700 30px ${FONT}`; x.fillStyle = '#ffd36a';

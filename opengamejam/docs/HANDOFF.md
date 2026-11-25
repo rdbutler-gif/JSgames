@@ -1,6 +1,6 @@
 # The Last Wayline — Session Handoff
 
-*Updated 2026-11-22 (evening, after the jam entry went live). Read this first, then `docs/GAMEPLAN.md` (the working plan).*
+*Updated 2026-11-25 (step 9a built: the final run to the Gate). Read this first, then `docs/GAMEPLAN.md` (the working plan).*
 
 ## Where we are
 
@@ -21,9 +21,11 @@
 | 7a | Vireo: veil-fog gate (Veil Sounder, 300 Wayshards), the surface (mesas over a violet fog sea, land bridges, floating rock, light gravity), haul-back from the veil, drive to the vault | Done. Owner 2026-11-21: "I landed on Vireo and drove around a bit. I like the low gravity with ramps." |
 | 7b | Vireo: the veil wall round the vault, the Veil Shrine and Phase Blink, the Hollowed and veil drifters, Warden launch ramps | Done. Owner 2026-11-21: "I love the look of the Vireo world. The ramps are fun" |
 | — | Rover suspension (progressive springs, tyre footprint, sliding body) | Done. Owner: "The handling is much better now. No complaints." |
-| 7c | Vireo: the Hollowed Matriarch, the Veil Lens, WREN memory 3 FATE (voiced) | Owner played it 2026-11-22: blink timing clear, shades and orbs good, no lag on the old laptop. **But the heart could not be hit.** Fixed (she faced away; the robe's hit sphere swallowed the heart) and pushed. **Owner has not re-tested the fix** |
+| 7c | Vireo: the Hollowed Matriarch, the Veil Lens, WREN memory 3 FATE (voiced) | Owner played it 2026-11-22: blink timing clear, shades and orbs good, no lag on the old laptop. **But the heart could not be hit.** Fixed (she faced away; the robe's hit sphere swallowed the heart) and pushed. Owner re-tested 2026-11-25: "Already tested, Matriarch is doable now." |
 
 | — | **Jam entry: published on OpenGame** (Game Jam #1) | Live 2026-11-22 at https://opengame.io/g/f3sqhmgmbq. See "OpenGame jam entry" below |
+| 9b | The *Last Light* fight: Meshy flagship, three phases, voiced | Built 2026-11-25. **Not pushed, owner has not played it.** See "How 9b works" below |
+| 9a | The final run: Final Gate nav, the Quiet, Orrick's offer, dead channels, the Gate and the Heart, a stand-in *Last Light* | Built 2026-11-25, voiced (16 lines). **Not pushed, owner has not played it.** See "How 9a works" below |
 
 **Owner's priority order from here (2026-11-22):** "The first priority ... is to build the ending. Then I want to flesh out ideas for endgame continuance. Side quests on the planets. Experience levels and balanced progression of enemies and difficulties. The currency needs tuning and balancing as well."
 1. **The ending** (GAMEPLAN step 9): the Final Gate run, the *Last Light* boss, WREN's choice (Restart / Sever).
@@ -35,6 +37,59 @@
 The older step 7 (ship upgrades vs raider levels, relic powers) and step 8 (music) are not cancelled. They fold into items 4 and 5, or wherever the ending needs them. Ask the owner if unsure.
 
 ## First thing next session
+
+**Update 2026-11-25 (supersedes item 1 below):** the owner chose the ending's shape (GAMEPLAN §1): Restart and Sever only; the Quiet a felt presence; the boss a difficult multi-phase Phase II arcade fight against a new flagship model; save before the choice. 9a is built and **not pushed** (`dist/` was restored to the committed build; rebuild before a push).
+1. Ask the owner to play 9a (dev server or after a push): the run from Lantern to the Gate, the Quiet's look and sound, the 16 new voice lines, and whether the static and signal tears are too much on the old laptop.
+2. **Air at zero is decided and built** (owner, 2026-11-25: "At air zero Lantern is lost game continues. No hard fail."). See "Lantern lost" below.
+3. **Push is on hold** (owner, 2026-11-25: "Delay pushing for now"). Nothing from 9a or Lantern lost is committed.
+4. **9b is built** (see "How 9b works"). Ask the owner to play it, ideally with a late-game save. The questions:
+   - Is it difficult enough and fair?
+   - Do the lanes and shell walls read?
+   - Are the phase lengths right?
+   Then **9c**: past the open Gate to the Heart, the three keys in the sockets, Orrick's end, the save, and WREN's choice.
+
+### How 9b works (the *Last Light* fight; owner, 2026-11-25: "Go with Last Light", concept "Yes I approve go for it")
+- **The model:** `public/models/lastlight.glb`, Meshy meshy-t2 at 7.7k triangles with a 2048 texture, from `assets-src/lastlight-concept.png`. In the Gate it's 900 u long, nose toward Lantern, with capsule collision (`LAST_LIGHT` in gate.js).
+- **Starting it:** ENGAGE THE LAST LIGHT calls `finalRun.engage()`, then `startAssault(LAST_LIGHT_SQUAD, { boss: 'lastlight' })` (threat 5, d 1.5).
+  - The Gate's own model hides while the arena's shows.
+  - **Losing** is the usual EMERGENCY JUMP. The flagship stays, and re-engaging starts it fresh.
+  - **Winning** sets `G.lastLightDown` (saved) and hides the flagship. The card says the Heart and the choice are next (9c), and the objective reads THE GATE IS OPEN. The reward is +400 before the threat multiplier.
+- **The fight:** `src/lastlight.js`, plugged into `assault.js`.
+  - assault.js gives it parts (`part()`: targets that bolts and aim assist treat as enemies), `fireAt`, escorts through `spawn`/`startDive`, and adjustable bounds.
+  - The ship lies broadside at z -380 and 470 u long. The arena is widened to x ±88, y ±40 for this fight.
+  - Bolts that miss the parts hit the hull (`hullHit`), not the space behind it.
+- **Phase 1, BATTERIES:** four batteries at x ±78 and ±28, each 51 hp at d 1.5. They aim three-shot spreads.
+  - **Lanes:** a red warning band on the player's plane for 1.25 s (with HUD ticks at both ends), then the main guns fire down it for 35 damage. Dodging through it, or moving out, avoids it. Lanes are aimed where the player is.
+  - Raider escorts (5) launch whenever fewer than 2 are left, every 11 s, and dive.
+- **Phase 2, THE HULL OPENS:** the core has 150 hp at d 1.5.
+  - The belly plates cycle: shut for 3.5 s, firing a **wall** (a 15 u grid of shells across the plane with one gap, radius 17), then open for 6 s, when the core takes hits.
+  - Lancer escorts. Lanes every 2.8 s at d 1.5.
+- **Phase 3, THE QUIET CLOSES IN:** at 40% core. Over 4 s the arena shrinks to ±52 × ±26, and dark closes in at the screen edges.
+  - The core stays open. Walls (gap radius 15), lanes (sometimes two), and a slow two-arm spiral. No escorts.
+- **The kill:** 3.2 s of explosions along the hull in slow motion, then a large flash and THE LAST LIGHT BREAKS.
+  - Orrick: "Corran... I kept the light on." WREN: "He's gone. The Gate is open."
+  - The other lines: `ll-wren-1` (batteries, lanes), `ll-orrick-1` and `ll-wren-2` (phase 2), `ll-wren-3` and `ll-orrick-2` (phase 3).
+- **Damage:** shells hit for 24 in this fight (18 in normal fights), lanes for 35.
+- **Measured** (headless bot that fires constantly and steps out of lanes; game time):
+  - Invulnerable, with perfect aim and no upgrades, at the old core hp 180: phase 1 took 43 s, phase 2 70 s, phase 3 19 s. Phase 2 was then cut to 150 hp, open 6 s and shut 3.5 s.
+  - No upgrades, no shot dodging: died in 22 s (9 hits).
+  - Tier-2 plating, capacitor and repeater, sidestepping shots: won in 82 s with 7 hits and the hull untouched (shells were 20 then).
+  - A human is between those two. Damage was raised afterwards, and the owner's play decides the rest.
+- **Tests:** a scratch bot script drives `__relic.finalRun.engage()` and reads `assault.debug.S.boss.debug` (P, batts, lanes, core). It isn't kept in the repo.
+
+### Lantern lost (air at zero; owner, 2026-11-25)
+- **At 1 day** the outer ring is sealed: Ilsa says `air-out`, the clock reads `… · OUTER RING SEALED`, and the ring's windows go out (`station.setHabitat`).
+- **At 0** `G.lanternLost` is set and saved:
+  - Ilsa's last call (`air-lost-1/2`), then WREN (`air-lost-3`: the dock and Workshop still answer our codes).
+  - The spindle's windows go out too, and the clock reads LANTERN · LOST.
+  - Play goes on. There's no game over.
+- **Docked while lost:**
+  - The status shows LANTERN LOST, scrubber crates are gone, and there are no Ilsa barks (launch, buys, Rime/Sounder).
+  - The welcome is WREN's `hub-lost-back`.
+  - Briefings come through `briefingLines(b, G)` in story.js: `r2` and `r3` have WREN-only `lost` versions (`hub-r2-lost`, `hub-r3-lost`), and the others are skipped. So the Gate still opens on `r3`, and the menu reads BRIEFING · WREN.
+- **Old saves:** a save with air at 0 loads as lost.
+- **For 9d:** the endings read `G.lanternLost`. Restart relights a dead station; Sever has no convoy.
+- **Voiced** (2026-11-25): air-lost-1..3, hub-lost-back, hub-r2-lost, hub-r3-lost.
 
 **The game code is committed and pushed** (live at gamesbyrusko.com/opengamejam/dist/; see `git log` for the last commit). The owner tests on the live site, often on an old laptop. Push only when the owner says so; they say "push" at the end of each round (see memory: wayline-deploy). Check `git status`: the end-of-session doc updates and a one-line `.gitignore` change (`.opengame/`, written by the OpenGame CLI) may still be uncommitted.
 
@@ -52,6 +107,38 @@ All three worlds now play from landing to relic. Steps 1–7c of the build are d
    - Short rounds: build, bot-test headless, show screenshots, then the owner plays live and sends notes.
    - Quote their words in the handoff. Generate voice and SFX freely and log the spend.
    - Test guardians by firing through `hitTest`, not by calling `onBolt`. That shortcut hid the Matriarch heart bug.
+
+### How 9a works (the final run; owner, 2026-11-25: "I think restart and sever as planned ... A felt presence ... a phase 2 arcade fight with a new flagship as orrick")
+- **Unlock:** Ilsa's `r3` briefing (all three relics) opens the Gate. `gateOpen()` in main.js is `G.briefed.has('r3')`.
+  - The Gate becomes a fifth nav target, `GATE_NAV`. Launching with no relics left sets the nav to it, and WREN says `fin-nav`.
+  - The objective reads SET NAV TO THE FINAL GATE, then FLY TO THE FINAL GATE · FOLLOW LANTERN'S LINE, then ENGAGE THE LAST LIGHT within 4.2 km.
+  - The HUD has a violet ring marker (THE FINAL GATE ◆ distance) and a red bracket on the *Last Light*. The scanner shows a GATE blip; the NAV screen has the Gate's page.
+- **Where it is** (`data.js`): `FINAL_GATE` sits on Lantern's line, `GATE_FROM_HEART` (12,000 u) short of the Heart, about 230,000 u from Lantern (about 70 s at cruise). Cruise drops out within 5.2 km ("FINAL GATE"), brakes like Lantern's drop, and settles about 3.3 km out.
+- **The Gate and the Heart** (`src/gate.js`, procedural):
+  - The Gate: a Warden ring (R 900) of keystones with a lamp each, four vanes, a guttering glyph band, and three empty key sockets (for 9c).
+  - The Heart: a dark core with a failing rim and two weak beats every 6 s, inside five heavy armillary bands. The cluster's four lines run into it, all but dead.
+  - Collision: the ring as a fat torus, the *Last Light* as a sphere, the Heart's cage.
+  - **The *Last Light* is a stand-in**: the raider model scaled to 300 u and darkened, with red running lights, in the Gate's mouth. Engaging shows a "next build step (9b)" card.
+- **The Quiet** (`updateQuietFx` in main.js; `QUIET` in data.js): q rises from 190,000 u to 14,000 u from the Heart, × (0.4 + 0.6 × relics/3).
+  - Sky and stars (world.js `setQuiet`): a starless void centred on the Heart, `VOID_R` 26,000 × (0.35 + 0.65 × relics/3), so the void grows with every relic taken. The edge breathes. Stars and nebula thin as q rises.
+  - Picture (post.js `setQuiet`): colour drains, shadows sink, the vignette closes, and a fine static. **Signal tears** (a thin band slips sideways for 0.12–0.34 s) come rarely at the edge and every few seconds near the Gate. They are dim, never a flash, and weaker with prefers-reduced-motion.
+  - Sound (audio.js `updateQuiet`): a beating sub hum (38/39.3 Hz, with a 114 Hz pair for laptop speakers) and sparse crackle. The music pad drains, and the engine's filter dulls.
+  - HUD (hud.js `eaten`): distances and labels lose characters to noise deep in the Quiet. Subtitles, tasks and prompts are never touched. A tear dims the canopy HUD for a moment.
+- **The script** (`fin-*` in story.js; beats in `FINAL_BEATS`, keyed to how far down the line we are, p 0..1):
+  - WREN notices the void (`fin-quiet-1`).
+  - Orrick's grievance and offer (`fin-orrick-1..4`): the Corran line, his wife and son; "Anyone who wants air can buy it from me". WREN refuses (`fin-orrick-wren`).
+  - Dead channels: Tallow Reach and Brask Hollow (new speakers `colony` / `colony2`). WREN: "nothing ever carried them out".
+  - WREN on the shape between the lines (`fin-quiet-3`), then the canon (`fin-quiet-4`): the Wardens starved the lines so the Quiet would starve too.
+  - On arrival, any beat not yet played goes first, then `fin-arrive-1..3` (Orrick: "come and take the road from me").
+  - Before the Gate opens, WREN says `fin-sealed` there.
+  - Pacing, measured at about real cruise speed: about 86 s of talk against 70 s of cruise. The last two WREN lines play as the ship settles, then the arrival lines.
+- **Voices:** WREN Melz, Orrick Obsidian. New: Tallow Reach = Janay `P0hCzXsmThfWdItxdbMw`, Brask Hollow = Rick `wcATjh8zBDfepqUbl99V` (tools/spend-log.md).
+- **Tests:** two scratch scripts drive this through `tools/test/cdp.mjs` (not kept in the repo).
+  - A static pass places the ship at fractions of the run.
+  - A real-time cruise logs when each line starts.
+  - Headless runs about 4× slow: scale `__relic.FLIGHT.cruiseSpeed` for pacing tests, never for arrival tests.
+  - `window.__relic` now also exposes `FLIGHT`, `gate` and `finalRun`.
+- **Bug found on the way:** `updateObjective` had a local `const gate` (the landing gate) that shadowed the Final Gate and threw every frame. It's renamed `landGate`.
 
 ### OpenGame jam entry (published 2026-11-22)
 - **Live:** https://opengame.io/g/f3sqhmgmbq, in Game Jam #1 (`global-ai-game-jam-2026`). Tracks: Action & adventure, plus the sponsor tracks ElevenLabs, fal and Meshy. The owner confirmed the details and pressed publish on the deploy page.

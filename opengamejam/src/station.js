@@ -38,7 +38,7 @@ function windowTex(rows, cols, seed) {
 // The Wayline beam: a long open cylinder along +Y in its own frame. The vertex shader widens it
 // with distance so it stays a visible thread across the whole cluster (a navigation line), and
 // bright pulses ride it toward the station end (y = 0): cargo coming home.
-function makeBeam(len, color, r0 = 7) {
+export function makeBeam(len, color, r0 = 7) {
   const geo = new THREE.CylinderGeometry(1, 1, len, 12, 1, true).translate(0, len / 2, 0);
   const mat = new THREE.ShaderMaterial({
     uniforms: { time: { value: 0 }, len: { value: len }, r0: { value: r0 }, col: { value: new THREE.Color(color) }, alive: { value: 1 } },
@@ -252,6 +252,9 @@ export function createStation(scene) {
   }
 
   let t = 0, clampOpen = 1, alive = 1, aliveTarget = 1;
+  // who is still breathing: the ring's windows go out when the outer ring is sealed, the spindle's when
+  // Lantern is lost (air at zero). Eased, so it is seen happening if we are looking.
+  const habit = { ring: 1, spindle: 1, ringT: 1, spindleT: 1 };
   return {
     root, beam, relays,
     // where the ship sits at launch: on the bay floor, nose toward the mouth
@@ -271,6 +274,10 @@ export function createStation(scene) {
     // the line dies (after the first relic): fade the beam and the lantern
     setLineAlive(on, snap) { aliveTarget = on ? 1 : 0; if (snap) alive = aliveTarget; },
     get lineAlive() { return aliveTarget > 0; },
+    setHabitat(ringOn, spindleOn, snap) {
+      habit.ringT = ringOn ? 1 : 0; habit.spindleT = spindleOn ? 1 : 0;
+      if (snap) { habit.ring = habit.ringT; habit.spindle = habit.spindleT; }
+    },
     update(dt) {
       t += dt;
       beam.material.uniforms.time.value = t;
@@ -286,6 +293,10 @@ export function createStation(scene) {
       bayLight.color.setRGB(1 - 0.25 * alive, 0.35 + 0.56 * alive, 0.25 + 0.75 * alive);
       bayLight.intensity = 60 * (0.7 + 0.3 * alive);
       crystal.rotation.y += dt * 0.3;
+      habit.ring += (habit.ringT - habit.ring) * Math.min(1, dt * 0.5);
+      habit.spindle += (habit.spindleT - habit.spindle) * Math.min(1, dt * 0.5);
+      ringWin.material.color.setScalar(0.9 * habit.ring); ringWin.visible = habit.ring > 0.01;
+      spWin.material.color.setScalar(1.6 * habit.spindle); spWin.visible = habit.spindle > 0.01;
     },
   };
 }

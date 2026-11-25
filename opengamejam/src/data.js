@@ -27,6 +27,15 @@ export const PLANETS = [
 export const LANTERN = { pos: [0, 0, 0] };
 // The Heart: where every Wayline in the cluster runs to. Unreachable for now; Lantern's line points at it.
 export const HEART = { pos: [-160000, -60000, -170000] };
+// The Final Gate: a Warden ring on Lantern's line, short of the Heart, where every road narrows to one.
+// The Quiet lives round the Heart: it is felt from QUIET.far in, and at full strength by QUIET.near.
+// The void (a patch of sky with no stars) is VOID_R across, centred on the Heart.
+export const GATE_FROM_HEART = 12000;
+export const FINAL_GATE = (() => {
+  const h = HEART.pos, d = Math.hypot(...h);
+  return { pos: h.map((v) => v - (v / d) * GATE_FROM_HEART), R: 900 };
+})();
+export const QUIET = { far: 190000, near: 14000, VOID_R: 26000 };
 
 // Scrap Crown patrols, placed along the routes. Base threat: 1 on the routes out of Lantern,
 // 2 on the routes between worlds, 3 on each planet approach.

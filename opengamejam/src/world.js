@@ -12,6 +12,7 @@ function makeSky() {
       cB: { value: new THREE.Color('#0e6b7d') },
       cC: { value: new THREE.Color('#7a2f6e') },
       sunDir: { value: SUN_DIR },
+      voidDir: { value: new THREE.Vector3(0, 0, 1) }, voidCos: { value: 1.5 }, quiet: { value: 0 },
       pano: { value: null }, panoMix: { value: 0 }, tilt: { value: new THREE.Matrix3().setFromMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0.38, 2.2, 0.22))) },
     },
     vertexShader: /* glsl */ `
@@ -22,7 +23,7 @@ function makeSky() {
         gl_Position = p.xyww;
       }`,
     fragmentShader: NOISE + /* glsl */ `
-      uniform vec3 cA, cB, cC, sunDir;
+      uniform vec3 cA, cB, cC, sunDir, voidDir; uniform float voidCos, quiet;
       uniform sampler2D pano; uniform float panoMix; uniform mat3 tilt;
       varying vec3 vDir;
       // Painted nebula panorama (fal FLUX, equirectangular). The left/right edges are cross-faded over
@@ -50,6 +51,12 @@ function makeSky() {
         if (panoMix > 0.0) col = mix(col, vec3(0.002, 0.003, 0.009) + panoAt(d) * 0.4, panoMix);
         float s = max(dot(d, sunDir), 0.0);
         col += vec3(1.0, 0.75, 0.45) * (pow(s, 14.0) * 0.18 + pow(s, 3.0) * 0.03);
+        // the Quiet: the nebula drains as it closes in, and round the Heart the sky is simply not there.
+        // The edge of the void breathes a little, so it reads as a thing and not a hole in the art.
+        col *= 1.0 - 0.55 * quiet;
+        float c = dot(d, voidDir);
+        float edge = max(1.0 - voidCos, 1e-4) * (0.22 + 0.05 * sin(atan(d.y, d.x) * 7.0 + fbm(d * 9.0) * 4.0));
+        col *= (1.0 - smoothstep(voidCos - edge, voidCos - edge * 0.2, c)) * 0.97 + 0.03;
         gl_FragColor = vec4(col, 1.0);
       }`,
     side: THREE.BackSide, depthWrite: false, depthTest: false,
@@ -91,11 +98,17 @@ function makeStars() {
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setAttribute('size', new THREE.BufferAttribute(size, 1));
   const mat = new THREE.ShaderMaterial({
-    uniforms: { pr: { value: 1 }, time: { value: 0 } },
+    uniforms: { pr: { value: 1 }, time: { value: 0 }, voidDir: { value: new THREE.Vector3(0, 0, 1) }, voidCos: { value: 1.5 }, quiet: { value: 0 } },
     vertexShader: /* glsl */ `
       attribute float size; attribute vec3 color; varying vec3 vC; uniform float pr; uniform float time;
+      uniform vec3 voidDir; uniform float voidCos, quiet;
       void main() {
         vC = color * (0.85 + 0.15 * sin(time * 2.0 + position.x * 0.37 + position.z * 0.11));
+        // no stars inside the void; the rest thin out as the Quiet rises (the faint ones go first)
+        float c = dot(normalize(position), voidDir);
+        float w = max(1.0 - voidCos, 1e-4);
+        vC *= 1.0 - smoothstep(voidCos - w * 0.25, voidCos - w * 0.05, c);
+        vC *= clamp(1.0 - quiet * (1.4 - min(1.0, length(color) * 0.5)), 0.0, 1.0);
         gl_PointSize = size * pr;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
@@ -294,6 +307,12 @@ export function createWorld(scene) {
   return {
     planets,
     setPixelRatio(pr) { stars.material.uniforms.pr.value = pr; },
+    // the Quiet: q 0..1, the void's direction from the camera and its angular radius
+    setQuiet(q, dir, ang) {
+      for (const u of [sky.material.uniforms, stars.material.uniforms]) {
+        u.quiet.value = q; u.voidDir.value.copy(dir); u.voidCos.value = ang > 0 ? Math.cos(ang) : 1.5;
+      }
+    },
     update(camPos, vel, dt) {
       t += dt;
       sky.position.copy(camPos);
