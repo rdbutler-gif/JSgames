@@ -38,15 +38,39 @@ The older step 7 (ship upgrades vs raider levels, relic powers) and step 8 (musi
 
 ## First thing next session
 
-**Update 2026-11-25 (supersedes item 1 below):** the owner chose the ending's shape (GAMEPLAN §1): Restart and Sever only; the Quiet a felt presence; the boss a difficult multi-phase Phase II arcade fight against a new flagship model; save before the choice. 9a is built and **not pushed** (`dist/` was restored to the committed build; rebuild before a push).
+**Update 2026-11-25 (supersedes item 1 below):** the owner chose the ending's shape (GAMEPLAN §1): Restart and Sever only; the Quiet a felt presence; the boss a difficult multi-phase Phase II arcade fight against a new flagship model; save before the choice. 9a, 9b and Lantern lost were **pushed live** on 2026-11-25 as b4ad0d6 (owner: "commit and push. I'm ready to test").
 1. Ask the owner to play 9a (dev server or after a push): the run from Lantern to the Gate, the Quiet's look and sound, the 16 new voice lines, and whether the static and signal tears are too much on the old laptop.
 2. **Air at zero is decided and built** (owner, 2026-11-25: "At air zero Lantern is lost game continues. No hard fail."). See "Lantern lost" below.
-3. **Push is on hold** (owner, 2026-11-25: "Delay pushing for now"). Nothing from 9a or Lantern lost is committed.
+3. Pushed and live (b4ad0d6). Waiting on the owner's playtest notes.
 4. **9b is built** (see "How 9b works"). Ask the owner to play it, ideally with a late-game save. The questions:
    - Is it difficult enough and fair?
    - Do the lanes and shell walls read?
    - Are the phase lengths right?
    Then **9c**: past the open Gate to the Heart, the three keys in the sockets, Orrick's end, the save, and WREN's choice.
+5. **Rover Repair Kits and the Lantern stop** (owner, 2026-11-26) are built, not yet pushed or played by the owner. See "Rover Repair Kits" below. The owner has not yet tested anything after relic 3.
+
+### Rover Repair Kits and the Lantern stop (owner, 2026-11-26: "those revives should not be free ... I want the player introduced to the Lantern Station and how to buy Rover Repair kits before going to Kessa")
+- **Kits** (`KIT` in workshop.js: ◆ 30 each, carry 5, `G.kits`, saved). Sold first in the Workshop list.
+- **In a guardian fight** (surface.js, hull at 0):
+  - With a kit, one is used: the hull goes to 100 at the arena edge, and the guardian keeps its damage. WREN says how many are left.
+  - Without one, `loseFight()` runs: the guardian resets (full health when it wakes again), the fight ends, the objective goes back to the one before the fight (`S.preFightObj`), and the rover sits at the arena edge with a full hull. Open the vault again to retry.
+  - A breach while the guardian is already dying is ignored.
+  - Away from a fight, a breach is still a free tether back to the pad.
+  - WREN states the kit count 5 s into each fight. The rover HUD shows "✚ REPAIR KITS n" under the hull bar: red at 0, flashing gold when one is used.
+  - These kit lines are text only.
+- **The tutorial's Lantern stop** (story.js STEPS 6–9), after Ilsa's radio call:
+  - `t-radio-5`: Ilsa calls you back.
+  - Step 6: `t-home`. The nav goes to Lantern and `G.tutHome` enables the dock prompt, the traffic zone, the scanner blip and Lantern in the nav cycle.
+  - Step 7: `t-hub-1..3`. The dock fund gives +90 Wayshards, once (`G.kitFund`). The task is to buy a kit. Until you do, the other upgrades and LAUNCH are refused (`tutorial.kitLesson`).
+  - Step 8: `t-hub-4`, then LAUNCH.
+  - Step 9: `t-out`, throttle out of the bay. Then the old lessons: nav Kessa, face, cruise, the trip.
+  - **Hub behaviour:** during the stop, the hub skips its own briefings (`ctx.tutorial()`) and shows the task in `#hub-task`. main calls `tutorial.update` in the docking and hub states.
+  - **Lost callbacks:** a lesson whose line callback was dropped by `story.clear()` carries on once the story is idle.
+- **Saves:**
+  - `tutV: 2`. Older mid-tutorial checkpoints of 6 or more are moved up by 4.
+  - A checkpoint of 6–8 saved docked resumes in the hub, on the kit lesson or the launch lesson.
+  - SKIP TUTORIAL gives 3 kits instead of the stop.
+  - Saves from before the kits hear `hub-kits` from Ilsa once, at their next dock.
 
 ### How 9b works (the *Last Light* fight; owner, 2026-11-25: "Go with Last Light", concept "Yes I approve go for it")
 - **The model:** `public/models/lastlight.glb`, Meshy meshy-t2 at 7.7k triangles with a 2048 texture, from `assets-src/lastlight-concept.png`. In the Gate it's 900 u long, nose toward Lantern, with capsule collision (`LAST_LIGHT` in gate.js).

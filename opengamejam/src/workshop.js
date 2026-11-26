@@ -31,6 +31,10 @@ export const UPGRADE = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 // Scrubber parts for Lantern's reserve air: only sold once the line is dark. Repeatable, and dearer each time.
 export const SCRUBBER = { days: 2, cost: (n) => 50 + n * 25 };
 
+// Rover Repair Kits: the only revive in a guardian fight. A kit puts the rover back up at the arena edge with a
+// full hull and the guardian keeps its wounds; with none, WREN hauls the rover out and the guardian mends.
+export const KIT = { cost: 30, max: 5 };
+
 export const tier = (upgrades, id) => (upgrades && Number.isFinite(upgrades[id]) ? upgrades[id] : 0);
 // the value of an effect table at the tier owned, e.g. eff(G.upgrades, 'plating', 'dmgK')
 export const eff = (upgrades, id, key) => UPGRADE[id][key][tier(upgrades, id)];

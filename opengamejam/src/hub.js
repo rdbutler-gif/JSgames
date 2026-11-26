@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { cloneModel, onModel } from './models.js';
 import { createMenu } from './ui.js';
 import { BRIEFINGS, briefingLines } from './story.js';
-import { UPGRADES, SCRUBBER, tier, nextCost } from './workshop.js';
+import { UPGRADES, SCRUBBER, KIT, tier, nextCost } from './workshop.js';
 
 const ROMAN = ['', 'I', 'II', 'III'];
 
@@ -58,10 +58,21 @@ export function createHub(ctx) {
   const mainMenu = createMenu($('hub-menu'), () => [
     ...(latestBriefing() ? [{ label: G.lanternLost ? 'BRIEFING · WREN' : 'BRIEFING · ILSA', act: () => { story.clear(); story.lines(briefingLines(latestBriefing(), G)); } }] : []),
     { label: 'WORKSHOP', act: () => setView('shop') },
-    { label: 'LAUNCH', act: () => ctx.launch() },
+    { label: 'LAUNCH', act: () => {
+      // the tutorial's Lantern stop: not without a repair kit
+      if (ctx.kitLesson && ctx.kitLesson()) { deny(); story.say('Ilsa wants us to take a repair kit first. The Workshop has them.'); return; }
+      ctx.launch();
+    } },
   ]);
   function shopItems() {
-    const items = UPGRADES.map((u) => {
+    // Rover Repair Kits first: a guardian fight's only revive
+    const kitItem = {
+      kit: true,
+      label: () => 'ROVER REPAIR KIT · CARRYING ' + (G.kits || 0) + ' / ' + KIT.max,
+      value: () => ((G.kits || 0) >= KIT.max ? 'FULL' : '◆ ' + KIT.cost),
+      act: buyKit,
+    };
+    const items = [kitItem, ...UPGRADES.map((u) => {
       const k = tier(G.upgrades, u.id), cost = nextCost(G.upgrades, u.id);
       return {
         up: u,
@@ -69,7 +80,7 @@ export function createHub(ctx) {
         value: () => (cost === undefined ? 'FITTED' : '◆ ' + cost),
         act: () => buy(u),
       };
-    });
+    })];
     if (G.lanternDark && !G.lanternLost) items.push({
       scrub: true,
       label: () => 'SCRUBBER PARTS · +' + SCRUBBER.days + ' DAYS AIR',
@@ -88,6 +99,9 @@ export function createHub(ctx) {
       const k = tier(G.upgrades, it.up.id);
       el.innerHTML = '<div class="grp">' + it.up.group + '</div>' + it.up.tiers.map((d, i) =>
         `<div class="tier ${i < k ? 'own' : i === k ? 'next' : ''}"><b>MK ${ROMAN[i + 1]}</b> ${d}${i < k ? ' · fitted' : ''}</div>`).join('');
+    } else if (it.kit) {
+      el.innerHTML = '<div class="grp">ROVER · SUPPLIES</div><div class="tier next">If the rover&rsquo;s hull breaks in a guardian fight, a kit puts it back up on the spot, and the guardian keeps its wounds. Without one, WREN hauls the rover out and the guardian mends. Carry up to ' + KIT.max + '.</div>'
+        + (ctx.kitLesson && ctx.kitLesson() ? '<div class="tier own">Ilsa: kits first, Runner. The rest can wait.</div>' : '');
     } else if (it.scrub) {
       el.innerHTML = '<div class="grp">LANTERN STATION</div><div class="tier next">Sent up the lift to Ilsa\'s crews. Each crate buys the station ' + SCRUBBER.days + ' more days of air. They cost more each time; parts are scarce.</div>';
     } else el.innerHTML = '';
@@ -97,9 +111,20 @@ export function createHub(ctx) {
     $('hub-status').classList.add('short');
   }
   let buyBark = 0;
+  function buyKit() {
+    if ((G.kits || 0) >= KIT.max) { deny(); return; }
+    if (G.wayshards < KIT.cost) { deny(); return; }
+    G.wayshards -= KIT.cost;
+    G.kits = (G.kits || 0) + 1;
+    sfx.buy();
+    if (!G.lanternLost && !story.busy && !(ctx.tutorial && ctx.tutorial())) story.line(buyBark++ % 2 ? 'hub-buy-2' : 'hub-buy-1');
+    ctx.autosave(true);
+    shopMenu.render();
+  }
   function buy(u) {
     const cost = nextCost(G.upgrades, u.id);
     if (cost === undefined) return;
+    if (ctx.kitLesson && ctx.kitLesson()) { deny(); describe({ kit: true }); return; } // the tutorial: kits first
     if (G.wayshards < cost) { deny(); return; }
     G.wayshards -= cost;
     G.upgrades[u.id] = tier(G.upgrades, u.id) + 1;
@@ -138,7 +163,7 @@ export function createHub(ctx) {
     bits.push('RELICS ' + relicN() + ' / 3');
     return bits.join('<i>·</i>');
   }
-  let lastStatus = '';
+  let lastStatus = '', lastTask = null;
   function radio() {
     const c = G.comms[G.comms.length - 1];
     const el = $('hub-radio');
@@ -162,6 +187,8 @@ export function createHub(ctx) {
       G.ship.hull = 1; G.ship.shield = 1; G.ship.boostEnergy = 1;
       ctx.show('hub', true);
       setView('main'); mainMenu.reset(); mainMenu.render();
+      // the tutorial's Lantern stop does its own talking (and its lessons wait on their lines)
+      if (ctx.tutorial && ctx.tutorial()) { G.dockCount = (G.dockCount || 0) + 1; return; }
       story.clear();
       const due = BRIEFINGS.filter((b) => !G.briefed.has(b.id) && b.when(G));
       if (due.length) {
@@ -170,6 +197,8 @@ export function createHub(ctx) {
         story.lines(ids.length ? ids : G.lanternLost ? ['hub-lost-back'] : []);
         mainMenu.render(); // the BRIEFING item appears now
       } else story.line(G.lanternLost ? 'hub-lost-back' : G.dockCount % 2 ? 'hub-back-2' : 'hub-back-1');
+      // saves from before the kits (they never had the tutorial's Lantern stop): Ilsa mentions them once
+      if (!G.lanternLost && !G.heard.has('t-hub-2') && !G.heard.has('hub-kits')) story.line('hub-kits');
       G.dockCount = (G.dockCount || 0) + 1;
     },
     close() { rig.visible = false; ctx.show('hub', false); },
@@ -184,6 +213,13 @@ export function createHub(ctx) {
       if (s !== lastStatus) { $('hub-status').innerHTML = s; lastStatus = s; }
       if (flashT > 0) { flashT -= dt; if (flashT <= 0) $('hub-status').classList.remove('short'); }
       if (view === 'shop') shopMenu.refresh();
+      // the tutorial's task, while docked (the canopy HUD is hidden here)
+      const tk = G.task && ctx.tutorial && ctx.tutorial() ? G.task.label + '|' + G.task.key() : '';
+      if (tk !== lastTask) {
+        lastTask = tk;
+        const el = $('hub-task'); el.hidden = !tk;
+        if (tk) { const [l, k] = tk.split('|'); el.innerHTML = '▸ ' + l + '<b>' + k + '</b>'; }
+      }
       radio();
     },
   };

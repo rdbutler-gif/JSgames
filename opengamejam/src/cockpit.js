@@ -129,7 +129,7 @@ function drawScanner(x, G) {
     }
   };
   G.planets.forEach((p, i) => blip(p.center, 'planet', p.data.name, i === G.targetIndex));
-  if (G.bayMouth && G.tutorialDone) blip(G.bayMouth(), 'planet', 'LANTERN', G.targetIndex === G.lanternNav);
+  if (G.bayMouth && (G.tutorialDone || G.tutHome)) blip(G.bayMouth(), 'planet', 'LANTERN', G.targetIndex === G.lanternNav);
   if (G.gate && G.gateOpen && G.gateOpen()) blip(G.gate.pos, 'planet', 'GATE', G.targetIndex === G.gateNav);
   G.squads.forEach((sq) => { if (sq.state === 'patrol') blip(sq.pos, 'enemy', String(sq.level)); });
   x.fillStyle = '#eafdff';

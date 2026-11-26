@@ -819,11 +819,24 @@ export function createSurface(hooks) {
   function wakeGuardian() {
     if (!S || S.fight) return;
     S.fight = true;
+    S.preFightObj = S.obj;
     setObj('guardian');
+    { const n = hooks.kits ? hooks.kits() : 0;
+      setTimeout(() => S && S.fight && hooks.say(n ? 'We carry ' + n + ' repair ' + (n === 1 ? 'kit' : 'kits') + '. If the hull goes, I patch us on the spot.' : 'No repair kits aboard. If the hull goes, I have to pull us out, and it mends.'), 5000); }
     T.curtain.visible = true;
     T.titan.wake(rover.pos);
     S.hint = 8; S.hintMode = 'gun';
     hooks.say(T.G.wake);
+  }
+  // no kit: the fight is lost. The guardian goes back under (full strength when it wakes again), the rover
+  // is hauled to the arena edge, and the vault door asks to be opened again.
+  function loseFight() {
+    T.titan.reset();
+    S.fight = false; T.curtain.visible = false;
+    setObj(S.preFightObj || 'vault');
+    rover.hull = 100;
+    arenaRespawn();
+    hooks.say('Hull breach, and no repair kit. I hauled us out on the tether, and the ' + T.G.short.toLowerCase() + ' is mending. Lantern sells kits. Or open the vault and try it again.');
   }
   function arenaRespawn() {
     const d = T.def;
@@ -1645,11 +1658,20 @@ export function createSurface(hooks) {
       rover.vel.multiplyScalar(Math.exp(-1.2 * dt));
       if (!S.said.has('lava') || S.time - (S.lavaSaid || 0) > 8) { S.said.add('lava'); S.lavaSaid = S.time; hooks.say('Lava! Back out, the hull will not take it.'); sfx.alert(); }
     }
+    // a breach in a guardian fight: a Rover Repair Kit puts us back up and the guardian keeps its wounds;
+    // without one WREN hauls us out and the guardian mends (owner, 2026-11-26: revives should not be free)
+    if (rover.hull <= 0 && S.fight && T.titan.state === 'dying') rover.hull = 1; // it is already going down
     if (rover.hull <= 0 && S.fight) {
-      rover.hull = 70;
       sfx.explode(false);
-      hooks.say('Hull breach! I have patched what I can and pulled us back to the edge. It is still hurt. Go again.');
-      arenaRespawn();
+      if (hooks.useKit && hooks.useKit()) {
+        rover.hull = 100;
+        const n = hooks.kits();
+        hooks.say('Hull breach! Repair kit in, and we are back up. ' + (n ? n + (n === 1 ? ' kit' : ' kits') + ' left.' : 'That was our last kit.') + ' The ' + T.G.short.toLowerCase() + ' is still hurt. Go again.');
+        S.kitT = S.time;
+        arenaRespawn();
+      } else {
+        loseFight();
+      }
     }
     if (rover.hull <= 0) {
       rover.hull = 60;
@@ -1938,6 +1960,10 @@ export function createSurface(hooks) {
     ctx.fillStyle = `rgba(${hc},0.95)`; ctx.fillRect(bx, by, bw * clamp(rover.hull / 100, 0, 1), 10);
     text(ctx, 'ROVER HULL', bx, by - 14, 13, hc, 0.9, 'left');
     text(ctx, Math.round(rover.hull) + '%', bx + bw, by - 14, 13, hc, 0.9, 'right');
+    if (hooks.kits) { // Rover Repair Kits: a guardian fight's only revive
+      const n = hooks.kits(), fl = S.time - (S.kitT ?? -99) < 2.5;
+      text(ctx, '✚ REPAIR KITS ' + n, bx + bw, by + 26, 12, n ? (fl ? GOLD : CYAN) : RED, fl ? 0.6 + 0.4 * Math.sin(S.time * 14) : S.fight ? 0.9 : 0.6, 'right');
+    }
     {
       // special weapon heat, above the hull bar
       const ly = by - 46, lc = S.over ? RED : S.heat > 0.75 ? '255,150,60' : GOLD;

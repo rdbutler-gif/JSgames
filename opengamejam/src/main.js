@@ -66,6 +66,9 @@ const surface = createSurface({
   relic: (id) => relicSecured(id),
   lines: (ids) => story.lines(ids), // voiced lines from the surface (armory memory fragments)
   shards: (n) => { G.wayshards += n; },
+  // Rover Repair Kits (bought at Lantern): a guardian fight's only revive
+  kits: () => G.kits || 0,
+  useKit: () => { if (!(G.kits > 0)) return false; G.kits--; autosave(false); return true; },
 });
 
 // WREN's memories unlock by how many relics we hold, whichever planet they came from.
@@ -165,7 +168,7 @@ const G = {
   shakeOffset: new THREE.Vector3(),
   greeted: new Set(), squadWarn: new Map(),
   entry: null,
-  wayshards: 0, assaultsWon: 0, inSurface: false, surfacePlanet: null,
+  wayshards: 0, kits: 0, kitFund: false, tutHome: false, assaultsWon: 0, inSurface: false, surfacePlanet: null,
   upgrades: {}, logs: [], inAssault: false, resumeState: 'flight', assaultSquad: null,
   heard: new Set(), tutorialDone: false, lanternDark: false, task: null, waypoint: null, lineTag: false,
   tripLore: false, tripT: 0, lastLoreT: -999, saveT: 0,
@@ -207,7 +210,8 @@ const spaceLights = createLightPool(scene, 3); spaceLights.collect();
 
 const story = createStory({ G, sfx, playVoice, voiceState });
 const tutorial = createTutorial({ G, ship, station, scene, story, sfx, input, planets: world.planets, save: () => autosave(true) });
-const hub = createHub({ G, ship, station, scene, story, sfx, $, camera, show: (id, on) => show(id, on), applyUpgrades, autosave, launch: () => launchFromHub() });
+const hub = createHub({ G, ship, station, scene, story, sfx, $, camera, show: (id, on) => show(id, on), applyUpgrades, autosave, launch: () => launchFromHub(),
+  tutorial: () => tutorial.active, kitLesson: () => tutorial.kitLesson });
 
 // ---------- title scene: the Wayfarer, with the rover slung under it, off Lantern Station ----------
 const titleRig = new THREE.Group(); scene.add(titleRig);
@@ -306,7 +310,7 @@ function resetRun() {
   Object.assign(G, { relics: { kessa: false, thalor: false, vireo: false }, upgrades: {}, wayshards: 0, assaultsWon: 0, logs: [],
     heard: new Set(), tutorialDone: false, lanternDark: false, task: null, waypoint: null, lineTag: false, targetIndex: 0,
     greeted: new Set(), squadWarn: new Map(), comms: [], notes: [], prompt: null, tripLore: false, lastLoreT: -999,
-    where: 'space', surfaceId: null, surfaceOut: null, tutCheckpoint: null, air: 14, scrubbers: 0, briefed: new Set(), dockCount: 0, lanternLost: false, lastLightDown: false });
+    where: 'space', surfaceId: null, surfaceOut: null, tutCheckpoint: null, air: 14, scrubbers: 0, briefed: new Set(), dockCount: 0, lanternLost: false, lastLightDown: false, kits: 0, kitFund: false, tutHome: false });
   applyUpgrades();
   story.clear(); finalRun.queued.clear();
   station.setLineAlive(true, true);
@@ -335,7 +339,8 @@ function continueGame() {
   if (p) {
     Object.assign(G, { relics: { ...G.relics, ...p.relics }, upgrades: p.upgrades || {}, wayshards: p.wayshards || 0, assaultsWon: p.assaultsWon || 0,
       heard: new Set(p.heard || []), tutorialDone: !!p.tutorialDone, lanternDark: !!p.lanternDark,
-      air: Number.isFinite(p.air) ? p.air : 14, scrubbers: p.scrubbers || 0, briefed: new Set(p.briefed || []), lanternLost: !!p.lanternLost, lastLightDown: !!p.lastLightDown });
+      air: Number.isFinite(p.air) ? p.air : 14, scrubbers: p.scrubbers || 0, briefed: new Set(p.briefed || []), lanternLost: !!p.lanternLost, lastLightDown: !!p.lastLightDown,
+      kits: p.kits || 0, kitFund: !!p.kitFund });
     gate.lastLight.visible = !G.lastLightDown;
     if (G.lanternDark && G.air <= 0) G.lanternLost = true; // a save from before Lantern could be lost
     station.setHabitat(G.air > 1, !G.lanternLost, true);
@@ -350,7 +355,15 @@ function continueGame() {
   };
   if (!G.tutorialDone) {
     // a save from the radio call on resumes that lesson where we were; earlier ones restart from the dock
-    if (p && p.tut !== null && p.tut !== undefined && p.ship) { restorePose(); const k = p.tut; beginFlight(() => tutorial.resume(k)); }
+    let k = p && p.tut !== null && p.tut !== undefined ? p.tut : null;
+    if (k !== null && p.tutV !== 2 && k >= 6) k += 4; // saves from before the Lantern stop: its four lessons came in at 6
+    const H = tutorial.HUB_STEP;
+    if (k !== null && p.where === 'hub' && k >= H - 1 && k <= H + 1) {
+      // saved docked mid-stop: back in the hub, on the kit lesson or the launch one
+      dockShip(); station.snapClamps(false);
+      G.state = 'hub-in';
+      flash(() => { tutorial.resume(G.kits > 0 ? H + 1 : H); openHub(true); });
+    } else if (k !== null && p.ship) { restorePose(); beginFlight(() => tutorial.resume(k)); }
     else { dockShip(); beginFlight(() => tutorial.start()); }
     return;
   }
@@ -490,7 +503,7 @@ function cruiseBlock(margin) {
     if (sq.state === 'patrol' && sq.pos.distanceTo(ship.pos) < 2400 + margin) return { reason: 'HOSTILES IN RANGE', squad: sq };
   }
   // Lantern's traffic zone: cruise drops us out short of the station, so we can dock (not during the tutorial's launch)
-  if (G.tutorialDone && station.root.position.distanceTo(ship.pos) < 1800 + margin) return { reason: 'LANTERN TRAFFIC ZONE', lantern: true };
+  if ((G.tutorialDone || G.tutHome) && station.root.position.distanceTo(ship.pos) < 1800 + margin) return { reason: 'LANTERN TRAFFIC ZONE', lantern: true };
   // the Final Gate: cruise drops us out with the Gate and the Last Light ahead
   if (gate.pos.distanceTo(ship.pos) < 2600 + margin) return { reason: 'FINAL GATE', gate: true };
   return null;
@@ -602,7 +615,7 @@ function updatePrompts() {
     if (!G.lastLightDown && gate.lastLightWorld().distanceTo(ship.pos) < 3900) { G.prompt = { type: 'lastlight', label: 'ENGAGE THE LAST LIGHT' }; return; }
   }
   // Lantern's dock: in front of the bay mouth, close and slow enough
-  if (G.tutorialDone && !tutorial.active) {
+  if ((G.tutorialDone && !tutorial.active) || G.tutHome) { // G.tutHome: the tutorial's Lantern stop
     const L = station.local(ship.pos, tmpV);
     const d = bayMouth().distanceTo(ship.pos);
     if (d < 4500 && !G.dockHinted) { G.dockHinted = true; story.line('dock-approach'); } // once; re-armed when Lantern is picked on the nav again
@@ -1088,10 +1101,12 @@ function step(dt) {
       break;
     case 'docking':
       updateDocking(dt);
+      tutorial.update(dt); // the Lantern stop's lessons run docked too
       break;
     case 'hub':
       if (P.has('pause')) { pause(); break; }
       hub.update(dt, P);
+      tutorial.update(dt);
       break;
     case 'surface': {
       if (P.has('pause')) { pause(); break; }
@@ -1119,7 +1134,7 @@ function step(dt) {
       if (P.has('pause')) { pause(); break; }
       if (P.has('target')) {
         // Lantern joins the list once the tutorial is done (its lessons count on three targets)
-        G.targetIndex = (G.targetIndex + 1) % (G.tutorialDone ? navCount() : G.planets.length);
+        G.targetIndex = (G.targetIndex + 1) % (G.tutorialDone || G.tutHome ? navCount() : G.planets.length);
         if (G.targetIndex === LANTERN_NAV) G.dockHinted = false;
         sfx.target(); note('NAV TARGET · ' + (G.targetIndex === LANTERN_NAV ? 'LANTERN' : G.targetIndex === GATE_NAV ? 'THE FINAL GATE' : G.planets[G.targetIndex].data.name), '255,211,106');
       }

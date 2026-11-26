@@ -5,7 +5,7 @@ This is the plan we build from. The owner's `gameplan.md` (the long production b
 and ideas**, and it is a loose suggestion: anything in it can change if the game needs it. When
 the two disagree, this file wins, and this file changes whenever the owner decides something new.
 
-*Last updated: 2026-11-25. Session handoff: `docs/HANDOFF.md`.*
+*Last updated: 2026-11-26. Session handoff: `docs/HANDOFF.md`.*
 
 ---
 
@@ -25,6 +25,7 @@ the two disagree, this file wins, and this file changes whenever the owner decid
 | The Quiet | **A felt presence**, never shown: static, dead channels, a starless void round the Heart, the picture losing lock (owner, 2026-11-25) | Built in 9a. Canon: the Wardens starved the lines so the Quiet would starve too |
 | Final boss | **A Phase II arcade fight** against a **new flagship model**, the *Last Light* (Orrick). Difficult and multi-phase (owner, 2026-11-25) | 9b |
 | The choice | **Save before the choice** so a player can see both endings. More endgame content to follow later (owner, 2026-11-25) | 9c |
+| Guardian revives | **Not free**: Rover Repair Kits bought at Lantern (◆ 30, carry 5). Without one the guardian mends. The tutorial stops at Lantern to buy the first, before Kessa (owner, 2026-11-26) | Built; see HANDOFF "Rover Repair Kits" |
 | Air at zero | **Lantern is lost and the game goes on. No hard fail** (owner, 2026-11-25). The ring seals at 1 day; at 0 Ilsa's last call, the station goes dark, WREN speaks for the dock | Built. The endings change: Restart relights a dead station, Sever has no convoy |
 | Controls | Gamepad first, mouse and keyboard fully supported. The owner plays **Y inverted**; check the vertical sense of every new control scheme with the owner | Phase II stick/mouse vertical is the opposite of Phase I by the owner's choice |
 

@@ -35,6 +35,9 @@ export function saveProgress(G, ship) {
     lanternLost: !!G.lanternLost,
     lastLightDown: !!G.lastLightDown,
     scrubbers: G.scrubbers || 0,
+    kits: G.kits || 0,
+    kitFund: !!G.kitFund,
+    tutV: 2, // tutorial lesson numbering (2: the Lantern stop before Kessa)
     briefed: [...(G.briefed || [])],
     targetIndex: G.targetIndex,
     ship: (G.tutorialDone || tut !== null) && ship ? { pos: ship.pos.toArray(), quat: ship.quat.toArray(), hull: ship.hull } : null,

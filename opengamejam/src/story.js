@@ -34,6 +34,14 @@ export const LINES = {
   't-radio-2': ['ilsa', "The Quiet's spreading. Two stations went dark this month."],
   't-radio-3': ['wren', 'Dockmaster, the Warden charts mark three vaults. Kessa, Thalor and Vireo.'],
   't-radio-4': ['ilsa', "Then that's your run. Bring back whatever the Wardens left. Kessa's closest."],
+  't-radio-5': ['ilsa', "One thing first, Runner. Come back in and dock. Those vaults have guardians, and you'll want repair kits for the rover."],
+  't-home': ['wren', "Lantern's on the nav. Follow the gold marker to the bay mouth, and I'll fly us in."],
+  't-hub-1': ['ilsa', "Welcome to Lantern, Runner. Dock here any time to patch the hull, refit, and hear what's new."],
+  't-hub-2': ['ilsa', 'If the rover breaks down in a guardian fight, a repair kit gets you back up on the spot. Without one, WREN has to haul you out, and the guardian mends.'],
+  't-hub-3': ['ilsa', "The dock fund's put ninety Wayshards on your account. Open the Workshop and buy a repair kit."],
+  't-hub-4': ['ilsa', "Good. It's in the rover's locker. Wayshards from raider fights will buy you more. Now go. Kessa's waiting."],
+  't-out': ['wren', "Clamps are off. Take us out of the bay, and we'll set course for Kessa."],
+  'hub-kits': ['ilsa', 'Runner, the crews have rover repair kits in the Workshop now. Take a few before you go down to a vault.'],
   't-target': ['wren', 'Set Kessa as our nav target.'],
   't-face': ['wren', 'Now turn us toward the marker.'],
   't-cruise': ['wren', 'Kessa is over a million kilometres out. Engage cruise drive.'],
@@ -278,6 +286,10 @@ export function createTutorial(ctx) {
     steer: { key: 'MOUSE', pad: 'LEFT STICK', label: 'STEER THROUGH THE RING' },
     roll: { key: 'A / D', pad: 'RIGHT STICK', label: 'ROLL A FULL TURN' },
     boost: { key: 'SHIFT', pad: 'B', label: 'HOLD BOOST · CATCH THE RING' },
+    dock: { key: 'F', pad: 'A', label: 'FOLLOW THE GOLD MARKER · DOCK AT LANTERN' },
+    kit: { key: 'ENTER', pad: 'A', label: 'WORKSHOP · BUY A ROVER REPAIR KIT' },
+    launch: { key: 'ENTER', pad: 'A', label: 'LAUNCH' },
+    out: { key: 'W', pad: 'RT', label: 'THROTTLE OUT OF THE BAY' },
     target: { key: 'TAB', pad: 'LB', label: 'NAV TARGET · KESSA' },
     face: { key: 'MOUSE', pad: 'LEFT STICK', label: 'TURN TOWARD KESSA' },
     cruise: { key: 'C', pad: 'X', label: 'ENGAGE CRUISE DRIVE' },
@@ -311,7 +323,15 @@ export function createTutorial(ctx) {
       story.line('t-boost-again');
       return false;
     } },
-    { lines: ['t-radio-1', 't-radio-2', 't-radio-3', 't-radio-4'], task: null, enter() { G.waypoint = null; G.targetIndex = (KESSA + 2) % ctx.planets.length; }, check: () => true },
+    { lines: ['t-radio-1', 't-radio-2', 't-radio-3', 't-radio-4', 't-radio-5'], task: null, enter() { G.waypoint = null; G.targetIndex = (KESSA + 2) % ctx.planets.length; }, check: () => true },
+    // the Lantern stop (owner, 2026-11-26): dock, meet the hub, buy a rover repair kit, launch again.
+    // These lessons run in the docking and hub states too (main calls update there).
+    { lines: ['t-home'], task: 'dock', enter() { G.tutHome = true; G.targetIndex = G.lanternNav; G.dockHinted = true; }, check: () => G.state === 'hub' },
+    { lines: ['t-hub-1', 't-hub-2', 't-hub-3'], task: 'kit', enter() {
+      if (!G.kitFund) { G.kitFund = true; G.wayshards += 90; } // once, even if a save resumes this lesson
+    }, check: () => (G.kits || 0) > 0 },
+    { lines: ['t-hub-4'], task: 'launch', check: () => G.state === 'flight' },
+    { lines: ['t-out'], task: 'out', enter() { G.tutHome = false; }, check: () => G.state === 'flight' && station.localZ(ship.pos) < BAY_MOUTH_Z - 25 },
     { lines: ['t-target'], task: 'target', check: () => G.targetIndex === KESSA },
     { lines: ['t-face'], task: 'face', check() {
       fwd.set(0, 0, -1).applyQuaternion(ship.quat);
@@ -359,8 +379,10 @@ export function createTutorial(ctx) {
     talking = true;
     story.lines(s.lines, () => { talking = false; task(s.task); });
   }
+  // the hub lessons: the hub asks these to lock the rest of the Workshop and LAUNCH until the kit is bought
+  const HUB_STEP = 7;
   function finish() {
-    cur = null; task(null); G.waypoint = null; G.lineTag = false;
+    cur = null; task(null); G.waypoint = null; G.lineTag = false; G.tutHome = false;
     for (const r of rings) r.g.visible = false;
     G.tutorialDone = true; G.tutorial = null;
     ctx.save();
@@ -368,6 +390,9 @@ export function createTutorial(ctx) {
 
   return {
     get active() { return !!cur; },
+    get kitLesson() { return !!cur && step === HUB_STEP && !((G.kits || 0) > 0); },
+    get atHome() { return !!cur && step >= HUB_STEP - 1 && step <= HUB_STEP + 1; }, // the dock, hub and launch lessons
+    HUB_STEP,
     start() { step = 0; sawScouts = false; go(STEPS[0]); },
     jump(k) { step = k; go(STEPS[k]); }, // test hook: start at lesson k
     // Save checkpoint: from the radio call on (lesson 5), a save resumes the lesson instead of the dock.
@@ -381,12 +406,14 @@ export function createTutorial(ctx) {
     },
     // landing on a world finishes the tutorial (the entry takes us out of flight before LAND's check runs)
     complete() { if (cur) finish(); },
-    abort() { story.clear(); for (const r of rings) r.g.visible = false; cur = null; task(null); G.waypoint = null; G.lineTag = false; },
+    abort() { story.clear(); for (const r of rings) r.g.visible = false; cur = null; task(null); G.waypoint = null; G.lineTag = false; G.tutHome = false; },
     skip() {
       story.clear();
       for (const r of rings) r.g.visible = false;
       cur = null; task(null); G.waypoint = null; G.lineTag = false;
       G.targetIndex = KESSA;
+      G.tutHome = false;
+      if (!G.kitFund) { G.kitFund = true; G.kits = Math.max(G.kits || 0, 3); } // skipped the Lantern stop: the kits it would have bought
       station.setClamps(true);
       G.tutorialDone = true; G.tutorial = null;
       story.lines(['t-radio-4']);
@@ -398,6 +425,8 @@ export function createTutorial(ctx) {
       rollAcc += Math.abs(ship.ang.z) * dt;
       if (ship.boosting) boostT += dt;
       // the check is latched: doing the thing while WREN is still talking still counts
+      // a story.clear() (docking, the hub, launch) drops the lines' callback: once nothing is left to say, carry on
+      if (talking && stepT > 0.5 && !story.busy) { talking = false; task(cur.task); }
       if (!latched) latched = cur.check(dt);
       if (!latched || talking) return; // let WREN finish before the next lesson
       const r = latched;
