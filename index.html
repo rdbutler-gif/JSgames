@@ -505,6 +505,9 @@
     }
     .trailer-modal::backdrop { background: rgba(3,5,8,0.85); backdrop-filter: blur(4px); }
     .trailer-modal video { display: block; width: 100%; aspect-ratio: 16/9; border-radius: 10px; background: #000; }
+    /* vertical (9:16) trailers: size to the screen height instead of width */
+    .trailer-modal.portrait { width: min(420px, calc(100vw - 32px), calc((100vh - 120px) * 9 / 16)); }
+    .trailer-modal.portrait video { aspect-ratio: 9/16; }
     .trailer-close {
         position: absolute;
         top: -44px; right: 0;
@@ -697,6 +700,7 @@
                     <span class="feat-cta">Play on RUN.world
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </span>
+                    <span class="trailer-link" role="button" tabindex="0" data-trailer="./videos/brick-bouncer-trailer.mp4" data-orient="portrait"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Watch Trailer</span>
                 </div>
             </a>
             <a class="feat-card" href="https://w.run/rusko/hex-surge" target="_blank" rel="noopener">
@@ -1110,6 +1114,7 @@
             e.preventDefault();
             e.stopPropagation();
             video.src = e.currentTarget.dataset.trailer;
+            modal.classList.toggle('portrait', e.currentTarget.dataset.orient === 'portrait');
             modal.showModal();
             video.play().catch(function () {});
         }
